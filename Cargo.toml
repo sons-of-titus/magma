@@ -1,0 +1,40 @@
+[package]
+name = "magma"
+version = "0.1.0"
+edition = "2024"
+description = "A programmable text editor – Rust kernel, Janet userland"
+
+[dependencies]
+crossterm = "0.28"
+ratatui = { version = "0.29", features = ["all-widgets"] }
+anyhow = "1.0"
+thiserror = "1.0"
+unicode-width = "0.2"
+unicode-segmentation = "1.12"
+smallstr = "0.3"
+slab = "0.4"
+ropey = "1.6"
+eframe = { version = "0.29", optional = true, features = ["wgpu"] }
+bytemuck = { version = "1", optional = true }
+evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
+arboard = { version = "3.2", default-features = false }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.9.0"
+notify = "7.0"
+libc = "0.2"
+tree-sitter = "0.24"
+tree-sitter-language = "0.1"
+streaming-iterator = "0.1"
+libloading = "0.8"
+ureq = "2"
+
+[[bench]]
+name = "buffer_ops"
+harness = false
+
+[features]
+default = ["janet", "gui"]
+janet = ["dep:evil-janet"]
+gui = ["dep:eframe", "dep:bytemuck"]

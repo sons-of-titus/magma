@@ -1,0 +1,335 @@
+//! Janet scripting runtime bridge — wraps evil-janet FFI for Magma.
+
+use std::cell::Cell;
+use std::ffi::CString;
+
+use crate::state::Editor;
+#[cfg(feature = "janet")]
+use evil_janet::*;
+
+/// Global lock to serialise all access to the Janet VM.
+///
+/// The Janet runtime is a single global instance with no thread-safety
+/// guarantees.  Tests and production code must acquire this lock before
+/// any call into Janet.
+/// Exposed to tests via `janet_bridge::JANET_VM_LOCK`; not called from production code paths.
+#[allow(dead_code)]
+#[cfg(feature = "janet")]
+pub(crate) static JANET_VM_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "janet")]
+thread_local! {
+    /// Per-thread pointer to the current Editor.
+    ///
+    /// # Safety
+    /// - Always accessed from the thread that owns the Editor.
+    /// - Janet signals use `longjmp` which can skip past Rust destructors, so we
+    ///   must not hold a `Mutex` guard (or any other RAII guard) across a call
+    ///   into Janet.
+    /// - Re-entrant calls (Janet → Rust → Janet → Rust) are safe because we
+    ///   don't track borrows — each entry creates a fresh `&mut` from the raw
+    ///   pointer.  The outer function frame is opaque to the compiler across the
+    ///   generic closure boundary, so no aliasing UB arises in practice.
+    pub(crate) static EDITOR_PTR: Cell<Option<*mut Editor>> = const { Cell::new(None) };
+
+    /// Per-thread pointer to the current render Surface.
+    ///
+    /// Set by `set_surface_ptr` in the TUI/GUI loop immediately before the
+    /// `render-frame` event is dispatched.  Cleared by `clear_surface_ptr`
+    /// after the dispatch returns.  Janet C functions that write to the surface
+    /// (e.g. `editor/surface-set-cell`) use `with_surface` to access it.
+    pub(crate) static SURFACE_PTR: Cell<Option<*mut crate::render::surface::Surface>> = const { Cell::new(None) };
+}
+// ── Janet argument conversion helpers ─────────────────────────────────────
+
+#[cfg(feature = "janet")]
+pub(crate) mod conv {
+    use evil_janet::*;
+
+    pub unsafe fn get_str(argc: i32, argv: *mut Janet, i: i32) -> Option<String> { unsafe {
+        if i >= argc {
+            return None;
+        }
+        let v = *argv.add(i as usize);
+        if janet_checktype(v, JanetType_JANET_STRING) == 0
+            && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
+        {
+            return None;
+        }
+        let ptr = janet_unwrap_string(v);
+        if ptr.is_null() {
+            return None;
+        }
+        let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
+        Some(cstr.to_string_lossy().into_owned())
+    }}
+
+    pub unsafe fn get_opt_str(argc: i32, argv: *mut Janet, i: i32) -> Option<Option<String>> { unsafe {
+        if i >= argc {
+            return Some(None);
+        }
+        let v = *argv.add(i as usize);
+        if janet_checktype(v, JanetType_JANET_NIL) != 0 {
+            return Some(None);
+        }
+        get_str(argc, argv, i).map(Some)
+    }}
+
+    pub unsafe fn get_int(argc: i32, argv: *mut Janet, i: i32) -> Option<i32> { unsafe {
+        if i >= argc {
+            return None;
+        }
+        let v = *argv.add(i as usize);
+        if janet_checktype(v, JanetType_JANET_NUMBER) == 0 {
+            return None;
+        }
+        Some(janet_unwrap_integer(v))
+    }}
+
+    pub unsafe fn get_bool(argc: i32, argv: *mut Janet, i: i32) -> Option<bool> { unsafe {
+        if i >= argc {
+            return None;
+        }
+        let v = *argv.add(i as usize);
+        if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 {
+            return None;
+        }
+        Some(janet_unwrap_boolean(v) != 0)
+    }}
+
+    pub fn nil() -> Janet {
+        unsafe { janet_wrap_nil() }
+    }
+
+    pub fn boolean(b: bool) -> Janet {
+        unsafe { janet_wrap_boolean(b as i32) }
+    }
+
+    pub fn integer(i: i32) -> Janet {
+        // janet_wrap_integer is static inline in janet.h — not exported.
+        // Use janet_wrap_number (f64) instead — the unwrap functions handle both encodings.
+        unsafe { janet_wrap_number(i as f64) }
+    }
+
+    pub fn string(s: &str) -> Janet {
+        unsafe { janet_wrap_string(janet_string(s.as_ptr(), s.len() as i32)) }
+    }
+
+    pub fn keyword(s: &str) -> Janet {
+        // janet_symbol creates an INTERNED string (same as `janet_keyword` in C,
+        // which is #define'd to janet_symbol). Keywords must be interned so that
+        // hash- and equality-based lookups (janet_table_get / janet_equals) work
+        // correctly with keywords created by the Janet reader and (keyword ...).
+        unsafe { janet_wrap_keyword(janet_symbol(s.as_ptr(), s.len() as i32)) }
+    }
+
+    /// Signal a Janet error — diverges (longjmp back to VM).
+    pub fn signal_err(msg: &str) -> ! {
+        unsafe { janet_signalv(JanetSignal_JANET_SIGNAL_ERROR, string(msg)) }
+    }
+}
+
+/// Access the current thread's Editor from within a Janet C function callback.
+///
+/// Re-entrant-safe: if a Janet function calls back into Rust, the inner call
+/// creates a new `&mut` from the same raw pointer.
+#[cfg(feature = "janet")]
+pub(crate) fn with_editor<F: FnOnce(&mut crate::state::Editor) -> evil_janet::Janet>(
+    f: F,
+) -> evil_janet::Janet {
+    EDITOR_PTR.with(|cell| match cell.get() {
+        Some(ptr) => unsafe { f(&mut *ptr) },
+        None => conv::signal_err("editor not initialised"),
+    })
+}
+
+/// Update the thread-local editor pointer.
+///
+/// Called from command closures when the editor address may have changed
+/// (e.g. the RwLock guard was dropped and re-acquired).
+#[cfg(feature = "janet")]
+pub(crate) fn set_editor_ptr(editor: *mut Editor) {
+    EDITOR_PTR.with(|cell| cell.set(Some(editor)));
+}
+
+/// Point the thread-local surface pointer at `surface` for the duration of a
+/// `render-frame` event dispatch.  The pointer is valid until `clear_surface_ptr`
+/// is called — the caller must ensure the surface outlives the dispatch.
+#[cfg(feature = "janet")]
+pub fn set_surface_ptr(surface: *mut crate::render::surface::Surface) {
+    SURFACE_PTR.with(|cell| cell.set(Some(surface)));
+}
+
+/// Clear the thread-local surface pointer after a `render-frame` dispatch.
+#[cfg(feature = "janet")]
+pub fn clear_surface_ptr() {
+    SURFACE_PTR.with(|cell| cell.set(None));
+}
+
+#[cfg(feature = "janet")]
+mod keymap_api;
+#[cfg(feature = "janet")]
+mod buffer_api;
+#[cfg(feature = "janet")]
+mod buffer_text_api;
+#[cfg(feature = "janet")]
+mod buffer_query_api;
+#[cfg(feature = "janet")]
+mod special_buffer_api;
+#[cfg(feature = "janet")]
+mod command_api;
+#[cfg(feature = "janet")]
+mod event_api;
+#[cfg(feature = "janet")]
+mod window_api;
+#[cfg(feature = "janet")]
+mod editor_state_api;
+#[cfg(feature = "janet")]
+mod editor_io_api;
+#[cfg(feature = "janet")]
+mod editor_view_api;
+#[cfg(feature = "janet")]
+mod messages_api;
+#[cfg(feature = "janet")]
+mod lsp_api;
+#[cfg(feature = "janet")]
+mod lsp_edit_api;
+#[cfg(feature = "janet")]
+mod vc_api;
+#[cfg(feature = "janet")]
+mod process_api;
+#[cfg(feature = "janet")]
+mod project_api;
+#[cfg(feature = "janet")]
+mod project_registry_api;
+#[cfg(feature = "janet")]
+mod workspace_api;
+#[cfg(feature = "janet")]
+mod face_api;
+#[cfg(feature = "janet")]
+mod treesitter_api;
+#[cfg(feature = "janet")]
+mod display_api;
+#[cfg(feature = "janet")]
+mod layout_api;
+#[cfg(feature = "janet")]
+mod mode_api;
+#[cfg(feature = "janet")]
+mod ecosystem_api;
+#[cfg(feature = "janet")]
+mod font_api;
+#[cfg(feature = "janet")]
+mod ui_api;
+#[cfg(feature = "janet")]
+mod overlay_api;
+#[cfg(feature = "janet")]
+mod gutter_api;
+#[cfg(feature = "janet")]
+mod decoration_api;
+#[cfg(feature = "janet")]
+mod modality_api;
+#[cfg(feature = "janet")]
+mod eval_api;
+#[cfg(feature = "janet")]
+mod fs_api;
+#[cfg(feature = "janet")]
+mod net_http_api;
+#[cfg(feature = "janet")]
+mod net_tcp_api;
+#[cfg(feature = "janet")]
+mod minibuffer_api;
+#[cfg(feature = "janet")]
+mod selection_api;
+#[cfg(feature = "janet")]
+mod register_api;
+#[cfg(feature = "janet")]
+mod option_api;
+#[cfg(feature = "janet")]
+mod plugin_state_api;
+#[cfg(feature = "janet")]
+mod search_api;
+#[cfg(feature = "janet")]
+mod clipboard_api;
+
+#[cfg(feature = "janet")]
+pub(crate) use process_api::execute_stored_task;
+
+#[cfg(feature = "janet")]
+mod loader;
+
+#[cfg(feature = "janet")]
+pub use loader::init;
+
+/// Evaluate a Janet expression.
+#[cfg(feature = "janet")]
+pub fn eval(editor: &mut Editor, expr: &str) -> String {
+    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+    match loader::eval_string("eval", expr) {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
+/// Evaluate a Janet expression and return its printed result.
+///
+/// Returns `Ok(result_string)` on success where `result_string` is the
+/// Janet `description` of the returned value, or `Err(msg)` on failure.
+#[cfg(feature = "janet")]
+pub fn eval_result(editor: &mut Editor, expr: &str) -> Result<String, String> {
+    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+    unsafe {
+        let c_name = CString::new("eval").map_err(|e| e.to_string())?;
+        let c_source = CString::new(expr).map_err(|e| e.to_string())?;
+        let mut result = std::mem::MaybeUninit::<evil_janet::Janet>::zeroed();
+        let status = janet_dostring(
+            janet_core_env(std::ptr::null_mut()),
+            c_source.as_ptr(),
+            c_name.as_ptr(),
+            result.as_mut_ptr(),
+        );
+        if status != 0 {
+            Err("Janet error in eval".to_string())
+        } else {
+            let v = result.assume_init();
+            let s = janet_description(v);
+            if s.is_null() {
+                Ok("nil".to_string())
+            } else {
+                let cstr = std::ffi::CStr::from_ptr(s as *const i8);
+                Ok(cstr.to_string_lossy().into_owned())
+            }
+        }
+    }
+}
+
+/// Load a Janet file from disk.
+#[cfg(feature = "janet")]
+pub fn load_file(editor: &mut Editor, path: &str) -> Result<(), String> {
+    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+    let content = match &editor.background {
+        Some(bg) => {
+            let path = path.to_string();
+            bg.block_on(move || std::fs::read_to_string(&path))
+                .map_err(|e| format!("{e}"))?
+        }
+        None => std::fs::read_to_string(path).map_err(|e| format!("{e}"))?,
+    };
+    loader::eval_string(path, &content)
+}
+
+// ── Stubs (janet feature disabled) ──────────────────────────────────────────
+
+#[cfg(not(feature = "janet"))]
+pub fn init(_editor: &mut Editor) {
+    println!("Janet runtime not available (compile with --features janet)");
+}
+
+#[cfg(not(feature = "janet"))]
+pub fn eval(_editor: &mut Editor, expr: &str) -> String {
+    format!("Janet eval not available: {expr}")
+}
+
+#[cfg(not(feature = "janet"))]
+pub fn load_file(_editor: &mut Editor, _path: &str) -> Result<(), String> {
+    Err("Janet runtime not available".to_string())
+}

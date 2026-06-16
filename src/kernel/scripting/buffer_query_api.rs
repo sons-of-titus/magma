@@ -14,8 +14,8 @@ pub(super) fn emit_buffer_changed(ed: &mut crate::kernel::state::Editor, key: us
 
 unsafe extern "C-unwind" fn c_buffer_current(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let slab = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid));
+        let slab = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid));
         debug!("BC: buffer/current -> {:?}", slab);
         match slab {
             Some(k) => conv::integer(k as i32),

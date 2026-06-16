@@ -132,8 +132,8 @@ fn project_unregister_removes() {
 #[test]
 fn project_buffer_set_and_get() {
     janet_test!(ed, {
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap_or(0);
 
         let expr = format!("(project/buffer-set-project {} \"my-proj\")", key);

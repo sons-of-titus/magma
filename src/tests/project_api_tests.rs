@@ -188,8 +188,8 @@ fn project_buffer_association() {
     let tmp = std::env::temp_dir().join("sprint4_bufproj");
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let key = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
+    let key = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0);
 
     ed.project_manager.buffer_projects.insert(key, "my-project".to_string());

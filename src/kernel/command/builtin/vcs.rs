@@ -245,7 +245,7 @@ fn vc_open(editor: &mut Editor) -> CommandResult {
         }
     }
 
-    if let Some(win) = editor.windows.focused_window_mut() {
+    if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
     editor.keymaps.push_layer("vc");
@@ -332,7 +332,7 @@ fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
     if let Some(view) = editor.views.get_mut(&key) {
         view.set_cursor(0);
     }
-    if let Some(win) = editor.windows.focused_window_mut() {
+    if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
     Ok(())

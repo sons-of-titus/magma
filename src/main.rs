@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         entry.insert(arc.clone());
         ed.views.insert(buf_key, magma::kernel::text_engine::BufferView::new(arc));
 
-        if let Some(win) = ed.windows.focused_window_mut() {
+        if let Some(win) = ed.view_tree.focused_window_mut() {
             win.buffer_id = Some(buf_key);
         }
     }
@@ -298,7 +298,7 @@ fn run_tui(
                 InputEvent::Resize(w, h) => {
                     surface = Surface::new(w, h);
                     let mut ed = editor.write().unwrap();
-                    ed.windows.resize(w, h);
+                    ed.view_tree.resize(w, h);
                 }
                 InputEvent::Key(key) => {
                     let mut ed = editor.write().unwrap();

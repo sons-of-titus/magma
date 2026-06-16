@@ -153,8 +153,8 @@ fn newline_inserts_at_cursor() {
 fn undo_command_reverts_insert() {
     let mut ed = helpers::make_editor_with_buffer("");
     {
-        let slab = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+        let slab = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
         ed.views.get_mut(&slab).unwrap().insert(0, "hello");
     }
     helpers::run(&mut ed, "undo");

@@ -112,7 +112,7 @@ fn eval_region_evaluates_selection_and_emits_event() {
               (fn [d]
                 (plugin-state/set "_ev_val" (get d :value ""))))"#);
 
-        let buf_id = ed.windows.focused_window_mut().unwrap().buffer_id.unwrap();
+        let buf_id = ed.view_tree.focused_window_mut().unwrap().buffer_id.unwrap();
         {
             let buf = ed.buffers.get_mut(buf_id).unwrap();
             buf.insert(0, "(+ 7 8)");
@@ -139,7 +139,7 @@ fn eval_buffer_evaluates_entire_buffer() {
               (fn [d]
                 (plugin-state/set "buf-val" (get d :value ""))))"#);
 
-        let buf_id = ed.windows.focused_window_mut().unwrap().buffer_id.unwrap();
+        let buf_id = ed.view_tree.focused_window_mut().unwrap().buffer_id.unwrap();
         {
             let buf = ed.buffers.get_mut(buf_id).unwrap();
             buf.insert(0, "(* 6 7)");

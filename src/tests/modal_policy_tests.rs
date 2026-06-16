@@ -17,14 +17,14 @@ fn make_editor(content: &str) -> Editor {
 }
 
 fn text(ed: &Editor) -> String {
-    let slab = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get(slab).unwrap().slice(0, ed.buffers.get(slab).unwrap().len())
 }
 
 fn cursor(ed: &Editor) -> usize {
-    let slab = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get(slab).unwrap().cursor()
 }
 
@@ -105,7 +105,7 @@ fn registered_prefix_gg_runs_goto_start() {
     ed.vim_prefixes.insert("g".to_string());
     ed.keymaps.set_layer("vim", "gg", "goto-buffer-start");
     // Move to end first
-    let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window().and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(6);
     dispatch_key(&mut ed, "g");
     dispatch_key(&mut ed, "g");
@@ -130,7 +130,7 @@ fn unregistered_key_is_not_treated_as_prefix() {
 fn char_capture_r_replaces_char() {
     let mut ed = make_editor("hello");
     ed.vim_char_captures.insert("r".to_string(), "replace-char".to_string());
-    let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window().and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "r");  // enter char-capture
     dispatch_key(&mut ed, "H");  // replace 'h' with 'H'
@@ -153,7 +153,7 @@ fn dl_deletes_char_right() {
     let mut ed = make_editor("hello");
     ed.vim_operators.insert("d".to_string(), "delete-line".to_string());
     ed.vim_motions.insert("l".to_string(), "cursor-right".to_string());
-    let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window().and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "d");
     dispatch_key(&mut ed, "l");

@@ -1,32 +1,8 @@
-//! Status bar, terminal frame, and popup rendering.
+//! Status bar and popup rendering (global elements drawn over all panes).
 
 use crate::kernel::text_engine::Buffer;
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::{Style, Surface};
-
-/// Render the terminal buffer area with a dedicated look.
-pub(super) fn render_terminal_frame(
-    editor: &Editor,
-    buf: &Buffer,
-    surface: &mut Surface,
-    visible_lines: usize,
-) {
-    let tf = editor.theme_color("terminal-fg");
-    let t_style = Style { fg: tf, bg: (0, 0, 0), ..Default::default() };
-    let total_lines = buf.line_count();
-    let text = buf.slice(0, buf.len());
-    let scroll_top = total_lines.saturating_sub(visible_lines);
-    let max_visible = (total_lines - scroll_top).min(visible_lines);
-    for i in 0..max_visible {
-        let abs_line = scroll_top + i;
-        let line_start = buf.line_start_offset(abs_line).unwrap_or(text.len());
-        let line_end = buf.line_start_offset(abs_line + 1).unwrap_or(text.len());
-        let line_text = &text[line_start..line_end];
-        for (col, ch) in line_text.chars().enumerate().take(surface.width as usize) {
-            surface.set_cell(col as u16, i as u16, ch, Some(t_style));
-        }
-    }
-}
 
 /// Draw the insert-mode completion popup (top-right of buffer area).
 pub(super) fn render_insert_completion_popup(editor: &Editor, surface: &mut Surface, row_offset: u16, visible_lines: usize) {

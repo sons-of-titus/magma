@@ -2,8 +2,8 @@ use crate::kernel::scripting;
 use crate::kernel::input::dispatch_key;
 
 fn text(ed: &crate::kernel::state::Editor) -> String {
-    let slab = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get(slab).unwrap()
         .slice(0, ed.buffers.get(slab).unwrap().len())
 }
@@ -116,7 +116,7 @@ fn char_capture_find_forward_dispatch() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
-    let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window().and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "f");
     dispatch_key(&mut ed, "l");
@@ -131,7 +131,7 @@ fn gg_goes_to_buffer_start() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\nworld");
     crate::kernel::scripting::init(&mut ed);
-    let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window().and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(6);
     dispatch_key(&mut ed, "g");
     dispatch_key(&mut ed, "g");

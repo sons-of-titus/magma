@@ -25,8 +25,8 @@ fn on_input_interceptor_consuming_key() {
     scripting::eval(
         r#"(defn eat-all [k] (editor/consume-input)) (editor/on-input "eat-all")"#);
     ed.keymaps.set_layer("vim", "x", "delete-char");
-    let buf_id = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let buf_id = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "x");
     let text = { let b = ed.buffers.get(buf_id).unwrap().lock().unwrap(); b.slice(0, b.len()) };
@@ -41,8 +41,8 @@ fn on_input_interceptor_passing_key() {
     scripting::eval(
         r#"(defn pass-all [k] nil) (editor/on-input "pass-all")"#);
     ed.keymaps.set_layer("vim", "x", "delete-char");
-    let buf_id = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let buf_id = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "x");
     let text = { let b = ed.buffers.get(buf_id).unwrap().lock().unwrap(); b.slice(0, b.len()) };
@@ -69,8 +69,8 @@ fn input_consumed_flag_cleared_each_dispatch() {
         r#"(defn selective [k] (when (= k "a") (editor/consume-input))) (editor/on-input "selective")"#);
     ed.keymaps.set_layer("vim", "a", "append");
     ed.keymaps.set_layer("vim", "x", "delete-char");
-    let buf_id = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let buf_id = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "a");
     dispatch_key(&mut ed, "x");

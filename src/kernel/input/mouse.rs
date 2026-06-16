@@ -28,8 +28,8 @@ pub fn dispatch_mouse(ed: &mut Editor, surface: &Surface, x: u16, y: u16) {
 pub fn dispatch_gutter_click(ed: &mut Editor, surface: &Surface, click_x: u16, click_y: u16) {
     if ed.gutter.columns.is_empty() { return; }
 
-    let buf_id = match ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)) {
+    let buf_id = match ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)) {
         Some(id) => id,
         None => return,
     };

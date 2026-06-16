@@ -64,7 +64,7 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
             let key = entry.key();
             entry.insert(arc.clone());
             editor.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
-            if let Some(win) = editor.windows.focused_window_mut() {
+            if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
             Ok(())
@@ -165,7 +165,7 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
             let key = entry.key();
             entry.insert(arc.clone());
             editor.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
-            if let Some(win) = editor.windows.focused_window_mut() {
+            if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
             Ok(())

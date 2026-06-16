@@ -130,8 +130,8 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
 
 /// Get the focused buffer's slab key, or 0.
 pub(crate) fn focused_buffer_id(ed: &crate::kernel::state::Editor) -> usize {
-    ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
+    ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)
 }
 
@@ -171,8 +171,8 @@ pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
     }
 
     // Buffer text insertion.
-    if let Some(slab) = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
+    if let Some(slab) = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
     {
         if ed.multi_cursor.active && !ed.multi_cursor.extra_cursors.is_empty() {
             apply_to_all_cursors(ed, slab, key);

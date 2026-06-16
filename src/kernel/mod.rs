@@ -12,7 +12,6 @@ pub mod scripting;
 pub mod vc;
 pub mod command;
 pub mod clipboard;
-pub mod window;
 pub mod net;
 pub mod snippet;
 pub mod terminal;

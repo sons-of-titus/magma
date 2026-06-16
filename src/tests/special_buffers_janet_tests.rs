@@ -85,8 +85,8 @@ fn set_read_only_blocks_janet_insert() {
             None
         });
 
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
         scripting::eval(
@@ -110,8 +110,8 @@ fn set_read_only_blocks_janet_insert() {
 #[test]
 fn read_only_getter_reflects_flag() {
     janet_test!(ed, {
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
         // Initially false
@@ -132,8 +132,8 @@ fn read_only_getter_reflects_flag() {
 #[test]
 fn set_ephemeral_reflects_flag() {
     janet_test!(ed, {
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
         assert!(!ed.buffers.get(key).unwrap().lock().unwrap().ephemeral);
@@ -258,8 +258,8 @@ fn show_help_focuses_help_buffer_in_window() {
             .find(|(_, b)| b.lock().unwrap().name == "*Help*")
             .map(|(k, _)| k)
             .unwrap();
-        let focused_key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let focused_key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         assert_eq!(focused_key, help_key,
             "show-help must focus the *Help* buffer in the current window");

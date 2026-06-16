@@ -70,14 +70,14 @@ fn press(ed: &mut Editor, key: &str) {
 }
 
 fn text(ed: &Editor) -> String {
-    let slab = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get(slab).unwrap().slice(0, ed.buffers.get(slab).unwrap().len())
 }
 
 fn cursor(ed: &Editor) -> usize {
-    let slab = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid)).unwrap();
+    let slab = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.buffers.get(slab).unwrap().cursor()
 }
 

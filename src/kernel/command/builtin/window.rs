@@ -15,7 +15,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let keys: Vec<usize> = editor.buffers.iter().map(|(k, _)| k).collect();
             if keys.len() <= 1 { return Ok(()); }
-            if let Some(win) = editor.windows.focused_window_mut()
+            if let Some(win) = editor.view_tree.focused_window_mut()
                 && let Some(current) = win.buffer_id
                     && let Some(pos) = keys.iter().position(|k| *k == current) {
                         let next = (pos + 1) % keys.len();
@@ -33,7 +33,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let keys: Vec<usize> = editor.buffers.iter().map(|(k, _)| k).collect();
             if keys.len() <= 1 { return Ok(()); }
-            if let Some(win) = editor.windows.focused_window_mut()
+            if let Some(win) = editor.view_tree.focused_window_mut()
                 && let Some(current) = win.buffer_id
                     && let Some(pos) = keys.iter().position(|k| *k == current) {
                         let prev = if pos == 0 { keys.len() - 1 } else { pos - 1 };
@@ -49,12 +49,12 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("window-split", "Split window horizontally (ctrl-w s)",
         vec![],
         |editor, _args| {
-            if let Some(win) = editor.windows.focused_window() {
-                let existing_buf = editor.windows.buffer(win);
-                if let Some(new_id) = editor.windows.split_horizontal(win)
-                    && let Some(new_win) = editor.windows.window_mut(new_id) {
+            if let Some(win) = editor.view_tree.focused_window() {
+                let existing_buf = editor.view_tree.buffer(win);
+                if let Some(new_id) = editor.view_tree.split_horizontal(win)
+                    && let Some(new_win) = editor.view_tree.window_mut(new_id) {
                         new_win.buffer_id = existing_buf;
-                        editor.windows.focus(new_id);
+                        editor.view_tree.focus(new_id);
                     }
             }
             Ok(())
@@ -64,12 +64,12 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("window-vsplit", "Split window vertically (ctrl-w v)",
         vec![],
         |editor, _args| {
-            if let Some(win) = editor.windows.focused_window() {
-                let existing_buf = editor.windows.buffer(win);
-                if let Some(new_id) = editor.windows.split_vertical(win)
-                    && let Some(new_win) = editor.windows.window_mut(new_id) {
+            if let Some(win) = editor.view_tree.focused_window() {
+                let existing_buf = editor.view_tree.buffer(win);
+                if let Some(new_id) = editor.view_tree.split_vertical(win)
+                    && let Some(new_win) = editor.view_tree.window_mut(new_id) {
                         new_win.buffer_id = existing_buf;
-                        editor.windows.focus(new_id);
+                        editor.view_tree.focus(new_id);
                     }
             }
             Ok(())
@@ -79,8 +79,8 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("window-close", "Close current window (ctrl-w q)",
         vec![],
         |editor, _args| {
-            if let Some(win) = editor.windows.focused_window() {
-                editor.windows.close_window(win);
+            if let Some(win) = editor.view_tree.focused_window() {
+                editor.view_tree.close_window(win);
             }
             Ok(())
         },
@@ -154,7 +154,7 @@ pub(super) fn register(editor: &mut Editor) {
             let keys: Vec<usize> = editor.buffers.iter().map(|(k, _)| k).collect();
             if let Some(idx) = keys.iter().position(|k| *k == current) {
                 let next = keys[(idx + 1) % keys.len()];
-                if let Some(win) = editor.windows.focused_window_mut() {
+                if let Some(win) = editor.view_tree.focused_window_mut() {
                     win.buffer_id = Some(next);
                 }
                 editor.events.emit_typed(crate::kernel::event::keys::events::BUFFER_FOCUSED, BufferFocusedPayload {
@@ -173,7 +173,7 @@ pub(super) fn register(editor: &mut Editor) {
             let keys: Vec<usize> = editor.buffers.iter().map(|(k, _)| k).collect();
             if let Some(idx) = keys.iter().position(|k| *k == current) {
                 let prev = keys[(idx + keys.len() - 1) % keys.len()];
-                if let Some(win) = editor.windows.focused_window_mut() {
+                if let Some(win) = editor.view_tree.focused_window_mut() {
                     win.buffer_id = Some(prev);
                 }
                 editor.events.emit_typed(crate::kernel::event::keys::events::BUFFER_FOCUSED, BufferFocusedPayload {

@@ -11,7 +11,7 @@ fn render_frame_event_modifies_surface() {
 
     // Create *scratch* so it exists (matching production behaviour).
     let buf_key = ed.create_buffer("*scratch*");
-    if let Some(win) = ed.windows.focused_window_mut() {
+    if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
 

@@ -38,7 +38,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(arc) = editor.buffers.get(key) {
                 arc.lock().unwrap().path = Some(path);
             }
-            if let Some(win) = editor.windows.focused_window_mut() {
+            if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
             Ok(())
@@ -279,7 +279,7 @@ fn dired_open(editor: &mut Editor, dir: std::path::PathBuf) -> CommandResult {
             }
         }
     }
-    if let Some(win) = editor.windows.focused_window_mut() {
+    if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
     editor.keymaps.push_layer("dired");
@@ -308,7 +308,7 @@ fn dired_open_at_cursor_helper(editor: &mut Editor) -> CommandResult {
         if let Some(arc) = editor.buffers.get(key) {
             arc.lock().unwrap().path = Some(path.to_string_lossy().into_owned());
         }
-        if let Some(win) = editor.windows.focused_window_mut() {
+        if let Some(win) = editor.view_tree.focused_window_mut() {
             win.buffer_id = Some(key);
         }
         editor.keymaps.pop_layer("dired");

@@ -6,8 +6,8 @@ use crate::kernel::event::keys;
 use crate::kernel::text_engine::BufferView;
 
 pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
-    editor.windows.focused_window()
-        .and_then(|wid| editor.windows.buffer(wid))
+    editor.view_tree.focused_window()
+        .and_then(|wid| editor.view_tree.buffer(wid))
         .unwrap_or(0)
 }
 

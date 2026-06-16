@@ -64,7 +64,7 @@ pub fn start_terminal(
     };
 
     // Attach to focused window
-    if let Some(win) = editor.windows.focused_window_mut() {
+    if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
 

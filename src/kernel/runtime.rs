@@ -230,7 +230,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             let fallback = ed.buffers.iter()
                 .map(|(k, _)| k)
                 .find(|&k| k != buf_id);
-            if let Some(win) = ed.windows.focused_window_mut()
+            if let Some(win) = ed.view_tree.focused_window_mut()
                 && win.buffer_id == Some(buf_id) {
                     win.buffer_id = fallback;
                 }

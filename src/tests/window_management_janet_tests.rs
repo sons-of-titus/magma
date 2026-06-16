@@ -11,7 +11,7 @@ fn window_list_returns_one_window_initially() {
 
     let result = scripting::eval("(length (window/list))");
     assert_eq!(result, "ok");
-    assert_eq!(ed.windows.len(), 1);
+    assert_eq!(ed.view_tree.len(), 1);
 }
 
 #[test]
@@ -20,10 +20,10 @@ fn window_list_returns_all_windows_after_split() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    ed.windows.split_vertical(ed.windows.focused_window().unwrap());
+    ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap());
     let result = scripting::eval("(length (window/list))");
     assert_eq!(result, "ok");
-    assert_eq!(ed.windows.len(), 2);
+    assert_eq!(ed.view_tree.len(), 2);
 }
 
 // ── window/focus ──────────────────────────────────────────────────────────
@@ -34,15 +34,15 @@ fn window_focus_changes_focused_window_via_janet() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    let new_id = ed.windows.split_vertical(ed.windows.focused_window().unwrap()).unwrap();
-    let initial_focused = ed.windows.focused_window();
+    let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
+    let initial_focused = ed.view_tree.focused_window();
 
     let result = scripting::eval(
         &format!("(window/focus {})", new_id.0),
     );
     assert_eq!(result, "ok");
-    assert_ne!(ed.windows.focused_window(), initial_focused);
-    assert_eq!(ed.windows.focused_window(), Some(new_id));
+    assert_ne!(ed.view_tree.focused_window(), initial_focused);
+    assert_eq!(ed.view_tree.focused_window(), Some(new_id));
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn window_focus_emits_window_focused_event() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    let new_id = ed.windows.split_vertical(ed.windows.focused_window().unwrap()).unwrap();
+    let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
 
     // Register a Rust-side event counter (avoids nested fiber issue).
     use std::sync::{Arc, Mutex};
@@ -76,17 +76,17 @@ fn window_resize_sets_fractional_weight() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    ed.windows.resize(80, 24);
-    let new_id = ed.windows.split_vertical(ed.windows.focused_window().unwrap()).unwrap();
-    let focused_id = ed.windows.focused_window().unwrap();
+    ed.view_tree.resize(80, 24);
+    let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
+    let focused_id = ed.view_tree.focused_window().unwrap();
 
     let result = scripting::eval(
         &format!("(window/resize {} 0.3)", focused_id.0),
     );
     assert_eq!(result, "ok");
 
-    let w1 = ed.windows.window(focused_id).unwrap().width;
-    let w2 = ed.windows.window(new_id).unwrap().width;
+    let w1 = ed.view_tree.window(focused_id).unwrap().width;
+    let w2 = ed.view_tree.window(new_id).unwrap().width;
     assert!(w1 < w2, "resized window (weight 0.3) should be narrower than sibling");
 }
 
@@ -98,13 +98,13 @@ fn window_set_scroll_top_pins_offset() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    let wid = ed.windows.focused_window().unwrap();
+    let wid = ed.view_tree.focused_window().unwrap();
     let result = scripting::eval(
         &format!("(window/set-scroll-top {} 3)", wid.0),
     );
     assert_eq!(result, "ok");
 
-    let win = ed.windows.window(wid).unwrap();
+    let win = ed.view_tree.window(wid).unwrap();
     assert!(win.scroll_pinned, "scroll_pinned must be true after set-scroll-top");
     assert_eq!(win.scroll_offset, 3, "scroll_offset must equal the requested top");
 }
@@ -115,10 +115,10 @@ fn window_scroll_top_returns_pinned_value() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    let wid = ed.windows.focused_window().unwrap();
+    let wid = ed.view_tree.focused_window().unwrap();
     // Pin scroll top to 5
     {
-        let win = ed.windows.window_mut(wid).unwrap();
+        let win = ed.view_tree.window_mut(wid).unwrap();
         win.scroll_offset = 5;
         win.scroll_pinned = true;
     }
@@ -136,15 +136,15 @@ fn window_unpin_scroll_clears_pin() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    let wid = ed.windows.focused_window().unwrap();
+    let wid = ed.view_tree.focused_window().unwrap();
     scripting::eval(&format!("(window/set-scroll-top {} 7)", wid.0));
-    assert!(ed.windows.window(wid).unwrap().scroll_pinned);
+    assert!(ed.view_tree.window(wid).unwrap().scroll_pinned);
 
     let result = scripting::eval(
         &format!("(window/unpin-scroll {})", wid.0),
     );
     assert_eq!(result, "ok");
-    assert!(!ed.windows.window(wid).unwrap().scroll_pinned);
+    assert!(!ed.view_tree.window(wid).unwrap().scroll_pinned);
 }
 
 // ── editor/save-layout / editor/restore-layout ────────────────────────────
@@ -170,13 +170,13 @@ fn editor_restore_layout_restores_window_count() {
     scripting::eval("(editor/save-layout \"single\")");
 
     // Add a second window
-    ed.windows.split_vertical(ed.windows.focused_window().unwrap());
-    assert_eq!(ed.windows.len(), 2);
+    ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap());
+    assert_eq!(ed.view_tree.len(), 2);
 
     // Restore single-window layout
     let result = scripting::eval("(editor/restore-layout \"single\")");
     assert_eq!(result, "ok");
-    assert_eq!(ed.windows.len(), 1, "restore must return to saved window count");
+    assert_eq!(ed.view_tree.len(), 1, "restore must return to saved window count");
 }
 
 #[test]
@@ -185,13 +185,13 @@ fn editor_restore_layout_no_op_when_name_unknown() {
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
 
-    ed.windows.split_vertical(ed.windows.focused_window().unwrap());
-    let count_before = ed.windows.len();
+    ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap());
+    let count_before = ed.view_tree.len();
 
     // Restore a name that was never saved — should not crash or change state
     let result = scripting::eval("(editor/restore-layout \"nonexistent\")");
     assert_eq!(result, "ok");
-    assert_eq!(ed.windows.len(), count_before);
+    assert_eq!(ed.view_tree.len(), count_before);
 }
 
 // ── editor/layout-list ────────────────────────────────────────────────────
@@ -226,5 +226,5 @@ fn window_current_returns_focused_window_table() {
     let result = scripting::eval("(get (window/current) :id)");
     assert_eq!(result, "ok");
     // Rust-side: focused window should be window 1
-    assert_eq!(ed.windows.focused_window().unwrap().0, 1);
+    assert_eq!(ed.view_tree.focused_window().unwrap().0, 1);
 }

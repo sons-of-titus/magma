@@ -7,7 +7,7 @@ pub fn make_editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
     builtin::register_builtin_commands(&mut ed);
     let key = ed.create_buffer("test");
-    if let Some(win) = ed.windows.focused_window_mut() {
+    if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
     ed
@@ -17,7 +17,7 @@ pub fn make_editor_with_buffer(content: &str) -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
     builtin::register_builtin_commands(&mut ed);
     let key = ed.create_buffer_from_str("test", content);
-    if let Some(win) = ed.windows.focused_window_mut() {
+    if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
     ed
@@ -28,8 +28,8 @@ pub fn run(ed: &mut Editor, cmd: &str) {
 }
 
 pub fn focused_key(ed: &Editor) -> usize {
-    ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
+    ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)
 }
 

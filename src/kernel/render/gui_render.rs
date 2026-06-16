@@ -90,8 +90,8 @@ pub fn draw_status(
         } else {
             format!("{}{}", mb.prompt, mb.input)
         }
-    } else if let Some(slab) = ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
+    } else if let Some(slab) = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
     {
         if let Some(buf_arc) = ed.buffers.get(slab) {
             let buf     = buf_arc.lock().unwrap();

@@ -23,7 +23,7 @@ use crate::kernel::storage::FileSystem;
 use crate::kernel::keymap::KeymapManager;
 use crate::kernel::runtime::BackgroundHandle;
 use crate::kernel::scripting::ScriptRuntime;
-use crate::kernel::window::WindowTree;
+use crate::kernel::render::view_tree::ViewTree;
 
 pub use mode::{EditorMode, Minibuffer, Selection, SearchDirection};
 pub use font::{ContextFont, FontConfig};
@@ -42,7 +42,7 @@ pub struct Editor {
     pub buffers: slab::Slab<Arc<Mutex<Buffer>>>,
     /// Per-window view state (indexed by buffer slab key).
     pub views: std::collections::HashMap<usize, BufferView>,
-    pub windows: WindowTree,
+    pub view_tree: ViewTree,
     pub events: EventBus,
     pub commands: CommandRegistry,
     pub keymaps: KeymapManager,
@@ -81,7 +81,7 @@ pub struct Editor {
     pub cursor_shape: String,
     pub ts_trees: std::collections::HashMap<usize, Vec<u8>>,
     pub ts_languages: std::collections::HashMap<usize, String>,
-    pub saved_layouts: std::collections::HashMap<String, (Vec<crate::kernel::window::Window>, usize)>,
+    pub saved_layouts: std::collections::HashMap<String, (Vec<crate::kernel::render::view_tree::Pane>, usize)>,
     pub mark_ring: Vec<(String, usize)>,
     pub module_paths: Vec<String>,
     pub font_changed: bool,
@@ -129,7 +129,7 @@ impl Editor {
         Editor {
             buffers: slab::Slab::new(),
             views: std::collections::HashMap::new(),
-            windows: WindowTree::new(),
+            view_tree: ViewTree::new(),
             events: EventBus::new(),
             commands: CommandRegistry::new(),
             keymaps: KeymapManager::new(),
@@ -218,8 +218,8 @@ impl Editor {
 
     /// Get the focused buffer's slab key (0 if none).
     pub fn focused_buffer_key(&self) -> usize {
-        self.windows.focused_window()
-            .and_then(|wid| self.windows.buffer(wid))
+        self.view_tree.focused_window()
+            .and_then(|wid| self.view_tree.buffer(wid))
             .unwrap_or(0)
     }
 
@@ -231,8 +231,8 @@ impl Editor {
 
     /// Get the focused window's view (mutable).
     pub fn focused_view_mut(&mut self) -> Option<&mut crate::kernel::text_engine::BufferView> {
-        let key = self.windows.focused_window()
-            .and_then(|wid| self.windows.buffer(wid))?;
+        let key = self.view_tree.focused_window()
+            .and_then(|wid| self.view_tree.buffer(wid))?;
         self.views.get_mut(&key)
     }
 

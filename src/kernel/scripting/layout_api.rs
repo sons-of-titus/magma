@@ -9,8 +9,8 @@ use super::with_editor;
 unsafe extern "C-unwind" fn c_editor_save_layout(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         if let Some(name) = unsafe { conv::get_str(argc, argv, 0) } {
-            let windows = ed.windows.windows().to_vec();
-            let focused_idx = ed.windows.focused_index();
+            let windows = ed.view_tree.windows().to_vec();
+            let focused_idx = ed.view_tree.focused_index();
             ed.saved_layouts.insert(name, (windows, focused_idx));
         }
         conv::nil()
@@ -23,7 +23,7 @@ unsafe extern "C-unwind" fn c_editor_restore_layout(argc: i32, argv: *mut Janet)
     with_editor(|ed| {
         if let Some(name) = unsafe { conv::get_str(argc, argv, 0) } {
             if let Some((windows, focused_idx)) = ed.saved_layouts.get(&name).cloned() {
-                ed.windows.restore(windows, focused_idx);
+                ed.view_tree.restore(windows, focused_idx);
             }
         }
         conv::nil()

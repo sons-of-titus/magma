@@ -90,7 +90,7 @@ unsafe extern "C-unwind" fn c_editor_show_help(argc: i32, argv: *mut Janet) -> J
             buf.ephemeral = true;
         }
         // Focus the *Help* buffer in the current window
-        if let Some(win) = ed.windows.focused_window_mut() {
+        if let Some(win) = ed.view_tree.focused_window_mut() {
             win.buffer_id = Some(key);
         }
         ed.events.emit_typed(keys::events::HELP_SHOWN, HelpShownPayload {

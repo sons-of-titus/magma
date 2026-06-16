@@ -7,7 +7,7 @@ fn setup_background_editor() -> crate::kernel::state::Editor {
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
     ed.background = Some(crate::kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
     let k = ed.create_buffer("test");
-    if let Some(win) = ed.windows.focused_window_mut() {
+    if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(k);
     }
     ed

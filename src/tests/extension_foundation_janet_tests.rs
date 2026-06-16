@@ -5,8 +5,8 @@ use crate::kernel::scripting;
 #[test]
 fn buffer_major_mode_returns_fundamental_by_default() {
     janet_test!(ed, {
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         let result = scripting::eval(
             &format!("(buffer/major-mode {})", key),
@@ -20,8 +20,8 @@ fn buffer_major_mode_returns_fundamental_by_default() {
 #[test]
 fn buffer_major_mode_reflects_set_major_mode_command() {
     janet_test!(ed, {
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
         let result = scripting::eval(
@@ -50,8 +50,8 @@ fn option_set_local_isolated_from_global() {
         let r2 = scripting::eval("(option/get-local \"tab-width\")");
         assert_eq!(r2, "ok");
 
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         assert_eq!(
             ed.buffers.get(key).unwrap().lock().unwrap().local_options.get("tab-width").map(|s| s.as_str()),
@@ -151,8 +151,8 @@ fn major_mode_define_setup_fn_called_on_activate() {
         );
         assert_eq!(r, "ok", "mode with setup fn must activate without error");
 
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         assert_eq!(
             ed.buffers.get(key).unwrap().lock().unwrap().local_options.get("indent-width").map(|s| s.as_str()),
@@ -168,8 +168,8 @@ fn major_mode_define_setup_fn_called_on_activate() {
 fn auto_detect_mode_activates_when_command_registered() {
     janet_test!(ed, {
         ed.commands.register_fn("zig-mode", "zig mode", vec![], |ed, _args| {
-            let buf_id = ed.windows.focused_window()
-                .and_then(|wid| ed.windows.buffer(wid))
+            let buf_id = ed.view_tree.focused_window()
+                .and_then(|wid| ed.view_tree.buffer(wid))
                 .unwrap_or(0);
             if let Some(arc) = ed.buffers.get(buf_id) {
                 arc.lock().unwrap().major_mode = crate::kernel::text_engine::MajorMode::Custom("zig-mode".to_string());
@@ -189,8 +189,8 @@ fn auto_detect_mode_activates_when_command_registered() {
         );
         assert_eq!(r, "ok", "auto-detect logic must not error");
 
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "zig-mode",
             "auto-detect logic must activate zig-mode when invoked directly");
@@ -206,8 +206,8 @@ fn auto_detect_mode_skips_when_command_not_registered() {
         assert_eq!(r, "ok");
         ed.events.drain_and_dispatch();
 
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "fundamental",
             "auto-detect must not crash when mode command is not registered");
@@ -223,8 +223,8 @@ fn auto_detect_skips_buffer_without_path() {
         assert_eq!(r, "ok");
         ed.events.drain_and_dispatch();
 
-        let key = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.buffer(wid))
+        let key = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
         assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "fundamental");
     });

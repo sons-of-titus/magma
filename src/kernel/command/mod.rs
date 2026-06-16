@@ -114,8 +114,8 @@ pub fn execute_command(
 
     // Record cursor position in change list for edit commands
     if result.is_ok() && is_change_command(name) {
-        let buf_id = editor.windows.focused_window()
-            .and_then(|wid| editor.windows.buffer(wid))
+        let buf_id = editor.view_tree.focused_window()
+            .and_then(|wid| editor.view_tree.buffer(wid))
             .unwrap_or(0);
         if editor.buffers.contains(buf_id) {
             let pos = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);

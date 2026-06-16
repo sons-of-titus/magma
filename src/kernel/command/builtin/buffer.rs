@@ -129,7 +129,7 @@ pub(super) fn register(editor: &mut Editor) {
                 .map(|a| a.lock().unwrap().id.0)
                 .unwrap_or(key as u64);
 
-            if let Some(win) = editor.windows.focused_window_mut() {
+            if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
 
@@ -163,12 +163,12 @@ pub(super) fn register(editor: &mut Editor) {
             });
             editor.buffers.remove(key);
             editor.views.remove(&key);
-            let focused_shows_closed = editor.windows.focused_window()
-                .and_then(|wid| editor.windows.buffer(wid))
+            let focused_shows_closed = editor.view_tree.focused_window()
+                .and_then(|wid| editor.view_tree.buffer(wid))
                 == Some(key);
             if focused_shows_closed {
                 let other = editor.buffers.iter().next().map(|(k, _)| k);
-                if let Some(win) = editor.windows.focused_window_mut() {
+                if let Some(win) = editor.view_tree.focused_window_mut() {
                     win.buffer_id = other;
                 }
                 if let Some(new_id) = other {
@@ -188,7 +188,7 @@ pub(super) fn register(editor: &mut Editor) {
             let mut switched_to: Option<usize> = None;
             if let Some(alt_key) = editor.alternate_buffer.filter(|k| *k != current && editor.buffers.contains(*k)) {
                 editor.alternate_buffer = Some(current);
-                if let Some(win) = editor.windows.focused_window_mut() {
+                if let Some(win) = editor.view_tree.focused_window_mut() {
                     win.buffer_id = Some(alt_key);
                 }
                 switched_to = Some(alt_key);
@@ -200,7 +200,7 @@ pub(super) fn register(editor: &mut Editor) {
                     .collect();
                 if let Some(&first_other) = others.first() {
                     editor.alternate_buffer = Some(current);
-                    if let Some(win) = editor.windows.focused_window_mut() {
+                    if let Some(win) = editor.view_tree.focused_window_mut() {
                         win.buffer_id = Some(first_other);
                     }
                     switched_to = Some(first_other);

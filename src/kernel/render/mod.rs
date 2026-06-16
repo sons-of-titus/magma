@@ -3,6 +3,11 @@
 pub mod surface;
 pub mod tui;
 pub mod frame;
+pub mod view;
+pub mod view_tree;
+pub mod editor_view;
+pub mod terminal_view;
+pub mod sidebar_view;
 pub(crate) mod status_and_popup;
 pub(crate) mod highlight_pass;
 pub mod gpu_atlas;
@@ -15,6 +20,8 @@ pub mod gui;
 pub(crate) mod gui_fonts;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_render;
+
+pub use view_tree::{ViewTree, Pane, LayoutConstraint, SplitDirection};
 
 use surface::Surface;
 use crate::kernel::input::event::InputEvent;

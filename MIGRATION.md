@@ -194,21 +194,35 @@ none of these — it is pure content + history.
 
 ---
 
-### Phase 2 — View Tree + Renderer Separation
+### Phase 2 — View Tree + Renderer Separation ✅ COMPLETE
 
 **Goal:** Decouple rendering from the model via a View Tree, enabling
 programmatic view composition (EditorView, SidebarView, TerminalView, etc.).
 
-| Step | What |
-|------|------|
-| 2.1 | Define `View` trait in `kernel/render/view.rs`: `fn render(&self, surface: &mut Surface, ctx: &RenderCtx)` |
-| 2.2 | Implement `EditorView` — wraps a `BufferView`, renders text + cursor + decorations |
-| 2.3 | Implement `SidebarView` — wraps `ProjectManager`, renders file tree |
-| 2.4 | Implement `TerminalView` — wraps a PTY, renders terminal output |
-| 2.5 | Build `ViewTree` — ordered list of views with layout constraints (split, tab, float) |
-| 2.6 | Rewrite `kernel/render/frame.rs` to traverse `ViewTree` and dispatch to each view's `render()` |
-| 2.7 | Move window split logic from `src/window/` into `ViewTree` layout |
-| 2.8 | Verify: all existing rendering (modeline, tab-bar, gutter) works through view renderers |
+| Step | What | Status |
+|------|------|--------|
+| 2.1 | Define `View` trait in `kernel/render/view.rs`: `fn render(&self, surface: &mut Surface, ctx: &RenderCtx)` | ✅ |
+| 2.2 | Implement `EditorView` — wraps a `BufferView`, renders text + cursor + decorations | ✅ |
+| 2.3 | Implement `SidebarView` — wraps `ProjectManager`, renders file tree | ✅ |
+| 2.4 | Implement `TerminalView` — wraps a PTY, renders terminal output | ✅ |
+| 2.5 | Build `ViewTree` — ordered list of views with layout constraints (split, tab, float) | ✅ |
+| 2.6 | Rewrite `kernel/render/frame.rs` to traverse `ViewTree` and dispatch to each view's `render()` | ✅ |
+| 2.7 | Move window split logic from `src/window/` into `ViewTree` layout | ✅ |
+| 2.8 | Verify: all existing rendering (modeline, tab-bar, gutter) works through view renderers | ✅ |
+
+**Completion notes (2026-06-16):**
+- `kernel/window/mod.rs` deleted entirely — `WindowTree` and `Window` replaced by `ViewTree` and `Pane`
+- `editor.windows: WindowTree` → `editor.view_tree: ViewTree` — all 40+ call sites updated atomically
+- `View` trait + `Rect` + `RenderCtx` in `kernel/render/view.rs`
+- `EditorView` (`kernel/render/editor_view.rs`) — renders buffer text, gutter, cursor, decorations, folds, multi-cursor; only renders cursor and completion popup for the focused pane
+- `TerminalView` (`kernel/render/terminal_view.rs`) — renders PTY output into pane area
+- `SidebarView` (`kernel/render/sidebar_view.rs`) — renders project file tree from `ProjectManager`
+- `ViewTree` (`kernel/render/view_tree.rs`) — replaces `WindowTree`; adds `LayoutConstraint` enum (Split/Tab/Float) and `SplitDirection` per pane; redistribute logic moved from `window/mod.rs`
+- `render_frame` rewritten to iterate all panes, dispatch to views; global elements (overlays, status bar, completion popup) rendered after
+- `saved_layouts` type updated: `Vec<Window>` → `Vec<Pane>` 
+- `render_terminal_frame` from `status_and_popup.rs` deleted — logic lives in `TerminalView`
+- 20 new tests in `tests/view_tree_tests.rs` + `tests/view_tree_janet_tests.rs`
+- `cargo test --features janet -- --test-threads=1`: 870 passed, 0 failed
 
 ---
 

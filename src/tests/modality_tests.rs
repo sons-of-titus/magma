@@ -90,7 +90,7 @@ fn selection_clear() {
 #[test]
 fn selection_range_uses_new_model() {
     let mut ed = helpers::make_editor();
-    let buf_key = ed.windows.focused_window().and_then(|w| ed.windows.buffer(w)).unwrap();
+    let buf_key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
     ed.views.get_mut(&buf_key).unwrap().insert(0, "hello");
     ed.views.get_mut(&buf_key).unwrap().set_cursor(3);
     ed.selection = Some(Selection::char(1));

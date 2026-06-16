@@ -10,8 +10,8 @@ use crate::kernel::event::keys;
 /// (window/current) → table|nil   (shows id, buffer slab key, position, size)
 unsafe extern "C-unwind" fn c_window_current(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let wid = ed.windows.focused_window();
-        let win = wid.and_then(|id| ed.windows.window(id));
+        let wid = ed.view_tree.focused_window();
+        let win = wid.and_then(|id| ed.view_tree.window(id));
         match win {
             Some(w) => {
                 let tbl = janet_wrap_table(janet_table(0));
@@ -32,7 +32,7 @@ unsafe extern "C-unwind" fn c_window_current(_argc: i32, _argv: *mut Janet) -> J
 /// (window/list) → [table ...]
 unsafe extern "C-unwind" fn c_window_list(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let wins = ed.windows.windows();
+        let wins = ed.view_tree.windows();
         let arr = janet_wrap_array(janet_array(wins.len() as i32));
         for w in wins {
             let tbl = janet_wrap_table(janet_table(0));
@@ -53,11 +53,11 @@ unsafe extern "C-unwind" fn c_window_list(_argc: i32, _argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_window_split(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let dir_str = conv::get_str(argc, argv, 0);
-        let focused = ed.windows.focused_window();
+        let focused = ed.view_tree.focused_window();
         if let Some(wid) = focused {
             match dir_str.as_deref() {
-                Some("vertical") | Some(":vertical") => { ed.windows.split_vertical(wid); }
-                _ => { ed.windows.split_horizontal(wid); }
+                Some("vertical") | Some(":vertical") => { ed.view_tree.split_vertical(wid); }
+                _ => { ed.view_tree.split_horizontal(wid); }
             }
         }
         conv::nil()
@@ -69,10 +69,10 @@ unsafe extern "C-unwind" fn c_window_focus(argc: i32, argv: *mut Janet) -> Janet
     with_editor(|ed| {
         if let Some(id) = unsafe { conv::get_int(argc, argv, 0) } {
             let wid = crate::kernel::state::id::WindowId::from_u64(id as u64);
-            ed.windows.focus(wid);
+            ed.view_tree.focus(wid);
             ed.events.emit_typed(keys::events::WINDOW_FOCUSED, WindowFocusedPayload {
                 id: id.to_string(),
-                buffer: ed.windows.buffer(wid).map(|b| b.to_string()).unwrap_or_default(),
+                buffer: ed.view_tree.buffer(wid).map(|b| b.to_string()).unwrap_or_default(),
             });
         }
         conv::nil()
@@ -92,7 +92,7 @@ unsafe extern "C-unwind" fn c_window_resize(argc: i32, argv: *mut Janet) -> Jane
         } else { 0.5 };
         if let Some(id) = id {
             let wid = crate::kernel::state::id::WindowId::from_u64(id as u64);
-            ed.windows.resize_weighted(wid, w_frac);
+            ed.view_tree.resize_weighted(wid, w_frac);
         }
         conv::nil()
     })
@@ -106,9 +106,9 @@ unsafe extern "C-unwind" fn c_window_set_scroll_top(argc: i32, argv: *mut Janet)
         let top = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
         let wid = id
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
-            .or_else(|| ed.windows.focused_window());
+            .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid {
-            if let Some(win) = ed.windows.window_mut(wid) {
+            if let Some(win) = ed.view_tree.window_mut(wid) {
                 win.scroll_offset = top;
                 win.scroll_pinned = true;
             }
@@ -124,9 +124,9 @@ unsafe extern "C-unwind" fn c_window_unpin_scroll(argc: i32, argv: *mut Janet) -
         let id = conv::get_int(argc, argv, 0);
         let wid = id
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
-            .or_else(|| ed.windows.focused_window());
+            .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid {
-            if let Some(win) = ed.windows.window_mut(wid) {
+            if let Some(win) = ed.view_tree.window_mut(wid) {
                 win.scroll_pinned = false;
             }
         }
@@ -139,7 +139,7 @@ unsafe extern "C-unwind" fn c_window_buffer(argc: i32, argv: *mut Janet) -> Jane
     with_editor(|ed| unsafe {
         let wid = conv::get_int(argc, argv, 0)
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64));
-        match wid.and_then(|id| ed.windows.buffer(id)) {
+        match wid.and_then(|id| ed.view_tree.buffer(id)) {
             Some(k) => conv::integer(k as i32),
             None => conv::nil(),
         }
@@ -153,7 +153,7 @@ unsafe extern "C-unwind" fn c_window_set_buffer(argc: i32, argv: *mut Janet) -> 
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64));
         let buf_key = conv::get_int(argc, argv, 1).unwrap_or(-1) as usize;
         if let Some(wid) = wid {
-            ed.windows.set_buffer(wid, buf_key);
+            ed.view_tree.set_buffer(wid, buf_key);
         }
         conv::nil()
     })
@@ -163,8 +163,8 @@ unsafe extern "C-unwind" fn c_window_set_buffer(argc: i32, argv: *mut Janet) -> 
 /// Uses the focused window's dimensions as a proxy for terminal size.
 unsafe extern "C-unwind" fn c_window_dimensions(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let (cols, rows) = ed.windows.focused_window()
-            .and_then(|wid| ed.windows.window(wid))
+        let (cols, rows) = ed.view_tree.focused_window()
+            .and_then(|wid| ed.view_tree.window(wid))
             .map(|w| (w.width, w.height))
             .unwrap_or((80, 24));
         let tbl = janet_wrap_table(janet_table(2));
@@ -177,10 +177,10 @@ unsafe extern "C-unwind" fn c_window_dimensions(_argc: i32, _argv: *mut Janet) -
 fn resolve_window(ed: &mut Editor, arg_id: Option<i32>) -> Option<(Option<usize>, u16, u16)> {
     let wid = arg_id
         .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64));
-    let maybe = wid.and_then(|wid| ed.windows.window(wid).map(|w| (w.buffer_id, w.width, w.height)));
+    let maybe = wid.and_then(|wid| ed.view_tree.window(wid).map(|w| (w.buffer_id, w.width, w.height)));
     if maybe.is_some() { return maybe; }
-    ed.windows.focused_window()
-        .and_then(|wid| ed.windows.window(wid))
+    ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.window(wid))
         .map(|w| (w.buffer_id, w.width, w.height))
 }
 
@@ -246,9 +246,9 @@ unsafe extern "C-unwind" fn c_window_scroll_top(argc: i32, argv: *mut Janet) -> 
         let arg_id = conv::get_int(argc, argv, 0);
         let wid = arg_id
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
-            .or_else(|| ed.windows.focused_window());
+            .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid {
-            if let Some(win) = ed.windows.window(wid) {
+            if let Some(win) = ed.view_tree.window(wid) {
                 if win.scroll_pinned {
                     return conv::integer(win.scroll_offset as i32);
                 }

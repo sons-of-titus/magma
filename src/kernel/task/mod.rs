@@ -130,7 +130,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
                 view.set_cursor(target + char_offset);
             }
         }
-        if let Some(win) = editor.windows.focused_window_mut() {
+        if let Some(win) = editor.view_tree.focused_window_mut() {
             win.buffer_id = Some(key);
         }
     } else {
@@ -158,7 +158,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
             let mut view = crate::kernel::text_engine::BufferView::new(arc);
             view.set_cursor(target + char_offset);
             editor.views.insert(key, view);
-            if let Some(win) = editor.windows.focused_window_mut() {
+            if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
         }
@@ -177,7 +177,7 @@ fn create_output_buffer(editor: &mut Editor, base_name: &str, content: &str, cmd
     let key = entry.key();
     entry.insert(arc.clone());
     editor.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
-    if let Some(win) = editor.windows.focused_window_mut() {
+    if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
     key

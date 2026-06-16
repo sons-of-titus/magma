@@ -7,18 +7,18 @@ use crate::tests::helpers;
 #[test]
 fn window_split_increases_window_count() {
     let mut ed = helpers::make_editor();
-    assert_eq!(ed.windows.len(), 1);
-    let wid = ed.windows.focused_window().unwrap();
-    ed.windows.split_vertical(wid);
-    assert_eq!(ed.windows.len(), 2);
+    assert_eq!(ed.view_tree.len(), 1);
+    let wid = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.split_vertical(wid);
+    assert_eq!(ed.view_tree.len(), 2);
 }
 
 #[test]
 fn window_split_horizontal_increases_window_count() {
     let mut ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
-    ed.windows.split_horizontal(wid);
-    assert_eq!(ed.windows.len(), 2);
+    let wid = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.split_horizontal(wid);
+    assert_eq!(ed.view_tree.len(), 2);
 }
 
 // ── Window focus ──────────────────────────────────────────────────────────
@@ -26,11 +26,11 @@ fn window_split_horizontal_increases_window_count() {
 #[test]
 fn window_focus_changes_focused_window() {
     let mut ed = helpers::make_editor();
-    let focused = ed.windows.focused_window().unwrap();
-    let new_id = ed.windows.split_vertical(focused).unwrap();
-    let initial_focused = ed.windows.focused_window();
-    ed.windows.focus(new_id);
-    let after_focused = ed.windows.focused_window();
+    let focused = ed.view_tree.focused_window().unwrap();
+    let new_id = ed.view_tree.split_vertical(focused).unwrap();
+    let initial_focused = ed.view_tree.focused_window();
+    ed.view_tree.focus(new_id);
+    let after_focused = ed.view_tree.focused_window();
     assert_ne!(initial_focused, after_focused);
     assert_eq!(after_focused, Some(new_id));
 }
@@ -38,14 +38,14 @@ fn window_focus_changes_focused_window() {
 #[test]
 fn window_focus_next_cycles_through_windows() {
     let mut ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
-    ed.windows.split_vertical(wid);
-    let first = ed.windows.focused_window();
-    ed.windows.focus_next();
-    let second = ed.windows.focused_window();
+    let wid = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.split_vertical(wid);
+    let first = ed.view_tree.focused_window();
+    ed.view_tree.focus_next();
+    let second = ed.view_tree.focused_window();
     assert_ne!(first, second);
-    ed.windows.focus_next();
-    let third = ed.windows.focused_window();
+    ed.view_tree.focus_next();
+    let third = ed.view_tree.focused_window();
     assert_eq!(first, third);
 }
 
@@ -54,15 +54,15 @@ fn window_focus_next_cycles_through_windows() {
 #[test]
 fn window_resize_weighted_redistributes_widths() {
     let mut ed = helpers::make_editor();
-    ed.windows.resize(80, 24);
-    let focused = ed.windows.focused_window().unwrap();
-    let new_id = ed.windows.split_vertical(focused).unwrap();
+    ed.view_tree.resize(80, 24);
+    let focused = ed.view_tree.focused_window().unwrap();
+    let new_id = ed.view_tree.split_vertical(focused).unwrap();
 
-    let focused_id = ed.windows.focused_window().unwrap();
-    ed.windows.resize_weighted(focused_id, 0.3);
+    let focused_id = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.resize_weighted(focused_id, 0.3);
 
-    let w1 = ed.windows.window(focused_id).unwrap().width;
-    let w2 = ed.windows.window(new_id).unwrap().width;
+    let w1 = ed.view_tree.window(focused_id).unwrap().width;
+    let w2 = ed.view_tree.window(new_id).unwrap().width;
     assert!(w1 < w2, "left window (weight 0.3) should be narrower than right (weight 1.0)");
     assert!((w1 as u32 + w2 as u32).abs_diff(80) <= 1, "widths should sum to terminal width");
 }
@@ -70,10 +70,10 @@ fn window_resize_weighted_redistributes_widths() {
 #[test]
 fn window_resize_weighted_single_window_fills_terminal() {
     let mut ed = helpers::make_editor();
-    ed.windows.resize(100, 30);
-    let wid = ed.windows.focused_window().unwrap();
-    ed.windows.resize_weighted(wid, 0.5);
-    let w = ed.windows.window(wid).unwrap().width;
+    ed.view_tree.resize(100, 30);
+    let wid = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.resize_weighted(wid, 0.5);
+    let w = ed.view_tree.window(wid).unwrap().width;
     assert_eq!(w, 100, "single window always fills terminal regardless of weight");
 }
 
@@ -82,32 +82,32 @@ fn window_resize_weighted_single_window_fills_terminal() {
 #[test]
 fn window_scroll_pinned_defaults_to_false() {
     let ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
-    assert!(!ed.windows.window(wid).unwrap().scroll_pinned);
+    let wid = ed.view_tree.focused_window().unwrap();
+    assert!(!ed.view_tree.window(wid).unwrap().scroll_pinned);
 }
 
 #[test]
 fn window_scroll_offset_stores_explicit_top() {
     let mut ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
-    let win = ed.windows.window_mut(wid).unwrap();
+    let wid = ed.view_tree.focused_window().unwrap();
+    let win = ed.view_tree.window_mut(wid).unwrap();
     win.scroll_offset = 5;
     win.scroll_pinned = true;
-    assert_eq!(ed.windows.window(wid).unwrap().scroll_offset, 5);
-    assert!(ed.windows.window(wid).unwrap().scroll_pinned);
+    assert_eq!(ed.view_tree.window(wid).unwrap().scroll_offset, 5);
+    assert!(ed.view_tree.window(wid).unwrap().scroll_pinned);
 }
 
 #[test]
 fn window_unpin_clears_scroll_pinned() {
     let mut ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
+    let wid = ed.view_tree.focused_window().unwrap();
     {
-        let win = ed.windows.window_mut(wid).unwrap();
+        let win = ed.view_tree.window_mut(wid).unwrap();
         win.scroll_offset = 10;
         win.scroll_pinned = true;
     }
-    ed.windows.window_mut(wid).unwrap().scroll_pinned = false;
-    assert!(!ed.windows.window(wid).unwrap().scroll_pinned);
+    ed.view_tree.window_mut(wid).unwrap().scroll_pinned = false;
+    assert!(!ed.view_tree.window(wid).unwrap().scroll_pinned);
 }
 
 // ── Named layouts ─────────────────────────────────────────────────────────
@@ -115,11 +115,11 @@ fn window_unpin_clears_scroll_pinned() {
 #[test]
 fn save_layout_records_window_state() {
     let mut ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
-    ed.windows.split_vertical(wid);
-    assert_eq!(ed.windows.len(), 2);
-    let wins = ed.windows.windows().to_vec();
-    let focused_idx = ed.windows.focused_index();
+    let wid = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.split_vertical(wid);
+    assert_eq!(ed.view_tree.len(), 2);
+    let wins = ed.view_tree.windows().to_vec();
+    let focused_idx = ed.view_tree.focused_index();
     ed.saved_layouts.insert("two-pane".to_string(), (wins, focused_idx));
     assert!(ed.saved_layouts.contains_key("two-pane"));
 }
@@ -127,36 +127,36 @@ fn save_layout_records_window_state() {
 #[test]
 fn restore_layout_restores_window_count() {
     let mut ed = helpers::make_editor();
-    let wins = ed.windows.windows().to_vec();
-    let fi = ed.windows.focused_index();
+    let wins = ed.view_tree.windows().to_vec();
+    let fi = ed.view_tree.focused_index();
     ed.saved_layouts.insert("single".to_string(), (wins, fi));
 
-    let wid = ed.windows.focused_window().unwrap();
-    ed.windows.split_vertical(wid);
-    assert_eq!(ed.windows.len(), 2);
+    let wid = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.split_vertical(wid);
+    assert_eq!(ed.view_tree.len(), 2);
 
     let (saved_wins, saved_fi) = ed.saved_layouts["single"].clone();
-    ed.windows.restore(saved_wins, saved_fi);
-    assert_eq!(ed.windows.len(), 1);
+    ed.view_tree.restore(saved_wins, saved_fi);
+    assert_eq!(ed.view_tree.len(), 1);
 }
 
 #[test]
 fn restore_layout_restores_focused_index() {
     let mut ed = helpers::make_editor();
-    let focused = ed.windows.focused_window().unwrap();
-    let new_id = ed.windows.split_vertical(focused).unwrap();
-    ed.windows.focus(new_id);
+    let focused = ed.view_tree.focused_window().unwrap();
+    let new_id = ed.view_tree.split_vertical(focused).unwrap();
+    ed.view_tree.focus(new_id);
 
-    let wins = ed.windows.windows().to_vec();
-    let fi = ed.windows.focused_index();
+    let wins = ed.view_tree.windows().to_vec();
+    let fi = ed.view_tree.focused_index();
     ed.saved_layouts.insert("saved".to_string(), (wins, fi));
 
     let first_id = WindowId::from_u64(1);
-    ed.windows.focus(first_id);
+    ed.view_tree.focus(first_id);
 
     let (saved_wins, saved_fi) = ed.saved_layouts["saved"].clone();
-    ed.windows.restore(saved_wins, saved_fi);
-    assert_eq!(ed.windows.focused_window(), Some(new_id));
+    ed.view_tree.restore(saved_wins, saved_fi);
+    assert_eq!(ed.view_tree.focused_window(), Some(new_id));
 }
 
 // ── Window close ──────────────────────────────────────────────────────────
@@ -164,19 +164,19 @@ fn restore_layout_restores_focused_index() {
 #[test]
 fn window_close_removes_window() {
     let mut ed = helpers::make_editor();
-    let focused = ed.windows.focused_window().unwrap();
-    let new_id = ed.windows.split_vertical(focused).unwrap();
-    assert_eq!(ed.windows.len(), 2);
-    ed.windows.close(new_id);
-    assert_eq!(ed.windows.len(), 1);
+    let focused = ed.view_tree.focused_window().unwrap();
+    let new_id = ed.view_tree.split_vertical(focused).unwrap();
+    assert_eq!(ed.view_tree.len(), 2);
+    ed.view_tree.close(new_id);
+    assert_eq!(ed.view_tree.len(), 1);
 }
 
 #[test]
 fn window_close_does_not_remove_last_window() {
     let mut ed = helpers::make_editor();
-    let only_id = ed.windows.focused_window().unwrap();
-    ed.windows.close(only_id);
-    assert_eq!(ed.windows.len(), 1, "cannot close the last window");
+    let only_id = ed.view_tree.focused_window().unwrap();
+    ed.view_tree.close(only_id);
+    assert_eq!(ed.view_tree.len(), 1, "cannot close the last window");
 }
 
 // ── Resize and terminal dimensions ────────────────────────────────────────
@@ -184,9 +184,9 @@ fn window_close_does_not_remove_last_window() {
 #[test]
 fn resize_updates_single_window_dimensions() {
     let mut ed = helpers::make_editor();
-    ed.windows.resize(120, 40);
-    let wid = ed.windows.focused_window().unwrap();
-    let win = ed.windows.window(wid).unwrap();
+    ed.view_tree.resize(120, 40);
+    let wid = ed.view_tree.focused_window().unwrap();
+    let win = ed.view_tree.window(wid).unwrap();
     assert_eq!(win.width, 120);
     assert_eq!(win.height, 39); // term_height - 1 (status bar)
 }
@@ -194,6 +194,6 @@ fn resize_updates_single_window_dimensions() {
 #[test]
 fn window_weight_defaults_to_one() {
     let ed = helpers::make_editor();
-    let wid = ed.windows.focused_window().unwrap();
-    assert!((ed.windows.window(wid).unwrap().weight - 1.0).abs() < 1e-6);
+    let wid = ed.view_tree.focused_window().unwrap();
+    assert!((ed.view_tree.window(wid).unwrap().weight - 1.0).abs() < 1e-6);
 }

@@ -2,8 +2,8 @@ use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 fn focused_key(ed: &Editor) -> usize {
-    ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
+    ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)
 }
 

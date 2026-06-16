@@ -297,6 +297,16 @@ pub fn reset_task_functions() {
     }
 }
 
+/// Remove and GC-unroot a stored task/spawn function — called by the unified
+/// task/cancel implementation in task_api.rs when cancelling any task.
+pub(super) fn remove_task_function(id: u64) {
+    if let Ok(mut tasks) = TASK_FUNCTIONS.lock() {
+        if let Some(JanetSend(fn_val)) = tasks.remove(&id) {
+            unsafe { evil_janet::janet_gcunroot(fn_val); }
+        }
+    }
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {

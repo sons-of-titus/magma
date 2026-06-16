@@ -160,6 +160,8 @@ pub enum BackgroundEvent {
     /// Progress notification from `$/progress`.
     LspProgress { token: String, message: String, percentage: String },
     // ─────────────────────────────────────────────────────────────────────
+    /// A task defined in the TaskScheduler has completed (Phase 4).
+    TaskRunCompleted { id: u64, exit_code: i32, stdout: String, stderr: String, duration_ms: u64 },
     Custom(String, String),
 }
 
@@ -388,6 +390,39 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             let mut data = std::collections::HashMap::new();
             data.insert("payload".into(), payload);
             ed.events.emit(&name, data);
+        }
+        BackgroundEvent::TaskRunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
+            use crate::kernel::task::TaskOutput;
+            let output = TaskOutput { stdout, stderr, exit_code, duration_ms };
+            let task_name = ed.task_scheduler.tasks.get(&id)
+                .map(|t| t.name.clone())
+                .unwrap_or_default();
+            if exit_code == 0 {
+                ed.task_scheduler.mark_completed(id, output);
+                ed.events.emit_typed(keys::events::TASK_COMPLETED, TaskCompletedPayload {
+                    id: id.to_string(),
+                    name: task_name,
+                    exit_code: exit_code.to_string(),
+                    duration_ms: duration_ms.to_string(),
+                });
+            } else {
+                let err = format!("exit code {exit_code}");
+                ed.task_scheduler.mark_failed(id, err.clone(), output);
+                ed.events.emit_typed(keys::events::TASK_FAILED, TaskFailedPayload {
+                    id: id.to_string(),
+                    name: task_name,
+                    error: err,
+                });
+            }
+            if let Some(ref mut rt) = ed.runtime {
+                rt.execute_task_complete_callback(id);
+            }
+            if let Some(bg) = ed.background.clone() {
+                let ready: Vec<u64> = ed.task_scheduler.ready_to_run();
+                for rid in ready {
+                    let _ = ed.task_scheduler.launch(rid, &bg);
+                }
+            }
         }
     }
 }

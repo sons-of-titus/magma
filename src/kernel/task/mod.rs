@@ -1,3 +1,6 @@
+pub mod scheduler;
+pub use scheduler::{Task, TaskId, TaskOutput, TaskScheduler, TaskStatus};
+
 use std::process::Command;
 
 use crate::kernel::state::Editor;

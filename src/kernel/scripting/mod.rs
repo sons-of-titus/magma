@@ -252,9 +252,13 @@ mod plugin_state_api;
 mod search_api;
 #[cfg(feature = "janet")]
 mod clipboard_api;
+#[cfg(feature = "janet")]
+mod task_api;
 
 #[cfg(feature = "janet")]
 pub(crate) use process_api::execute_stored_task;
+#[cfg(feature = "janet")]
+pub(crate) use task_api::execute_task_complete_callback;
 
 #[cfg(feature = "janet")]
 mod loader;
@@ -402,4 +406,5 @@ pub trait ScriptRuntime: Send + Sync {
     fn load_file(&mut self, path: &str) -> Result<(), String>;
     fn call_command(&mut self, name: &str, args: &HashMap<String, ArgValue>) -> CommandResult;
     fn execute_stored_task(&mut self, _task_id: u64) {}
+    fn execute_task_complete_callback(&mut self, _task_id: u64) {}
 }

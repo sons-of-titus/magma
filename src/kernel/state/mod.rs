@@ -25,6 +25,7 @@ use crate::kernel::runtime::BackgroundHandle;
 use crate::kernel::scripting::ScriptRuntime;
 use crate::kernel::render::view_tree::ViewTree;
 use crate::kernel::semantic::SemanticEngine;
+use crate::kernel::task::TaskScheduler;
 
 pub use mode::{EditorMode, Minibuffer, Selection, SearchDirection};
 pub use font::{ContextFont, FontConfig};
@@ -105,6 +106,7 @@ pub struct Editor {
     pub io: IoState,
     pub gutter: GutterState,
     pub semantic: SemanticEngine,
+    pub task_scheduler: TaskScheduler,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
 
@@ -196,6 +198,7 @@ impl Editor {
             io: IoState::default(),
             gutter: GutterState::default(),
             semantic: SemanticEngine::new(),
+            task_scheduler: TaskScheduler::new(),
         }
     }
 

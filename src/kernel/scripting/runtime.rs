@@ -50,4 +50,11 @@ impl ScriptRuntime for JanetRuntime {
         let ed = unsafe { &mut *ed_ptr };
         super::execute_stored_task(ed, task_id);
     }
+
+    fn execute_task_complete_callback(&mut self, task_id: u64) {
+        let ed_ptr = super::EDITOR_PTR.with(|cell| cell.get())
+            .expect("EDITOR_PTR not set");
+        let ed = unsafe { &mut *ed_ptr };
+        super::execute_task_complete_callback(ed, task_id);
+    }
 }

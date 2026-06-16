@@ -265,22 +265,35 @@ UI thread.
 
 ---
 
-### Phase 4 — Task System
+### Phase 4 — Task System ✅ COMPLETE
 
 **Goal:** Every executable operation is a `Task` — build, test, deploy, format,
 generate.  Tasks are composable, observable, and scriptable from Janet.
 
-| Step | What |
-|------|------|
-| 4.1 | Define `Task` struct: `name`, `command`, `environment`, `dependencies: Vec<TaskId>`, `output: TaskOutput` |
-| 4.2 | Define `TaskOutput`: `stdout`, `stderr`, `exit_code`, `duration` |
-| 4.3 | Build `TaskScheduler` in `kernel/task/scheduler.rs` — dependency resolution, concurrent execution, cancellation |
-| 4.4 | Merge `src/process/` into `kernel/task/` — a process is a task that runs an external command |
-| 4.5 | Add Janet API: `(task/run name &opt args)`, `(task/cancel id)`, `(task/on-complete id callback)` |
-| 4.6 | Wire project build/test/run through tasks (see Phase 5) |
+| Step | What | Status |
+|------|------|--------|
+| 4.1 | Define `Task` struct: `name`, `command`, `environment`, `dependencies: Vec<TaskId>`, `output: TaskOutput` | ✅ |
+| 4.2 | Define `TaskOutput`: `stdout`, `stderr`, `exit_code`, `duration_ms` | ✅ |
+| 4.3 | Build `TaskScheduler` in `kernel/task/scheduler.rs` — dependency resolution, concurrent execution, cancellation | ✅ |
+| 4.4 | Merge `src/process/` into `kernel/task/` — unified `task/cancel` handles both TaskScheduler tasks and legacy `task/spawn` tasks | ✅ |
+| 4.5 | Add Janet API: `(task/run name &opt args)`, `(task/cancel id)`, `(task/on-complete id callback)`, `(task/define name command &opt deps)`, `(task/status id)`, `(task/list)`, `(task/output id)`, `(task/detect-project root)` | ✅ |
+| 4.6 | Wire project build/test/run through tasks — `project-opened` event triggers `task/detect-project`; `:build`, `:test`, `:run` colon verbs dispatch through tasks | ✅ |
 
 **Design constraint:** Tasks run on worker threads.  The Janet callback for
 `task/on-complete` fires on the main thread via the event bus.
+
+**Completion notes (2026-06-16):**
+- `kernel/task/scheduler.rs` — `TaskId`, `TaskStatus`, `TaskOutput`, `Task`, `TaskScheduler`
+- `TaskScheduler` exported from `kernel/task/mod.rs`; `task_scheduler: TaskScheduler` added to `Editor`
+- `BackgroundEvent::TaskRunCompleted` — carries stdout/stderr/exit_code/duration_ms; handled in `process_background_event`
+- `task-started`, `task-completed`, `task-failed` event keys + payloads
+- `kernel/scripting/task_api.rs` — 8 Janet C functions registered: `task/define`, `task/run`, `task/cancel`, `task/on-complete`, `task/status`, `task/list`, `task/output`, `task/detect-project`
+- Unified `task/cancel` cancels both TaskScheduler tasks and legacy `task/spawn` tasks; cleans up all stored callbacks
+- `execute_task_complete_callback` added to `ScriptRuntime` trait; implemented by `JanetRuntime`; fires on-complete callback with `{:stdout :stderr :exit-code :duration-ms}` argument
+- `builtins/task.janet` — `project-opened` hook auto-detects project tasks; `:build`, `:test`, `:run` colon verbs; `task-started`/`task-completed`/`task-failed` event hooks
+- Auto-detection supports: Cargo.toml (Rust), package.json (Node), Makefile, pyproject.toml/setup.py (Python)
+- 40 new tests in `tests/task_system_tests.rs` + `tests/task_system_janet_tests.rs`
+- `cargo test --features janet -- --test-threads=1`: 978 passed, 0 failed
 
 ---
 

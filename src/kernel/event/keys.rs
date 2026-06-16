@@ -49,6 +49,9 @@ pub mod events {
     pub const SELECTION_CHANGED: &str = "selection-changed";
     pub const SELECTION_CLEARED: &str = "selection-cleared";
     pub const TASK_RESULT: &str = "task-result";
+    pub const TASK_STARTED: &str = "task-started";
+    pub const TASK_COMPLETED: &str = "task-completed";
+    pub const TASK_FAILED: &str = "task-failed";
     pub const TCP_CLIENT_CONNECTED: &str = "tcp-client-connected";
     pub const TCP_CLIENT_DATA: &str = "tcp-client-data";
     pub const TCP_CLIENT_DISCONNECTED: &str = "tcp-client-disconnected";

@@ -32,7 +32,7 @@ test_pairs!(
     ecosystem, render, font_rendering, ui_customization,
     buffer_decoration, gutter_api, unified_input, modality,
     namespace_refactor, net_api, magma_utils, view_tree,
-    semantic_engine
+    semantic_engine, task_system
 );
 
 #[cfg(feature = "janet")] mod janet_tests;

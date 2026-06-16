@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use crate::buffer::Buffer;
-use crate::command::{self, builtin};
-use crate::fs::disk::DiskFileSystem;
-use crate::state::id::BufferId;
-use crate::state::Editor;
+use crate::kernel::text_engine::Buffer;
+use crate::kernel::command::{self, builtin};
+use crate::kernel::storage::disk::DiskFileSystem;
+use crate::kernel::state::id::BufferId;
+use crate::kernel::state::Editor;
 
 pub fn make_editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -55,5 +55,5 @@ pub fn cursor(ed: &Editor) -> usize {
 
 #[cfg(feature = "janet")]
 pub fn acquire_janet_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    crate::kernel::scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }

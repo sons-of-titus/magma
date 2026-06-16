@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::render::surface::Style;
-use crate::state::Editor;
+use crate::kernel::render::surface::Style;
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 fn focused_key(ed: &Editor) -> usize {

@@ -1,13 +1,13 @@
-use crate::state::mode::Selection;
-use crate::command::execute_command;
-use crate::janet_bridge;
+use crate::kernel::state::mode::Selection;
+use crate::kernel::command::execute_command;
+use crate::kernel::scripting;
 
 // ── editor/eval C function ────────────────────────────────────────────────
 
 #[test]
 fn editor_eval_arithmetic_via_c_function() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(editor/eval "(+ 1 2)")"#);
+        let r = scripting::eval(r#"(editor/eval "(+ 1 2)")"#);
         assert_eq!(r, "ok");
     });
 }
@@ -15,7 +15,7 @@ fn editor_eval_arithmetic_via_c_function() {
 #[test]
 fn eval_result_arithmetic() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result("(+ 10 5)").unwrap();
+        let r = scripting::eval_result("(+ 10 5)").unwrap();
         assert_eq!(r, "15");
     });
 }
@@ -23,7 +23,7 @@ fn eval_result_arithmetic() {
 #[test]
 fn eval_result_string() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(r#"(string "foo" "bar")"#).unwrap();
+        let r = scripting::eval_result(r#"(string "foo" "bar")"#).unwrap();
         assert_eq!(r, "\"foobar\"");
     });
 }
@@ -31,7 +31,7 @@ fn eval_result_string() {
 #[test]
 fn eval_result_nil() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result("nil").unwrap();
+        let r = scripting::eval_result("nil").unwrap();
         assert_eq!(r, "nil");
     });
 }
@@ -39,7 +39,7 @@ fn eval_result_nil() {
 #[test]
 fn eval_result_syntax_error_returns_err() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result("(+ 1");
+        let r = scripting::eval_result("(+ 1");
         assert!(r.is_err());
     });
 }
@@ -47,7 +47,7 @@ fn eval_result_syntax_error_returns_err() {
 #[test]
 fn editor_eval_c_function_returns_value_string() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(plugin-state/set "ev" (editor/eval "(* 3 4)"))"#);
         let val = ed.plugin_state.get("ev").cloned().unwrap_or_default();
         assert_eq!(val, "12");
@@ -59,7 +59,7 @@ fn editor_eval_c_function_returns_value_string() {
 #[test]
 fn fs_cwd_returns_non_empty_string() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(plugin-state/set "cwd" (fs/cwd))"#);
         let cwd = ed.plugin_state.get("cwd").cloned().unwrap_or_default();
         assert!(!cwd.is_empty());
@@ -70,7 +70,7 @@ fn fs_cwd_returns_non_empty_string() {
 fn fs_cwd_matches_actual_cwd() {
     janet_test!(ed, {
         let expected = std::env::current_dir().unwrap().to_string_lossy().to_string();
-        janet_bridge::eval(
+        scripting::eval(
             r#"(plugin-state/set "cwd" (fs/cwd))"#);
         let cwd = ed.plugin_state.get("cwd").cloned().unwrap_or_default();
         assert_eq!(cwd, expected);
@@ -83,8 +83,8 @@ fn fs_cwd_matches_actual_cwd() {
 fn fs_chdir_changes_working_directory() {
     janet_test!(ed, {
         let original = std::env::current_dir().unwrap();
-        janet_bridge::eval(r#"(fs/chdir "/tmp")"#);
-        janet_bridge::eval(
+        scripting::eval(r#"(fs/chdir "/tmp")"#);
+        scripting::eval(
             r#"(plugin-state/set "new-cwd" (fs/cwd))"#);
         let new_cwd = ed.plugin_state.get("new-cwd").cloned().unwrap_or_default();
         assert!(new_cwd.contains("tmp"));
@@ -107,7 +107,7 @@ fn eval_region_evaluates_selection_and_emits_event() {
                 Ok(())
             },
         );
-        janet_bridge::eval(r#"
+        scripting::eval(r#"
             (event/on "eval-result"
               (fn [d]
                 (plugin-state/set "_ev_val" (get d :value ""))))"#);
@@ -134,7 +134,7 @@ fn eval_region_evaluates_selection_and_emits_event() {
 #[test]
 fn eval_buffer_evaluates_entire_buffer() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"
+        scripting::eval(r#"
             (event/on "eval-result"
               (fn [d]
                 (plugin-state/set "buf-val" (get d :value ""))))"#);
@@ -158,7 +158,7 @@ fn eval_buffer_evaluates_entire_buffer() {
 #[test]
 fn janet_output_write_appends_to_buffer() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(janet-output/write "sprint12-test\n")"#);
+        scripting::eval(r#"(janet-output/write "sprint12-test\n")"#);
         let buf_key = ed.buffers.iter()
             .find(|(_, b)| b.name == "*janet-output*")
             .map(|(k, _)| k);
@@ -174,7 +174,7 @@ fn janet_output_write_appends_to_buffer() {
 #[test]
 fn janet_colon_verb_is_in_plugins_table() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(
+        let r = scripting::eval_result(
             r#"(truthy? (get *colon-plugins* "janet"))"#).unwrap();
         assert_eq!(r, "true");
     });
@@ -183,7 +183,7 @@ fn janet_colon_verb_is_in_plugins_table() {
 #[test]
 fn janet_repl_colon_verb_is_registered() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(
+        let r = scripting::eval_result(
             r#"(truthy? (get *colon-plugins* "janet-repl"))"#).unwrap();
         assert_eq!(r, "true");
     });
@@ -194,7 +194,7 @@ fn janet_repl_colon_verb_is_registered() {
 #[test]
 fn mshell_cwd_initialized_to_process_cwd() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(plugin-state/set "ms-cwd" *mshell-cwd*)"#);
         let cwd = ed.plugin_state.get("ms-cwd").cloned().unwrap_or_default();
         assert!(!cwd.is_empty());
@@ -204,7 +204,7 @@ fn mshell_cwd_initialized_to_process_cwd() {
 #[test]
 fn mshell_builtins_table_exists() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(
+        let r = scripting::eval_result(
             r#"(truthy? *mshell-builtins*)"#).unwrap();
         assert_eq!(r, "true");
     });
@@ -213,7 +213,7 @@ fn mshell_builtins_table_exists() {
 #[test]
 fn mshell_parse_line_janet_expr() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(
+        let r = scripting::eval_result(
             r#"(get (mshell/parse-line "(+ 1 2)") 0)"#).unwrap();
         assert!(r.contains("janet"), "expected :janet keyword, got: {r}");
     });
@@ -222,7 +222,7 @@ fn mshell_parse_line_janet_expr() {
 #[test]
 fn mshell_parse_line_builtin_command() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(
+        let r = scripting::eval_result(
             r#"(get (mshell/parse-line "cd /tmp") 0)"#).unwrap();
         assert!(r.contains("builtin"), "expected :builtin keyword, got: {r}");
     });
@@ -231,7 +231,7 @@ fn mshell_parse_line_builtin_command() {
 #[test]
 fn mshell_parse_line_shell_command() {
     janet_test!(ed, {
-        let r = janet_bridge::eval_result(
+        let r = scripting::eval_result(
             r#"(get (mshell/parse-line "ls -la") 0)"#).unwrap();
         assert!(r.contains("shell"), "expected :shell keyword, got: {r}");
     });
@@ -240,7 +240,7 @@ fn mshell_parse_line_shell_command() {
 #[test]
 fn mshell_echo_builtin_works() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"
+        scripting::eval(r#"
             (plugin-state/set "echo-out"
               ((get *mshell-builtins* "echo") ["hello" "world"]))"#);
         let out = ed.plugin_state.get("echo-out").cloned().unwrap_or_default();
@@ -251,9 +251,9 @@ fn mshell_echo_builtin_works() {
 #[test]
 fn mshell_colon_verbs_registered() {
     janet_test!(ed, {
-        let r1 = janet_bridge::eval_result(
+        let r1 = scripting::eval_result(
             r#"(truthy? (get *colon-plugins* "mshell"))"#).unwrap();
-        let r2 = janet_bridge::eval_result(
+        let r2 = scripting::eval_result(
             r#"(truthy? (get *colon-plugins* "ms"))"#).unwrap();
         assert_eq!(r1, "true");
         assert_eq!(r2, "true");

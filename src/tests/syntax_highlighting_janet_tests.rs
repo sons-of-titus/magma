@@ -1,11 +1,11 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── editor/define-face ─────────────────────────────────────────────────
 
 #[test]
 fn editor_define_face_inserts_face_into_registry() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/define \"test-face\" {:fg [255 0 0] :bg [0 0 0] :bold true})");
         assert_eq!(result, "ok");
 
@@ -20,7 +20,7 @@ fn editor_define_face_inserts_face_into_registry() {
 #[test]
 fn editor_define_face_without_table_creates_default_style() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/define \"default-face\")");
         assert_eq!(result, "ok");
 
@@ -33,7 +33,7 @@ fn editor_define_face_without_table_creates_default_style() {
 fn editor_define_face_emits_face_changed_event() {
     janet_test!(ed, {
         let _sub_count_before = ed.events.subscriber_count("face-changed");
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/define \"my-face\" {:fg [100 200 100]})");
         assert_eq!(result, "ok");
         assert!(ed.faces.contains_key("my-face"));
@@ -45,7 +45,7 @@ fn editor_define_face_emits_face_changed_event() {
 #[test]
 fn editor_face_returns_nil_for_unknown() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/get \"nonexistent\")");
         assert!(result.contains("nil") || result == "ok",
             "should handle missing face gracefully");
@@ -55,7 +55,7 @@ fn editor_face_returns_nil_for_unknown() {
 #[test]
 fn editor_face_returns_table_for_defined_face() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(do (face/define \"test-face\" {:fg [10 20 30] :bold true})
                  (face/get \"test-face\"))");
         assert_eq!(result, "ok");
@@ -70,7 +70,7 @@ fn editor_face_returns_table_for_defined_face() {
 #[test]
 fn editor_make_style_returns_integer_handle() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/make-style {:fg [255 0 0] :bg [0 0 0] :bold true})");
         assert_eq!(result, "ok");
     });
@@ -81,7 +81,7 @@ fn editor_make_style_returns_integer_handle() {
 #[test]
 fn editor_scope_face_registers_mapping() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/scope-face \"keyword\" \"keyword-face\")");
         assert_eq!(result, "ok");
 
@@ -92,7 +92,7 @@ fn editor_scope_face_registers_mapping() {
 #[test]
 fn editor_resolve_scope_returns_mapped_face() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(do (face/scope-face \"keyword\" \"keyword-face\")
                  (face/resolve-scope \"keyword.control\"))");
         assert_eq!(result, "ok");
@@ -102,7 +102,7 @@ fn editor_resolve_scope_returns_mapped_face() {
 #[test]
 fn editor_resolve_scope_returns_nil_for_unmapped() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             "(face/resolve-scope \"unknown.scope\")");
         assert_eq!(result, "ok");
     });
@@ -114,10 +114,10 @@ fn editor_resolve_scope_returns_nil_for_unmapped() {
 fn buffer_set_highlights_with_face_names() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"] [6 11 \"string-face\"]])", key));
     assert_eq!(result, "ok");
 
@@ -131,10 +131,10 @@ fn buffer_set_highlights_with_face_names() {
 fn buffer_set_highlights_without_face_defaults_to_highlight() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/set-highlights {} [[0 5]])", key));
     assert_eq!(result, "ok");
 
@@ -147,12 +147,12 @@ fn buffer_set_highlights_without_face_defaults_to_highlight() {
 fn buffer_set_highlights_empty_clears() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"]])", key));
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/set-highlights {})", key));
     assert!(ed.buffers.get(key).unwrap().highlights.is_empty());
 }
@@ -163,10 +163,10 @@ fn buffer_set_highlights_empty_clears() {
 fn buffer_set_highlights_layer_stores_per_layer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
     assert_eq!(result, "ok");
 
@@ -181,12 +181,12 @@ fn buffer_set_highlights_layer_stores_per_layer() {
 fn buffer_clear_highlights_layer_removes_named_layer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
     assert_eq!(result, "ok");
 
@@ -198,14 +198,14 @@ fn buffer_clear_highlights_layer_removes_named_layer() {
 fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/set-highlights-layer {} \"search\" [[2 4 \"search-face\"]])", key));
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
 
     let buf = ed.buffers.get(key).unwrap();

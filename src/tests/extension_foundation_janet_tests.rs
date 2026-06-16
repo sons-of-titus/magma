@@ -1,4 +1,4 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── buffer/major-mode getter ──────────────────────────────────────────
 
@@ -8,7 +8,7 @@ fn buffer_major_mode_returns_fundamental_by_default() {
         let key = ed.windows.focused_window()
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             &format!("(buffer/major-mode {})", key),
         );
         assert_eq!(result, "ok", "buffer/major-mode eval should not error");
@@ -24,7 +24,7 @@ fn buffer_major_mode_reflects_set_major_mode_command() {
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
 
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             &format!(
                 "(do (editor/run-command \"set-major-mode\" \"text\") \
                      (buffer/major-mode {}))",
@@ -44,10 +44,10 @@ fn option_set_local_isolated_from_global() {
     janet_test!(ed, {
         ed.options.insert("tab-width".to_string(), "4".to_string());
 
-        let r = janet_bridge::eval("(option/set-local \"tab-width\" \"2\")");
+        let r = scripting::eval("(option/set-local \"tab-width\" \"2\")");
         assert_eq!(r, "ok");
 
-        let r2 = janet_bridge::eval("(option/get-local \"tab-width\")");
+        let r2 = scripting::eval("(option/get-local \"tab-width\")");
         assert_eq!(r2, "ok");
 
         let key = ed.windows.focused_window()
@@ -71,7 +71,7 @@ fn option_get_local_falls_back_to_global_when_no_local() {
     janet_test!(ed, {
         ed.options.insert("wrap-width".to_string(), "80".to_string());
 
-        let r = janet_bridge::eval("(option/get-local \"wrap-width\")");
+        let r = scripting::eval("(option/get-local \"wrap-width\")");
         assert_eq!(r, "ok", "option-get-local fallback eval must succeed");
     });
 }
@@ -86,10 +86,10 @@ fn editor_load_file_evaluates_janet_source() {
 
         let path = tmp.to_string_lossy().to_string();
         let load_expr = format!("(editor/load-file \"{}\")", path);
-        let r = janet_bridge::eval(&load_expr);
+        let r = scripting::eval(&load_expr);
         assert_eq!(r, "ok", "editor/load-file must succeed");
 
-        let check = janet_bridge::eval("*sprint1-loaded*");
+        let check = scripting::eval("*sprint1-loaded*");
         assert_eq!(check, "ok", "variable defined by load-file must be accessible");
 
         std::fs::remove_file(&tmp).ok();
@@ -99,7 +99,7 @@ fn editor_load_file_evaluates_janet_source() {
 #[test]
 fn editor_load_file_errors_on_missing_file() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             "(try (editor/load-file \"/nonexistent/path/to/file.janet\") ([e] \"caught\"))",
         );
         assert_eq!(r, "ok", "error from load-file must be catchable with try/catch");
@@ -111,7 +111,7 @@ fn editor_load_file_errors_on_missing_file() {
 #[test]
 fn major_mode_define_registers_command() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(major-mode/define "sprint1-test-mode"
                   {:parent "prog"
                    :layers []
@@ -127,11 +127,11 @@ fn major_mode_define_registers_command() {
 #[test]
 fn major_mode_define_stores_in_registry() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(major-mode/define "sprint1-registry-mode" {:parent "text" :layers []})"#,
         );
 
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(not= nil (get *major-modes* "sprint1-registry-mode"))"#,
         );
         assert_eq!(r, "ok", "major-mode/define must store entry in *major-modes*");
@@ -141,7 +141,7 @@ fn major_mode_define_stores_in_registry() {
 #[test]
 fn major_mode_define_setup_fn_called_on_activate() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(do
                  (major-mode/define "sprint1-setup-mode"
                    {:parent "prog"
@@ -172,7 +172,7 @@ fn auto_detect_mode_activates_when_command_registered() {
                 .and_then(|wid| ed.windows.buffer(wid))
                 .unwrap_or(0);
             if let Some(buf) = ed.buffers.get_mut(buf_id) {
-                buf.major_mode = crate::buffer::MajorMode::Custom("zig-mode".to_string());
+                buf.major_mode = crate::kernel::text_engine::MajorMode::Custom("zig-mode".to_string());
             }
             Ok(())
         });
@@ -180,7 +180,7 @@ fn auto_detect_mode_activates_when_command_registered() {
         assert!(ed.events.subscriber_count("buffer-created") > 0,
             "init.janet must register a buffer-created subscriber");
 
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(do
                  (def ext (path-extension "/home/user/main.zig"))
                  (def mode-name (when ext (get *extension-mode-map* ext nil)))
@@ -200,7 +200,7 @@ fn auto_detect_mode_activates_when_command_registered() {
 #[test]
 fn auto_detect_mode_skips_when_command_not_registered() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(event/emit "buffer-created" {:path "/src/server.erl" :buffer-id "99" :name "server.erl"})"#,
         );
         assert_eq!(r, "ok");
@@ -217,7 +217,7 @@ fn auto_detect_mode_skips_when_command_not_registered() {
 #[test]
 fn auto_detect_skips_buffer_without_path() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(event/emit "buffer-created" {:name "*scratch*" :buffer-id "1"})"#,
         );
         assert_eq!(r, "ok");
@@ -235,7 +235,7 @@ fn auto_detect_skips_buffer_without_path() {
 #[test]
 fn require_returns_false_for_missing_plugin() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             "(require \"definitely-nonexistent-plugin-xyz\")",
         );
         assert_eq!(r, "ok", "require must not crash for missing plugin");
@@ -245,7 +245,7 @@ fn require_returns_false_for_missing_plugin() {
 #[test]
 fn require_caches_result_so_file_evaluated_once() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(do
                  (require "sprint1-cache-test-xyz")
                  (require "sprint1-cache-test-xyz")

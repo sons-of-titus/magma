@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::lsp::parse;
-use crate::state::Editor;
+use crate::kernel::semantic::parse;
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 // ── parse.rs unit tests ──────────────────────────────────────────────────

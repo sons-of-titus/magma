@@ -1,4 +1,4 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 use crate::tests::helpers;
 
 // ── buffer/fold ───────────────────────────────────────────────────────
@@ -7,10 +7,10 @@ use crate::tests::helpers;
 fn buffer_fold_adds_fold_range() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
-    janet_bridge::init(&mut ed);
+    scripting::init(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/fold {} 0 12)", key));
     assert_eq!(result, "ok");
 
@@ -23,12 +23,12 @@ fn buffer_fold_adds_fold_range() {
 fn buffer_unfold_removes_fold_range() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
-    janet_bridge::init(&mut ed);
+    scripting::init(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/fold {} 0 12)", key));
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/unfold {} 0 12)", key));
     assert_eq!(result, "ok");
 
@@ -40,14 +40,14 @@ fn buffer_unfold_removes_fold_range() {
 fn buffer_unfold_all_removes_all_folds() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
-    janet_bridge::init(&mut ed);
+    scripting::init(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/fold {} 0 6)", key));
-    let _ = janet_bridge::eval(
+    let _ = scripting::eval(
         &format!("(buffer/fold {} 12 18)", key));
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/unfold-all {})", key));
     assert_eq!(result, "ok");
 
@@ -59,10 +59,10 @@ fn buffer_unfold_all_removes_all_folds() {
 fn buffer_folds_returns_empty_for_no_folds() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("hello");
-    janet_bridge::init(&mut ed);
+    scripting::init(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let result = janet_bridge::eval(
+    let result = scripting::eval(
         &format!("(buffer/folds {})", key));
     assert_eq!(result, "ok");
 }

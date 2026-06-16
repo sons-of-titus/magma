@@ -1,11 +1,11 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── C function registration ─────────────────────────────────────────────
 
 #[test]
 fn lsp_request_c_function_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/request \"test-lang\" \"test/method\" \"{}\")");
+        let result = scripting::eval("(lsp/request \"test-lang\" \"test/method\" \"{}\")");
         assert_eq!(result, "ok", "lsp/request should return ok");
     });
 }
@@ -13,7 +13,7 @@ fn lsp_request_c_function_registered() {
 #[test]
 fn lsp_hover_c_function_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/hover \"rust\")");
+        let result = scripting::eval("(lsp/hover \"rust\")");
         assert_eq!(result, "ok", "lsp/hover should return ok");
     });
 }
@@ -21,7 +21,7 @@ fn lsp_hover_c_function_registered() {
 #[test]
 fn lsp_code_actions_c_function_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/code-actions \"rust\")");
+        let result = scripting::eval("(lsp/code-actions \"rust\")");
         assert_eq!(result, "ok", "lsp/code-actions should return ok");
     });
 }
@@ -29,7 +29,7 @@ fn lsp_code_actions_c_function_registered() {
 #[test]
 fn lsp_completion_c_function_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/completion \"rust\")");
+        let result = scripting::eval("(lsp/completion \"rust\")");
         assert_eq!(result, "ok", "lsp/completion should return ok");
     });
 }
@@ -37,7 +37,7 @@ fn lsp_completion_c_function_registered() {
 #[test]
 fn lsp_rename_c_function_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/rename \"rust\" \"new_name\")");
+        let result = scripting::eval("(lsp/rename \"rust\" \"new_name\")");
         assert_eq!(result, "ok", "lsp/rename should return ok");
     });
 }
@@ -45,7 +45,7 @@ fn lsp_rename_c_function_registered() {
 #[test]
 fn lsp_apply_edit_c_function_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/apply-edit \"{}\")");
+        let result = scripting::eval("(lsp/apply-edit \"{}\")");
         assert_eq!(result, "ok", "lsp/apply-edit should return ok");
     });
 }
@@ -53,7 +53,7 @@ fn lsp_apply_edit_c_function_registered() {
 #[test]
 fn lsp_request_with_params_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             r#"(lsp/request "rust" "textDocument/hover" "{\"pos\":{}}")"#,
         );
         assert_eq!(result, "ok", "lsp/request with params should return ok");
@@ -63,7 +63,7 @@ fn lsp_request_with_params_registered() {
 #[test]
 fn lsp_start_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/start \"test-lang\" \"echo\" \"arg1\")");
+        let result = scripting::eval("(lsp/start \"test-lang\" \"echo\" \"arg1\")");
         assert_eq!(result, "ok", "lsp/start should return ok");
     });
 }
@@ -71,7 +71,7 @@ fn lsp_start_registered() {
 #[test]
 fn lsp_notify_registered() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(lsp/notify \"test-lang\" \"test/notification\" \"{}\")");
+        let result = scripting::eval("(lsp/notify \"test-lang\" \"test/notification\" \"{}\")");
         assert_eq!(result, "ok", "lsp/notify should return ok");
     });
 }

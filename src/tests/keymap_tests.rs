@@ -1,4 +1,4 @@
-use crate::keymap::KeymapManager;
+use crate::kernel::keymap::KeymapManager;
 
 fn make_km() -> KeymapManager {
     KeymapManager::new()

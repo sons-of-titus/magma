@@ -1,8 +1,8 @@
-use crate::render::gpu_atlas::{
+use crate::kernel::render::gpu_atlas::{
     build_glyph_instances, build_rect_instances, glyphs_to_vertices, rects_to_vertices,
     GpuGlyphAtlas, ATLAS_CHARS,
 };
-use crate::render::surface::{Style, Surface};
+use crate::kernel::render::surface::{Style, Surface};
 
 fn default_style() -> Style {
     Style::default()

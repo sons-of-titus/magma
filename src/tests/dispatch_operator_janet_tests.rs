@@ -1,21 +1,21 @@
-use crate::janet_bridge;
-use crate::input::{dispatch_key, focused_buffer_id};
+use crate::kernel::scripting;
+use crate::kernel::input::{dispatch_key, focused_buffer_id};
 
 #[test]
 fn check_command_registered() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     assert!(!ed.commands.exists("vim-enter-command"));
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     assert!(ed.commands.exists("vim-enter-command"),
-        "vim-enter-command should be registered after janet_bridge::init");
+        "vim-enter-command should be registered after scripting::init");
 }
 
 #[test]
 fn init_then_resolve_colon() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let buf_id = focused_buffer_id(&ed);
     let cmd = ed.keymaps.resolve_for_buffer(":", Some(buf_id as u64));
     eprintln!("Resolved ':' -> {:?}", cmd);
@@ -26,7 +26,7 @@ fn init_then_resolve_colon() {
 fn init_then_press_colon() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
 
     assert!(ed.commands.exists("vim-enter-command"));
 

@@ -1,4 +1,4 @@
-use crate::input::is_insertable;
+use crate::kernel::input::is_insertable;
 
 #[test]
 fn regular_letters_are_insertable() {

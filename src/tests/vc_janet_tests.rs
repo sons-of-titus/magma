@@ -1,11 +1,11 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 #[test]
 fn vc_register_backend_adds_backend() {
     janet_test!(ed, {
         let count_before = ed.vc.backends.len();
 
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(vc/register-backend {:name "fossil" :detect-marker ".fslckout"})"#,
         );
         assert_eq!(r, "ok", "vc/register-backend must not error");
@@ -28,7 +28,7 @@ fn vc_register_backend_missing_name_signals_error() {
     janet_test!(ed, {
         let count_before = ed.vc.backends.len();
 
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(vc/register-backend {:detect-marker ".fslckout"})"#,
         );
         assert_ne!(r, "ok", "expected error but got ok: {r}");
@@ -46,7 +46,7 @@ fn vc_register_backend_missing_detect_signals_error() {
     janet_test!(ed, {
         let count_before = ed.vc.backends.len();
 
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(vc/register-backend {:name "fossil"})"#,
         );
         assert_ne!(r, "ok", "expected error but got ok: {r}");
@@ -64,7 +64,7 @@ fn vc_register_backend_wrong_arg_type_signals_error() {
     janet_test!(ed, {
         let count_before = ed.vc.backends.len();
 
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(vc/register-backend "not-a-table")"#,
         );
         assert_ne!(r, "ok", "expected error but got ok: {r}");
@@ -80,7 +80,7 @@ fn vc_register_backend_wrong_arg_type_signals_error() {
 #[test]
 fn vc_register_backend_no_args_signals_error() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(vc/register-backend)"#);
+        let r = scripting::eval(r#"(vc/register-backend)"#);
         assert_ne!(r, "ok", "expected error but got ok: {r}");
     });
 }
@@ -88,12 +88,12 @@ fn vc_register_backend_no_args_signals_error() {
 #[test]
 fn vc_register_backend_multiple_backends() {
     janet_test!(ed, {
-        let r1 = janet_bridge::eval(
+        let r1 = scripting::eval(
             r#"(vc/register-backend {:name "fossil" :detect-marker ".fslckout"})"#,
         );
         assert_eq!(r1, "ok");
 
-        let r2 = janet_bridge::eval(
+        let r2 = scripting::eval(
             r#"(vc/register-backend {:name "bzr" :detect-marker ".bzr"})"#,
         );
         assert_eq!(r2, "ok");
@@ -113,7 +113,7 @@ fn vc_register_backend_multiple_backends() {
 #[test]
 fn vc_register_backend_with_optional_fields() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(vc/register-backend {:name "custom"
                                        :detect-marker ".custom"
                                        :status-cmd "echo M file.txt"

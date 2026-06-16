@@ -1,5 +1,5 @@
-use crate::janet_bridge;
-use crate::input::dispatch_key;
+use crate::kernel::scripting;
+use crate::kernel::input::dispatch_key;
 
 #[test]
 fn on_input_fn_starts_nil() {
@@ -11,7 +11,7 @@ fn on_input_fn_starts_nil() {
 #[test]
 fn on_input_fn_registration() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(defn my-interceptor [k] nil) (editor/on-input "my-interceptor")"#);
         assert_eq!(ed.on_input_fn.as_deref(), Some("my-interceptor"));
     });
@@ -21,8 +21,8 @@ fn on_input_fn_registration() {
 fn on_input_interceptor_consuming_key() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
-    janet_bridge::eval(
+    crate::kernel::scripting::init(&mut ed);
+    scripting::eval(
         r#"(defn eat-all [k] (editor/consume-input)) (editor/on-input "eat-all")"#);
     ed.keymaps.set_layer("vim", "x", "delete-char");
     let buf_id = ed.windows.focused_window()
@@ -38,8 +38,8 @@ fn on_input_interceptor_consuming_key() {
 fn on_input_interceptor_passing_key() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
-    janet_bridge::eval(
+    crate::kernel::scripting::init(&mut ed);
+    scripting::eval(
         r#"(defn pass-all [k] nil) (editor/on-input "pass-all")"#);
     ed.keymaps.set_layer("vim", "x", "delete-char");
     let buf_id = ed.windows.focused_window()
@@ -54,10 +54,10 @@ fn on_input_interceptor_passing_key() {
 #[test]
 fn on_input_clear_with_nil() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(defn some-fn [k] (editor/consume-input)) (editor/on-input "some-fn")"#);
         assert!(ed.on_input_fn.is_some());
-        janet_bridge::eval("(editor/on-input nil)");
+        scripting::eval("(editor/on-input nil)");
         assert!(ed.on_input_fn.is_none());
     });
 }
@@ -66,8 +66,8 @@ fn on_input_clear_with_nil() {
 fn input_consumed_flag_cleared_each_dispatch() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("ab");
-    crate::janet_bridge::init(&mut ed);
-    janet_bridge::eval(
+    crate::kernel::scripting::init(&mut ed);
+    scripting::eval(
         r#"(defn selective [k] (when (= k "a") (editor/consume-input))) (editor/on-input "selective")"#);
     ed.keymaps.set_layer("vim", "a", "append");
     ed.keymaps.set_layer("vim", "x", "delete-char");

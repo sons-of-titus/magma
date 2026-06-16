@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::event::{EventBus, HookPhase};
+use crate::kernel::event::{EventBus, HookPhase};
 
 fn bus() -> EventBus { EventBus::new() }
 

@@ -1,6 +1,6 @@
 //! Pure-Rust tests for the Sprint 13 network API state (no Janet VM needed).
 
-use crate::state::Editor;
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 // ── net_connections ───────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ fn eval_buffer_is_still_registered() {
 fn net_server_clients_starts_empty_on_creation() {
     use std::sync::{Arc, atomic::AtomicBool};
 
-    let srv = crate::net::NetServer {
+    let srv = crate::kernel::net::NetServer {
         port: 9999,
         running: Arc::new(AtomicBool::new(true)),
         clients: std::collections::HashMap::new(),
@@ -69,7 +69,7 @@ fn net_server_clients_starts_empty_on_creation() {
 #[test]
 fn net_connection_not_connected_on_creation() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    let conn = crate::net::NetConnection {
+    let conn = crate::kernel::net::NetConnection {
         host: "localhost".to_string(),
         port: 8080,
         connected: false,

@@ -1,7 +1,7 @@
-use crate::state::mode::{EditorMode, Minibuffer};
-use crate::state::Editor;
-use crate::janet_bridge;
-use crate::input::dispatch_key;
+use crate::kernel::state::mode::{EditorMode, Minibuffer};
+use crate::kernel::state::Editor;
+use crate::kernel::scripting;
+use crate::kernel::input::dispatch_key;
 
 fn enter_command_mode_with(ed: &mut Editor, prefix: &str) {
     ed.editor_mode = EditorMode::new("command", false);
@@ -15,7 +15,7 @@ fn enter_command_mode_with(ed: &mut Editor, prefix: &str) {
 #[test]
 fn set_completions_populates_items_and_shows_popup() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(editor/set-completions @["write" "wq" "w"] 1)"#,
         );
         assert_eq!(r, "ok");
@@ -29,7 +29,7 @@ fn set_completions_populates_items_and_shows_popup() {
 #[test]
 fn set_completions_defaults_idx_to_zero() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(editor/set-completions @["alpha" "beta"])"#,
         );
         assert_eq!(r, "ok");
@@ -40,10 +40,10 @@ fn set_completions_defaults_idx_to_zero() {
 #[test]
 fn set_completions_with_empty_array_hides_popup() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/set-completions @["x"])"#);
+        scripting::eval(r#"(editor/set-completions @["x"])"#);
         assert!(ed.completion.visible);
 
-        let r = janet_bridge::eval(r#"(editor/set-completions @[])"#);
+        let r = scripting::eval(r#"(editor/set-completions @[])"#);
         assert_eq!(r, "ok");
         assert!(!ed.completion.visible);
     });
@@ -54,10 +54,10 @@ fn set_completions_with_empty_array_hides_popup() {
 #[test]
 fn clear_completions_hides_popup() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/set-completions @["w" "write"])"#);
+        scripting::eval(r#"(editor/set-completions @["w" "write"])"#);
         assert!(ed.completion.visible);
 
-        let r = janet_bridge::eval("(editor/clear-completions)");
+        let r = scripting::eval("(editor/clear-completions)");
         assert_eq!(r, "ok");
         assert!(!ed.completion.visible);
         assert!(ed.completion.items.is_empty());
@@ -140,7 +140,7 @@ fn popup_dismissed_when_backspace_pressed() {
         ed.completion.visible = true;
 
         let args = std::collections::HashMap::new();
-        let _ = crate::command::execute_command(&mut ed, "command-backspace", &args);
+        let _ = crate::kernel::command::execute_command(&mut ed, "command-backspace", &args);
 
         assert!(!ed.completion.visible, "command-backspace must dismiss the popup");
         assert!(ed.completion.items.is_empty());

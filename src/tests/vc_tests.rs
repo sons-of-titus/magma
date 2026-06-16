@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use crate::vc::backends::{GitBackend, HgBackend, JjBackend, SvnBackend};
-use crate::vc::{build_display, path_at_line, run_cmd, FileStatus, VcBackend, VcState, VcStatus, VC_HEADER_LINES};
+use crate::kernel::vc::backends::{GitBackend, HgBackend, JjBackend, SvnBackend};
+use crate::kernel::vc::{build_display, path_at_line, run_cmd, FileStatus, VcBackend, VcState, VcStatus, VC_HEADER_LINES};
 
 // ── VcState ────────────────────────────────────────────────────────────────
 

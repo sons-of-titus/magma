@@ -1,9 +1,9 @@
 //! Tests for the unified input pipeline (Sprint 11d).
 //! Pure-Rust tests: key normalisation, shift mapping, mouse dispatch helpers.
 
-use crate::input::keys::{shift_char, apply_modifiers};
-use crate::input::event::{InputEvent, MouseEvent, MouseEventKind, MouseButton};
-use crate::state::{Editor, LayoutSnapshot};
+use crate::kernel::input::keys::{shift_char, apply_modifiers};
+use crate::kernel::input::event::{InputEvent, MouseEvent, MouseEventKind, MouseButton};
+use crate::kernel::state::{Editor, LayoutSnapshot};
 use crate::tests::helpers;
 
 // ── shift_char ────────────────────────────────────────────────────────────

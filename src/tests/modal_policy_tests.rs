@@ -2,8 +2,8 @@
 //! Tests that vim_operators / vim_prefixes / vim_motions / vim_char_captures
 //! are consulted by dispatch_key instead of hardcoded constants.
 
-use crate::state::Editor;
-use crate::input::dispatch_key;
+use crate::kernel::state::Editor;
+use crate::kernel::input::dispatch_key;
 use crate::tests::helpers;
 
 fn make_editor(content: &str) -> Editor {

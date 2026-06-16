@@ -1,5 +1,5 @@
-use crate::render::frame::cell_width;
-use crate::state::{Editor, FontConfig};
+use crate::kernel::render::frame::cell_width;
+use crate::kernel::state::{Editor, FontConfig};
 use crate::tests::helpers;
 
 #[test]
@@ -90,7 +90,7 @@ fn context_overrides_stored_on_font_config() {
     let mut fc = FontConfig::default();
     fc.context_overrides.insert(
         "prose".to_string(),
-        crate::state::ContextFont { family: Some("Georgia".to_string()), size: Some(18.0) },
+        crate::kernel::state::ContextFont { family: Some("Georgia".to_string()), size: Some(18.0) },
     );
     let ctx = fc.context_overrides.get("prose").unwrap();
     assert_eq!(ctx.family.as_deref(), Some("Georgia"));

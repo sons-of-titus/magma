@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use crate::state::Editor;
-use crate::terminal::{is_terminal, send_input, strip_ansi, TerminalSession};
+use crate::kernel::state::Editor;
+use crate::kernel::terminal::{is_terminal, send_input, strip_ansi, TerminalSession};
 
 // ── strip_ansi: basic ──────────────────────────────────────────────────────
 
@@ -261,14 +261,14 @@ fn strip_ansi_esc_n_prefix_stripped() {
 #[test]
 fn is_terminal_unknown_buf_returns_false() {
     assert!(!is_terminal(
-        &Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new())),
+        &Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new())),
         999
     ));
 }
 
 #[test]
 fn is_terminal_present_returns_true() {
-    let mut ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let session = TerminalSession {
         stdin: Arc::new(Mutex::new(Box::new(std::io::sink()))),
     };
@@ -278,7 +278,7 @@ fn is_terminal_present_returns_true() {
 
 #[test]
 fn is_terminal_after_removal_returns_false() {
-    let mut ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let session = TerminalSession {
         stdin: Arc::new(Mutex::new(Box::new(std::io::sink()))),
     };
@@ -289,7 +289,7 @@ fn is_terminal_after_removal_returns_false() {
 
 #[test]
 fn is_terminal_multiple_buffers() {
-    let mut ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let make = || TerminalSession {
         stdin: Arc::new(Mutex::new(Box::new(std::io::sink()))),
     };
@@ -304,7 +304,7 @@ fn is_terminal_multiple_buffers() {
 
 #[test]
 fn send_input_unknown_buf_errors() {
-    let ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let r = send_input(&ed, 999, "hello");
     assert!(r.is_err());
     assert!(r.unwrap_err().contains("not a terminal"));
@@ -312,7 +312,7 @@ fn send_input_unknown_buf_errors() {
 
 #[test]
 fn send_input_known_buf_succeeds() {
-    let mut ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let session = TerminalSession {
         stdin: Arc::new(Mutex::new(Box::new(std::io::sink()))),
     };
@@ -323,7 +323,7 @@ fn send_input_known_buf_succeeds() {
 
 #[test]
 fn send_input_multiple_writes() {
-    let mut ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let session = TerminalSession {
         stdin: Arc::new(Mutex::new(Box::new(std::io::sink()))),
     };
@@ -335,7 +335,7 @@ fn send_input_multiple_writes() {
 
 #[test]
 fn send_input_empty_string_succeeds() {
-    let mut ed = Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     let session = TerminalSession {
         stdin: Arc::new(Mutex::new(Box::new(std::io::sink()))),
     };

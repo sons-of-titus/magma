@@ -1,7 +1,7 @@
-use crate::state::mode::{EditorMode, Minibuffer};
-use crate::state::Editor;
-use crate::janet_bridge;
-use crate::input::dispatch_key;
+use crate::kernel::state::mode::{EditorMode, Minibuffer};
+use crate::kernel::state::Editor;
+use crate::kernel::scripting;
+use crate::kernel::input::dispatch_key;
 
 fn enter_command(ed: &mut Editor, input: &str) {
     ed.editor_mode = EditorMode::new("command", false);
@@ -21,7 +21,7 @@ fn complete_once(ed: &mut Editor, prefix: &str) {
 #[test]
 fn command_input_returns_nil_outside_command_mode() {
     janet_test!(ed, {
-        let r = janet_bridge::eval("(nil? (editor/command-input))");
+        let r = scripting::eval("(nil? (editor/command-input))");
         assert_eq!(r, "ok");
     });
 }
@@ -31,7 +31,7 @@ fn command_input_returns_current_input_string() {
     janet_test!(ed, {
         enter_command(&mut ed, "set nu");
 
-        let r = janet_bridge::eval(r#"(= (editor/command-input) "set nu")"#);
+        let r = scripting::eval(r#"(= (editor/command-input) "set nu")"#);
         assert_eq!(r, "ok");
     });
 }
@@ -41,7 +41,7 @@ fn command_input_returns_empty_string_when_no_input() {
     janet_test!(ed, {
         enter_command(&mut ed, "");
 
-        let r = janet_bridge::eval(r#"(= (editor/command-input) "")"#);
+        let r = scripting::eval(r#"(= (editor/command-input) "")"#);
         assert_eq!(r, "ok");
     });
 }
@@ -53,7 +53,7 @@ fn set_command_input_replaces_input() {
     janet_test!(ed, {
         enter_command(&mut ed, "w");
 
-        let r = janet_bridge::eval(r#"(editor/set-command-input "wq")"#);
+        let r = scripting::eval(r#"(editor/set-command-input "wq")"#);
         assert_eq!(r, "ok");
 
         if let Some(ref mb) = ed.editor_mode.minibuffer {
@@ -67,7 +67,7 @@ fn set_command_input_replaces_input() {
 #[test]
 fn set_command_input_is_noop_outside_command_mode() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(editor/set-command-input "anything")"#);
+        let r = scripting::eval(r#"(editor/set-command-input "anything")"#);
         assert_eq!(r, "ok");
         assert!(ed.editor_mode.is_named("normal"), "mode must remain Normal");
     });

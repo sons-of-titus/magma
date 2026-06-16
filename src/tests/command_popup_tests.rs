@@ -1,5 +1,5 @@
-use crate::state::{mode::{EditorMode, Minibuffer}, Editor};
-use crate::render::{frame::render_frame, surface::Surface};
+use crate::kernel::state::{mode::{EditorMode, Minibuffer}, Editor};
+use crate::kernel::render::{frame::render_frame, surface::Surface};
 use crate::tests::helpers;
 
 fn enter_command(ed: &mut Editor, input: &str) {
@@ -35,7 +35,7 @@ fn completion_dismissed_by_backspace_command() {
     ed.completion.visible = true;
 
     let args = std::collections::HashMap::new();
-    let _ = crate::command::execute_command(&mut ed, "command-backspace", &args);
+    let _ = crate::kernel::command::execute_command(&mut ed, "command-backspace", &args);
 
     assert!(!ed.completion.visible, "backspace must dismiss completion popup");
     assert!(ed.completion.items.is_empty());
@@ -48,7 +48,7 @@ fn completion_dismissed_by_text_input() {
     ed.completion.items = vec!["w".to_string(), "write".to_string()];
     ed.completion.visible = true;
 
-    crate::input::handle_text_input(&mut ed, "r");
+    crate::kernel::input::handle_text_input(&mut ed, "r");
 
     assert!(!ed.completion.visible, "typing a char must dismiss completion popup");
     assert!(ed.completion.items.is_empty());

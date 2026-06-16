@@ -1,5 +1,5 @@
-use crate::process::QuickfixEntry;
-use crate::state::Editor;
+use crate::kernel::task::QuickfixEntry;
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 // ── module_paths default ──────────────────────────────────────────────────────

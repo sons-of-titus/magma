@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::command;
+use crate::kernel::command;
 use crate::tests::helpers;
 
 // ── buffer-created carries path field ─────────────────────────────────
@@ -21,7 +21,7 @@ fn buffer_created_event_includes_path() {
 
     let mut args = HashMap::new();
     args.insert("path".to_string(),
-        crate::command::args::ArgValue::Path(path.clone()));
+        crate::kernel::command::args::ArgValue::Path(path.clone()));
     command::execute_command(&mut ed, "open-file", &args).unwrap();
     ed.events.drain_and_dispatch();
 
@@ -80,10 +80,10 @@ fn save_buffer_no_longer_emits_buffer_saved() {
 
 // ── buffer-focused from navigation commands ───────────────────────────
 
-fn make_editor_two_buffers() -> crate::state::Editor {
+fn make_editor_two_buffers() -> crate::kernel::state::Editor {
     let mut ed = helpers::make_editor();
     let id2 = ed.allocate_buffer_id();
-    let buf2 = crate::buffer::Buffer::from_string(crate::state::id::BufferId(id2), "buf2", "bbb");
+    let buf2 = crate::kernel::text_engine::Buffer::from_string(crate::kernel::state::id::BufferId(id2), "buf2", "bbb");
     let e2 = ed.buffers.vacant_entry();
     e2.insert(buf2);
     ed

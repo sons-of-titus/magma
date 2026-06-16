@@ -1,5 +1,5 @@
-use crate::vc::backends::ShellTemplateBackend;
-use crate::vc::VcBackend;
+use crate::kernel::vc::backends::ShellTemplateBackend;
+use crate::kernel::vc::VcBackend;
 
 #[test]
 fn shell_template_detect_with_marker() {

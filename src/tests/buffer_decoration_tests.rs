@@ -1,7 +1,7 @@
 //! Pure Rust tests for Sprint 11b buffer decoration data model.
 
-use crate::buffer::{Buffer, Decoration};
-use crate::state::id::BufferId;
+use crate::kernel::text_engine::{Buffer, Decoration};
+use crate::kernel::state::id::BufferId;
 
 fn buf() -> Buffer {
     Buffer::new(BufferId(1), "test")

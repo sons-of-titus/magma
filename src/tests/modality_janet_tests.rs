@@ -1,11 +1,11 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── editor/set-mode ───────────────────────────────────────────────────
 
 #[test]
 fn set_mode_updates_editor_mode_name() {
     janet_test!(ed, {
-        janet_bridge::eval(
+        scripting::eval(
             r#"(editor/set-mode "insert" {:accepts-text true})"#);
         assert_eq!(ed.editor_mode.name, "insert");
         assert!(ed.editor_mode.accepts_text);
@@ -15,10 +15,10 @@ fn set_mode_updates_editor_mode_name() {
 #[test]
 fn set_mode_emits_mode_changed_event() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"
+        scripting::eval(r#"
             (event/on "mode-changed"
               (fn [d] (plugin-state/set "last-mode-to" (get d :to ""))))"#);
-        janet_bridge::eval(r#"(editor/set-mode "visual" {:accepts-text false})"#);
+        scripting::eval(r#"(editor/set-mode "visual" {:accepts-text false})"#);
         ed.events.drain_and_dispatch();
         assert_eq!(ed.plugin_state.get("last-mode-to").map(|s| s.as_str()), Some("visual"));
     });
@@ -27,7 +27,7 @@ fn set_mode_emits_mode_changed_event() {
 #[test]
 fn mode_name_getter() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/set-mode "replace" {:accepts-text true})"#);
+        scripting::eval(r#"(editor/set-mode "replace" {:accepts-text true})"#);
         assert_eq!(ed.editor_mode.name, "replace");
     });
 }
@@ -35,9 +35,9 @@ fn mode_name_getter() {
 #[test]
 fn mode_accepts_text_getter() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/set-mode "insert" {:accepts-text true})"#);
+        scripting::eval(r#"(editor/set-mode "insert" {:accepts-text true})"#);
         assert!(ed.editor_mode.accepts_text);
-        janet_bridge::eval(r#"(editor/set-mode "normal" {:accepts-text false})"#);
+        scripting::eval(r#"(editor/set-mode "normal" {:accepts-text false})"#);
         assert!(!ed.editor_mode.accepts_text);
     });
 }
@@ -47,10 +47,10 @@ fn mode_accepts_text_getter() {
 #[test]
 fn minibuffer_open_and_close() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(minibuffer/open ":" "command")"#);
+        scripting::eval(r#"(minibuffer/open ":" "command")"#);
         assert!(ed.editor_mode.minibuffer.is_some());
         assert_eq!(ed.editor_mode.minibuffer.as_ref().unwrap().prompt, ":");
-        janet_bridge::eval("(minibuffer/close)");
+        scripting::eval("(minibuffer/close)");
         assert!(ed.editor_mode.minibuffer.is_none());
     });
 }
@@ -58,8 +58,8 @@ fn minibuffer_open_and_close() {
 #[test]
 fn minibuffer_set_input() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(minibuffer/open "/")"#);
-        janet_bridge::eval(r#"(minibuffer/set-input "hello")"#);
+        scripting::eval(r#"(minibuffer/open "/")"#);
+        scripting::eval(r#"(minibuffer/set-input "hello")"#);
         assert_eq!(ed.editor_mode.minibuffer.as_ref().unwrap().input, "hello");
     });
 }
@@ -67,7 +67,7 @@ fn minibuffer_set_input() {
 #[test]
 fn minibuffer_kind_stored_in_plugin_state() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(minibuffer/open "find: " "fuzzy-file")"#);
+        scripting::eval(r#"(minibuffer/open "find: " "fuzzy-file")"#);
         assert_eq!(
             ed.plugin_state.get("minibuffer.kind").map(|s| s.as_str()),
             Some("fuzzy-file"),
@@ -80,10 +80,10 @@ fn minibuffer_kind_stored_in_plugin_state() {
 #[test]
 fn selection_set_and_clear() {
     janet_test!(ed, {
-        janet_bridge::eval("(selection/set 10 \"char\")");
+        scripting::eval("(selection/set 10 \"char\")");
         assert!(ed.selection.is_some());
         assert_eq!(ed.selection.as_ref().unwrap().anchor, 10);
-        janet_bridge::eval("(selection/clear)");
+        scripting::eval("(selection/clear)");
         assert!(ed.selection.is_none());
     });
 }
@@ -91,7 +91,7 @@ fn selection_set_and_clear() {
 #[test]
 fn selection_line_kind() {
     janet_test!(ed, {
-        janet_bridge::eval("(selection/set 5 \"line\")");
+        scripting::eval("(selection/set 5 \"line\")");
         let sel = ed.selection.as_ref().unwrap();
         assert_eq!(sel.kind, "line");
         assert!(sel.is_line());
@@ -103,9 +103,9 @@ fn selection_line_kind() {
 #[test]
 fn plugin_state_get_set_del() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(plugin-state/set "vim.count" "5")"#);
+        scripting::eval(r#"(plugin-state/set "vim.count" "5")"#);
         assert_eq!(ed.plugin_state.get("vim.count").map(|s| s.as_str()), Some("5"));
-        janet_bridge::eval(r#"(plugin-state/del "vim.count")"#);
+        scripting::eval(r#"(plugin-state/del "vim.count")"#);
         assert!(ed.plugin_state.get("vim.count").is_none());
     });
 }
@@ -113,8 +113,8 @@ fn plugin_state_get_set_del() {
 #[test]
 fn plugin_state_namespacing() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(plugin-state/set "vim.op" "d")"#);
-        janet_bridge::eval(r#"(plugin-state/set "helix.op" "c")"#);
+        scripting::eval(r#"(plugin-state/set "vim.op" "d")"#);
+        scripting::eval(r#"(plugin-state/set "helix.op" "c")"#);
         assert_eq!(ed.plugin_state.get("vim.op").map(|s| s.as_str()), Some("d"));
         assert_eq!(ed.plugin_state.get("helix.op").map(|s| s.as_str()), Some("c"));
     });

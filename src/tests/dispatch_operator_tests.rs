@@ -1,4 +1,4 @@
-use crate::state::Editor;
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 fn make_editor(content: &str) -> Editor {
@@ -66,7 +66,7 @@ fn make_editor(content: &str) -> Editor {
 }
 
 fn press(ed: &mut Editor, key: &str) {
-    crate::input::dispatch_key(ed, key);
+    crate::kernel::input::dispatch_key(ed, key);
 }
 
 fn text(ed: &Editor) -> String {
@@ -82,7 +82,7 @@ fn cursor(ed: &Editor) -> usize {
 }
 
 fn command_input(ed: &Editor) -> &str {
-    use crate::state::mode::Mode;
+    use crate::kernel::state::mode::Mode;
     if let Mode::Command { ref input } = ed.mode { input } else { "" }
 }
 

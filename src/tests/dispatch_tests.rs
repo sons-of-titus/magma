@@ -1,4 +1,4 @@
-use crate::state::Editor;
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 /// Build an editor with keymaps for dispatch testing.
@@ -109,7 +109,7 @@ fn make_editor(content: &str) -> Editor {
 
 /// Dispatch a single key exactly as the main loop does.
 fn press(ed: &mut Editor, key: &str) {
-    crate::input::dispatch_key(ed, key);
+    crate::kernel::input::dispatch_key(ed, key);
 }
 
 fn text(ed: &Editor) -> String {

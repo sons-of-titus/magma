@@ -1,7 +1,7 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
-fn make_buf(ed: &mut crate::state::Editor) -> usize {
-    let buf = crate::buffer::Buffer::new(crate::state::id::BufferId(1), "test");
+fn make_buf(ed: &mut crate::kernel::state::Editor) -> usize {
+    let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(1), "test");
     ed.buffers.insert(buf)
 }
 
@@ -11,7 +11,7 @@ fn make_buf(ed: &mut crate::state::Editor) -> usize {
 fn decor_set_inline_janet_stores_decoration() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-inline {key} "lsp-inlay" 0 5 ": i32" "type-face")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("lsp-inlay"), 1);
     });
@@ -21,9 +21,9 @@ fn decor_set_inline_janet_stores_decoration() {
 fn decor_set_inline_janet_replaces_at_same_position() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-inline {key} "lsp-inlay" 0 5 "old" "t")"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-inline {key} "lsp-inlay" 0 5 "new" "t")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("lsp-inlay"), 1);
     });
@@ -39,9 +39,9 @@ fn decor_set_inline_janet_emits_decoration_changed_event() {
             counter2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(())
         });
-        janet_bridge::eval(
+        scripting::eval(
             r#"(event/on "decoration-changed" (fn [_] (editor/run-command "count-decor-changed")))"#);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-inline {key} "layer" 0 0 "x" "f")"#));
         ed.events.drain_and_dispatch();
         assert!(counter.load(std::sync::atomic::Ordering::SeqCst) > 0);
@@ -54,7 +54,7 @@ fn decor_set_inline_janet_emits_decoration_changed_event() {
 fn decor_set_eol_janet_stores_decoration() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-eol {key} "git-blame" 2 "alice 2d ago" "comment-face")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("git-blame"), 1);
     });
@@ -66,7 +66,7 @@ fn decor_set_eol_janet_stores_decoration() {
 fn decor_set_prefix_janet_stores_decoration() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-prefix {key} "cov" 1 "42" "keyword-face")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("cov"), 1);
     });
@@ -78,9 +78,9 @@ fn decor_set_prefix_janet_stores_decoration() {
 fn decor_clear_layer_janet_removes_layer() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-eol {key} "x" 0 "a" "f")"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-clear-layer {key} "x")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("x"), 0);
     });
@@ -92,11 +92,11 @@ fn decor_clear_layer_janet_removes_layer() {
 fn decor_clear_janet_removes_all_layers() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-eol {key} "a" 0 "x" "f")"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-inline {key} "b" 0 0 "y" "f")"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-clear {key})"#));
         assert!(ed.buffers[key].decoration_layers.is_empty());
     });
@@ -108,9 +108,9 @@ fn decor_clear_janet_removes_all_layers() {
 fn decor_count_janet_returns_correct_count() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(&format!(r#"(buffer/decor-set-eol {key} "l" 0 "a" "f")"#));
-        janet_bridge::eval(&format!(r#"(buffer/decor-set-eol {key} "l" 1 "b" "f")"#));
-        janet_bridge::eval(&format!(r#"(buffer/decor-set-eol {key} "l" 2 "c" "f")"#));
+        scripting::eval(&format!(r#"(buffer/decor-set-eol {key} "l" 0 "a" "f")"#));
+        scripting::eval(&format!(r#"(buffer/decor-set-eol {key} "l" 1 "b" "f")"#));
+        scripting::eval(&format!(r#"(buffer/decor-set-eol {key} "l" 2 "c" "f")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("l"), 3);
     });
 }
@@ -121,10 +121,10 @@ fn decor_count_janet_returns_correct_count() {
 fn decor_get_janet_returns_table_array() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(buffer/decor-set-inline {key} "hints" 0 5 ": i32" "type-face")"#));
         assert_eq!(ed.buffers[key].decor_count_layer("hints"), 1);
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             &format!(r#"(buffer/decor-get {key} "hints")"#));
         assert_eq!(result, "ok");
     });

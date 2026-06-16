@@ -1,5 +1,5 @@
-use crate::buffer::Buffer;
-use crate::state::id::BufferId;
+use crate::kernel::text_engine::Buffer;
+use crate::kernel::state::id::BufferId;
 
 fn buf(content: &str) -> Buffer {
     Buffer::from_string(BufferId(1), "test", content)

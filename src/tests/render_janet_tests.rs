@@ -1,4 +1,4 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── font/invalidate ────────────────────────────────────────────────────
 
@@ -6,10 +6,10 @@ use crate::janet_bridge;
 fn font_invalidate_sets_font_changed_flag() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
 
     assert!(!ed.font_changed, "font_changed must start false");
-    let r = janet_bridge::eval("(font/invalidate)");
+    let r = scripting::eval("(font/invalidate)");
     assert_eq!(r, "ok");
     assert!(ed.font_changed, "font_changed must be true after font/invalidate");
 }
@@ -20,7 +20,7 @@ fn font_invalidate_sets_font_changed_flag() {
 fn font_changed_event_has_subscriber_from_ecosystem() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
 
     let count = ed.events.subscriber_count("font-changed");
     assert!(count > 0, "ecosystem.janet must register a font-changed subscriber");
@@ -30,11 +30,11 @@ fn font_changed_event_has_subscriber_from_ecosystem() {
 fn font_changed_event_sets_flag_after_drain() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
 
     assert!(!ed.font_changed);
     // Emit the event via Janet (queues it)
-    janet_bridge::eval(r#"(event/emit "font-changed" {})"#);
+    scripting::eval(r#"(event/emit "font-changed" {})"#);
     // Drain dispatches the Rust subscriber, which calls the Janet handler,
     // which calls font/invalidate, which sets ed.font_changed = true.
     ed.events.drain_and_dispatch();
@@ -45,7 +45,7 @@ fn font_changed_event_sets_flag_after_drain() {
 fn font_changed_flag_is_cleared_after_being_read() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
 
     // Set the flag directly, then simulate the GuiApp reading and clearing it.
     ed.font_changed = true;

@@ -1,8 +1,8 @@
 //! Pure-Rust tests for the modality abstraction (Sprint 11f).
 //! Tests EditorMode, Minibuffer, Selection, and plugin_state.
 
-use crate::state::Editor;
-use crate::state::mode::{EditorMode, Minibuffer, Selection};
+use crate::kernel::state::Editor;
+use crate::kernel::state::mode::{EditorMode, Minibuffer, Selection};
 use crate::tests::helpers;
 
 // ── EditorMode ────────────────────────────────────────────────────────────

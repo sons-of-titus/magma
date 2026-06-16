@@ -1,5 +1,5 @@
-use crate::runtime::{ProcessState, TaskState};
-use crate::state::Editor;
+use crate::kernel::runtime::{ProcessState, TaskState};
+use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 #[test]

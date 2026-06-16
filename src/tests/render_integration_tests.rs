@@ -1,6 +1,6 @@
-use crate::janet_bridge;
-use crate::render::surface::Surface;
-use crate::render::frame::render_frame;
+use crate::kernel::scripting;
+use crate::kernel::render::surface::Surface;
+use crate::kernel::render::frame::render_frame;
 
 /// Run the full render-frame pipeline with a real surface and confirm that
 /// the Janet UI handlers write to the surface.
@@ -10,13 +10,13 @@ fn render_frame_event_modifies_surface() {
     let mut ed = crate::tests::helpers::make_editor();
 
     // Create *scratch* so it exists (matching production behaviour).
-    let buf_key = ed.buffers.insert(crate::buffer::Buffer::new(
-        crate::state::id::BufferId(1), "*scratch*"));
+    let buf_key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
+        crate::kernel::state::id::BufferId(1), "*scratch*"));
     if let Some(win) = ed.windows.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
 
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
 
     // Fire editor-ready so ui.janet sets tab_bar_enabled, line numbers, faces.
     let data = std::collections::HashMap::new();
@@ -37,13 +37,13 @@ fn render_frame_event_modifies_surface() {
         .collect();
 
     // Now dispatch the render-frame event with SURFACE_PTR set.
-    janet_bridge::set_surface_ptr(&mut surface as *mut _);
+    scripting::set_surface_ptr(&mut surface as *mut _);
     ed.events.emit("render-frame", data.clone());
     if ed.tab_bar_enabled {
         ed.events.emit("render-tab-bar", data.clone());
     }
     ed.events.drain_and_dispatch();
-    janet_bridge::clear_surface_ptr();
+    scripting::clear_surface_ptr();
 
     // Check what row 23 (status bar) looks like after Janet ran.
     let janet_status_row: String = (0..80)

@@ -1,13 +1,13 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
-fn setup_background_editor() -> crate::state::Editor {
-    let mut ed = crate::state::Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
-    crate::command::builtin::register_builtin_commands(&mut ed);
+fn setup_background_editor() -> crate::kernel::state::Editor {
+    let mut ed = crate::kernel::state::Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
+    crate::kernel::command::builtin::register_builtin_commands(&mut ed);
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
-    ed.background = Some(crate::runtime::BackgroundHandle::new(runtime, bg_sender));
+    ed.background = Some(crate::kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
     let id = ed.allocate_buffer_id();
-    let buf = crate::buffer::Buffer::new(crate::state::id::BufferId(id), "test");
+    let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), "test");
     let entry = ed.buffers.vacant_entry();
     let key = entry.key();
     entry.insert(buf);
@@ -23,8 +23,8 @@ fn setup_background_editor() -> crate::state::Editor {
 fn http_request_returns_positive_integer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(net/http-request "GET" "http://example.com")"#,
     )
     .unwrap();
@@ -36,9 +36,9 @@ fn http_request_returns_positive_integer() {
 fn http_request_increments_next_net_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let before = ed.io.next_net_id;
-    janet_bridge::eval(r#"(net/http-request "GET" "http://example.com")"#);
+    scripting::eval(r#"(net/http-request "GET" "http://example.com")"#);
     assert_eq!(ed.io.next_net_id, before + 1, "next_net_id must increment after http-request");
 }
 
@@ -48,8 +48,8 @@ fn http_request_increments_next_net_id() {
 fn http_get_returns_integer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(net/http-get "http://example.com")"#)
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(net/http-get "http://example.com")"#)
         .unwrap();
     let n: i64 = r.parse().expect("http-get must return a number");
     assert!(n > 0, "request-id must be positive");
@@ -61,8 +61,8 @@ fn http_get_returns_integer() {
 fn http_post_returns_integer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(net/http-post "http://example.com" "test-body")"#,
     )
     .unwrap();
@@ -76,15 +76,15 @@ fn http_post_returns_integer() {
 fn tcp_listen_adds_entry_to_net_servers() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(net/tcp-listen 17891)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(net/tcp-listen 17891)"#).unwrap();
     let server_id: u64 = r.parse().expect("tcp-listen must return a number");
     assert!(server_id > 0, "server-id must be positive");
     assert!(
         ed.io.net_servers.contains_key(&server_id),
         "net_servers must contain the new server entry"
     );
-    janet_bridge::eval(&format!("(net/tcp-stop {server_id})"));
+    scripting::eval(&format!("(net/tcp-stop {server_id})"));
     assert!(
         !ed.io.net_servers.contains_key(&server_id),
         "net_servers must not contain the server after tcp-stop"
@@ -95,11 +95,11 @@ fn tcp_listen_adds_entry_to_net_servers() {
 fn tcp_listen_returns_positive_server_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(net/tcp-listen 17892)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(net/tcp-listen 17892)"#).unwrap();
     let sid: u64 = r.parse().expect("server-id must be an integer");
     assert!(sid >= 1);
-    janet_bridge::eval(&format!("(net/tcp-stop {sid})"));
+    scripting::eval(&format!("(net/tcp-stop {sid})"));
 }
 
 // ── net/tcp-broadcast on non-existent server ──────────────────────────────
@@ -108,8 +108,8 @@ fn tcp_listen_returns_positive_server_id() {
 fn tcp_broadcast_non_existent_server_returns_nil_without_crash() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(net/tcp-broadcast 9999999 "hello")"#,
     )
     .unwrap();
@@ -122,8 +122,8 @@ fn tcp_broadcast_non_existent_server_returns_nil_without_crash() {
 fn tcp_send_to_non_existent_server_returns_nil_without_crash() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(net/tcp-send-to 9999999 1 "hello")"#,
     )
     .unwrap();
@@ -136,8 +136,8 @@ fn tcp_send_to_non_existent_server_returns_nil_without_crash() {
 fn collab_start_colon_verb_is_registered() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(truthy? (get *colon-plugins* "collab-start"))"#,
     )
     .unwrap();
@@ -148,8 +148,8 @@ fn collab_start_colon_verb_is_registered() {
 fn collab_connect_colon_verb_is_registered() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(truthy? (get *colon-plugins* "collab-connect"))"#,
     )
     .unwrap();
@@ -160,8 +160,8 @@ fn collab_connect_colon_verb_is_registered() {
 fn collab_stop_colon_verb_is_registered() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(truthy? (get *colon-plugins* "collab-stop"))"#,
     )
     .unwrap();
@@ -174,8 +174,8 @@ fn collab_stop_colon_verb_is_registered() {
 fn ssh_colon_verb_is_registered() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(truthy? (get *colon-plugins* "ssh"))"#,
     )
     .unwrap();
@@ -186,8 +186,8 @@ fn ssh_colon_verb_is_registered() {
 fn vfs_open_colon_verb_is_registered() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(truthy? (get *colon-plugins* "vfs-open"))"#,
     )
     .unwrap();
@@ -200,8 +200,8 @@ fn vfs_open_colon_verb_is_registered() {
 fn vfs_open_ssh_uri_does_not_crash() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval(r#"(vfs/open "ssh://user@host/tmp/file.txt")"#);
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval(r#"(vfs/open "ssh://user@host/tmp/file.txt")"#);
     assert_eq!(r, "ok", "vfs/open with ssh URI must not crash the Janet VM");
 }
 
@@ -211,8 +211,8 @@ fn vfs_open_ssh_uri_does_not_crash() {
 fn ssh_fs_open_function_exists() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(truthy? ssh-fs/open)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(truthy? ssh-fs/open)"#).unwrap();
     assert_eq!(r, "true", "ssh-fs/open must be defined in the Janet environment");
 }
 
@@ -222,8 +222,8 @@ fn ssh_fs_open_function_exists() {
 fn ssh_fs_read_function_exists() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(truthy? ssh-fs/read)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(truthy? ssh-fs/read)"#).unwrap();
     assert_eq!(r, "true", "ssh-fs/read must be defined in the Janet environment");
 }
 
@@ -233,8 +233,8 @@ fn ssh_fs_read_function_exists() {
 fn net_on_response_function_exists() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(truthy? net/on-response)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(truthy? net/on-response)"#).unwrap();
     assert_eq!(r, "true", "net/on-response must be defined");
 }
 
@@ -244,8 +244,8 @@ fn net_on_response_function_exists() {
 fn net_pending_table_exists() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(table? *net-pending*)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(table? *net-pending*)"#).unwrap();
     assert_eq!(r, "true", "*net-pending* must be a table");
 }
 
@@ -255,8 +255,8 @@ fn net_pending_table_exists() {
 fn collab_peer_cursors_table_exists() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(table? *collab-peer-cursors*)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(table? *collab-peer-cursors*)"#).unwrap();
     assert_eq!(r, "true", "*collab-peer-cursors* must be a table");
 }
 
@@ -266,8 +266,8 @@ fn collab_peer_cursors_table_exists() {
 fn collab_server_id_starts_nil() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(r#"(nil? *collab-server-id*)"#).unwrap();
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(r#"(nil? *collab-server-id*)"#).unwrap();
     assert_eq!(r, "true", "*collab-server-id* must start as nil");
 }
 
@@ -277,9 +277,9 @@ fn collab_server_id_starts_nil() {
 fn tcp_connect_increments_next_net_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let before = ed.io.next_net_id;
-    janet_bridge::eval(r#"(net/tcp-connect "127.0.0.1" 19999)"#);
+    scripting::eval(r#"(net/tcp-connect "127.0.0.1" 19999)"#);
     assert_eq!(
         ed.io.next_net_id,
         before + 1,
@@ -293,12 +293,12 @@ fn tcp_connect_increments_next_net_id() {
 fn tcp_connect_returns_positive_integer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
-    crate::janet_bridge::init(&mut ed);
-    let r = janet_bridge::eval_result(
+    crate::kernel::scripting::init(&mut ed);
+    let r = scripting::eval_result(
         r#"(net/tcp-connect "127.0.0.1" 19998)"#,
     )
     .unwrap();
     let n: i64 = r.parse().expect("tcp-connect must return a number");
     assert!(n > 0, "conn-id must be positive");
-    janet_bridge::eval(&format!("(net/tcp-close {n})"));
+    scripting::eval(&format!("(net/tcp-close {n})"));
 }

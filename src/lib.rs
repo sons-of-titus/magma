@@ -22,30 +22,10 @@ macro_rules! debug_http {
     };
 }
 
-pub mod state;
-pub mod buffer;
-pub mod net;
-pub mod dired;
-pub mod vc;
-pub mod clipboard;
-pub mod window;
-pub mod event;
-pub mod command;
-pub mod keymap;
-pub mod input;
-pub mod fs;
-pub mod render;
-pub mod lsp;
-pub mod process;
-pub mod runtime;
-pub mod server;
-pub mod terminal;
-pub mod snippet;
 pub mod log;
-pub mod scripting;
-
-#[cfg(feature = "janet")]
-pub mod janet_bridge;
+pub mod kernel;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod test_janet_integration;

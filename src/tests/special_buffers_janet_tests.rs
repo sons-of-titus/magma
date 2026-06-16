@@ -1,4 +1,4 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── buffer/find-or-create ─────────────────────────────────────────────
 
@@ -6,7 +6,7 @@ use crate::janet_bridge;
 fn find_or_create_creates_buffer_when_absent() {
     janet_test!(ed, {
         let before = ed.buffers.len();
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             r#"(buffer/find-or-create "*Test-FOC*")"#,
         );
         assert_eq!(result, "ok");
@@ -22,14 +22,14 @@ fn find_or_create_creates_buffer_when_absent() {
 fn find_or_create_returns_existing_slab_key() {
     janet_test!(ed, {
         // Create the buffer once and record the key
-        janet_bridge::eval(r#"(buffer/find-or-create "*Test-FOC2*")"#);
+        scripting::eval(r#"(buffer/find-or-create "*Test-FOC2*")"#);
         let key1 = ed.buffers.iter()
             .find(|(_, b)| b.name == "*Test-FOC2*")
             .map(|(k, _)| k);
         let count_before = ed.buffers.len();
 
         // Call again — must return the same key and not add a new buffer
-        janet_bridge::eval(r#"(buffer/find-or-create "*Test-FOC2*")"#);
+        scripting::eval(r#"(buffer/find-or-create "*Test-FOC2*")"#);
         let key2 = ed.buffers.iter()
             .find(|(_, b)| b.name == "*Test-FOC2*")
             .map(|(k, _)| k);
@@ -45,7 +45,7 @@ fn find_or_create_returns_existing_slab_key() {
 fn get_by_name_returns_nil_for_missing() {
     janet_test!(ed, {
         let before = ed.buffers.len();
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             r#"(buffer/get-by-name "*Never-Created*")"#,
         );
         assert_eq!(result, "ok");
@@ -59,13 +59,13 @@ fn get_by_name_finds_existing_buffer() {
     janet_test!(ed, {
         // Create a named buffer directly in Rust
         let id = ed.allocate_buffer_id();
-        let buf = crate::buffer::Buffer::new(crate::state::id::BufferId(id), "*NamedTestBuf*");
+        let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), "*NamedTestBuf*");
         let entry = ed.buffers.vacant_entry();
         let expected_key = entry.key();
         entry.insert(buf);
 
         // get-by-name must find it and return a non-nil integer
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             &format!(
                 "(= (buffer/get-by-name \"*NamedTestBuf*\") {})",
                 expected_key
@@ -93,10 +93,10 @@ fn set_read_only_blocks_janet_insert() {
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
 
-        janet_bridge::eval(
+        scripting::eval(
             &format!("(buffer/set-read-only {} true)", key),
         );
-        janet_bridge::eval(
+        scripting::eval(
             &format!("(buffer/insert {} 0 \"blocked\")", key),
         );
         ed.events.drain_and_dispatch();
@@ -120,11 +120,11 @@ fn read_only_getter_reflects_flag() {
         // Initially false
         assert!(!ed.buffers.get(key).unwrap().read_only);
 
-        janet_bridge::eval(&format!("(buffer/set-read-only {} true)", key));
+        scripting::eval(&format!("(buffer/set-read-only {} true)", key));
         assert!(ed.buffers.get(key).unwrap().read_only,
             "read_only must be true after set-read-only");
 
-        janet_bridge::eval(&format!("(buffer/set-read-only {} false)", key));
+        scripting::eval(&format!("(buffer/set-read-only {} false)", key));
         assert!(!ed.buffers.get(key).unwrap().read_only,
             "read_only must be false after clearing");
     });
@@ -140,7 +140,7 @@ fn set_ephemeral_reflects_flag() {
             .unwrap();
 
         assert!(!ed.buffers.get(key).unwrap().ephemeral);
-        janet_bridge::eval(&format!("(buffer/set-ephemeral {} true)", key));
+        scripting::eval(&format!("(buffer/set-ephemeral {} true)", key));
         assert!(ed.buffers.get(key).unwrap().ephemeral,
             "ephemeral must be true after set-ephemeral");
     });
@@ -151,7 +151,7 @@ fn set_ephemeral_reflects_flag() {
 #[test]
 fn log_message_creates_messages_buffer() {
     janet_test!(ed, {
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             r#"(editor/log-message "hello from sprint 2")"#,
         );
         assert_eq!(result, "ok");
@@ -167,7 +167,7 @@ fn log_message_creates_messages_buffer() {
 #[test]
 fn log_message_marks_buffer_read_only_and_ephemeral() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/log-message "flags test")"#);
+        scripting::eval(r#"(editor/log-message "flags test")"#);
 
         let (_, buf) = ed.buffers.iter()
             .find(|(_, b)| b.name == "*Messages*")
@@ -188,7 +188,7 @@ fn log_message_emits_buffer_message_appended_event() {
             None
         });
 
-        janet_bridge::eval(r#"(editor/log-message "event test")"#);
+        scripting::eval(r#"(editor/log-message "event test")"#);
         ed.events.drain_and_dispatch();
 
         assert!(*fired.lock().unwrap(),
@@ -201,7 +201,7 @@ fn log_message_emits_buffer_message_appended_event() {
 #[test]
 fn warn_creates_warnings_buffer_with_text() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/warn "deprecated option")"#);
+        scripting::eval(r#"(editor/warn "deprecated option")"#);
 
         let warn_buf = ed.buffers.iter().find(|(_, b)| b.name == "*Warnings*");
         assert!(warn_buf.is_some(), "*Warnings* buffer must be created by editor/warn");
@@ -223,7 +223,7 @@ fn warn_emits_warning_emitted_event() {
             None
         });
 
-        janet_bridge::eval(r#"(editor/warn "some warning")"#);
+        scripting::eval(r#"(editor/warn "some warning")"#);
         ed.events.drain_and_dispatch();
 
         assert!(*fired.lock().unwrap(),
@@ -236,7 +236,7 @@ fn warn_emits_warning_emitted_event() {
 #[test]
 fn show_help_creates_help_buffer_with_text() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/show-help "This is help text.")"#);
+        scripting::eval(r#"(editor/show-help "This is help text.")"#);
 
         let help_buf = ed.buffers.iter().find(|(_, b)| b.name == "*Help*");
         assert!(help_buf.is_some(), "*Help* buffer must be created by show-help");
@@ -251,7 +251,7 @@ fn show_help_creates_help_buffer_with_text() {
 #[test]
 fn show_help_focuses_help_buffer_in_window() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(editor/show-help "focus test")"#);
+        scripting::eval(r#"(editor/show-help "focus test")"#);
 
         let help_key = ed.buffers.iter()
             .find(|(_, b)| b.name == "*Help*")
@@ -275,7 +275,7 @@ fn show_help_emits_help_shown_event() {
             None
         });
 
-        janet_bridge::eval(r#"(editor/show-help "event test")"#);
+        scripting::eval(r#"(editor/show-help "event test")"#);
         ed.events.drain_and_dispatch();
 
         assert!(*fired.lock().unwrap(),

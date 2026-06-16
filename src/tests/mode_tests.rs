@@ -1,11 +1,11 @@
-use crate::input::handle_text_input;
+use crate::kernel::input::handle_text_input;
 use crate::tests::helpers;
 
-fn visual_anchor(ed: &crate::state::Editor) -> Option<usize> {
+fn visual_anchor(ed: &crate::kernel::state::Editor) -> Option<usize> {
     ed.selection.as_ref().map(|s| s.anchor)
 }
 
-fn command_input(ed: &crate::state::Editor) -> &str {
+fn command_input(ed: &crate::kernel::state::Editor) -> &str {
     ed.editor_mode.minibuffer.as_ref().map_or("", |mb| &mb.input)
 }
 
@@ -96,7 +96,7 @@ fn replace_mode_inserts_char() {
     let mut ed = helpers::make_editor_with_buffer("hello");
     ed.buffers.get_mut(0).unwrap().set_cursor(0);
     helpers::run(&mut ed, "enter-replace-mode");
-    crate::input::dispatch_key(&mut ed, "H");
+    crate::kernel::input::dispatch_key(&mut ed, "H");
     assert!(helpers::buf_text(&ed).starts_with('H'));
 }
 
@@ -173,7 +173,7 @@ fn normal_mode_does_not_insert_unbound_key() {
     let mut ed = helpers::make_editor_with_buffer("");
     // In normal mode, typing 'z' (unbound) should NOT insert it.
     // Use dispatch_key so the mode check happens.
-    crate::input::dispatch_key(&mut ed, "z");
+    crate::kernel::input::dispatch_key(&mut ed, "z");
     assert_eq!(helpers::buf_text(&ed), "");
 }
 

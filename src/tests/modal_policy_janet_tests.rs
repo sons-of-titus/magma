@@ -1,7 +1,7 @@
-use crate::janet_bridge;
-use crate::input::dispatch_key;
+use crate::kernel::scripting;
+use crate::kernel::input::dispatch_key;
 
-fn text(ed: &crate::state::Editor) -> String {
+fn text(ed: &crate::kernel::state::Editor) -> String {
     let slab = ed.windows.focused_window()
         .and_then(|wid| ed.windows.buffer(wid)).unwrap();
     ed.buffers.get(slab).unwrap()
@@ -31,7 +31,7 @@ fn register_operator_line_cmd_correct() {
 fn clear_operators_removes_all() {
     janet_test!(ed, {
         assert!(!ed.vim_operators.is_empty());
-        janet_bridge::eval("(input/clear-operators)");
+        scripting::eval("(input/clear-operators)");
         assert!(ed.vim_operators.is_empty());
     });
 }
@@ -39,7 +39,7 @@ fn clear_operators_removes_all() {
 #[test]
 fn get_operator_returns_line_cmd() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(input/register-operator "X" "delete-line")"#);
+        scripting::eval(r#"(input/register-operator "X" "delete-line")"#);
         assert_eq!(ed.vim_operators.get("X").map(|s| s.as_str()), Some("delete-line"));
     });
 }
@@ -59,7 +59,7 @@ fn register_prefix_populates_registry() {
 fn unregister_prefix_removes_key() {
     janet_test!(ed, {
         assert!(ed.vim_prefixes.contains("g"));
-        janet_bridge::eval(r#"(input/unregister-prefix "g")"#);
+        scripting::eval(r#"(input/unregister-prefix "g")"#);
         assert!(!ed.vim_prefixes.contains("g"));
     });
 }
@@ -95,7 +95,7 @@ fn motion_command_correct() {
 fn clear_motions_removes_all() {
     janet_test!(ed, {
         assert!(!ed.vim_motions.is_empty());
-        janet_bridge::eval("(input/clear-motions)");
+        scripting::eval("(input/clear-motions)");
         assert!(ed.vim_motions.is_empty());
     });
 }
@@ -115,7 +115,7 @@ fn char_capture_registry_populated() {
 fn char_capture_find_forward_dispatch() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "f");
@@ -130,7 +130,7 @@ fn char_capture_find_forward_dispatch() {
 fn gg_goes_to_buffer_start() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\nworld");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     let slab = ed.windows.focused_window().and_then(|wid| ed.windows.buffer(wid)).unwrap();
     ed.buffers.get_mut(slab).unwrap().set_cursor(6);
     dispatch_key(&mut ed, "g");
@@ -142,7 +142,7 @@ fn gg_goes_to_buffer_start() {
 fn zt_scrolls_to_top() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("a\nb\nc\nd");
-    crate::janet_bridge::init(&mut ed);
+    crate::kernel::scripting::init(&mut ed);
     dispatch_key(&mut ed, "z");
     dispatch_key(&mut ed, "t");
 }

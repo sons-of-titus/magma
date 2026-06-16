@@ -1,4 +1,4 @@
-use crate::state::{mode::{EditorMode, Minibuffer}, Editor};
+use crate::kernel::state::{mode::{EditorMode, Minibuffer}, Editor};
 use crate::tests::helpers;
 
 fn enter_command(ed: &mut Editor, input: &str) {

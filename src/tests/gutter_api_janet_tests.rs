@@ -1,9 +1,9 @@
 //! Janet API tests for the named-column gutter system (Sprint 11c).
 
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
-fn make_buf(ed: &mut crate::state::Editor) -> usize {
-    let buf = crate::buffer::Buffer::new(crate::state::id::BufferId(1), "test.rs");
+fn make_buf(ed: &mut crate::kernel::state::Editor) -> usize {
+    let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(1), "test.rs");
     ed.buffers.insert(buf)
 }
 
@@ -33,8 +33,8 @@ fn define_column_preserves_insertion_order() {
 #[test]
 fn define_column_updates_existing() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/define-column ":test-col" 3 "my-face")"#);
-        janet_bridge::eval(r#"(gutter/define-column ":test-col" 5 "other-face")"#);
+        scripting::eval(r#"(gutter/define-column ":test-col" 3 "my-face")"#);
+        scripting::eval(r#"(gutter/define-column ":test-col" 5 "other-face")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":test-col").unwrap();
         assert_eq!(col.width, 5);
         assert_eq!(col.face, "other-face");
@@ -48,7 +48,7 @@ fn define_column_updates_existing() {
 #[test]
 fn hide_column_marks_invisible() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/hide-column ":line-numbers")"#);
+        scripting::eval(r#"(gutter/hide-column ":line-numbers")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":line-numbers").unwrap();
         assert!(!col.visible);
     });
@@ -57,8 +57,8 @@ fn hide_column_marks_invisible() {
 #[test]
 fn show_column_marks_visible() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/hide-column ":line-numbers")"#);
-        janet_bridge::eval(r#"(gutter/show-column ":line-numbers")"#);
+        scripting::eval(r#"(gutter/hide-column ":line-numbers")"#);
+        scripting::eval(r#"(gutter/show-column ":line-numbers")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":line-numbers").unwrap();
         assert!(col.visible);
     });
@@ -69,7 +69,7 @@ fn show_column_marks_visible() {
 #[test]
 fn set_column_face_updates_face() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/set-column-face ":diagnostics" "diag-face")"#);
+        scripting::eval(r#"(gutter/set-column-face ":diagnostics" "diag-face")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":diagnostics").unwrap();
         assert_eq!(col.face, "diag-face");
     });
@@ -80,7 +80,7 @@ fn set_column_face_updates_face() {
 #[test]
 fn column_list_returns_all_columns() {
     janet_test!(ed, {
-        let result = janet_bridge::eval("(length (gutter/column-list))");
+        let result = scripting::eval("(length (gutter/column-list))");
         assert_eq!(result, "ok");
         assert!(!ed.gutter.columns.is_empty());
     });
@@ -92,7 +92,7 @@ fn column_list_returns_all_columns() {
 fn sign_set_stores_sign_in_column() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 5 "E" "error-face" 10)"#));
         let col_key = (":diagnostics".to_string(), key);
         assert!(ed.gutter.column_signs.contains_key(&col_key));
@@ -107,9 +107,9 @@ fn sign_set_stores_sign_in_column() {
 fn sign_set_replaces_same_priority() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "W" "warning-face" 5)"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "E" "error-face" 5)"#));
         let col_key = (":diagnostics".to_string(), key);
         let signs = &ed.gutter.column_signs[&col_key][&0];
@@ -128,9 +128,9 @@ fn sign_set_emits_gutter_sign_changed_event() {
             counter2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(())
         });
-        janet_bridge::eval(
+        scripting::eval(
             r#"(event/on "gutter-sign-changed" (fn [_] (editor/run-command "count-sign-changed")))"#);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 2 "▎" "gutter-vcs-changed" 50)"#));
         ed.events.drain_and_dispatch();
         assert!(counter.load(std::sync::atomic::Ordering::SeqCst) > 0);
@@ -143,11 +143,11 @@ fn sign_set_emits_gutter_sign_changed_event() {
 fn sign_clear_removes_all_signs_in_column() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 0 "▎" "f" 1)"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 1 "▎" "f" 1)"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-clear ":vcs" {key})"#));
         assert!(!ed.gutter.column_signs.contains_key(&(":vcs".to_string(), key)));
     });
@@ -159,11 +159,11 @@ fn sign_clear_removes_all_signs_in_column() {
 fn sign_clear_line_removes_signs_on_one_line() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 0 "▎" "f" 1)"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 1 "▎" "f" 1)"#));
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-clear-line ":vcs" {key} 0)"#));
         let col_key = (":vcs".to_string(), key);
         let line_map = &ed.gutter.column_signs[&col_key];
@@ -178,9 +178,9 @@ fn sign_clear_line_removes_signs_on_one_line() {
 fn signs_returns_sign_list_without_error() {
     janet_test!(ed, {
         let key = make_buf(&mut ed);
-        janet_bridge::eval(
+        scripting::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 3 "E" "error-face" 10)"#));
-        let result = janet_bridge::eval(
+        let result = scripting::eval(
             &format!(r#"(gutter/signs ":diagnostics" {key})"#));
         assert_eq!(result, "ok");
     });
@@ -191,7 +191,7 @@ fn signs_returns_sign_list_without_error() {
 #[test]
 fn set_line_number_format_stores_fn_name() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/set-line-number-format "gutter-lnum-relative")"#);
+        scripting::eval(r#"(gutter/set-line-number-format "gutter-lnum-relative")"#);
         assert_eq!(ed.gutter.line_number_fn.as_deref(), Some("gutter-lnum-relative"));
     });
 }
@@ -199,8 +199,8 @@ fn set_line_number_format_stores_fn_name() {
 #[test]
 fn set_line_number_format_nil_clears_fn() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/set-line-number-format "gutter-lnum-absolute")"#);
-        janet_bridge::eval(r#"(gutter/set-line-number-format nil)"#);
+        scripting::eval(r#"(gutter/set-line-number-format "gutter-lnum-absolute")"#);
+        scripting::eval(r#"(gutter/set-line-number-format nil)"#);
         assert!(ed.gutter.line_number_fn.is_none());
     });
 }
@@ -210,7 +210,7 @@ fn set_line_number_format_nil_clears_fn() {
 #[test]
 fn set_fold_icons_stores_icons() {
     janet_test!(ed, {
-        janet_bridge::eval(r#"(gutter/set-fold-icons "v" ">" "my-fold-face")"#);
+        scripting::eval(r#"(gutter/set-fold-icons "v" ">" "my-fold-face")"#);
         assert_eq!(ed.gutter.fold_icons.open, "v");
         assert_eq!(ed.gutter.fold_icons.closed, ">");
         assert_eq!(ed.gutter.fold_icons.face, "my-fold-face");

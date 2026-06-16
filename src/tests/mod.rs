@@ -3,7 +3,7 @@ mod helpers;
 macro_rules! janet_test { ($ed:ident, $body:block) => {{
     let _lock = $crate::tests::helpers::acquire_janet_lock();
     let mut $ed = $crate::tests::helpers::make_editor();
-    $crate::janet_bridge::init(&mut $ed);
+    $crate::kernel::scripting::init(&mut $ed);
     $body
 }}; }
 

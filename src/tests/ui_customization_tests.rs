@@ -1,7 +1,7 @@
 //! Pure Rust tests for Sprint 11 UI customisation primitives:
 //! modeline, tab-bar flag, overlay management, and gutter signs.
 
-use crate::state::{Editor, GutterSign, Overlay};
+use crate::kernel::state::{Editor, GutterSign, Overlay};
 use crate::tests::helpers;
 
 // ── modeline ─────────────────────────────────────────────────────────────────

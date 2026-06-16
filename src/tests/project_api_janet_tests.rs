@@ -1,9 +1,9 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 #[test]
 fn project_root_returns_nil_by_default() {
     janet_test!(ed, {
-        let r = janet_bridge::eval("(project/root)");
+        let r = scripting::eval("(project/root)");
         assert_eq!(r, "ok", "project/root default must not error");
         assert!(ed.project_manager.project.root.is_none(), "project root must be None by default");
     });
@@ -17,7 +17,7 @@ fn project_set_root_creates_project_state() {
         let root_str = tmp.to_string_lossy().to_string();
 
         let expr = format!("(project/set-root \"{}\")", root_str);
-        let r = janet_bridge::eval(&expr);
+        let r = scripting::eval(&expr);
         assert_eq!(r, "ok", "project/set-root must not error");
 
         assert!(ed.project_manager.project.root.is_some(), "project root must be set");
@@ -37,10 +37,10 @@ fn project_set_root_clears_when_nil() {
         std::fs::create_dir_all(&tmp).unwrap();
         let root_str = tmp.to_string_lossy().to_string();
         let expr = format!("(project/set-root \"{}\")", root_str);
-        janet_bridge::eval(&expr);
+        scripting::eval(&expr);
 
         // Clear it
-        let r = janet_bridge::eval("(project/set-root nil)");
+        let r = scripting::eval("(project/set-root nil)");
         assert_eq!(r, "ok");
         assert!(ed.project_manager.project.root.is_none(), "project root must be cleared");
 
@@ -55,9 +55,9 @@ fn project_set_name_works() {
         std::fs::create_dir_all(&tmp).unwrap();
         let root_str = tmp.to_string_lossy().to_string();
         let s = format!("(project/set-root \"{}\")", root_str);
-        janet_bridge::eval(&s);
+        scripting::eval(&s);
 
-        let r = janet_bridge::eval("(project/set-name \"my-project\")");
+        let r = scripting::eval("(project/set-name \"my-project\")");
         assert_eq!(r, "ok");
         assert_eq!(ed.project_manager.project.name.as_deref(), Some("my-project"));
 
@@ -72,9 +72,9 @@ fn project_option_set_and_get() {
         std::fs::create_dir_all(&tmp).unwrap();
         let root_str = tmp.to_string_lossy().to_string();
         let s = format!("(project/set-root \"{}\")", root_str);
-        janet_bridge::eval(&s);
+        scripting::eval(&s);
 
-        janet_bridge::eval(r#"(project/option-set "build-command" "cargo check")"#);
+        scripting::eval(r#"(project/option-set "build-command" "cargo check")"#);
         assert_eq!(
             ed.project_manager.project.options.get("build-command").map(|s| s.as_str()),
             Some("cargo check")
@@ -97,9 +97,9 @@ fn project_register_and_list() {
         let expr1 = format!("(project/register \"proj-a\" \"{}\")", r1);
         let expr2 = format!("(project/register \"proj-b\" \"{}\")", r2);
 
-        let r = janet_bridge::eval(&expr1);
+        let r = scripting::eval(&expr1);
         assert_eq!(r, "ok");
-        let r = janet_bridge::eval(&expr2);
+        let r = scripting::eval(&expr2);
         assert_eq!(r, "ok");
 
         assert!(ed.project_manager.projects.contains_key("proj-a"));
@@ -118,11 +118,11 @@ fn project_unregister_removes() {
         std::fs::create_dir_all(&tmp).unwrap();
         let r = tmp.to_string_lossy().to_string();
         let expr = format!("(project/register \"my-proj\" \"{}\")", r);
-        janet_bridge::eval(&expr);
+        scripting::eval(&expr);
 
         assert!(ed.project_manager.projects.contains_key("my-proj"));
 
-        janet_bridge::eval("(project/unregister \"my-proj\")");
+        scripting::eval("(project/unregister \"my-proj\")");
         assert!(!ed.project_manager.projects.contains_key("my-proj"));
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -137,7 +137,7 @@ fn project_buffer_set_and_get() {
             .unwrap_or(0);
 
         let expr = format!("(project/buffer-set-project {} \"my-proj\")", key);
-        let r = janet_bridge::eval(&expr);
+        let r = scripting::eval(&expr);
         assert_eq!(r, "ok");
 
         assert_eq!(
@@ -146,7 +146,7 @@ fn project_buffer_set_and_get() {
         );
 
         let get_expr = format!("(project/buffer-project {})", key);
-        let r = janet_bridge::eval(&get_expr);
+        let r = scripting::eval(&get_expr);
         assert_eq!(r, "ok");
     });
 }
@@ -154,7 +154,7 @@ fn project_buffer_set_and_get() {
 #[test]
 fn project_files_empty_by_default() {
     janet_test!(ed, {
-        let r = janet_bridge::eval("(project/files)");
+        let r = scripting::eval("(project/files)");
         assert_eq!(r, "ok", "project/files default must not error");
         assert!(ed.project_manager.project.files.is_empty(), "files must be empty by default");
     });
@@ -170,7 +170,7 @@ fn project_set_workspace_members_via_janet() {
         std::fs::create_dir_all(&m2).unwrap();
         let root_str = tmp.to_string_lossy().to_string();
         let s = format!("(project/set-root \"{}\")", root_str);
-        janet_bridge::eval(&s);
+        scripting::eval(&s);
 
         let m1s = m1.to_string_lossy().to_string();
         let m2s = m2.to_string_lossy().to_string();
@@ -178,7 +178,7 @@ fn project_set_workspace_members_via_janet() {
             r#"(project/set-workspace-members [{{:name "sub-a" :root "{}"}} {{:name "sub-b" :root "{}"}}])"#,
             m1s, m2s
         );
-        let r = janet_bridge::eval(&expr);
+        let r = scripting::eval(&expr);
         assert_eq!(r, "ok");
 
         let ws = ed.project_manager.project.workspace.as_ref().expect("workspace must be set");
@@ -198,14 +198,14 @@ fn project_set_current_member_fires_event() {
         std::fs::create_dir_all(&m1).unwrap();
         let root_str = tmp.to_string_lossy().to_string();
         let s = format!("(project/set-root \"{}\")", root_str);
-        janet_bridge::eval(&s);
+        scripting::eval(&s);
 
         let m1s = m1.to_string_lossy().to_string();
         let expr = format!(
             r#"(project/set-workspace-members [{{:name "core" :root "{}"}}])"#,
             m1s
         );
-        janet_bridge::eval(&expr);
+        scripting::eval(&expr);
 
         let event_count: std::sync::Arc<std::sync::Mutex<i32>> =
             std::sync::Arc::new(std::sync::Mutex::new(0));
@@ -215,7 +215,7 @@ fn project_set_current_member_fires_event() {
             None
         });
 
-        let r = janet_bridge::eval(r#"(project/set-current-member "core")"#);
+        let r = scripting::eval(r#"(project/set-current-member "core")"#);
         assert_eq!(r, "ok");
         ed.events.drain_and_dispatch();
 

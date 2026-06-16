@@ -1,26 +1,26 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use magma::event::keys;
-use magma::event::payload::*;
+use magma::kernel::event::keys;
+use magma::kernel::event::payload::*;
 
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-use magma::buffer::Buffer;
-use magma::command::builtin;
-use magma::fs::DiskFileSystem;
-use magma::render::frame::render_frame;
-use magma::render::surface::Surface;
-use magma::render::tui::TuiRenderer;
-use magma::input::event::InputEvent;
-use magma::render::RenderTrait;
-use magma::runtime::{process_background_event, BackgroundEvent, BackgroundHandle};
-use magma::state::id::BufferId;
-use magma::state::persist;
+use magma::kernel::text_engine::Buffer;
+use magma::kernel::command::builtin;
+use magma::kernel::storage::DiskFileSystem;
+use magma::kernel::render::frame::render_frame;
+use magma::kernel::render::surface::Surface;
+use magma::kernel::render::tui::TuiRenderer;
+use magma::kernel::input::event::InputEvent;
+use magma::kernel::render::RenderTrait;
+use magma::kernel::runtime::{process_background_event, BackgroundEvent, BackgroundHandle};
+use magma::kernel::state::id::BufferId;
+use magma::kernel::state::persist;
 #[cfg(feature = "janet")]
-use magma::scripting::ScriptRuntime;
-use magma::state::Editor;
+use magma::kernel::scripting::ScriptRuntime;
+use magma::kernel::state::Editor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut ed = editor.write().unwrap();
         let id = ed.allocate_buffer_id();
         let mut buffer = Buffer::new(BufferId(id), "*scratch*");
-        buffer.major_mode = magma::buffer::MajorMode::Prog;
+        buffer.major_mode = magma::kernel::text_engine::MajorMode::Prog;
         let entry = ed.buffers.vacant_entry();
         let buf_key = entry.key();
         entry.insert(buffer);
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let _file_watcher = {
-        match magma::fs::watcher::FileWatcher::new(bg_sender.clone()) {
+        match magma::kernel::storage::watcher::FileWatcher::new(bg_sender.clone()) {
             Ok(mut fw) => {
                 let ed = editor.read().unwrap();
                 for (_, buf) in ed.buffers.iter() {
@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "janet")]
     {
         let mut ed = editor.write().unwrap();
-        let mut rt = magma::janet_bridge::JanetRuntime::new();
+        let mut rt = magma::kernel::scripting::JanetRuntime::new();
         rt.init(&mut *ed as *mut _);
         ed.runtime = Some(Box::new(rt));
     }
@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or("127.0.0.1:7890");
         eprintln!("Starting Magma server on {addr} (headless)");
         return runtime.block_on(async move {
-            magma::server::run_server(editor, addr).await
+            magma::kernel::server::run_server(editor, addr).await
         });
     }
 
@@ -236,7 +236,7 @@ fn run_gui(
     bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use eframe::egui;
-    use magma::render::gui::GuiApp;
+    use magma::kernel::render::gui::GuiApp;
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -304,11 +304,11 @@ fn run_tui(
                         continue;
                     }
 
-                    magma::input::dispatch_key(&mut ed, &key);
+                    magma::kernel::input::dispatch_key(&mut ed, &key);
                 }
                 InputEvent::Mouse(m) => {
                     let mut ed = editor.write().unwrap();
-                    magma::input::mouse::dispatch_mouse(&mut ed, &surface, m.x, m.y);
+                    magma::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, m.x, m.y);
                 }
             }
         }
@@ -321,7 +321,7 @@ fn run_tui(
         {
             let mut ed = editor.write().unwrap();
             #[cfg(feature = "janet")]
-            magma::janet_bridge::set_surface_ptr(&mut surface as *mut _);
+            magma::kernel::scripting::set_surface_ptr(&mut surface as *mut _);
 
             ed.events.emit_typed(keys::events::RENDER_FRAME, EmptyPayload);
             if ed.tab_bar_enabled {
@@ -340,7 +340,7 @@ fn run_tui(
             }
 
             #[cfg(feature = "janet")]
-            magma::janet_bridge::clear_surface_ptr();
+            magma::kernel::scripting::clear_surface_ptr();
         }
 
         renderer.draw(&surface);

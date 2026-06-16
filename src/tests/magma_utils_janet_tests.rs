@@ -1,11 +1,11 @@
-use crate::janet_bridge;
+use crate::kernel::scripting;
 
 // ── magma-api-version ─────────────────────────────────────────────────────
 
 #[test]
 fn magma_api_version_is_tuple_of_three_numbers() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(and (tuple? magma-api-version) (= 3 (length magma-api-version)))"#);
+        let r = scripting::eval(r#"(and (tuple? magma-api-version) (= 3 (length magma-api-version)))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -13,7 +13,7 @@ fn magma_api_version_is_tuple_of_three_numbers() {
 #[test]
 fn magma_api_version_major_is_zero() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= 0 (magma-api-version 0))"#);
+        let r = scripting::eval(r#"(= 0 (magma-api-version 0))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -23,7 +23,7 @@ fn magma_api_version_major_is_zero() {
 #[test]
 fn api_compat_returns_true_for_same_version() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(magma/api-compat? 0 24)"#);
+        let r = scripting::eval(r#"(magma/api-compat? 0 24)"#);
         assert_eq!(r, "ok");
     });
 }
@@ -31,7 +31,7 @@ fn api_compat_returns_true_for_same_version() {
 #[test]
 fn api_compat_returns_false_for_future_major() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(not (magma/api-compat? 1 1))"#);
+        let r = scripting::eval(r#"(not (magma/api-compat? 1 1))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -39,7 +39,7 @@ fn api_compat_returns_false_for_future_major() {
 #[test]
 fn api_compat_returns_false_for_future_minor() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(not (magma/api-compat? 0 99))"#);
+        let r = scripting::eval(r#"(not (magma/api-compat? 0 99))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -49,7 +49,7 @@ fn api_compat_returns_false_for_future_minor() {
 #[test]
 fn trim_removes_leading_spaces() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello" (magma/trim "  hello"))"#);
+        let r = scripting::eval(r#"(= "hello" (magma/trim "  hello"))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -57,7 +57,7 @@ fn trim_removes_leading_spaces() {
 #[test]
 fn trim_removes_leading_tabs() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello" (magma/trim "\t\thello"))"#);
+        let r = scripting::eval(r#"(= "hello" (magma/trim "\t\thello"))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -65,7 +65,7 @@ fn trim_removes_leading_tabs() {
 #[test]
 fn trim_does_not_affect_trailing_spaces() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello  " (magma/trim "hello  "))"#);
+        let r = scripting::eval(r#"(= "hello  " (magma/trim "hello  "))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -73,7 +73,7 @@ fn trim_does_not_affect_trailing_spaces() {
 #[test]
 fn trim_empty_string_returns_empty() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "" (magma/trim ""))"#);
+        let r = scripting::eval(r#"(= "" (magma/trim ""))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -83,7 +83,7 @@ fn trim_empty_string_returns_empty() {
 #[test]
 fn trim_trailing_removes_trailing_spaces() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello" (magma/trim-trailing "hello  "))"#);
+        let r = scripting::eval(r#"(= "hello" (magma/trim-trailing "hello  "))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -91,7 +91,7 @@ fn trim_trailing_removes_trailing_spaces() {
 #[test]
 fn trim_trailing_removes_trailing_tabs() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello" (magma/trim-trailing "hello\t\t"))"#);
+        let r = scripting::eval(r#"(= "hello" (magma/trim-trailing "hello\t\t"))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -99,7 +99,7 @@ fn trim_trailing_removes_trailing_tabs() {
 #[test]
 fn trim_trailing_does_not_affect_leading_spaces() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "  hello" (magma/trim-trailing "  hello"))"#);
+        let r = scripting::eval(r#"(= "  hello" (magma/trim-trailing "  hello"))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -107,7 +107,7 @@ fn trim_trailing_does_not_affect_leading_spaces() {
 #[test]
 fn trim_trailing_empty_string_returns_empty() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "" (magma/trim-trailing ""))"#);
+        let r = scripting::eval(r#"(= "" (magma/trim-trailing ""))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -117,7 +117,7 @@ fn trim_trailing_empty_string_returns_empty() {
 #[test]
 fn ensure_trailing_newline_appends_newline_to_nonempty() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello")))"#);
+        let r = scripting::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -125,7 +125,7 @@ fn ensure_trailing_newline_appends_newline_to_nonempty() {
 #[test]
 fn ensure_trailing_newline_does_not_duplicate_newline() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello\n")))"#);
+        let r = scripting::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello\n")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -133,7 +133,7 @@ fn ensure_trailing_newline_does_not_duplicate_newline() {
 #[test]
 fn ensure_trailing_newline_empty_string_returns_newline() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "\n" (string (magma/ensure-trailing-newline "")))"#);
+        let r = scripting::eval(r#"(= "\n" (string (magma/ensure-trailing-newline "")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -143,7 +143,7 @@ fn ensure_trailing_newline_empty_string_returns_newline() {
 #[test]
 fn indent_returns_indented_text() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "  hello\n  world\n" (string (magma/indent "hello\nworld" 2 " ")))"#);
+        let r = scripting::eval(r#"(= "  hello\n  world\n" (string (magma/indent "hello\nworld" 2 " ")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -151,7 +151,7 @@ fn indent_returns_indented_text() {
 #[test]
 fn indent_with_zero_count_returns_original() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello\n" (string (magma/indent "hello" 0 "  ")))"#);
+        let r = scripting::eval(r#"(= "hello\n" (string (magma/indent "hello" 0 "  ")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -161,7 +161,7 @@ fn indent_with_zero_count_returns_original() {
 #[test]
 fn deep_merge_returns_merged_table() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(let [a {:x 1 :y {:a 10}} b {:y {:b 20} :z 3}]
                  (def m (magma/deep-merge a b))
                  (and (= (m :x) 1) (= (get-in m [:y :a]) 10)
@@ -173,7 +173,7 @@ fn deep_merge_returns_merged_table() {
 #[test]
 fn deep_merge_does_not_mutate_original() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(
+        let r = scripting::eval(
             r#"(let [a {:x 1} b {:x 2}]
                  (magma/deep-merge a b)
                  (= (a :x) 1))"#);
@@ -186,7 +186,7 @@ fn deep_merge_does_not_mutate_original() {
 #[test]
 fn time_now_returns_string() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(string? (magma/time-now))"#);
+        let r = scripting::eval(r#"(string? (magma/time-now))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -194,7 +194,7 @@ fn time_now_returns_string() {
 #[test]
 fn time_now_format_contains_digits() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(> (length (magma/time-now)) 8)"#);
+        let r = scripting::eval(r#"(> (length (magma/time-now)) 8)"#);
         assert_eq!(r, "ok");
     });
 }
@@ -204,7 +204,7 @@ fn time_now_format_contains_digits() {
 #[test]
 fn debug_log_returns_nil() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(nil? (magma/debug-log "test"))"#);
+        let r = scripting::eval(r#"(nil? (magma/debug-log "test"))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -214,7 +214,7 @@ fn debug_log_returns_nil() {
 #[test]
 fn old_string_trim_is_still_janet_builtin() {
     janet_test!(ed, {
-        let r = janet_bridge::eval(r#"(= "hello" (string/trim "  hello  "))"#);
+        let r = scripting::eval(r#"(= "hello" (string/trim "  hello  "))"#);
         assert_eq!(r, "ok");
     });
 }

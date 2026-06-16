@@ -1,6 +1,6 @@
 //! Pure Rust tests for the named-column gutter system (Sprint 11c).
 
-use crate::state::{Editor, GutterColumn, GutterSign, FoldIcons};
+use crate::kernel::state::{Editor, GutterColumn, GutterSign, FoldIcons};
 use crate::tests::helpers;
 
 // ── GutterColumn ─────────────────────────────────────────────────────────────

@@ -1017,6 +1017,33 @@ Return true if a file or directory exists at `path`.
 
 Read a file's content as a string, or nil on failure.
 
+### `(project/current)` → `{:name :root :language :tasks :build-targets}` or nil
+
+Return a table describing the active project.  Returns nil when no project is
+active.
+
+`:name` — project name string  
+`:root` — absolute root path string  
+`:language` — detected language: `"rust"`, `"node"`, `"python"`, `"make"`, or `""`  
+`:tasks` — array of task IDs registered for this project  
+`:build-targets` — array of `{:name :kind :task-id}` tables (`:kind` is `:debug` or `:release`)
+
+### `(project/build)` → task-id
+
+Dispatch the project's `build` target through the Task System.  Emits
+`task-started`.  Signals an error if no `build` task is defined — call
+`(task/detect-project root)` first.
+
+### `(project/test)` → task-id
+
+Dispatch the project's `test` target through the Task System.  Emits
+`task-started`.  Signals an error if no `test` task is defined.
+
+### `(project/run)` → task-id
+
+Dispatch the project's `run` target through the Task System.  Emits
+`task-started`.  Signals an error if no `run` task is defined.
+
 ---
 
 ## quickfix/ — Quickfix List

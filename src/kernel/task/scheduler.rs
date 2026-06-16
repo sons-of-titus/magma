@@ -231,23 +231,4 @@ impl TaskScheduler {
             .collect()
     }
 
-    /// Auto-define `build`, `test`, and `run` tasks based on project markers at `root`.
-    /// Skips definition if a same-named task is already Running.
-    pub fn auto_detect_project_tasks(&mut self, root: &str) {
-        let path = std::path::Path::new(root);
-        let (build_cmd, test_cmd, run_cmd) = if path.join("Cargo.toml").exists() {
-            ("cargo build", "cargo test", "cargo run")
-        } else if path.join("package.json").exists() {
-            ("npm run build", "npm test", "npm start")
-        } else if path.join("Makefile").exists() {
-            ("make", "make test", "make run")
-        } else if path.join("pyproject.toml").exists() || path.join("setup.py").exists() {
-            ("python -m build", "python -m pytest", "python -m main")
-        } else {
-            return;
-        };
-        self.define("build".into(), build_cmd.into(), HashMap::new(), vec![]);
-        self.define("test".into(), test_cmd.into(), HashMap::new(), vec![]);
-        self.define("run".into(), run_cmd.into(), HashMap::new(), vec![]);
-    }
 }

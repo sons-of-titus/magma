@@ -8,7 +8,6 @@ pub mod snippet;
 pub mod cursor;
 pub mod visual;
 pub mod completion;
-pub mod project;
 pub mod io;
 pub mod gutter;
 pub mod overlay;
@@ -33,7 +32,10 @@ pub use cursor::{ExtraCursor, MultiCursorState};
 pub use visual::BlockVisualState;
 pub use completion::CompletionState;
 pub use snippet::SnippetState;
-pub use project::{ProjectMember, Workspace, ProjectState, ProjectManager};
+pub use crate::kernel::project::{
+    Project, ProjectManager, ProjectMember, Workspace,
+    Module, Dependency, DependencyKind, BuildKind, BuildTarget, Config,
+};
 pub use io::IoState;
 pub use gutter::{GutterSign, GutterColumn, FoldIcons, GutterState};
 pub use overlay::{Overlay, LayoutSnapshot};

@@ -182,19 +182,20 @@ fn ready_to_run_includes_b_after_a_completes() {
     assert!(ready.contains(&id_b));
 }
 
-// ── Auto-detection ───────────────────────────────────────────────────────────
+// ── Auto-detection (promoted to ProjectManager::detect in Phase 5) ───────────
 
 #[test]
 fn auto_detect_cargo_project() {
     let dir = std::env::temp_dir().join("magma_test_detect_cargo");
     std::fs::create_dir_all(&dir).ok();
     std::fs::write(dir.join("Cargo.toml"), "[package]\nname=\"x\"").ok();
-    // Remove any package.json / Makefile that might interfere
     let _ = std::fs::remove_file(dir.join("package.json"));
     let _ = std::fs::remove_file(dir.join("Makefile"));
 
+    let mut pm = crate::kernel::project::ProjectManager::default();
     let mut s = TaskScheduler::new();
-    s.auto_detect_project_tasks(&dir.to_string_lossy());
+    pm.detect(&dir.to_string_lossy(), &mut s);
+    assert_eq!(pm.project.language, "rust");
     assert!(s.task_by_name("build").is_some(), "build task should be defined");
     assert_eq!(s.tasks.get(&s.task_by_name("build").unwrap()).unwrap().command, "cargo build");
     assert!(s.task_by_name("test").is_some());
@@ -213,9 +214,11 @@ fn auto_detect_no_markers_defines_nothing() {
     let _ = std::fs::remove_file(dir.join("setup.py"));
     let _ = std::fs::remove_file(dir.join("pyproject.toml"));
 
+    let mut pm = crate::kernel::project::ProjectManager::default();
     let mut s = TaskScheduler::new();
-    s.auto_detect_project_tasks(&dir.to_string_lossy());
+    pm.detect(&dir.to_string_lossy(), &mut s);
     assert!(s.tasks.is_empty(), "no markers → no tasks defined");
+    assert!(pm.project.language.is_empty(), "no markers → no language detected");
 
     std::fs::remove_dir_all(&dir).ok();
 }

@@ -297,20 +297,35 @@ generate.  Tasks are composable, observable, and scriptable from Janet.
 
 ---
 
-### Phase 5 — Project Model
+### Phase 5 — Project Model ✅ COMPLETE
 
 **Goal:** Project becomes a first-class programmable object with build, test,
 run, dependency graph, and module structure.
 
-| Step | What |
-|------|------|
-| 5.1 | Promote `ProjectManager` from `kernel/state/project.rs` to `kernel/project/mod.rs` |
-| 5.2 | Define `Project` struct: `modules: Vec<Module>`, `dependencies: Vec<Dependency>`, `tasks: Vec<TaskId>`, `build_targets: Vec<BuildTarget>`, `runtime_config: Config` |
-| 5.3 | Define `BuildTarget`: `name`, `kind` (debug/release), `task_id`, `artifacts` |
-| 5.4 | Implement `project.build()`, `project.test()`, `project.run()` — each dispatches to the Task System |
-| 5.5 | Add project auto-detection (Cargo.toml → Rust, package.json → Node, etc.) |
-| 5.6 | Add Janet API: `(project/current)`, `(project/build)`, `(project/test)`, `(project/run)` |
-| 5.7 | Wire Project Model into the Semantic Engine's `ProjectGraph` |
+| Step | What | Status |
+|------|------|--------|
+| 5.1 | Promote `ProjectManager` from `kernel/state/project.rs` to `kernel/project/mod.rs` | ✅ |
+| 5.2 | Define `Project` struct: `modules: Vec<Module>`, `dependencies: Vec<Dependency>`, `tasks: Vec<TaskId>`, `build_targets: Vec<BuildTarget>`, `runtime_config: Config` | ✅ |
+| 5.3 | Define `BuildTarget`: `name`, `kind` (debug/release), `task_id`, `artifacts` | ✅ |
+| 5.4 | Implement `project.build()`, `project.test()`, `project.run()` — each dispatches to the Task System | ✅ |
+| 5.5 | Add project auto-detection (Cargo.toml → Rust, package.json → Node, etc.) | ✅ |
+| 5.6 | Add Janet API: `(project/current)`, `(project/build)`, `(project/test)`, `(project/run)` | ✅ |
+| 5.7 | Wire Project Model into the Semantic Engine's `ProjectGraph` | ✅ |
+
+**Completion notes (2026-06-16):**
+- `kernel/state/project.rs` deleted — entire subsystem promoted to `kernel/project/mod.rs`
+- `pub mod project` added to `kernel/mod.rs`; `kernel/state/mod.rs` re-exports from `kernel::project`
+- `ProjectState` renamed to `Project`; all call sites updated (project_api.rs, project_registry_api.rs, workspace_api.rs, tests)
+- `Project` gains Phase 5 fields: `language: String`, `modules: Vec<Module>`, `dependencies: Vec<Dependency>`, `tasks: Vec<TaskId>`, `build_targets: Vec<BuildTarget>`, `runtime_config: Config`
+- `ProjectManager::detect(&root, &mut scheduler)` — promoted from `TaskScheduler::auto_detect_project_tasks` (method deleted); populates `project.language`, `project.build_targets`, `project.tasks`
+- `ProjectManager::build/test/run(&mut scheduler, &bg)` — dispatch methods calling `scheduler.run_by_name`
+- `ProjectManager::sync_to_project_graph(&mut graph)` — step 5.7: called from `FileIndexed` handler in `runtime.rs` to push indexed files into `SemanticEngine.project_graph`
+- `kernel/scripting/project_api.rs` — 4 new Janet C functions: `project/current`, `project/build`, `project/test`, `project/run`
+- `kernel/scripting/task_api.rs` — `c_task_detect_project` updated to call `ed.project_manager.detect()` instead of the now-deleted scheduler method
+- `builtins/task.janet` — `:build`, `:test`, `:run` colon verbs now call `project/build|test|run` (falling back to `task-run-safe` on error)
+- `docs/api/janet-api.md` — 4 new functions documented in `project/` namespace
+- 26 new tests in `tests/project_model_tests.rs` + `tests/project_model_janet_tests.rs`
+- `cargo test --features janet -- --test-threads=1`: 1004 passed, 0 failed
 
 ---
 

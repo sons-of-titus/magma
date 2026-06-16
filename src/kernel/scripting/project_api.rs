@@ -7,6 +7,7 @@ use super::conv;
 use super::with_editor;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
+use crate::kernel::project::Project;
 
 fn walk_dir(dir: &std::path::Path) -> std::io::Result<Vec<String>> {
     let mut files = Vec::new();
@@ -47,7 +48,7 @@ unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> J
             Some(s) => s,
             None => {
                 let was_active = ed.project_manager.project.root.is_some();
-                ed.project_manager.project = crate::kernel::state::ProjectState::default();
+                ed.project_manager.project = Project::default();
                 ed.project_manager.current_project = None;
                 if was_active {
                     ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
@@ -169,6 +170,116 @@ unsafe extern "C-unwind" fn c_project_option_set(argc: i32, argv: *mut Janet) ->
     })
 }
 
+// ── Phase 5: Project Model API ────────────────────────────────────────────────
+
+/// (project/current) → table or nil
+///
+/// Returns a table describing the active project:
+///   `{:name :root :language :tasks [:task-id …] :build-targets [{:name :kind :task-id} …]}`
+/// Returns nil when no project is active.
+unsafe extern "C-unwind" fn c_project_current(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let pm = &ed.project_manager;
+        let proj = &pm.project;
+        let root = match proj.root.as_ref() {
+            Some(r) => r.to_string_lossy().into_owned(),
+            None => return conv::nil(),
+        };
+        let name = proj.name.clone().unwrap_or_default();
+        let tbl = janet_wrap_table(janet_table(6));
+        let t = janet_unwrap_table(tbl);
+        janet_table_put(t, conv::keyword("name"),     conv::string(&name));
+        janet_table_put(t, conv::keyword("root"),     conv::string(&root));
+        janet_table_put(t, conv::keyword("language"), conv::string(&proj.language));
+
+        // tasks array
+        let tasks_arr = janet_wrap_array(janet_array(proj.tasks.len() as i32));
+        for &tid in &proj.tasks {
+            janet_array_push(janet_unwrap_array(tasks_arr), conv::integer(tid as i32));
+        }
+        janet_table_put(t, conv::keyword("tasks"), tasks_arr);
+
+        // build-targets array
+        let bt_arr = janet_wrap_array(janet_array(proj.build_targets.len() as i32));
+        for bt in &proj.build_targets {
+            let bt_tbl = janet_wrap_table(janet_table(3));
+            let bt_t = janet_unwrap_table(bt_tbl);
+            janet_table_put(bt_t, conv::keyword("name"), conv::string(&bt.name));
+            let kind_kw = match bt.kind {
+                crate::kernel::project::BuildKind::Debug => "debug",
+                crate::kernel::project::BuildKind::Release => "release",
+            };
+            janet_table_put(bt_t, conv::keyword("kind"), conv::keyword(kind_kw));
+            let tid_val = bt.task_id.map(|id| conv::integer(id as i32)).unwrap_or_else(conv::nil);
+            janet_table_put(bt_t, conv::keyword("task-id"), tid_val);
+            janet_array_push(janet_unwrap_array(bt_arr), bt_tbl);
+        }
+        janet_table_put(t, conv::keyword("build-targets"), bt_arr);
+
+        tbl
+    })
+}
+
+/// (project/build) → task-id or signals error
+unsafe extern "C-unwind" fn c_project_build(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let bg = match ed.background.clone() {
+            Some(bg) => bg,
+            None => conv::signal_err("project/build: no background runtime"),
+        };
+        match ed.project_manager.build(&mut ed.task_scheduler, &bg) {
+            Ok(id) => {
+                ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
+                    id: id.to_string(),
+                    name: "build".to_string(),
+                });
+                conv::integer(id as i32)
+            }
+            Err(e) => conv::signal_err(&e),
+        }
+    })
+}
+
+/// (project/test) → task-id or signals error
+unsafe extern "C-unwind" fn c_project_test(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let bg = match ed.background.clone() {
+            Some(bg) => bg,
+            None => conv::signal_err("project/test: no background runtime"),
+        };
+        match ed.project_manager.test(&mut ed.task_scheduler, &bg) {
+            Ok(id) => {
+                ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
+                    id: id.to_string(),
+                    name: "test".to_string(),
+                });
+                conv::integer(id as i32)
+            }
+            Err(e) => conv::signal_err(&e),
+        }
+    })
+}
+
+/// (project/run) → task-id or signals error
+unsafe extern "C-unwind" fn c_project_run(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let bg = match ed.background.clone() {
+            Some(bg) => bg,
+            None => conv::signal_err("project/run: no background runtime"),
+        };
+        match ed.project_manager.run(&mut ed.task_scheduler, &bg) {
+            Ok(id) => {
+                ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
+                    id: id.to_string(),
+                    name: "run".to_string(),
+                });
+                conv::integer(id as i32)
+            }
+            Err(e) => conv::signal_err(&e),
+        }
+    })
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
@@ -210,6 +321,26 @@ pub fn register() -> Vec<JanetReg> {
             name: c"project/option-set".as_ptr() as *const _,
             cfun: Some(c_project_option_set as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Set a per-project option".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"project/current".as_ptr() as *const _,
+            cfun: Some(c_project_current as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Return {:name :root :language :tasks :build-targets} for the active project, or nil".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"project/build".as_ptr() as *const _,
+            cfun: Some(c_project_build as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Dispatch the project build target through the Task System; returns task-id".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"project/test".as_ptr() as *const _,
+            cfun: Some(c_project_test as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Dispatch the project test target through the Task System; returns task-id".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"project/run".as_ptr() as *const _,
+            cfun: Some(c_project_run as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Dispatch the project run target through the Task System; returns task-id".as_ptr() as *const _,
         },
     ]
 }

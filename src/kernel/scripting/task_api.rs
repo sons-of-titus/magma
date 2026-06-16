@@ -218,13 +218,14 @@ unsafe extern "C-unwind" fn c_task_output(argc: i32, argv: *mut Janet) -> Janet 
 
 /// (task/detect-project root) → nil
 ///
-/// Auto-defines `build`, `test`, and `run` tasks based on project type
-/// detected from marker files in `root` (Cargo.toml, package.json, Makefile, …).
+/// Auto-detects project type from marker files in `root` (Cargo.toml, package.json, …),
+/// defines `build`/`test`/`run` tasks, and populates `project.language` and
+/// `project.build_targets` via the Project Model layer (Phase 5).
 unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let root = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         if !root.is_empty() {
-            ed.task_scheduler.auto_detect_project_tasks(&root);
+            ed.project_manager.detect(&root, &mut ed.task_scheduler);
         }
         conv::nil()
     })

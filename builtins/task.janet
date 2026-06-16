@@ -11,22 +11,27 @@
     ([e] (print "task/" name " error: " e) false)))
 
 # --- Colon verbs -------------------------------------------------------
+# Use project/build|test|run (Phase 5 Project Model) which dispatch through
+# the Task System; fall back to task-run-safe if no project is active.
 
 (defn colon-build
   [_]
-  (task-run-safe "build"))
+  (try (project/build)
+       ([e] (task-run-safe "build"))))
 
 (put *colon-plugins* "build" colon-build)
 
 (defn colon-test-run
   [_]
-  (task-run-safe "test"))
+  (try (project/test)
+       ([e] (task-run-safe "test"))))
 
 (put *colon-plugins* "test" colon-test-run)
 
 (defn colon-run-project
   [_]
-  (task-run-safe "run"))
+  (try (project/run)
+       ([e] (task-run-safe "run"))))
 
 (put *colon-plugins* "run" colon-run-project)
 

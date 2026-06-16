@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::kernel::state::{Editor, ProjectMember, ProjectState, Workspace};
+use crate::kernel::state::{Editor, ProjectMember, Workspace};
+use crate::kernel::project::Project;
 use crate::tests::helpers;
 
 #[test]
 fn project_state_defaults() {
-    let ps = ProjectState::default();
+    let ps = Project::default();
     assert!(ps.root.is_none());
     assert!(ps.name.is_none());
     assert!(ps.workspace.is_none());
@@ -72,7 +73,7 @@ fn project_clear_root_emits_closed_event() {
         None
     });
 
-    ed.project_manager.project = ProjectState::default();
+    ed.project_manager.project = Project::default();
     ed.project_manager.current_project = None;
     let data = HashMap::new();
     ed.events.emit("project-closed", data);
@@ -213,21 +214,17 @@ fn project_multi_registry() {
     std::fs::create_dir_all(&p1).unwrap();
     std::fs::create_dir_all(&p2).unwrap();
 
-    ed.project_manager.projects.insert("proj-a".to_string(), ProjectState {
+    ed.project_manager.projects.insert("proj-a".to_string(), Project {
         root: Some(p1),
         name: Some("proj-a".to_string()),
-        workspace: None,
         files: vec!["src/main.rs".to_string()],
-        options: HashMap::new(),
-        file_index_dirty: false,
+        ..Project::default()
     });
-    ed.project_manager.projects.insert("proj-b".to_string(), ProjectState {
+    ed.project_manager.projects.insert("proj-b".to_string(), Project {
         root: Some(p2),
         name: Some("proj-b".to_string()),
-        workspace: None,
         files: vec!["lib/main.dart".to_string()],
-        options: HashMap::new(),
-        file_index_dirty: false,
+        ..Project::default()
     });
 
     assert_eq!(ed.project_manager.projects.len(), 2);

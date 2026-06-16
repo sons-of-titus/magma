@@ -138,12 +138,11 @@ unsafe extern "C-unwind" fn c_project_set_current_member(argc: i32, argv: *mut J
         }
         // Load the member project state from registry or create fresh
         let member_state = ed.project_manager.projects.get(&name).cloned().unwrap_or_else(|| {
-            let ps = crate::kernel::state::ProjectState {
+            crate::kernel::project::Project {
                 root: Some(member_root.clone()),
                 name: Some(name.clone()),
                 ..Default::default()
-            };
-            ps
+            }
         });
         ed.project_manager.project = member_state;
         ed.project_manager.current_project = Some(name.clone());

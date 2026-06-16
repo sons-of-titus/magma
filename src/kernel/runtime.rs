@@ -283,6 +283,8 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             if ed.project_manager.current_project.as_deref() == Some(&project_name) {
                 ed.project_manager.project.files = files.clone();
                 ed.project_manager.project.file_index_dirty = false;
+                // Phase 5: wire indexed files into the Semantic Engine's ProjectGraph
+                ed.project_manager.sync_to_project_graph(&mut ed.semantic.project_graph);
             }
             ed.events.emit_typed(keys::events::FILE_INDEXED, FileIndexedPayload {
                 project_name,

@@ -1,40 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::buffer::Buffer;
-use crate::command::{self, builtin};
-use crate::fs::disk::DiskFileSystem;
-use crate::state::id::BufferId;
-use crate::state::Editor;
-
-fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(key);
-    }
-    ed
-}
-
-fn run(ed: &mut Editor, cmd: &str) {
-    command::execute_command(ed, cmd, &HashMap::new()).unwrap();
-}
-
-fn focused_key(ed: &Editor) -> usize {
-    ed.windows.focused_window()
-        .and_then(|wid| ed.windows.buffer(wid))
-        .unwrap_or(0)
-}
+use crate::command;
+use crate::tests::helpers;
 
 // ── buffer-created carries path field ─────────────────────────────────
 
 #[test]
 fn buffer_created_event_includes_path() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor_with_buffer("");
     let tmp = std::env::temp_dir().join("sprint1_open.txt");
     std::fs::write(&tmp, "hello").unwrap();
     let path = tmp.to_string_lossy().to_string();
@@ -63,10 +36,10 @@ fn buffer_created_event_includes_path() {
 
 #[test]
 fn save_buffer_emits_before_and_after_save() {
-    let mut ed = make_editor("content");
+    let mut ed = helpers::make_editor_with_buffer("content");
     let tmp = std::env::temp_dir().join("sprint1_save.txt");
     let path = tmp.to_string_lossy().to_string();
-    let key = focused_key(&ed);
+    let key = helpers::focused_key(&ed);
     ed.buffers.get_mut(key).unwrap().path = Some(path.clone());
 
     let before_fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -76,7 +49,7 @@ fn save_buffer_emits_before_and_after_save() {
     ed.events.on("buffer-before-save", move |_| { *b.lock().unwrap() = true; None });
     ed.events.on("buffer-after-save",  move |_| { *a.lock().unwrap() = true; None });
 
-    run(&mut ed, "save-buffer");
+    helpers::run(&mut ed, "save-buffer");
     ed.events.drain_and_dispatch();
 
     assert!(*before_fired.lock().unwrap(), "buffer-before-save must fire");
@@ -87,17 +60,17 @@ fn save_buffer_emits_before_and_after_save() {
 
 #[test]
 fn save_buffer_no_longer_emits_buffer_saved() {
-    let mut ed = make_editor("x");
+    let mut ed = helpers::make_editor_with_buffer("x");
     let tmp = std::env::temp_dir().join("sprint1_nosaved.txt");
     let path = tmp.to_string_lossy().to_string();
-    let key = focused_key(&ed);
+    let key = helpers::focused_key(&ed);
     ed.buffers.get_mut(key).unwrap().path = Some(path.clone());
 
     let old_fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let o = old_fired.clone();
     ed.events.on("buffer-saved", move |_| { *o.lock().unwrap() = true; None });
 
-    run(&mut ed, "save-buffer");
+    helpers::run(&mut ed, "save-buffer");
     ed.events.drain_and_dispatch();
 
     assert!(!*old_fired.lock().unwrap(),
@@ -107,23 +80,12 @@ fn save_buffer_no_longer_emits_buffer_saved() {
 
 // ── buffer-focused from navigation commands ───────────────────────────
 
-fn make_editor_two_buffers() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    // first buffer
-    let id1 = ed.allocate_buffer_id();
-    let buf1 = Buffer::from_string(BufferId(id1), "buf1", "aaa");
-    let e1 = ed.buffers.vacant_entry();
-    let k1 = e1.key();
-    e1.insert(buf1);
-    // second buffer
+fn make_editor_two_buffers() -> crate::state::Editor {
+    let mut ed = helpers::make_editor();
     let id2 = ed.allocate_buffer_id();
-    let buf2 = Buffer::from_string(BufferId(id2), "buf2", "bbb");
+    let buf2 = crate::buffer::Buffer::from_string(crate::state::id::BufferId(id2), "buf2", "bbb");
     let e2 = ed.buffers.vacant_entry();
     e2.insert(buf2);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(k1);
-    }
     ed
 }
 
@@ -136,7 +98,7 @@ fn buffer_next_emits_buffer_focused() {
         *f.lock().unwrap() = data.get("buffer-id").cloned();
         None
     });
-    run(&mut ed, "buffer-next");
+    helpers::run(&mut ed, "buffer-next");
     ed.events.drain_and_dispatch();
     assert!(fired.lock().unwrap().is_some(), "buffer-focused must fire on buffer-next");
 }
@@ -147,7 +109,7 @@ fn buffer_prev_emits_buffer_focused() {
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let f = fired.clone();
     ed.events.on("buffer-focused", move |_| { *f.lock().unwrap() = true; None });
-    run(&mut ed, "buffer-prev");
+    helpers::run(&mut ed, "buffer-prev");
     ed.events.drain_and_dispatch();
     assert!(*fired.lock().unwrap(), "buffer-focused must fire on buffer-prev");
 }
@@ -156,12 +118,12 @@ fn buffer_prev_emits_buffer_focused() {
 fn alternate_buffer_emits_buffer_focused() {
     let mut ed = make_editor_two_buffers();
     // prime alternate by switching once
-    run(&mut ed, "buffer-next");
+    helpers::run(&mut ed, "buffer-next");
     ed.events.drain_and_dispatch();
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let f = fired.clone();
     ed.events.on("buffer-focused", move |_| { *f.lock().unwrap() = true; None });
-    run(&mut ed, "alternate-buffer");
+    helpers::run(&mut ed, "alternate-buffer");
     ed.events.drain_and_dispatch();
     assert!(*fired.lock().unwrap(), "buffer-focused must fire on alternate-buffer");
 }
@@ -171,14 +133,14 @@ fn alternate_buffer_emits_buffer_focused() {
 #[test]
 fn close_buffer_emits_buffer_closed_and_removes() {
     let mut ed = make_editor_two_buffers();
-    let key = focused_key(&ed);
+    let key = helpers::focused_key(&ed);
     let closed_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let c = closed_id.clone();
     ed.events.on("buffer-closed", move |data| {
         *c.lock().unwrap() = data.get("buffer-id").cloned();
         None
     });
-    run(&mut ed, "close-buffer");
+    helpers::run(&mut ed, "close-buffer");
     ed.events.drain_and_dispatch();
 
     assert!(closed_id.lock().unwrap().is_some(), "buffer-closed must fire");
@@ -191,10 +153,10 @@ fn close_buffer_emits_buffer_closed_and_removes() {
 #[test]
 fn close_buffer_switches_focused_window_when_current() {
     let mut ed = make_editor_two_buffers();
-    let old_key = focused_key(&ed);
-    run(&mut ed, "close-buffer");
+    let old_key = helpers::focused_key(&ed);
+    helpers::run(&mut ed, "close-buffer");
     ed.events.drain_and_dispatch();
-    let new_key = focused_key(&ed);
+    let new_key = helpers::focused_key(&ed);
     assert_ne!(new_key, old_key, "focused window must switch away from closed buffer");
     assert!(ed.buffers.contains(new_key), "new focused buffer must exist");
 }
@@ -203,10 +165,10 @@ fn close_buffer_switches_focused_window_when_current() {
 
 #[test]
 fn local_options_are_isolated_from_global() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor_with_buffer("");
     ed.options.insert("tab-width".to_string(), "4".to_string());
 
-    let key = focused_key(&ed);
+    let key = helpers::focused_key(&ed);
     ed.buffers.get_mut(key).unwrap()
         .local_options.insert("tab-width".to_string(), "2".to_string());
 
@@ -220,8 +182,8 @@ fn local_options_are_isolated_from_global() {
 
 #[test]
 fn local_options_absent_by_default() {
-    let ed = make_editor("");
-    let key = focused_key(&ed);
+    let ed = helpers::make_editor_with_buffer("");
+    let key = helpers::focused_key(&ed);
     assert!(ed.buffers.get(key).unwrap().local_options.is_empty(),
         "new buffer must have no local options");
 }

@@ -1,47 +1,40 @@
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
 use crate::render::frame::cell_width;
 use crate::state::{Editor, FontConfig};
-
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    ed
-}
+use crate::tests::helpers;
 
 #[test]
 fn default_font_family_is_monospace() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert_eq!(ed.font_config.family, "Monospace");
 }
 
 #[test]
 fn default_font_size_is_15() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!((ed.font_config.size - 15.0).abs() < f32::EPSILON);
 }
 
 #[test]
 fn default_ligatures_is_false() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(!ed.font_config.ligatures);
 }
 
 #[test]
 fn default_fallback_is_empty() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.font_config.fallback.is_empty());
 }
 
 #[test]
 fn default_glyph_widths_is_empty() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.font_config.glyph_widths.is_empty());
 }
 
 #[test]
 fn font_config_size_can_be_set() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.font_config.size = 20.0;
     assert!((ed.font_config.size - 20.0).abs() < f32::EPSILON);
 }
@@ -106,6 +99,6 @@ fn context_overrides_stored_on_font_config() {
 
 #[test]
 fn font_changed_flag_starts_false() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(!ed.font_changed);
 }

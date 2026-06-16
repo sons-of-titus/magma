@@ -1,25 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
-use crate::state::id::BufferId;
 use crate::state::{Editor, ProjectMember, ProjectState, Workspace};
-
-fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(key);
-    }
-    ed
-}
+use crate::tests::helpers;
 
 #[test]
 fn project_state_defaults() {
@@ -34,7 +17,7 @@ fn project_state_defaults() {
 
 #[test]
 fn editor_project_fields_initialized() {
-    let ed = make_editor("");
+    let ed = helpers::make_editor();
     assert!(ed.project_manager.project.root.is_none());
     assert!(ed.project_manager.project.name.is_none());
     assert!(ed.project_manager.current_project.is_none());
@@ -45,7 +28,7 @@ fn editor_project_fields_initialized() {
 
 #[test]
 fn project_set_root_emits_opened_event() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_test_root");
     std::fs::create_dir_all(&tmp).unwrap();
     let root_str = tmp.to_string_lossy().to_string();
@@ -76,7 +59,7 @@ fn project_set_root_emits_opened_event() {
 
 #[test]
 fn project_clear_root_emits_closed_event() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     ed.project_manager.project.root = Some(PathBuf::from("/tmp/some-project"));
     ed.project_manager.project.name = Some("some-project".to_string());
     ed.project_manager.current_project = Some("some-project".to_string());
@@ -101,7 +84,7 @@ fn project_clear_root_emits_closed_event() {
 
 #[test]
 fn project_options_isolated() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_opts");
     std::fs::create_dir_all(&tmp).unwrap();
     let root_str = tmp.to_string_lossy().to_string();
@@ -132,7 +115,7 @@ fn project_workspace_members() {
     std::fs::create_dir_all(&member1).unwrap();
     std::fs::create_dir_all(&member2).unwrap();
 
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     ed.project_manager.project.root = Some(tmp.clone());
     ed.project_manager.project.workspace = Some(Workspace {
         root: tmp.clone(),
@@ -158,7 +141,7 @@ fn project_workspace_members() {
 
 #[test]
 fn project_member_focused_event() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_mf");
     std::fs::create_dir_all(&tmp).unwrap();
     let m1 = tmp.join("core");
@@ -201,7 +184,7 @@ fn project_member_focused_event() {
 
 #[test]
 fn project_buffer_association() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_bufproj");
     std::fs::create_dir_all(&tmp).unwrap();
 
@@ -222,7 +205,7 @@ fn project_buffer_association() {
 
 #[test]
 fn project_multi_registry() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_registry");
     std::fs::create_dir_all(&tmp).unwrap();
     let p1 = tmp.join("proj-a");
@@ -259,7 +242,7 @@ fn project_multi_registry() {
 
 #[test]
 fn project_recent_list() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     ed.project_manager.recent_projects.push("/home/user/proj1".to_string());
     ed.project_manager.recent_projects.push("/home/user/proj2".to_string());
 
@@ -270,7 +253,7 @@ fn project_recent_list() {
 
 #[test]
 fn project_files_cache() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_files");
     std::fs::create_dir_all(&tmp).unwrap();
 
@@ -289,7 +272,7 @@ fn project_files_cache() {
 
 #[test]
 fn project_option_get_set() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let tmp = std::env::temp_dir().join("sprint4_opts2");
     std::fs::create_dir_all(&tmp).unwrap();
     ed.project_manager.project.root = Some(tmp.clone());

@@ -1,21 +1,8 @@
 use crate::state::Editor;
-use crate::state::id::BufferId;
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
+use crate::tests::helpers;
 
 fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(key);
-    }
+    let mut ed = helpers::make_editor_with_buffer(content);
 
     ed.keymaps.push_layer("vim");
     ed.keymaps.set_layer("vim", "h",  "cursor-left");

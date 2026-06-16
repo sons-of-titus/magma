@@ -1,24 +1,7 @@
 use std::collections::HashMap;
-use crate::buffer::Buffer;
-use crate::command::{self, builtin};
-use crate::fs::disk::DiskFileSystem;
 use crate::render::surface::Style;
-use crate::state::id::BufferId;
 use crate::state::Editor;
-
-fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(key);
-    }
-    ed
-}
+use crate::tests::helpers;
 
 fn focused_key(ed: &Editor) -> usize {
     ed.windows.focused_window()
@@ -46,13 +29,13 @@ fn style_can_set_strikethrough_and_dim() {
 
 #[test]
 fn editor_faces_starts_empty() {
-    let ed = make_editor("");
+    let ed = helpers::make_editor();
     assert!(ed.faces.is_empty());
 }
 
 #[test]
 fn editor_faces_insert_and_retrieve() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let style = Style { fg: (200, 100, 50), bg: (0, 0, 0), bold: true, italic: false, underline: false, strikethrough: false, dim: false };
     ed.faces.insert("keyword-face".to_string(), style);
     let got = ed.faces.get("keyword-face").unwrap();
@@ -62,13 +45,13 @@ fn editor_faces_insert_and_retrieve() {
 
 #[test]
 fn editor_resolve_face_style_returns_none_for_missing() {
-    let ed = make_editor("");
+    let ed = helpers::make_editor();
     assert!(ed.resolve_face_style("nonexistent").is_none());
 }
 
 #[test]
 fn editor_resolve_face_style_returns_style() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let style = Style { fg: (100, 200, 100), bg: (0, 0, 0), bold: false, italic: true, underline: false, strikethrough: false, dim: false };
     ed.faces.insert("string-face".to_string(), style);
     let got = ed.resolve_face_style("string-face").unwrap();
@@ -80,7 +63,7 @@ fn editor_resolve_face_style_returns_style() {
 
 #[test]
 fn buffer_set_highlights_accepts_face_names() {
-    let mut ed = make_editor("hello world");
+    let mut ed = helpers::make_editor_with_buffer("hello world");
     let key = focused_key(&ed);
     let buf = ed.buffers.get_mut(key).unwrap();
     let ranges = vec![(0, 5, "keyword-face".to_string()), (6, 11, "string-face".to_string())];
@@ -93,7 +76,7 @@ fn buffer_set_highlights_accepts_face_names() {
 
 #[test]
 fn buffer_clear_highlights_removes_all() {
-    let mut ed = make_editor("hello");
+    let mut ed = helpers::make_editor_with_buffer("hello");
     let key = focused_key(&ed);
     let buf = ed.buffers.get_mut(key).unwrap();
     buf.set_highlights(vec![(0, 5, "keyword-face".to_string())]);
@@ -105,7 +88,7 @@ fn buffer_clear_highlights_removes_all() {
 
 #[test]
 fn buffer_set_highlights_layer_stores_per_layer() {
-    let mut ed = make_editor("hello world");
+    let mut ed = helpers::make_editor_with_buffer("hello world");
     let key = focused_key(&ed);
     let buf = ed.buffers.get_mut(key).unwrap();
     buf.set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
@@ -117,7 +100,7 @@ fn buffer_set_highlights_layer_stores_per_layer() {
 
 #[test]
 fn buffer_clear_highlights_layer_removes_only_that_layer() {
-    let mut ed = make_editor("hello");
+    let mut ed = helpers::make_editor_with_buffer("hello");
     let key = focused_key(&ed);
     let buf = ed.buffers.get_mut(key).unwrap();
     buf.set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
@@ -129,7 +112,7 @@ fn buffer_clear_highlights_layer_removes_only_that_layer() {
 
 #[test]
 fn buffer_clear_all_highlight_layers_removes_everything() {
-    let mut ed = make_editor("hello");
+    let mut ed = helpers::make_editor_with_buffer("hello");
     let key = focused_key(&ed);
     let buf = ed.buffers.get_mut(key).unwrap();
     buf.set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
@@ -142,13 +125,13 @@ fn buffer_clear_all_highlight_layers_removes_everything() {
 
 #[test]
 fn scope_faces_empty_by_default() {
-    let ed = make_editor("");
+    let ed = helpers::make_editor();
     assert!(ed.scope_faces.is_empty());
 }
 
 #[test]
 fn scope_faces_resolve_longest_prefix_wins() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     ed.scope_faces.push(("string".to_string(), "string-face".to_string()));
     ed.scope_faces.push(("string.quoted".to_string(), "quoted-face".to_string()));
     ed.scope_faces.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
@@ -162,7 +145,7 @@ fn scope_faces_resolve_longest_prefix_wins() {
 
 #[test]
 fn scope_faces_resolve_unmatched_returns_none() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     ed.scope_faces.push(("keyword".to_string(), "keyword-face".to_string()));
     let found = ed.scope_faces.iter()
         .find(|(p, _)| "comment".starts_with(p))
@@ -174,7 +157,7 @@ fn scope_faces_resolve_unmatched_returns_none() {
 
 #[test]
 fn face_changed_event_emitted_when_face_inserted() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     let captured: std::sync::Arc<std::sync::Mutex<Option<String>>> = std::sync::Arc::new(std::sync::Mutex::new(None));
     let cap = captured.clone();
     ed.events.on("face-changed", move |data| {

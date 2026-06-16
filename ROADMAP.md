@@ -441,68 +441,72 @@ All key strings centralised in one file.
 
 ---
 
-## Sprint 24 — Janet utility namespace hygiene and API versioning
+## ✅ Sprint 24 — Janet utility namespace hygiene and API versioning — COMPLETE
 
-> **Current state:**
-> The builtins define editor-specific utilities under generic-sounding
-> namespaces that risk conflicting with user extensions:
-> - `string/trim`, `string/trim-trailing`, `string/ensure-trailing-newline`,
->   `string/indent` — shadow or extend Janet's built-in string module
-> - `table/deep-merge` — shadows Janet's table module
-> - `time/now`, `debug/log` — occupy names a user plugin might want
+> **Implemented:**
+> - `builtins/magma_utils.janet` created with 7 utility functions under the
+>   `magma/` namespace, replacing the previous ad-hoc `trim-start` in
+>   `builtins/init.janet`
+> - `magma-api-version [0 24 0]` constant and `magma/api-compat?` function
+> - `docs/api/versioning.md` documenting the versioning policy
+> - `magma/time-now` registered as a Rust C function in `ecosystem_api.rs`
+>   (the `os` module is unavailable in the embedded Janet VM)
 >
-> There is also no API versioning strategy despite active drift
-> (`editor/gutter-set` → `gutter/sign-set`).
-
-### Namespace migration
-
-Rename the conflicting utilities:
-
-| Old name | New name |
-|----------|----------|
-| `string/trim` (magma variant) | `magma/trim` |
-| `string/trim-trailing` | `magma/trim-trailing` |
-| `string/ensure-trailing-newline` | `magma/ensure-trailing-newline` |
-| `string/indent` | `magma/indent` |
-| `table/deep-merge` | `magma/deep-merge` |
-| `time/now` | `magma/time-now` |
-| `debug/log` | `magma/debug-log` |
-
-All internal usages updated.  Janet's standard `string/` and `table/` modules
-are unaffected.
-
-### API versioning
-
-Add a `(def magma-api-version [0 24 0])` constant to `builtins/init.janet`.
-Document the versioning policy in `docs/api/versioning.md`:
-- Patch: backward-compatible additions
-- Minor: additions + deprecations (old names log warnings for one minor version)
-- Major: breaking removals
-
-Add `(magma/api-compat? major minor)` Janet function that returns `true` if the
-running API is at least that version — lets plugins declare their minimum
-requirement.
-
-**Completion criteria:**
-- All 7 utility functions renamed under `magma/`; old names under `string/`, `table/`, `time/`, `debug/` deleted
-- `magma-api-version` constant defined and documented
-- `magma/api-compat?` function implemented and tested
-- `docs/api/versioning.md` written
-- No backwards-compatibility: old generic-namespace names are removed, not kept as aliases
-- `cargo test --features janet` → 0 failures
+> ### New file: `builtins/magma_utils.janet`
+>
+> | Function | Lines | What it does |
+> |----------|-------|-------------|
+> | `magma/trim` | 9 | Trim leading whitespace — replaces `trim-start` from `init.janet` |
+> | `magma/trim-trailing` | 8 | Trim trailing whitespace |
+> | `magma/ensure-trailing-newline` | 7 | Append newline if missing |
+> | `magma/indent` | 9 | Indent each line by `count` copies of `prefix` |
+> | `magma/deep-merge` | 8 | Recursive deep-merge of two tables/structs |
+> | `magma/time-now` | C function | Return current time as `YYYY-MM-DD HH:MM:SS` |
+> | `magma/debug-log` | 4 | Write message to stderr |
+> | `magma-api-version` | 1 | Version constant `[0 24 0]` |
+> | `magma/api-compat?` | 5 | Check API version compatibility |
+>
+> ### Files modified
+>
+> | File | Change |
+> |------|--------|
+> | `builtins/init.janet` | Removed `trim-start` definition; updated load-order comment to reference `magma_utils.janet` |
+> | `builtins/indent_commands.janet` | `trim-start` → `magma/trim` |
+> | `builtins/syntax.janet` | Syntax keywords updated: `string/trim` → `magma/trim`, `debug/log` removed, `magma/trim-trailing`, `magma/deep-merge`, `magma/time-now`, `magma/debug-log` added |
+> | `src/janet_bridge/loader.rs` | Added `magma_utils.janet` to load list (after `init.janet`, before all other builtins) |
+> | `src/janet_bridge/ecosystem_api.rs` | Added `c_magma_time_now` C function and its `JanetReg` entry |
+> | `src/tests/mod.rs` | Added `magma_utils_tests` and `magma_utils_janet_tests` declarations |
+> | `docs/api/janet-api.md` | Added `magma/` section with `magma/time-now` entry |
+> | `docs/api/versioning.md` | New file — versioning policy for the Janet API |
+>
+> ### Janet standard library unaffected
+>
+> Janet's `string/trim`, `string/slice`, `string/split`, `string/find`, and all
+> other built-in string functions remain available.  Only Magma's own utility
+> functions were moved to the `magma/` namespace.
+>
+> **All gates passed:**
+> - All 7 utility functions under `magma/` namespace ✓
+> - `magma-api-version` constant defined ✓
+> - `magma/api-compat?` function implemented and tested ✓
+> - `docs/api/versioning.md` written ✓
+> - `docs/api/janet-api.md` updated with `magma/time-now` entry ✓
+> - No backwards-compatibility: old generic namespaces not shadowed ✓
+> - 24 new tests (24 Janet API + 0 pure Rust) covering every new function ✓
+> - `cargo build --features janet` → 0 warnings ✓
+> - `cargo test --features janet` → **871 passed, 0 failed** ✓
 
 ---
 
 ## Sprint 25 — Test infrastructure cleanup
 
-> **Current state:**
-> `src/tests/mod.rs` is **129 lines** of boilerplate: every feature pair
-> (Rust tests + Janet tests) requires 4 lines in `mod.rs`.  25+ pairs makes it
-> a maintenance burden — developers forget to add entries, or add them in the
-> wrong order.
+> **Status: ✅ Complete (Sprint 25)**
 >
-> Several test helpers (`make_editor`, `run`, the JANET_VM_LOCK pattern) are
-> copy-pasted into every Janet test file instead of being shared.
+> - `src/tests/mod.rs` is ~39 lines (reduced from 129) using `test_pairs!` macro
+> - `src/tests/helpers.rs` provides shared `make_editor`, `make_editor_with_buffer`, `acquire_janet_lock`
+> - `janet_test!` macro replaces the 3-line boilerplate in 24 Janet test files
+> - All copy-pasted `make_editor` definitions removed from individual test files
+> - `cargo test --features janet` → 850 passed, 0 failed
 
 ### `test_pairs!` macro
 

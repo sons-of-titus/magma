@@ -1,23 +1,13 @@
-use std::sync::Arc;
-
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
-use crate::runtime::BackgroundHandle;
-use crate::state::id::BufferId;
-use crate::state::Editor;
 use crate::janet_bridge;
 
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    // Set up a background runtime so process/spawn and task/spawn work
-    let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
+fn setup_background_editor() -> crate::state::Editor {
+    let mut ed = crate::state::Editor::new(Box::new(crate::fs::disk::DiskFileSystem::new()));
+    crate::command::builtin::register_builtin_commands(&mut ed);
+    let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
-    let bg_handle = BackgroundHandle::new(runtime, bg_sender);
-    ed.background = Some(bg_handle);
+    ed.background = Some(crate::runtime::BackgroundHandle::new(runtime, bg_sender));
     let id = ed.allocate_buffer_id();
-    let buf = Buffer::new(BufferId(id), "test");
+    let buf = crate::buffer::Buffer::new(crate::state::id::BufferId(id), "test");
     let e = ed.buffers.vacant_entry();
     let k = e.key();
     e.insert(buf);
@@ -31,20 +21,19 @@ fn make_editor() -> Editor {
 
 #[test]
 fn process_spawn_requires_command() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval("(process/spawn)");
-    // Must error (signal "process/spawn requires a command string")
     assert_ne!(r, "ok", "process/spawn without args must signal an error");
 }
 
 #[test]
 fn process_spawn_errors_on_bad_command() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
         r#"(try (process/spawn "nonexistent_command_xyz_12345") ([e] "caught"))"#,
@@ -55,9 +44,9 @@ fn process_spawn_errors_on_bad_command() {
 
 #[test]
 fn process_spawn_adds_to_process_table() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let before = ed.io.processes.len();
     let r = janet_bridge::eval(
@@ -72,15 +61,14 @@ fn process_spawn_adds_to_process_table() {
 
 #[test]
 fn process_spawn_records_cmd_and_running() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
         r#"(try (process/spawn "echo hello-world") ([e] nil))"#,
     );
 
-    // Find the process entry
     let state = ed.io.processes.values().next();
     assert!(state.is_some(), "process must exist after spawn");
     let state = state.unwrap();
@@ -94,11 +82,10 @@ fn process_spawn_records_cmd_and_running() {
 
 #[test]
 fn process_list_returns_empty_array_by_default() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
-    // Evaluate (length (process/list)) — should be 0
     let r = janet_bridge::eval("(= 0 (length (process/list)))");
     assert_eq!(r, "ok",
         "process/list must return an empty array when no processes exist");
@@ -106,9 +93,9 @@ fn process_list_returns_empty_array_by_default() {
 
 #[test]
 fn process_list_returns_spawned_processes() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
         r#"(try (process/spawn "echo list-test") ([e] nil))"#,
@@ -123,9 +110,9 @@ fn process_list_returns_spawned_processes() {
 
 #[test]
 fn process_stdin_noops_for_missing_id() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
         r#"(process/stdin 99999 "test input")"#,
@@ -138,9 +125,9 @@ fn process_stdin_noops_for_missing_id() {
 
 #[test]
 fn process_kill_noops_for_missing_id() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(r#"(process/kill 99999)"#);
     assert_eq!(r, "ok",
@@ -151,9 +138,9 @@ fn process_kill_noops_for_missing_id() {
 
 #[test]
 fn task_spawn_requires_function() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval("(task/spawn)");
     assert_ne!(r, "ok",
@@ -162,11 +149,10 @@ fn task_spawn_requires_function() {
 
 #[test]
 fn task_spawn_returns_integer_id() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
-    // task/spawn on a simple function, capture the return
     let r = janet_bridge::eval(
         r#"(def tid (task/spawn (fn [] "hi"))) (not= nil tid)"#,
     );
@@ -176,9 +162,9 @@ fn task_spawn_returns_integer_id() {
 
 #[test]
 fn task_spawn_adds_to_task_table() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let before = ed.io.tasks.len();
     janet_bridge::eval(
@@ -191,9 +177,9 @@ fn task_spawn_adds_to_task_table() {
 
 #[test]
 fn task_spawn_marks_task_running() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
         r#"(task/spawn (fn [] "running-test"))"#,
@@ -209,9 +195,9 @@ fn task_spawn_marks_task_running() {
 
 #[test]
 fn task_cancel_noops_for_missing_id() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(r#"(task/cancel 99999)"#);
     assert_eq!(r, "ok",
@@ -220,9 +206,9 @@ fn task_cancel_noops_for_missing_id() {
 
 #[test]
 fn task_cancel_removes_task() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
         r#"(def tid (task/spawn (fn [] "cancel-test")))"#,
@@ -231,7 +217,6 @@ fn task_cancel_removes_task() {
     let before = ed.io.tasks.len();
     assert!(before > 0, "task must exist before cancel");
 
-    // Cancel the task directly in Rust
     let ids: Vec<u64> = ed.io.tasks.keys().copied().collect();
     if let Some(&id) = ids.first() {
         janet_bridge::eval(
@@ -246,9 +231,9 @@ fn task_cancel_removes_task() {
 
 #[test]
 fn editor_shell_is_deprecated_but_still_works() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
-    janet_bridge::init(&mut ed);
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = setup_background_editor();
+    crate::janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
         r#"(editor/shell "echo deprecation-test")"#,

@@ -138,6 +138,7 @@ pub fn init_vm() {
     load_builtin("builtins/vim.janet",             include_str!("../../builtins/vim.janet"));
     load_builtin("builtins/vim_keybindings.janet", include_str!("../../builtins/vim_keybindings.janet"));
     load_builtin("builtins/init.janet",            include_str!("../../builtins/init.janet"));
+    load_builtin("builtins/magma_utils.janet",     include_str!("../../builtins/magma_utils.janet"));
     load_builtin("builtins/scroll_commands.janet", include_str!("../../builtins/scroll_commands.janet"));
     load_builtin("builtins/indent_commands.janet", include_str!("../../builtins/indent_commands.janet"));
     load_builtin("builtins/colon_mode.janet",      include_str!("../../builtins/colon_mode.janet"));

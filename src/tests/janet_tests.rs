@@ -1,26 +1,8 @@
-use std::collections::HashMap;
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
-use crate::state::id::BufferId;
-use crate::state::Editor;
 use crate::janet_bridge;
 
-fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() { win.buffer_id = Some(key); }
-    ed
-}
-
 /// Helper: type a string into command mode via dispatch_key
-fn type_command(ed: &mut Editor, s: &str) {
-    crate::command::execute_command(ed, "enter-command-mode", &HashMap::new()).unwrap();
+fn type_command(ed: &mut crate::state::Editor, s: &str) {
+    crate::command::execute_command(ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in s.chars() {
         let mut buf = [0u8; 4];
         let s = ch.encode_utf8(&mut buf);
@@ -31,14 +13,14 @@ fn type_command(ed: &mut Editor, s: &str) {
 
 #[test]
 fn colon_q_via_janet_fiber() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     janet_bridge::init(&mut ed);
 
     assert!(ed.commands.exists("command-execute"),
         "command-execute must be registered after init");
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     assert!(ed.editor_mode.is_named("command"), "should be in command mode");
 
     crate::input::dispatch_key(&mut ed, "q");
@@ -54,14 +36,14 @@ fn colon_q_via_janet_fiber() {
 
 #[test]
 fn colon_w_via_janet_fiber() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     janet_bridge::init(&mut ed);
 
     assert!(ed.commands.exists("command-execute"),
         "command-execute must be registered after init");
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     assert!(ed.editor_mode.is_named("command"), "should be in command mode");
 
     crate::input::dispatch_key(&mut ed, "w");
@@ -73,13 +55,13 @@ fn colon_w_via_janet_fiber() {
 
 #[test]
 fn colon_execute_unknown_does_not_crash() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     janet_bridge::init(&mut ed);
 
     assert!(ed.commands.exists("command-execute"));
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     crate::input::dispatch_key(&mut ed, "f");
     crate::input::dispatch_key(&mut ed, "o");
     crate::input::dispatch_key(&mut ed, "o");
@@ -91,11 +73,11 @@ fn colon_execute_unknown_does_not_crash() {
 
 #[test]
 fn colon_set_via_fiber_works() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     janet_bridge::init(&mut ed);
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in "set tab-width=8".chars() {
         crate::input::dispatch_key(&mut ed, &ch.to_string());
     }
@@ -109,8 +91,8 @@ fn colon_set_via_fiber_works() {
 
 #[test]
 fn colon_execute_direct() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     janet_bridge::init(&mut ed);
 
     let expr = r#"(colon-execute "q")"#;
@@ -120,11 +102,11 @@ fn colon_execute_direct() {
 
 #[test]
 fn mode_detail_keyword_lookup() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     janet_bridge::init(&mut ed);
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     crate::input::dispatch_key(&mut ed, "q");
 
     let expr = r#"(= (get (editor/mode-detail) :input "") "q")"#;
@@ -134,11 +116,11 @@ fn mode_detail_keyword_lookup() {
 
 #[test]
 fn colon_substitute_in_buffer() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world hello");
     janet_bridge::init(&mut ed);
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in "s/hello/goodbye/".chars() {
         let s = ch.to_string();
         crate::input::dispatch_key(&mut ed, &s);
@@ -169,11 +151,11 @@ fn colon_substitute_in_buffer() {
 
 #[test]
 fn colon_substitute_global() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello world hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world hello");
     janet_bridge::init(&mut ed);
 
-    crate::command::execute_command(&mut ed, "enter-command-mode", &HashMap::new()).unwrap();
+    crate::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in "s/hello/goodbye/g".chars() {
         let s = ch.to_string();
         crate::input::dispatch_key(&mut ed, &s);
@@ -190,8 +172,8 @@ fn colon_substitute_global() {
 
 #[test]
 fn colon_q_quit_qbang() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     janet_bridge::init(&mut ed);
     assert!(ed.running);
 
@@ -209,8 +191,8 @@ fn colon_q_quit_qbang() {
 
 #[test]
 fn colon_wq_and_x() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     janet_bridge::init(&mut ed);
     assert!(ed.running);
 
@@ -221,7 +203,7 @@ fn colon_wq_and_x() {
     type_command(&mut ed, "wq");
     assert!(!ed.running, "running should be false after :wq");
 
-    let mut ed = make_editor("hello");
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     janet_bridge::init(&mut ed);
     let focused = crate::input::focused_buffer_id(&ed);
     ed.buffers.get_mut(focused).unwrap().path = Some("/tmp/test_x".to_string());
@@ -232,8 +214,8 @@ fn colon_wq_and_x() {
 
 #[test]
 fn colon_write_alias() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     janet_bridge::init(&mut ed);
 
     type_command(&mut ed, "write /tmp/test_write_alias");
@@ -245,8 +227,8 @@ fn colon_write_alias() {
 
 #[test]
 fn colon_e_edit_r_read() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     janet_bridge::init(&mut ed);
 
     type_command(&mut ed, "e /tmp/test_edit");
@@ -259,8 +241,8 @@ fn colon_e_edit_r_read() {
 
 #[test]
 fn colon_shell_not_broken() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("hello");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     janet_bridge::init(&mut ed);
 
     type_command(&mut ed, "! echo test");
@@ -274,8 +256,8 @@ fn colon_shell_not_broken() {
 
 #[test]
 fn colon_all_verb_extractions_via_eval() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor("test");
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("test");
     janet_bridge::init(&mut ed);
 
     let tests: &[&str] = &[

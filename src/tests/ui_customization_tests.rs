@@ -1,40 +1,33 @@
 //! Pure Rust tests for Sprint 11 UI customisation primitives:
 //! modeline, tab-bar flag, overlay management, and gutter signs.
 
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
 use crate::state::{Editor, GutterSign, Overlay};
-
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    ed
-}
+use crate::tests::helpers;
 
 // ── modeline ─────────────────────────────────────────────────────────────────
 
 #[test]
 fn modeline_fn_defaults_to_none() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.modeline_fn.is_none());
 }
 
 #[test]
 fn modeline_rendered_defaults_to_empty() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.modeline_rendered.is_empty());
 }
 
 #[test]
 fn modeline_fn_can_be_set() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.modeline_fn = Some("my-modeline".to_string());
     assert_eq!(ed.modeline_fn.as_deref(), Some("my-modeline"));
 }
 
 #[test]
 fn modeline_rendered_is_used_in_status_bar() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.modeline_rendered = "custom status text".to_string();
     assert_eq!(ed.modeline_rendered, "custom status text");
 }
@@ -43,13 +36,13 @@ fn modeline_rendered_is_used_in_status_bar() {
 
 #[test]
 fn tab_bar_disabled_by_default() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(!ed.tab_bar_enabled);
 }
 
 #[test]
 fn tab_bar_can_be_enabled() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.tab_bar_enabled = true;
     assert!(ed.tab_bar_enabled);
 }
@@ -58,13 +51,13 @@ fn tab_bar_can_be_enabled() {
 
 #[test]
 fn overlays_empty_by_default() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.overlays.is_empty());
 }
 
 #[test]
 fn overlay_can_be_added() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let ov = Overlay { id: 1, x: 5, y: 10, width: 20, height: 5, buffer_id: None, z_order: 0 };
     ed.overlays.push(ov);
     assert_eq!(ed.overlays.len(), 1);
@@ -73,13 +66,13 @@ fn overlay_can_be_added() {
 
 #[test]
 fn overlay_id_counter_starts_at_1() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert_eq!(ed.next_overlay_id, 1);
 }
 
 #[test]
 fn overlay_can_be_removed_by_id() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.overlays.push(Overlay { id: 1, x: 0, y: 0, width: 10, height: 5, buffer_id: None, z_order: 0 });
     ed.overlays.push(Overlay { id: 2, x: 5, y: 5, width: 10, height: 5, buffer_id: None, z_order: 1 });
     ed.overlays.retain(|o| o.id != 1);
@@ -89,7 +82,7 @@ fn overlay_can_be_removed_by_id() {
 
 #[test]
 fn overlay_move_updates_position() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.overlays.push(Overlay { id: 1, x: 0, y: 0, width: 10, height: 5, buffer_id: None, z_order: 0 });
     if let Some(ov) = ed.overlays.iter_mut().find(|o| o.id == 1) {
         ov.x = 15;
@@ -104,13 +97,13 @@ fn overlay_move_updates_position() {
 
 #[test]
 fn gutter_signs_empty_by_default() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.gutter.signs.is_empty());
 }
 
 #[test]
 fn gutter_sign_can_be_set_for_buffer_line() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let sign = GutterSign { face: "error-face".to_string(), text: "E".to_string(), priority: 10 };
     ed.gutter.signs.entry(0).or_default().entry(5).or_default().push(sign);
     let signs = ed.gutter.signs.get(&0).unwrap().get(&5).unwrap();
@@ -120,7 +113,7 @@ fn gutter_sign_can_be_set_for_buffer_line() {
 
 #[test]
 fn gutter_signs_cleared_for_buffer() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.gutter.signs.entry(0).or_default().entry(3).or_default().push(
         GutterSign { face: "warning-face".to_string(), text: "W".to_string(), priority: 5 }
     );
@@ -130,7 +123,7 @@ fn gutter_signs_cleared_for_buffer() {
 
 #[test]
 fn gutter_sign_highest_priority_picked() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let low  = GutterSign { face: "warning-face".to_string(), text: "W".to_string(), priority: 5 };
     let high = GutterSign { face: "error-face".to_string(), text: "E".to_string(), priority: 10 };
     let line_signs = ed.gutter.signs.entry(0).or_default().entry(0).or_default();

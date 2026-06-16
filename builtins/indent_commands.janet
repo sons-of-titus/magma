@@ -1,6 +1,6 @@
 # --- Indent commands --------------------------------------------------
-# Moved from Rust builtin.rs.  Uses `trim-start` defined in init.janet
-# before this file is loaded.
+# Moved from Rust builtin.rs.  Uses `magma/trim` defined in
+# magma_utils.janet before this file is loaded.
 
 (command/define "indent-line"
   (fn [& args]
@@ -41,7 +41,7 @@
       (def line-len (if end-offset (- end-offset start) (- (buffer/len buf) start)))
       (def text (buffer/slice buf start (+ start line-len)))
       (unless (not= text "") (break))
-      (def trimmed (trim-start text))
+      (def trimmed (magma/trim text))
       (def indent-len (- (length text) (length trimmed)))
       (def indent-str (string/repeat "    " (math/floor (/ indent-len 4))))
       (buffer/delete buf start (+ start (length text)))

@@ -4,26 +4,13 @@
 
 (print "Magma initializing...")
 
-# --- Janet-defined command registry ---------------------------------
-# Table mapping command name to Janet function.
-
-
-# Trim leading whitespace from a string.  Used by `autoindent-line`
-# (defined in indent_commands.janet) and so must be in scope before the
-# other builtin files are loaded.
-(defn trim-start [s]
-  (var i 0)
-  (def n (length s))
-  (while (and (< i n) (or (= (string/slice s i (+ i 1)) " ") (= (string/slice s i (+ i 1)) "\t")))
-    (set i (+ i 1)))
-  (string/slice s i))
-
 # The following sub-modules are registered as builtins in Rust
 # (janet_bridge::init) and are loaded immediately after this file.  They
 # are listed here for visibility / load-order documentation:
 #
+#   builtins/magma_utils.janet         (defines magma/trim, magma-api-version, etc.)
 #   builtins/scroll_commands.janet
-#   builtins/indent_commands.janet     (uses trim-start defined above)
+#   builtins/indent_commands.janet     (uses magma/trim defined above)
 #   builtins/colon_mode.janet          (defines *colon-plugins*)
 #   builtins/completion_mode.janet     (needs *colon-plugins*)
 #   builtins/multi_cursor.janet

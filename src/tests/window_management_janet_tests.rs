@@ -1,29 +1,12 @@
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
-use crate::state::id::BufferId;
-use crate::state::Editor;
 use crate::janet_bridge;
-
-
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", "line1\nline2\nline3\n");
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() { win.buffer_id = Some(key); }
-    ed
-}
+use crate::tests::helpers;
 
 // ── window/list ───────────────────────────────────────────────────────────
 
 #[test]
 fn window_list_returns_one_window_initially() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let result = janet_bridge::eval("(length (window/list))");
@@ -33,8 +16,8 @@ fn window_list_returns_one_window_initially() {
 
 #[test]
 fn window_list_returns_all_windows_after_split() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     ed.windows.split_vertical(ed.windows.focused_window().unwrap());
@@ -47,8 +30,8 @@ fn window_list_returns_all_windows_after_split() {
 
 #[test]
 fn window_focus_changes_focused_window_via_janet() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let new_id = ed.windows.split_vertical(ed.windows.focused_window().unwrap()).unwrap();
@@ -64,8 +47,8 @@ fn window_focus_changes_focused_window_via_janet() {
 
 #[test]
 fn window_focus_emits_window_focused_event() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let new_id = ed.windows.split_vertical(ed.windows.focused_window().unwrap()).unwrap();
@@ -89,8 +72,8 @@ fn window_focus_emits_window_focused_event() {
 
 #[test]
 fn window_resize_sets_fractional_weight() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     ed.windows.resize(80, 24);
@@ -111,8 +94,8 @@ fn window_resize_sets_fractional_weight() {
 
 #[test]
 fn window_set_scroll_top_pins_offset() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let wid = ed.windows.focused_window().unwrap();
@@ -128,8 +111,8 @@ fn window_set_scroll_top_pins_offset() {
 
 #[test]
 fn window_scroll_top_returns_pinned_value() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let wid = ed.windows.focused_window().unwrap();
@@ -149,8 +132,8 @@ fn window_scroll_top_returns_pinned_value() {
 
 #[test]
 fn window_unpin_scroll_clears_pin() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let wid = ed.windows.focused_window().unwrap();
@@ -168,8 +151,8 @@ fn window_unpin_scroll_clears_pin() {
 
 #[test]
 fn editor_save_layout_stores_snapshot() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let result = janet_bridge::eval("(editor/save-layout \"my-layout\")");
@@ -179,8 +162,8 @@ fn editor_save_layout_stores_snapshot() {
 
 #[test]
 fn editor_restore_layout_restores_window_count() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     // Save single-window layout
@@ -198,8 +181,8 @@ fn editor_restore_layout_restores_window_count() {
 
 #[test]
 fn editor_restore_layout_no_op_when_name_unknown() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     ed.windows.split_vertical(ed.windows.focused_window().unwrap());
@@ -215,8 +198,8 @@ fn editor_restore_layout_no_op_when_name_unknown() {
 
 #[test]
 fn editor_layout_list_returns_saved_names() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     janet_bridge::eval("(editor/save-layout \"alpha\")");
@@ -236,8 +219,8 @@ fn editor_layout_list_returns_saved_names() {
 
 #[test]
 fn window_current_returns_focused_window_table() {
-    let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ed = make_editor();
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     janet_bridge::init(&mut ed);
 
     let result = janet_bridge::eval("(get (window/current) :id)");

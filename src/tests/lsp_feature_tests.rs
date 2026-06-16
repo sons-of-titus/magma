@@ -1,23 +1,7 @@
 use std::collections::HashMap;
-use crate::buffer::Buffer;
-use crate::fs::disk::DiskFileSystem;
 use crate::lsp::parse;
-use crate::state::id::BufferId;
 use crate::state::Editor;
-
-fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    crate::command::builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(key);
-    }
-    ed
-}
+use crate::tests::helpers;
 
 // ── parse.rs unit tests ──────────────────────────────────────────────────
 
@@ -180,7 +164,7 @@ fn test_has_error() {
 
 #[test]
 fn test_lsp_hover_event_dispatch() {
-    let mut ed = make_editor("hello world");
+    let mut ed = helpers::make_editor_with_buffer("hello world");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-hover", move |data| {
@@ -200,7 +184,7 @@ fn test_lsp_hover_event_dispatch() {
 
 #[test]
 fn test_lsp_definition_event_dispatch() {
-    let mut ed = make_editor("test");
+    let mut ed = helpers::make_editor_with_buffer("test");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-definition", move |data| {
@@ -218,7 +202,7 @@ fn test_lsp_definition_event_dispatch() {
 
 #[test]
 fn test_lsp_code_actions_event_dispatch() {
-    let mut ed = make_editor("test");
+    let mut ed = helpers::make_editor_with_buffer("test");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-code-actions", move |data| {
@@ -236,7 +220,7 @@ fn test_lsp_code_actions_event_dispatch() {
 
 #[test]
 fn test_lsp_completion_items_event_dispatch() {
-    let mut ed = make_editor("test");
+    let mut ed = helpers::make_editor_with_buffer("test");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-completion-items", move |data| {
@@ -254,7 +238,7 @@ fn test_lsp_completion_items_event_dispatch() {
 
 #[test]
 fn test_lsp_rename_result_event() {
-    let mut ed = make_editor("test");
+    let mut ed = helpers::make_editor_with_buffer("test");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-rename-result", move |data| {
@@ -272,7 +256,7 @@ fn test_lsp_rename_result_event() {
 
 #[test]
 fn test_lsp_progress_event() {
-    let mut ed = make_editor("test");
+    let mut ed = helpers::make_editor_with_buffer("test");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-progress", move |data| {
@@ -290,7 +274,7 @@ fn test_lsp_progress_event() {
 
 #[test]
 fn test_lsp_response_event() {
-    let mut ed = make_editor("test");
+    let mut ed = helpers::make_editor_with_buffer("test");
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let cap = captured.clone();
     ed.events.on("lsp-response", move |data| {

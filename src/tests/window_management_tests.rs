@@ -1,26 +1,12 @@
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
-use crate::state::id::{BufferId, WindowId};
+use crate::state::id::WindowId;
 use crate::state::Editor;
-
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", "hello\nworld\n");
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() { win.buffer_id = Some(key); }
-    ed
-}
+use crate::tests::helpers;
 
 // ── Window split and count ─────────────────────────────────────────────────
 
 #[test]
 fn window_split_increases_window_count() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     assert_eq!(ed.windows.len(), 1);
     let wid = ed.windows.focused_window().unwrap();
     ed.windows.split_vertical(wid);
@@ -29,7 +15,7 @@ fn window_split_increases_window_count() {
 
 #[test]
 fn window_split_horizontal_increases_window_count() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     ed.windows.split_horizontal(wid);
     assert_eq!(ed.windows.len(), 2);
@@ -39,7 +25,7 @@ fn window_split_horizontal_increases_window_count() {
 
 #[test]
 fn window_focus_changes_focused_window() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let focused = ed.windows.focused_window().unwrap();
     let new_id = ed.windows.split_vertical(focused).unwrap();
     let initial_focused = ed.windows.focused_window();
@@ -51,7 +37,7 @@ fn window_focus_changes_focused_window() {
 
 #[test]
 fn window_focus_next_cycles_through_windows() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     ed.windows.split_vertical(wid);
     let first = ed.windows.focused_window();
@@ -67,7 +53,7 @@ fn window_focus_next_cycles_through_windows() {
 
 #[test]
 fn window_resize_weighted_redistributes_widths() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.windows.resize(80, 24);
     let focused = ed.windows.focused_window().unwrap();
     let new_id = ed.windows.split_vertical(focused).unwrap();
@@ -83,7 +69,7 @@ fn window_resize_weighted_redistributes_widths() {
 
 #[test]
 fn window_resize_weighted_single_window_fills_terminal() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.windows.resize(100, 30);
     let wid = ed.windows.focused_window().unwrap();
     ed.windows.resize_weighted(wid, 0.5);
@@ -95,14 +81,14 @@ fn window_resize_weighted_single_window_fills_terminal() {
 
 #[test]
 fn window_scroll_pinned_defaults_to_false() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     assert!(!ed.windows.window(wid).unwrap().scroll_pinned);
 }
 
 #[test]
 fn window_scroll_offset_stores_explicit_top() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     let win = ed.windows.window_mut(wid).unwrap();
     win.scroll_offset = 5;
@@ -113,7 +99,7 @@ fn window_scroll_offset_stores_explicit_top() {
 
 #[test]
 fn window_unpin_clears_scroll_pinned() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     {
         let win = ed.windows.window_mut(wid).unwrap();
@@ -128,7 +114,7 @@ fn window_unpin_clears_scroll_pinned() {
 
 #[test]
 fn save_layout_records_window_state() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     ed.windows.split_vertical(wid);
     assert_eq!(ed.windows.len(), 2);
@@ -140,7 +126,7 @@ fn save_layout_records_window_state() {
 
 #[test]
 fn restore_layout_restores_window_count() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let wins = ed.windows.windows().to_vec();
     let fi = ed.windows.focused_index();
     ed.saved_layouts.insert("single".to_string(), (wins, fi));
@@ -156,7 +142,7 @@ fn restore_layout_restores_window_count() {
 
 #[test]
 fn restore_layout_restores_focused_index() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let focused = ed.windows.focused_window().unwrap();
     let new_id = ed.windows.split_vertical(focused).unwrap();
     ed.windows.focus(new_id);
@@ -177,7 +163,7 @@ fn restore_layout_restores_focused_index() {
 
 #[test]
 fn window_close_removes_window() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let focused = ed.windows.focused_window().unwrap();
     let new_id = ed.windows.split_vertical(focused).unwrap();
     assert_eq!(ed.windows.len(), 2);
@@ -187,7 +173,7 @@ fn window_close_removes_window() {
 
 #[test]
 fn window_close_does_not_remove_last_window() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let only_id = ed.windows.focused_window().unwrap();
     ed.windows.close(only_id);
     assert_eq!(ed.windows.len(), 1, "cannot close the last window");
@@ -197,7 +183,7 @@ fn window_close_does_not_remove_last_window() {
 
 #[test]
 fn resize_updates_single_window_dimensions() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.windows.resize(120, 40);
     let wid = ed.windows.focused_window().unwrap();
     let win = ed.windows.window(wid).unwrap();
@@ -207,7 +193,7 @@ fn resize_updates_single_window_dimensions() {
 
 #[test]
 fn window_weight_defaults_to_one() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     let wid = ed.windows.focused_window().unwrap();
     assert!((ed.windows.window(wid).unwrap().weight - 1.0).abs() < 1e-6);
 }

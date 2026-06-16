@@ -1,4 +1,6 @@
-//! Janet API for the plugin ecosystem: module paths, quickfix list, and mark ring.
+//! Janet API for the plugin ecosystem: module paths, quickfix list, mark ring, magma utilities.
+
+use std::time::SystemTime;
 
 use evil_janet::*;
 use super::conv;
@@ -207,6 +209,42 @@ unsafe fn parse_qf_entry(item: Janet) -> Option<QuickfixEntry> { unsafe {
     Some(QuickfixEntry { filename, line, col, message })
 }}
 
+// ── magma/time-now ─────────────────────────────────────────────────────────
+
+/// (magma/time-now) → string
+unsafe extern "C-unwind" fn c_magma_time_now(_argc: i32, _argv: *mut Janet) -> Janet {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let total_secs = now.as_secs();
+
+    let secs_of_day = total_secs % 86400;
+    let hours = secs_of_day / 3600;
+    let minutes = (secs_of_day % 3600) / 60;
+    let seconds = secs_of_day % 60;
+
+    let mut days = (total_secs / 86400) as i64;
+    let mut year = 1970i64;
+    loop {
+        let days_in_year = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 { 366 } else { 365 };
+        if days < days_in_year { break; }
+        days -= days_in_year;
+        year += 1;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1usize;
+    let mut remaining = days;
+    for (i, &md) in month_days.iter().enumerate() {
+        if remaining < md { month = i + 1; break; }
+        remaining -= md;
+    }
+    let day = remaining + 1;
+
+    let s = format!("{year}-{month:02}-{day:02} {hours:02}:{minutes:02}:{seconds:02}");
+    conv::string(&s)
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
@@ -258,6 +296,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"font/invalidate".as_ptr() as *const _,
             cfun: Some(c_editor_font_invalidate as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Mark the GPU glyph atlas dirty so it is rebuilt on the next frame".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"magma/time-now".as_ptr() as *const _,
+            cfun: Some(c_magma_time_now as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Return the current time as YYYY-MM-DD HH:MM:SS".as_ptr() as *const _,
         },
     ]
 }

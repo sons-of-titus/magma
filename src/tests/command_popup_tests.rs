@@ -1,13 +1,6 @@
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
 use crate::state::{mode::{EditorMode, Minibuffer}, Editor};
 use crate::render::{frame::render_frame, surface::Surface};
-
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    ed
-}
+use crate::tests::helpers;
 
 fn enter_command(ed: &mut Editor, input: &str) {
     ed.editor_mode = EditorMode::new("command", false);
@@ -18,14 +11,14 @@ fn enter_command(ed: &mut Editor, input: &str) {
 
 #[test]
 fn completion_visible_starts_false() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(!ed.completion.visible);
     assert!(ed.completion.items.is_empty());
 }
 
 #[test]
 fn completion_items_can_be_set() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.completion.items = vec!["write".to_string(), "wq".to_string()];
     ed.completion.idx = 0;
     ed.completion.visible = true;
@@ -35,7 +28,7 @@ fn completion_items_can_be_set() {
 
 #[test]
 fn completion_dismissed_by_backspace_command() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     enter_command(&mut ed, "w");
     ed.completion.items = vec!["w".to_string(), "write".to_string()];
     ed.completion.idx = 0;
@@ -50,7 +43,7 @@ fn completion_dismissed_by_backspace_command() {
 
 #[test]
 fn completion_dismissed_by_text_input() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     enter_command(&mut ed, "w");
     ed.completion.items = vec!["w".to_string(), "write".to_string()];
     ed.completion.visible = true;
@@ -70,7 +63,7 @@ fn completion_dismissed_by_text_input() {
 
 #[test]
 fn command_popup_renders_items_above_status_bar() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     enter_command(&mut ed, "w");
     ed.completion.items = vec!["w".to_string(), "write".to_string(), "wq".to_string()];
     ed.completion.idx = 1;
@@ -90,7 +83,7 @@ fn command_popup_renders_items_above_status_bar() {
 
 #[test]
 fn command_popup_not_rendered_outside_command_mode() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     ed.completion.items = vec!["write".to_string()];
     ed.completion.visible = true;
 

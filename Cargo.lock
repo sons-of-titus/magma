@@ -2093,6 +2093,7 @@ dependencies = [
  "libc",
  "libloading",
  "notify",
+ "paste",
  "portable-pty",
  "ratatui",
  "ropey",

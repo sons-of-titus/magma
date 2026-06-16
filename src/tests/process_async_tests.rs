@@ -1,27 +1,10 @@
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
 use crate::runtime::{ProcessState, TaskState};
-use crate::state::id::BufferId;
 use crate::state::Editor;
-
-fn make_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::new(BufferId(id), "test");
-    let e = ed.buffers.vacant_entry();
-    let k = e.key();
-    e.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() {
-        win.buffer_id = Some(k);
-    }
-    ed
-}
+use crate::tests::helpers;
 
 #[test]
 fn editor_processes_starts_empty() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.io.processes.is_empty(),
         "Editor must start with no managed processes");
     assert_eq!(ed.io.next_process_id, 1,
@@ -30,7 +13,7 @@ fn editor_processes_starts_empty() {
 
 #[test]
 fn editor_tasks_starts_empty() {
-    let ed = make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.io.tasks.is_empty(),
         "Editor must start with no background tasks");
     assert_eq!(ed.io.next_task_id, 1,
@@ -60,7 +43,7 @@ fn task_state_can_be_constructed() {
 
 #[test]
 fn insert_process_then_remove() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let id = ed.io.next_process_id;
     ed.io.next_process_id += 1;
 
@@ -80,7 +63,7 @@ fn insert_process_then_remove() {
 
 #[test]
 fn insert_task_then_remove() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let id = ed.io.next_task_id;
     ed.io.next_task_id += 1;
 
@@ -97,7 +80,7 @@ fn insert_task_then_remove() {
 
 #[test]
 fn process_state_running_flag_reflects_lifecycle() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let id = ed.io.next_process_id;
     ed.io.next_process_id += 1;
 
@@ -119,7 +102,7 @@ fn process_state_running_flag_reflects_lifecycle() {
 
 #[test]
 fn next_ids_increment() {
-    let mut ed = make_editor();
+    let mut ed = helpers::make_editor();
     let first_pid = ed.io.next_process_id;
     ed.io.next_process_id += 1;
     let second_pid = ed.io.next_process_id;

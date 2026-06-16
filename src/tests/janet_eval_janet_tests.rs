@@ -1,139 +1,102 @@
-//! Janet API tests for Sprint 12: editor/eval, fs/cwd, fs/chdir, eval-region,
-//! eval-buffer, process/spawn with cwd, and MShell primitives.
+use crate::state::mode::Selection;
+use crate::command::execute_command;
+use crate::janet_bridge;
 
-#[cfg(feature = "janet")]
-mod tests {
-    use crate::state::Editor;
-    use crate::state::id::BufferId;
-    use crate::state::mode::Selection;
-    use crate::buffer::Buffer;
-    use crate::command::{builtin, execute_command};
-    use crate::fs::disk::DiskFileSystem;
-    use crate::janet_bridge;
+// ── editor/eval C function ────────────────────────────────────────────────
 
-    fn make_editor() -> Editor {
-        let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-        builtin::register_builtin_commands(&mut ed);
-        let id = ed.allocate_buffer_id();
-        let buf = Buffer::new(BufferId(id), "test");
-        let entry = ed.buffers.vacant_entry();
-        let key = entry.key();
-        entry.insert(buf);
-        if let Some(win) = ed.windows.focused_window_mut() { win.buffer_id = Some(key); }
-        ed
-    }
-
-    // ── editor/eval C function ────────────────────────────────────────────────
-
-    #[test]
-    fn editor_eval_arithmetic_via_c_function() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
-        // Call editor/eval from Janet and verify result is returned as string
+#[test]
+fn editor_eval_arithmetic_via_c_function() {
+    janet_test!(ed, {
         let r = janet_bridge::eval(r#"(editor/eval "(+ 1 2)")"#);
         assert_eq!(r, "ok");
-    }
+    });
+}
 
-    #[test]
-    fn eval_result_arithmetic() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn eval_result_arithmetic() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result("(+ 10 5)").unwrap();
         assert_eq!(r, "15");
-    }
+    });
+}
 
-    #[test]
-    fn eval_result_string() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn eval_result_string() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(r#"(string "foo" "bar")"#).unwrap();
         assert_eq!(r, "\"foobar\"");
-    }
+    });
+}
 
-    #[test]
-    fn eval_result_nil() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn eval_result_nil() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result("nil").unwrap();
         assert_eq!(r, "nil");
-    }
+    });
+}
 
-    #[test]
-    fn eval_result_syntax_error_returns_err() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn eval_result_syntax_error_returns_err() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result("(+ 1");
         assert!(r.is_err());
-    }
+    });
+}
 
-    #[test]
-    fn editor_eval_c_function_returns_value_string() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
-        // editor/eval returns the description of the result
+#[test]
+fn editor_eval_c_function_returns_value_string() {
+    janet_test!(ed, {
         janet_bridge::eval(
             r#"(plugin-state/set "ev" (editor/eval "(* 3 4)"))"#);
         let val = ed.plugin_state.get("ev").cloned().unwrap_or_default();
         assert_eq!(val, "12");
-    }
+    });
+}
 
-    // ── fs/cwd ────────────────────────────────────────────────────────────────
+// ── fs/cwd ────────────────────────────────────────────────────────────────
 
-    #[test]
-    fn fs_cwd_returns_non_empty_string() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn fs_cwd_returns_non_empty_string() {
+    janet_test!(ed, {
         janet_bridge::eval(
             r#"(plugin-state/set "cwd" (fs/cwd))"#);
         let cwd = ed.plugin_state.get("cwd").cloned().unwrap_or_default();
         assert!(!cwd.is_empty());
-    }
+    });
+}
 
-    #[test]
-    fn fs_cwd_matches_actual_cwd() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn fs_cwd_matches_actual_cwd() {
+    janet_test!(ed, {
         let expected = std::env::current_dir().unwrap().to_string_lossy().to_string();
         janet_bridge::eval(
             r#"(plugin-state/set "cwd" (fs/cwd))"#);
         let cwd = ed.plugin_state.get("cwd").cloned().unwrap_or_default();
         assert_eq!(cwd, expected);
-    }
+    });
+}
 
-    // ── fs/chdir ──────────────────────────────────────────────────────────────
+// ── fs/chdir ──────────────────────────────────────────────────────────────
 
-    #[test]
-    fn fs_chdir_changes_working_directory() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn fs_chdir_changes_working_directory() {
+    janet_test!(ed, {
         let original = std::env::current_dir().unwrap();
         janet_bridge::eval(r#"(fs/chdir "/tmp")"#);
         janet_bridge::eval(
             r#"(plugin-state/set "new-cwd" (fs/cwd))"#);
         let new_cwd = ed.plugin_state.get("new-cwd").cloned().unwrap_or_default();
-        // /tmp on macOS is /private/tmp via symlink
         assert!(new_cwd.contains("tmp"));
         std::env::set_current_dir(&original).ok();
-    }
+    });
+}
 
-    // ── eval-region ──────────────────────────────────────────────────────────
+// ── eval-region ──────────────────────────────────────────────────────────
 
-    #[test]
-    fn eval_region_evaluates_selection_and_emits_event() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
-
-        // Rust command handler to capture eval-result without nested fiber
+#[test]
+fn eval_region_evaluates_selection_and_emits_event() {
+    janet_test!(ed, {
         ed.commands.register_fn(
             "store-eval-result",
             "store eval result",
@@ -163,16 +126,14 @@ mod tests {
 
         let value = ed.plugin_state.get("_ev_val").cloned().unwrap_or_default();
         assert_eq!(value, "15");
-    }
+    });
+}
 
-    // ── eval-buffer ──────────────────────────────────────────────────────────
+// ── eval-buffer ──────────────────────────────────────────────────────────
 
-    #[test]
-    fn eval_buffer_evaluates_entire_buffer() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
-
+#[test]
+fn eval_buffer_evaluates_entire_buffer() {
+    janet_test!(ed, {
         janet_bridge::eval(r#"
             (event/on "eval-result"
               (fn [d]
@@ -189,15 +150,14 @@ mod tests {
 
         let value = ed.plugin_state.get("buf-val").cloned().unwrap_or_default();
         assert_eq!(value, "42");
-    }
+    });
+}
 
-    // ── janet-output/write ────────────────────────────────────────────────────
+// ── janet-output/write ────────────────────────────────────────────────────
 
-    #[test]
-    fn janet_output_write_appends_to_buffer() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn janet_output_write_appends_to_buffer() {
+    janet_test!(ed, {
         janet_bridge::eval(r#"(janet-output/write "sprint12-test\n")"#);
         let buf_key = ed.buffers.iter()
             .find(|(_, b)| b.name == "*janet-output*")
@@ -206,105 +166,96 @@ mod tests {
         let buf = ed.buffers.get(buf_key.unwrap()).unwrap();
         let content = buf.slice(0, buf.len());
         assert!(content.contains("sprint12-test"));
-    }
+    });
+}
 
-    // ── :janet colon verb ─────────────────────────────────────────────────────
+// ── :janet colon verb ─────────────────────────────────────────────────────
 
-    #[test]
-    fn janet_colon_verb_is_in_plugins_table() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn janet_colon_verb_is_in_plugins_table() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(
             r#"(truthy? (get *colon-plugins* "janet"))"#).unwrap();
         assert_eq!(r, "true");
-    }
+    });
+}
 
-    #[test]
-    fn janet_repl_colon_verb_is_registered() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn janet_repl_colon_verb_is_registered() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(
             r#"(truthy? (get *colon-plugins* "janet-repl"))"#).unwrap();
         assert_eq!(r, "true");
-    }
+    });
+}
 
-    // ── MShell state ─────────────────────────────────────────────────────────
+// ── MShell state ─────────────────────────────────────────────────────────
 
-    #[test]
-    fn mshell_cwd_initialized_to_process_cwd() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_cwd_initialized_to_process_cwd() {
+    janet_test!(ed, {
         janet_bridge::eval(
             r#"(plugin-state/set "ms-cwd" *mshell-cwd*)"#);
         let cwd = ed.plugin_state.get("ms-cwd").cloned().unwrap_or_default();
         assert!(!cwd.is_empty());
-    }
+    });
+}
 
-    #[test]
-    fn mshell_builtins_table_exists() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_builtins_table_exists() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(
             r#"(truthy? *mshell-builtins*)"#).unwrap();
         assert_eq!(r, "true");
-    }
+    });
+}
 
-    #[test]
-    fn mshell_parse_line_janet_expr() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_parse_line_janet_expr() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(
             r#"(get (mshell/parse-line "(+ 1 2)") 0)"#).unwrap();
         assert!(r.contains("janet"), "expected :janet keyword, got: {r}");
-    }
+    });
+}
 
-    #[test]
-    fn mshell_parse_line_builtin_command() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_parse_line_builtin_command() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(
             r#"(get (mshell/parse-line "cd /tmp") 0)"#).unwrap();
         assert!(r.contains("builtin"), "expected :builtin keyword, got: {r}");
-    }
+    });
+}
 
-    #[test]
-    fn mshell_parse_line_shell_command() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_parse_line_shell_command() {
+    janet_test!(ed, {
         let r = janet_bridge::eval_result(
             r#"(get (mshell/parse-line "ls -la") 0)"#).unwrap();
         assert!(r.contains("shell"), "expected :shell keyword, got: {r}");
-    }
+    });
+}
 
-    #[test]
-    fn mshell_echo_builtin_works() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_echo_builtin_works() {
+    janet_test!(ed, {
         janet_bridge::eval(r#"
             (plugin-state/set "echo-out"
               ((get *mshell-builtins* "echo") ["hello" "world"]))"#);
         let out = ed.plugin_state.get("echo-out").cloned().unwrap_or_default();
         assert_eq!(out, "hello world");
-    }
+    });
+}
 
-    #[test]
-    fn mshell_colon_verbs_registered() {
-        let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ed = make_editor();
-        janet_bridge::init(&mut ed);
+#[test]
+fn mshell_colon_verbs_registered() {
+    janet_test!(ed, {
         let r1 = janet_bridge::eval_result(
             r#"(truthy? (get *colon-plugins* "mshell"))"#).unwrap();
         let r2 = janet_bridge::eval_result(
             r#"(truthy? (get *colon-plugins* "ms"))"#).unwrap();
         assert_eq!(r1, "true");
         assert_eq!(r2, "true");
-    }
+    });
 }

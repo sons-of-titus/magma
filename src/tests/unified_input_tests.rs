@@ -4,22 +4,7 @@
 use crate::input::keys::{shift_char, apply_modifiers};
 use crate::input::event::{InputEvent, MouseEvent, MouseEventKind, MouseButton};
 use crate::state::{Editor, LayoutSnapshot};
-use crate::state::id::BufferId;
-use crate::buffer::Buffer;
-use crate::command::builtin;
-use crate::fs::disk::DiskFileSystem;
-
-fn make_editor(content: &str) -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
-    builtin::register_builtin_commands(&mut ed);
-    let id = ed.allocate_buffer_id();
-    let buf = Buffer::from_string(BufferId(id), "test", content);
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
-    if let Some(win) = ed.windows.focused_window_mut() { win.buffer_id = Some(key); }
-    ed
-}
+use crate::tests::helpers;
 
 // ── shift_char ────────────────────────────────────────────────────────────
 
@@ -139,7 +124,7 @@ fn layout_snapshot_default() {
 
 #[test]
 fn editor_has_last_layout_field() {
-    let ed = make_editor("hello");
+    let ed = helpers::make_editor_with_buffer("hello");
     let _ = &ed.last_layout;
 }
 
@@ -147,13 +132,13 @@ fn editor_has_last_layout_field() {
 
 #[test]
 fn editor_on_input_fn_starts_none() {
-    let ed = make_editor("");
+    let ed = helpers::make_editor();
     assert!(ed.on_input_fn.is_none());
 }
 
 #[test]
 fn editor_on_input_fn_can_be_set() {
-    let mut ed = make_editor("");
+    let mut ed = helpers::make_editor();
     ed.on_input_fn = Some("my-interceptor".to_string());
     assert_eq!(ed.on_input_fn.as_deref(), Some("my-interceptor"));
 }

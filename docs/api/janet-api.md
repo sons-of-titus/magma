@@ -1136,3 +1136,11 @@ Pin the scroll offset for window `id` to line `top`.
 ### `(window/unpin-scroll id)` → nil
 
 Release the pinned scroll offset; cursor-following scroll resumes.
+
+---
+
+## magma/ — General Utility Functions
+
+### `(magma/time-now)` → string
+
+Return the current local time as `"YYYY-MM-DD HH:MM:SS"`.

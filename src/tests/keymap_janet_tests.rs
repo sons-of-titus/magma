@@ -7,12 +7,13 @@ use crate::janet_bridge;
 /// Create an editor with a clean keymap state after Janet init.
 /// We reset keymaps after `init()` so tests are not polluted by the
 /// default bindings and active layers that `init.janet` installs.
-/// Returns a `Box<Editor>` so the address stays stable after `init` sets
-/// `EDITOR_PTR` — if we returned by value the struct would move and the
-/// pointer would dangle.
 fn make_clean_editor() -> Box<Editor> {
     let mut ed = Box::new(Editor::new(Box::new(DiskFileSystem::new())));
     builtin::register_builtin_commands(&mut ed);
+    // init() must be called while ed is already heap-allocated so that
+    // EDITOR_PTR (set inside init) stays valid after this function returns
+    // the Box to the caller.  A stack-allocated Editor would make the
+    // pointer dangle after the return-value move.
     janet_bridge::init(&mut ed);
     ed.keymaps = KeymapManager::new();
     ed

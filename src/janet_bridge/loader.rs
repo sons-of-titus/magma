@@ -1,9 +1,16 @@
 //! Janet VM initialisation: API registration, builtin script loading, user init.
 
+use std::cell::Cell;
 use std::ffi::CString;
 use crate::state::Editor;
 use evil_janet::*;
 use super::EDITOR_PTR;
+
+thread_local! {
+    /// Whether janet_init() has been called on this OS thread.
+    /// Each test thread starts with false; janet_init() is called exactly once per thread.
+    static JANET_THREAD_INITIALIZED: Cell<bool> = const { Cell::new(false) };
+}
 
 pub(super) fn eval_string(name: &str, source: &str) -> Result<(), String> {
     unsafe {
@@ -43,10 +50,15 @@ pub(super) fn load_builtin(name: &str, source: &str) {
 
 /// Initialise the Janet VM with EDITOR_PTR set.
 ///
-/// Provided for backward compatibility during migration.  New code should
-/// call `init_vm()` after setting EDITOR_PTR directly.
+/// Clears any stale Janet event handlers from previous sessions before
+/// re-registering C APIs and reloading builtins.  New code should call
+/// `init_vm()` after setting EDITOR_PTR directly.
 pub fn init(editor: &mut Editor) {
     EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+    // Discard Janet values stored by previous test sessions — they belong to
+    // GC heaps on other threads and would be dangling pointers now.
+    super::event_api::reset_handlers();
+    super::process_api::reset_task_functions();
     init_vm();
     #[cfg(feature = "janet")]
     {
@@ -54,15 +66,16 @@ pub fn init(editor: &mut Editor) {
     }
 }
 
-/// Initialise the Janet VM, register all editor APIs, load builtin scripts.
 ///
 /// Does NOT set EDITOR_PTR — the caller must ensure it is set before calling
 /// this function (e.g. via `JanetRuntime::init` or directly).
 pub fn init_vm() {
-    static VM_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if !VM_INITIALIZED.swap(true, std::sync::atomic::Ordering::AcqRel) {
-        unsafe { janet_init(); }
-    }
+    JANET_THREAD_INITIALIZED.with(|initialized| {
+        if !initialized.get() {
+            unsafe { janet_init(); }
+            initialized.set(true);
+        }
+    });
 
     let env = unsafe { janet_core_env(std::ptr::null_mut()) };
 

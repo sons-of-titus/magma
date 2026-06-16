@@ -198,6 +198,19 @@ unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
     })
 }
 
+/// Drop all stored Janet handler values.
+///
+/// Called at the start of each `janet_bridge::init()` so that Janet GC values
+/// from a previous session (potentially on a different OS thread with a
+/// different `janet_vm` heap) are never dereferenced.  The `janet_gcroot`
+/// calls that paired with those values were on the old thread's VM, so we
+/// cannot and must not call `janet_gcunroot` here — we just discard the Vec.
+pub fn reset_handlers() {
+    if let Ok(mut handlers) = JANET_HANDLERS.lock() {
+        handlers.clear();
+    }
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {

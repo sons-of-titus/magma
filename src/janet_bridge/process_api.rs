@@ -289,6 +289,14 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
     })
 }
 
+/// Drop all stored Janet task callback values — called at the start of each
+/// `janet_bridge::init()` to avoid dangling GC pointers across sessions.
+pub fn reset_task_functions() {
+    if let Ok(mut tasks) = TASK_FUNCTIONS.lock() {
+        tasks.clear();
+    }
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {

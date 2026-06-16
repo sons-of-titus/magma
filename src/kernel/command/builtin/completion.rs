@@ -79,26 +79,39 @@ pub(super) fn register(editor: &mut Editor) {
 
 fn completion_trigger(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
-    if let Some(view) = editor.views.get(&buf_id) {
+
+    // Collect prefix and buffer text without holding a view reference.
+    let data = if let Some(view) = editor.views.get(&buf_id) {
         let cursor = view.cursor_offset();
         let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
-
-        // Find the current word prefix
         let before = &text[..cursor];
-        let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
-        let prefix = &text[word_start..cursor];
-
+        let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let prefix = text[word_start..cursor].to_string();
         if prefix.is_empty() { return Ok(()); }
-        editor.completion.prefix = prefix.to_string();
+        Some((prefix, text))
+    } else {
+        None
+    };
 
-        // Collect words from buffer as completion candidates
-        let mut words: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if let Some((prefix, text)) = data {
+        editor.completion.prefix = prefix.clone();
+
+        // Collect words from buffer text.
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for w in text.split(|c: char| !c.is_alphanumeric() && c != '_') {
-            if !w.is_empty() && w.starts_with(prefix) && w != prefix {
-                words.insert(w.to_string());
+            if !w.is_empty() && w.starts_with(prefix.as_str()) && w != prefix {
+                seen.insert(w.to_string());
             }
         }
-        let mut items: Vec<String> = words.into_iter().collect();
+
+        // Augment with symbols from the semantic engine's symbol index.
+        for sym in editor.semantic.completions_for_prefix(&prefix) {
+            if sym != prefix { seen.insert(sym); }
+        }
+
+        let mut items: Vec<String> = seen.into_iter().collect();
         items.sort();
         items.truncate(50);
 

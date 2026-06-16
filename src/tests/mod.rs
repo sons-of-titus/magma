@@ -31,7 +31,8 @@ test_pairs!(
     fold, display, window_management, command_completion, command_popup,
     ecosystem, render, font_rendering, ui_customization,
     buffer_decoration, gutter_api, unified_input, modality,
-    namespace_refactor, net_api, magma_utils, view_tree
+    namespace_refactor, net_api, magma_utils, view_tree,
+    semantic_engine
 );
 
 #[cfg(feature = "janet")] mod janet_tests;

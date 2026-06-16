@@ -226,26 +226,42 @@ programmatic view composition (EditorView, SidebarView, TerminalView, etc.).
 
 ---
 
-### Phase 3 — Semantic Engine
+### Phase 3 — Semantic Engine ✅ COMPLETE
 
 **Goal:** Elevate `src/lsp/` into a general-purpose Semantic Engine that parses
 code, extracts symbols, builds a project graph, and powers intelligence
 features — with or without an LSP server.
 
-| Step | What |
-|------|------|
-| 3.1 | Define `LanguageProvider` trait in `kernel/semantic/provider.rs`: `parse()`, `symbols()`, `diagnostics()`, `completion()`, `format()`, `debug_adapter()` |
-| 3.2 | Implement `LspLanguageProvider` — wraps the existing LSP client in the trait |
-| 3.3 | Implement `TreesitterLanguageProvider` — wraps tree-sitter for offline parsing |
-| 3.4 | Build `SymbolIndex` — stores symbol definitions, references, documentation |
-| 3.5 | Build `ProjectGraph` — tracks relationships between files, symbols, modules |
-| 3.6 | Wire `diagnostics()` into the gutter and decoration systems |
-| 3.7 | Wire `completion()` into the existing completion popup |
-| 3.8 | Add Janet API: `(semantic/symbols buffer-id)`, `(semantic/references name)`, `(semantic/documentation symbol)` |
+| Step | What | Status |
+|------|------|--------|
+| 3.1 | Define `LanguageProvider` trait in `kernel/semantic/provider.rs`: `parse()`, `symbols()`, `diagnostics()`, `completion()`, `format()`, `debug_adapter()` | ✅ |
+| 3.2 | Implement `LspLanguageProvider` — wraps the existing LSP client in the trait | ✅ |
+| 3.3 | Implement `TreesitterLanguageProvider` — wraps tree-sitter for offline parsing | ✅ |
+| 3.4 | Build `SymbolIndex` — stores symbol definitions, references, documentation | ✅ |
+| 3.5 | Build `ProjectGraph` — tracks relationships between files, symbols, modules | ✅ |
+| 3.6 | Wire `diagnostics()` into the gutter and decoration systems | ✅ |
+| 3.7 | Wire `completion()` into the existing completion popup | ✅ |
+| 3.8 | Add Janet API: `(semantic/symbols buffer-id)`, `(semantic/references name)`, `(semantic/documentation symbol)` | ✅ |
 
 **Design constraint:** The Semantic Engine must degrade gracefully — no LSP
 server = tree-sitter only; no tree-sitter = empty results.  Never block the
 UI thread.
+
+**Completion notes (2026-06-16):**
+- `kernel/semantic/provider.rs` — `LanguageProvider` trait + `Symbol`, `SymbolKind`, `Diagnostic`, `DiagnosticSeverity`, `CompletionItem`, `ParseResult`
+- `kernel/semantic/lsp_provider.rs` — `LspLanguageProvider`: all methods return immediately; async results arrive via event bus
+- `kernel/semantic/ts_registry.rs` — tree-sitter grammar registry moved here from `scripting/treesitter_api.rs`; shared by both the scripting bridge and `TreesitterLanguageProvider`
+- `kernel/semantic/treesitter_provider.rs` — `TreesitterLanguageProvider`: `parse()` returns real errors; `symbols()` runs capture queries for function/struct/enum/class/module/constant nodes
+- `kernel/semantic/symbol_index.rs` — `SymbolIndex`: per-file symbol storage, prefix completion, reference tracking, documentation lookup
+- `kernel/semantic/project_graph.rs` — `ProjectGraph`: file nodes + directed dependency edges + transitive closure
+- `kernel/semantic/engine.rs` — `SemanticEngine`: provider registry + symbol index + project graph + typed diagnostic cache; `update_diagnostics_from_strings()` parses LSP strings into typed `Diagnostic`
+- `editor.semantic: SemanticEngine` added to the `Editor` struct
+- `kernel/runtime.rs`: `LspDiagnostics` event handler now also calls `ed.semantic.update_diagnostics_from_strings()` to populate the typed cache
+- `kernel/command/builtin/completion.rs`: `completion_trigger` augmented with `editor.semantic.completions_for_prefix()` — symbol-index completions appear alongside word completions
+- `kernel/scripting/semantic_api.rs` — 7 Janet functions: `semantic/symbols`, `semantic/definitions`, `semantic/references`, `semantic/documentation`, `semantic/index-buffer`, `semantic/register-provider`, `semantic/diagnostics`
+- `kernel/scripting/treesitter_api.rs` refactored to use `ts_registry` — no local grammar map
+- 26 new tests in `tests/semantic_engine_tests.rs` + `tests/semantic_engine_janet_tests.rs`
+- `cargo test --features janet -- --test-threads=1`: 938 passed, 0 failed
 
 ---
 

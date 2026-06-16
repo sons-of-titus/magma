@@ -197,7 +197,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::LspDiagnostics { path, diagnostics } => {
             let count = diagnostics.len();
-            // Store on the buffer if we can find it
+            // Store on the buffer if we can find it.
             for (_, arc) in ed.buffers.iter_mut() {
                 let mut buf = arc.lock().unwrap();
                 if buf.path.as_deref() == Some(&path) {
@@ -205,6 +205,8 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     break;
                 }
             }
+            // Also store typed diagnostics in the semantic engine.
+            ed.semantic.update_diagnostics_from_strings(&path, &diagnostics);
             ed.events.emit_typed(keys::events::LSP_DIAGNOSTICS, LspDiagnosticsPayload {
                 path,
                 count: count.to_string(),

@@ -195,6 +195,8 @@ mod lsp_api;
 #[cfg(feature = "janet")]
 mod lsp_edit_api;
 #[cfg(feature = "janet")]
+mod semantic_api;
+#[cfg(feature = "janet")]
 mod vc_api;
 #[cfg(feature = "janet")]
 mod process_api;

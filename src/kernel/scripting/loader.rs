@@ -102,6 +102,7 @@ pub fn init_vm() {
         regs.extend(super::workspace_api::register());
         regs.extend(super::face_api::register());
         regs.extend(super::treesitter_api::register());
+        regs.extend(super::semantic_api::register());
         regs.extend(super::display_api::register());
         regs.extend(super::layout_api::register());
         regs.extend(super::mode_api::register());

@@ -24,6 +24,7 @@ use crate::kernel::keymap::KeymapManager;
 use crate::kernel::runtime::BackgroundHandle;
 use crate::kernel::scripting::ScriptRuntime;
 use crate::kernel::render::view_tree::ViewTree;
+use crate::kernel::semantic::SemanticEngine;
 
 pub use mode::{EditorMode, Minibuffer, Selection, SearchDirection};
 pub use font::{ContextFont, FontConfig};
@@ -103,6 +104,7 @@ pub struct Editor {
     pub project_manager: ProjectManager,
     pub io: IoState,
     pub gutter: GutterState,
+    pub semantic: SemanticEngine,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
 
@@ -193,6 +195,7 @@ impl Editor {
             project_manager: ProjectManager::default(),
             io: IoState::default(),
             gutter: GutterState::default(),
+            semantic: SemanticEngine::new(),
         }
     }
 

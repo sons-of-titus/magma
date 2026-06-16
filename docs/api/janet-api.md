@@ -1144,3 +1144,35 @@ Release the pinned scroll offset; cursor-following scroll resumes.
 ### `(magma/time-now)` → string
 
 Return the current local time as `"YYYY-MM-DD HH:MM:SS"`.
+
+---
+
+## semantic/ — Semantic Engine
+
+### `(semantic/symbols buf-id)` → `[[name kind file line col] …]`
+
+Return live symbols extracted from buffer `buf-id` using its registered language provider.  Returns an empty array if no language is set or no provider is registered.  `kind` is one of `"function"`, `"method"`, `"struct"`, `"enum"`, `"class"`, `"module"`, `"constant"`, `"variable"`, `"interface"`, `"unknown"`.
+
+### `(semantic/definitions name)` → `[[name kind file line col] …]`
+
+Look up all known definitions for the symbol `name` in the persistent symbol index.  Returns an empty array if not found.
+
+### `(semantic/references name)` → `[[name file line col] …]`
+
+Return all known reference sites for the symbol `name` from the index.
+
+### `(semantic/documentation symbol)` → string or nil
+
+Return documentation for `symbol` from the first indexed definition that has documentation, or nil.
+
+### `(semantic/index-buffer buf-id)` → nil
+
+Re-index the buffer's symbols into the symbol index and project graph.  Uses the buffer's tree-sitter language (set via `ts/set-language`) and its registered provider.
+
+### `(semantic/register-provider lang type)` → nil
+
+Register a language provider for `lang`.  `type` is `"lsp"` (default) or `"treesitter"` / `"ts"`.
+
+### `(semantic/diagnostics buf-id)` → `[[line col severity message] …]`
+
+Return typed diagnostics for the buffer's file path.  `severity` is one of `"error"`, `"warning"`, `"info"`, `"hint"`.  Diagnostics are populated from LSP `textDocument/publishDiagnostics` notifications.

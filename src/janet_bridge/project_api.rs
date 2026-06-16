@@ -1,11 +1,12 @@
 //! Janet API — project core: root, name, files, index-files, per-project options.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 fn walk_dir(dir: &std::path::Path) -> std::io::Result<Vec<String>> {
     let mut files = Vec::new();
@@ -49,8 +50,7 @@ unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> J
                 ed.project_manager.project = crate::state::ProjectState::default();
                 ed.project_manager.current_project = None;
                 if was_active {
-                    let data = HashMap::new();
-                    ed.events.emit("project-closed", data);
+                    ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
                 }
                 return conv::nil();
             }
@@ -66,10 +66,7 @@ unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> J
         ed.project_manager.project.file_index_dirty = true;
         ed.project_manager.current_project = Some(name.clone());
         ed.project_manager.projects.insert(name.clone(), ed.project_manager.project.clone());
-        let mut data = HashMap::new();
-        data.insert("root".to_string(), path_str);
-        data.insert("name".to_string(), name);
-        ed.events.emit("project-opened", data);
+        ed.events.emit_typed(keys::events::PROJECT_OPENED, ProjectOpenedPayload { root: path_str, name });
         conv::nil()
     })
 }

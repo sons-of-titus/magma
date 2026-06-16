@@ -3,6 +3,7 @@
 use crate::command::args::{ArgSpec, ArgType, ArgValue};
 use crate::state::Editor;
 use crate::state::mode::EditorMode;
+use crate::event::payload::*;
 
 use super::helpers::*;
 
@@ -19,9 +20,9 @@ pub(super) fn register(editor: &mut Editor) {
                     && let Some(pos) = keys.iter().position(|k| *k == current) {
                         let next = (pos + 1) % keys.len();
                         win.buffer_id = Some(keys[next]);
-                        let mut data = std::collections::HashMap::new();
-                        data.insert("buffer-id".to_string(), keys[next].to_string());
-                        editor.events.emit("buffer-changed", data);
+                        editor.events.emit_typed(crate::event::keys::events::BUFFER_CHANGED, BufferChangedPayload {
+                            buffer_id: keys[next].to_string(),
+                        });
                     }
             Ok(())
         },
@@ -37,9 +38,9 @@ pub(super) fn register(editor: &mut Editor) {
                     && let Some(pos) = keys.iter().position(|k| *k == current) {
                         let prev = if pos == 0 { keys.len() - 1 } else { pos - 1 };
                         win.buffer_id = Some(keys[prev]);
-                        let mut data = std::collections::HashMap::new();
-                        data.insert("buffer-id".to_string(), keys[prev].to_string());
-                        editor.events.emit("buffer-changed", data);
+                        editor.events.emit_typed(crate::event::keys::events::BUFFER_CHANGED, BufferChangedPayload {
+                            buffer_id: keys[prev].to_string(),
+                        });
                     }
             Ok(())
         },
@@ -156,9 +157,9 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(win) = editor.windows.focused_window_mut() {
                     win.buffer_id = Some(next);
                 }
-                let mut data = std::collections::HashMap::new();
-                data.insert("buffer-id".to_string(), next.to_string());
-                editor.events.emit("buffer-focused", data);
+                editor.events.emit_typed(crate::event::keys::events::BUFFER_FOCUSED, BufferFocusedPayload {
+                    buffer_id: next.to_string(),
+                });
                 emit_cursor_moved(editor);
             }
             Ok(())
@@ -175,9 +176,9 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(win) = editor.windows.focused_window_mut() {
                     win.buffer_id = Some(prev);
                 }
-                let mut data = std::collections::HashMap::new();
-                data.insert("buffer-id".to_string(), prev.to_string());
-                editor.events.emit("buffer-focused", data);
+                editor.events.emit_typed(crate::event::keys::events::BUFFER_FOCUSED, BufferFocusedPayload {
+                    buffer_id: prev.to_string(),
+                });
                 emit_cursor_moved(editor);
             }
             Ok(())

@@ -189,7 +189,11 @@ Return the number of decorations in the named layer.
 
 ### `(command/define name fn &opt args-spec)` → nil
 
-Define a new command. `name` is a string, `fn` is the handler. Optional `args-spec` is a table with `:doc` and `:args`.
+Define a new command. `name` is a string, `fn` is the handler. Refuses to overwrite an existing Rust-registered command. Optional `args-spec` is a table with `:doc` and `:args`.
+
+### `(command/redefine name fn &opt args-spec)` → nil
+
+Define or overwrite a command. Like `command/define` but silently replaces any existing entry, including Rust-registered commands.
 
 ### `(command/run name & args)` → nil
 

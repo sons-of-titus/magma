@@ -84,8 +84,18 @@ pub fn execute_command(
 ) -> CommandResult {
     // Clone the Arc so the borrow on editor.commands ends before we call the handler.
     let (handler, resolved_args) = {
-        let entry = editor.commands.get_entry(name)
-            .ok_or_else(|| format!("Command not found: {}", name))?;
+        let entry = editor.commands.get_entry(name);
+
+        // Fall through to the script runtime when no Rust command matches.
+        let entry = match entry {
+            Some(e) => e,
+            None => {
+                if let Some(ref mut rt) = editor.runtime {
+                    return rt.call_command(name, args);
+                }
+                return Err(format!("Command not found: {name}"));
+            }
+        };
 
         let mut resolved = args.clone();
         for arg in &entry.args {

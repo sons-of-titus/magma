@@ -28,7 +28,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(editor/set-mode "insert" {:accepts-text true})"#);
         assert_eq!(ed.editor_mode.name, "insert");
         assert!(ed.editor_mode.accepts_text);
@@ -40,10 +40,10 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         // Register a handler that sets plugin state on mode-changed
-        janet_bridge::eval(&mut ed, r#"
+        janet_bridge::eval(r#"
             (event/on "mode-changed"
               (fn [d] (plugin-state/set "last-mode-to" (get d :to ""))))"#);
-        janet_bridge::eval(&mut ed, r#"(editor/set-mode "visual" {:accepts-text false})"#);
+        janet_bridge::eval(r#"(editor/set-mode "visual" {:accepts-text false})"#);
         ed.events.drain_and_dispatch();
         assert_eq!(ed.plugin_state.get("last-mode-to").map(|s| s.as_str()), Some("visual"));
     }
@@ -53,7 +53,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(editor/set-mode "replace" {:accepts-text true})"#);
+        janet_bridge::eval(r#"(editor/set-mode "replace" {:accepts-text true})"#);
         assert_eq!(ed.editor_mode.name, "replace");
     }
 
@@ -62,9 +62,9 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(editor/set-mode "insert" {:accepts-text true})"#);
+        janet_bridge::eval(r#"(editor/set-mode "insert" {:accepts-text true})"#);
         assert!(ed.editor_mode.accepts_text);
-        janet_bridge::eval(&mut ed, r#"(editor/set-mode "normal" {:accepts-text false})"#);
+        janet_bridge::eval(r#"(editor/set-mode "normal" {:accepts-text false})"#);
         assert!(!ed.editor_mode.accepts_text);
     }
 
@@ -75,10 +75,10 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(minibuffer/open ":" "command")"#);
+        janet_bridge::eval(r#"(minibuffer/open ":" "command")"#);
         assert!(ed.editor_mode.minibuffer.is_some());
         assert_eq!(ed.editor_mode.minibuffer.as_ref().unwrap().prompt, ":");
-        janet_bridge::eval(&mut ed, "(minibuffer/close)");
+        janet_bridge::eval("(minibuffer/close)");
         assert!(ed.editor_mode.minibuffer.is_none());
     }
 
@@ -87,8 +87,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(minibuffer/open "/")"#);
-        janet_bridge::eval(&mut ed, r#"(minibuffer/set-input "hello")"#);
+        janet_bridge::eval(r#"(minibuffer/open "/")"#);
+        janet_bridge::eval(r#"(minibuffer/set-input "hello")"#);
         assert_eq!(ed.editor_mode.minibuffer.as_ref().unwrap().input, "hello");
     }
 
@@ -97,7 +97,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(minibuffer/open "find: " "fuzzy-file")"#);
+        janet_bridge::eval(r#"(minibuffer/open "find: " "fuzzy-file")"#);
         assert_eq!(
             ed.plugin_state.get("minibuffer.kind").map(|s| s.as_str()),
             Some("fuzzy-file"),
@@ -111,10 +111,10 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, "(selection/set 10 \"char\")");
+        janet_bridge::eval("(selection/set 10 \"char\")");
         assert!(ed.selection.is_some());
         assert_eq!(ed.selection.as_ref().unwrap().anchor, 10);
-        janet_bridge::eval(&mut ed, "(selection/clear)");
+        janet_bridge::eval("(selection/clear)");
         assert!(ed.selection.is_none());
     }
 
@@ -123,7 +123,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, "(selection/set 5 \"line\")");
+        janet_bridge::eval("(selection/set 5 \"line\")");
         let sel = ed.selection.as_ref().unwrap();
         assert_eq!(sel.kind, "line");
         assert!(sel.is_line());
@@ -136,9 +136,9 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(plugin-state/set "vim.count" "5")"#);
+        janet_bridge::eval(r#"(plugin-state/set "vim.count" "5")"#);
         assert_eq!(ed.plugin_state.get("vim.count").map(|s| s.as_str()), Some("5"));
-        janet_bridge::eval(&mut ed, r#"(plugin-state/del "vim.count")"#);
+        janet_bridge::eval(r#"(plugin-state/del "vim.count")"#);
         assert!(ed.plugin_state.get("vim.count").is_none());
     }
 
@@ -147,8 +147,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(plugin-state/set "vim.op" "d")"#);
-        janet_bridge::eval(&mut ed, r#"(plugin-state/set "helix.op" "c")"#);
+        janet_bridge::eval(r#"(plugin-state/set "vim.op" "d")"#);
+        janet_bridge::eval(r#"(plugin-state/set "helix.op" "c")"#);
         assert_eq!(ed.plugin_state.get("vim.op").map(|s| s.as_str()), Some("d"));
         assert_eq!(ed.plugin_state.get("helix.op").map(|s| s.as_str()), Some("c"));
     }

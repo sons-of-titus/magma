@@ -3,6 +3,8 @@
 use crate::command::args::{ArgSpec, ArgType, ArgValue};
 use crate::state::Editor;
 use crate::state::id::BufferId;
+use crate::event::payload::*;
+use crate::event::keys;
 
 use super::helpers::*;
 
@@ -23,19 +25,19 @@ pub(super) fn register(editor: &mut Editor) {
                 .or_else(|| buf.path.clone())
                 .ok_or_else(|| "No path specified".to_string())?;
             let content = buf.slice(0, buf.len());
-            let mut before_data = std::collections::HashMap::new();
-            before_data.insert("path".to_string(), path.clone());
-            before_data.insert("buffer-id".to_string(), buf_id.to_string());
-            editor.events.emit("buffer-before-save", before_data);
+            editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
+                path: path.clone(),
+                buffer_id: buf_id.to_string(),
+            });
             editor.fs.write(&path, &content)
                 .map_err(|e| format!("Save failed: {}", e))?;
             if let Some(buf) = editor.buffers.get_mut(buf_id) {
                 buf.mark_saved();
             }
-            let mut after_data = std::collections::HashMap::new();
-            after_data.insert("path".to_string(), path);
-            after_data.insert("buffer-id".to_string(), buf_id.to_string());
-            editor.events.emit("buffer-after-save", after_data);
+            editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
+                path,
+                buffer_id: buf_id.to_string(),
+            });
             Ok(())
         },
     );
@@ -60,11 +62,11 @@ pub(super) fn register(editor: &mut Editor) {
             buffer.path = Some(path.to_string());
             let entry = editor.buffers.vacant_entry();
             entry.insert(buffer);
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer-id".to_string(), buf_id.to_string());
-            data.insert("name".to_string(), name);
-            data.insert("path".to_string(), path.to_string());
-            editor.events.emit("buffer-created", data);
+            editor.events.emit_typed(keys::events::BUFFER_CREATED, BufferCreatedPayload {
+                buffer_id: buf_id.to_string(),
+                name,
+                path: path.to_string(),
+            });
             Ok(())
         },
     );
@@ -135,11 +137,11 @@ pub(super) fn register(editor: &mut Editor) {
             }
 
             // Emit event so Janet can set up keybindings
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer-id".to_string(), buf_id.to_string());
-            data.insert("count".to_string(), files.len().to_string());
-            data.insert("pattern".to_string(), pattern);
-            editor.events.emit("finder-results", data);
+            editor.events.emit_typed(keys::events::FINDER_RESULTS, FinderResultsPayload {
+                buffer_id: buf_id.to_string(),
+                count: files.len().to_string(),
+                pattern,
+            });
 
             Ok(())
         },
@@ -160,9 +162,9 @@ pub(super) fn register(editor: &mut Editor) {
             if !editor.buffers.contains(key) {
                 return Ok(());
             }
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer-id".to_string(), key.to_string());
-            editor.events.emit("buffer-closed", data);
+            editor.events.emit_typed(keys::events::BUFFER_CLOSED, BufferClosedPayload {
+                buffer_id: key.to_string(),
+            });
             editor.buffers.remove(key);
             // If the focused window was showing the closed buffer, switch to another
             let focused_shows_closed = editor.windows.focused_window()
@@ -174,9 +176,9 @@ pub(super) fn register(editor: &mut Editor) {
                     win.buffer_id = other;
                 }
                 if let Some(new_id) = other {
-                    let mut focused_data = std::collections::HashMap::new();
-                    focused_data.insert("buffer-id".to_string(), new_id.to_string());
-                    editor.events.emit("buffer-focused", focused_data);
+                    editor.events.emit_typed(keys::events::BUFFER_FOCUSED, BufferFocusedPayload {
+                        buffer_id: new_id.to_string(),
+                    });
                 }
             }
             Ok(())
@@ -211,9 +213,9 @@ pub(super) fn register(editor: &mut Editor) {
                 }
             }
             if let Some(new_id) = switched_to {
-                let mut data = std::collections::HashMap::new();
-                data.insert("buffer-id".to_string(), new_id.to_string());
-                editor.events.emit("buffer-focused", data);
+                editor.events.emit_typed(keys::events::BUFFER_FOCUSED, BufferFocusedPayload {
+                    buffer_id: new_id.to_string(),
+                });
             }
             emit_cursor_moved(editor);
             Ok(())

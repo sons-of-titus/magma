@@ -27,7 +27,7 @@ fn editor_set_font_updates_family_and_size() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, r#"(font/set "JetBrains Mono" 16)"#);
+    let result = janet_bridge::eval(r#"(font/set "JetBrains Mono" 16)"#);
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.family, "JetBrains Mono");
     assert!((ed.font_config.size - 16.0).abs() < f32::EPSILON);
@@ -39,7 +39,7 @@ fn editor_set_font_emits_font_changed() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, r#"(font/set "Hack" 14)"#);
+    janet_bridge::eval(r#"(font/set "Hack" 14)"#);
     assert!(ed.font_changed);
 }
 
@@ -51,7 +51,7 @@ fn editor_set_font_size_updates_size() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(font/set-size 20)");
+    let result = janet_bridge::eval("(font/set-size 20)");
     assert_eq!(result, "ok");
     assert!((ed.font_config.size - 20.0).abs() < f32::EPSILON);
 }
@@ -62,7 +62,7 @@ fn editor_font_size_returns_current() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, "(font/set-size 18)");
+    janet_bridge::eval("(font/set-size 18)");
     assert!((ed.font_config.size - 18.0).abs() < f32::EPSILON);
 }
 
@@ -72,7 +72,7 @@ fn editor_set_font_size_clamps_below_4() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, "(font/set-size 1)");
+    janet_bridge::eval("(font/set-size 1)");
     assert!(ed.font_config.size >= 4.0);
 }
 
@@ -84,7 +84,7 @@ fn editor_set_ligatures_true() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(font/set-ligatures true)");
+    let result = janet_bridge::eval("(font/set-ligatures true)");
     assert_eq!(result, "ok");
     assert!(ed.font_config.ligatures);
 }
@@ -95,8 +95,8 @@ fn editor_set_ligatures_false_after_true() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, "(font/set-ligatures true)");
-    let result = janet_bridge::eval(&mut ed, "(font/set-ligatures false)");
+    janet_bridge::eval("(font/set-ligatures true)");
+    let result = janet_bridge::eval("(font/set-ligatures false)");
     assert_eq!(result, "ok");
     assert!(!ed.font_config.ligatures);
 }
@@ -109,7 +109,7 @@ fn editor_set_glyph_width_single_char_string() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, r#"(font/set-glyph-width "A" 2)"#);
+    let result = janet_bridge::eval(r#"(font/set-glyph-width "A" 2)"#);
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.glyph_widths.get(&'A'), Some(&2));
 }
@@ -121,7 +121,7 @@ fn editor_set_glyph_width_codepoint_integer() {
     janet_bridge::init(&mut ed);
 
     // 0xE000 = 57344
-    let result = janet_bridge::eval(&mut ed, "(font/set-glyph-width 57344 2)");
+    let result = janet_bridge::eval("(font/set-glyph-width 57344 2)");
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.glyph_widths.get(&'\u{E000}'), Some(&2));
 }
@@ -135,7 +135,7 @@ fn editor_set_glyph_width_range_populates_chars() {
     janet_bridge::init(&mut ed);
 
     // 65='A', 67='C'
-    let result = janet_bridge::eval(&mut ed, "(font/set-glyph-width-range 65 67 2)");
+    let result = janet_bridge::eval("(font/set-glyph-width-range 65 67 2)");
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.glyph_widths.get(&'A'), Some(&2));
     assert_eq!(ed.font_config.glyph_widths.get(&'B'), Some(&2));
@@ -151,7 +151,7 @@ fn editor_set_nerd_font_true_populates_pua_range() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(font/set-nerd-font true)");
+    let result = janet_bridge::eval("(font/set-nerd-font true)");
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.glyph_widths.get(&'\u{E000}'), Some(&2));
     assert_eq!(ed.font_config.glyph_widths.get(&'\u{F8FF}'), Some(&2));
@@ -164,8 +164,8 @@ fn editor_set_nerd_font_false_clears_overrides() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, "(font/set-nerd-font true)");
-    let result = janet_bridge::eval(&mut ed, "(font/set-nerd-font false)");
+    janet_bridge::eval("(font/set-nerd-font true)");
+    let result = janet_bridge::eval("(font/set-nerd-font false)");
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.glyph_widths.get(&'\u{E000}'), None);
 }
@@ -178,7 +178,7 @@ fn editor_set_font_fallback_updates_list() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, r#"(font/set-fallback ["NerdFont" "Emoji"])"#);
+    let result = janet_bridge::eval(r#"(font/set-fallback ["NerdFont" "Emoji"])"#);
     assert_eq!(result, "ok");
     assert_eq!(ed.font_config.fallback, vec!["NerdFont", "Emoji"]);
 }
@@ -192,7 +192,6 @@ fn editor_set_font_context_stores_override() {
     janet_bridge::init(&mut ed);
 
     let result = janet_bridge::eval(
-        &mut ed,
         r#"(font/set-context "prose" {:family "Georgia" :size 18})"#,
     );
     assert_eq!(result, "ok");

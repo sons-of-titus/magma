@@ -35,7 +35,7 @@ fn process_spawn_requires_command() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, "(process/spawn)");
+    let r = janet_bridge::eval("(process/spawn)");
     // Must error (signal "process/spawn requires a command string")
     assert_ne!(r, "ok", "process/spawn without args must signal an error");
 }
@@ -47,7 +47,6 @@ fn process_spawn_errors_on_bad_command() {
     janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(try (process/spawn "nonexistent_command_xyz_12345") ([e] "caught"))"#,
     );
     assert_eq!(r, "ok",
@@ -62,7 +61,6 @@ fn process_spawn_adds_to_process_table() {
 
     let before = ed.io.processes.len();
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(try (do (process/spawn "echo test") "ok") ([e] "caught"))"#,
     );
     assert_eq!(r, "ok", "process/spawn echo must succeed");
@@ -79,7 +77,6 @@ fn process_spawn_records_cmd_and_running() {
     janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
-        &mut ed,
         r#"(try (process/spawn "echo hello-world") ([e] nil))"#,
     );
 
@@ -102,7 +99,7 @@ fn process_list_returns_empty_array_by_default() {
     janet_bridge::init(&mut ed);
 
     // Evaluate (length (process/list)) — should be 0
-    let r = janet_bridge::eval(&mut ed, "(= 0 (length (process/list)))");
+    let r = janet_bridge::eval("(= 0 (length (process/list)))");
     assert_eq!(r, "ok",
         "process/list must return an empty array when no processes exist");
 }
@@ -114,11 +111,10 @@ fn process_list_returns_spawned_processes() {
     janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
-        &mut ed,
         r#"(try (process/spawn "echo list-test") ([e] nil))"#,
     );
 
-    let r = janet_bridge::eval(&mut ed, "(> (length (process/list)) 0)");
+    let r = janet_bridge::eval("(> (length (process/list)) 0)");
     assert_eq!(r, "ok",
         "process/list must return non-empty after a spawn");
 }
@@ -132,7 +128,6 @@ fn process_stdin_noops_for_missing_id() {
     janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(process/stdin 99999 "test input")"#,
     );
     assert_eq!(r, "ok",
@@ -147,7 +142,7 @@ fn process_kill_noops_for_missing_id() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, r#"(process/kill 99999)"#);
+    let r = janet_bridge::eval(r#"(process/kill 99999)"#);
     assert_eq!(r, "ok",
         "process/kill with nonexistent id must not error");
 }
@@ -160,7 +155,7 @@ fn task_spawn_requires_function() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, "(task/spawn)");
+    let r = janet_bridge::eval("(task/spawn)");
     assert_ne!(r, "ok",
         "task/spawn without args must signal an error");
 }
@@ -173,7 +168,6 @@ fn task_spawn_returns_integer_id() {
 
     // task/spawn on a simple function, capture the return
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(def tid (task/spawn (fn [] "hi"))) (not= nil tid)"#,
     );
     assert_eq!(r, "ok",
@@ -188,7 +182,6 @@ fn task_spawn_adds_to_task_table() {
 
     let before = ed.io.tasks.len();
     janet_bridge::eval(
-        &mut ed,
         r#"(task/spawn (fn [] "task-table-test"))"#,
     );
 
@@ -203,7 +196,6 @@ fn task_spawn_marks_task_running() {
     janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
-        &mut ed,
         r#"(task/spawn (fn [] "running-test"))"#,
     );
 
@@ -221,7 +213,7 @@ fn task_cancel_noops_for_missing_id() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, r#"(task/cancel 99999)"#);
+    let r = janet_bridge::eval(r#"(task/cancel 99999)"#);
     assert_eq!(r, "ok",
         "task/cancel with nonexistent id must not error");
 }
@@ -233,7 +225,6 @@ fn task_cancel_removes_task() {
     janet_bridge::init(&mut ed);
 
     janet_bridge::eval(
-        &mut ed,
         r#"(def tid (task/spawn (fn [] "cancel-test")))"#,
     );
 
@@ -244,7 +235,6 @@ fn task_cancel_removes_task() {
     let ids: Vec<u64> = ed.io.tasks.keys().copied().collect();
     if let Some(&id) = ids.first() {
         janet_bridge::eval(
-            &mut ed,
             &format!("(task/cancel {})", id),
         );
         assert!(!ed.io.tasks.contains_key(&id),
@@ -261,7 +251,6 @@ fn editor_shell_is_deprecated_but_still_works() {
     janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(editor/shell "echo deprecation-test")"#,
     );
     assert_eq!(r, "ok",

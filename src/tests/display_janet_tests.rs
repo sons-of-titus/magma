@@ -25,7 +25,7 @@ fn editor_set_cursor_shape_block() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         "(editor/set-cursor-shape \"block\")");
     assert_eq!(result, "ok");
     assert_eq!(ed.cursor_shape, "block");
@@ -37,7 +37,7 @@ fn editor_set_cursor_shape_beam() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         "(editor/set-cursor-shape \"beam\")");
     assert_eq!(result, "ok");
     assert_eq!(ed.cursor_shape, "beam");
@@ -49,7 +49,7 @@ fn editor_set_cursor_shape_underline() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         "(editor/set-cursor-shape \"underline\")");
     assert_eq!(result, "ok");
     assert_eq!(ed.cursor_shape, "underline");
@@ -61,7 +61,7 @@ fn editor_cursor_shape_returns_current() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         "(do (editor/set-cursor-shape \"beam\") (editor/cursor-shape))");
     assert_eq!(result, "ok");
     assert_eq!(ed.cursor_shape, "beam");

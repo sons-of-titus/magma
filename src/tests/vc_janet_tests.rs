@@ -28,7 +28,6 @@ fn vc_register_backend_adds_backend() {
     let count_before = ed.vc.backends.len();
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend {:name "fossil" :detect-marker ".fslckout"})"#,
     );
     assert_eq!(r, "ok", "vc/register-backend must not error");
@@ -54,7 +53,6 @@ fn vc_register_backend_missing_name_signals_error() {
     let count_before = ed.vc.backends.len();
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend {:detect-marker ".fslckout"})"#,
     );
     assert_ne!(r, "ok", "expected error but got ok: {r}");
@@ -75,7 +73,6 @@ fn vc_register_backend_missing_detect_signals_error() {
     let count_before = ed.vc.backends.len();
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend {:name "fossil"})"#,
     );
     assert_ne!(r, "ok", "expected error but got ok: {r}");
@@ -96,7 +93,6 @@ fn vc_register_backend_wrong_arg_type_signals_error() {
     let count_before = ed.vc.backends.len();
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend "not-a-table")"#,
     );
     assert_ne!(r, "ok", "expected error but got ok: {r}");
@@ -114,7 +110,7 @@ fn vc_register_backend_no_args_signals_error() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, r#"(vc/register-backend)"#);
+    let r = janet_bridge::eval(r#"(vc/register-backend)"#);
     assert_ne!(r, "ok", "expected error but got ok: {r}");
 }
 
@@ -125,13 +121,11 @@ fn vc_register_backend_multiple_backends() {
     janet_bridge::init(&mut ed);
 
     let r1 = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend {:name "fossil" :detect-marker ".fslckout"})"#,
     );
     assert_eq!(r1, "ok");
 
     let r2 = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend {:name "bzr" :detect-marker ".bzr"})"#,
     );
     assert_eq!(r2, "ok");
@@ -154,7 +148,6 @@ fn vc_register_backend_with_optional_fields() {
     janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(vc/register-backend {:name "custom"
                                    :detect-marker ".custom"
                                    :status-cmd "echo M file.txt"

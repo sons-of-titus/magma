@@ -50,8 +50,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/define-column ":test-col" 3 "my-face")"#);
-        janet_bridge::eval(&mut ed, r#"(gutter/define-column ":test-col" 5 "other-face")"#);
+        janet_bridge::eval(r#"(gutter/define-column ":test-col" 3 "my-face")"#);
+        janet_bridge::eval(r#"(gutter/define-column ":test-col" 5 "other-face")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":test-col").unwrap();
         assert_eq!(col.width, 5);
         assert_eq!(col.face, "other-face");
@@ -67,7 +67,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/hide-column ":line-numbers")"#);
+        janet_bridge::eval(r#"(gutter/hide-column ":line-numbers")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":line-numbers").unwrap();
         assert!(!col.visible);
     }
@@ -77,8 +77,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/hide-column ":line-numbers")"#);
-        janet_bridge::eval(&mut ed, r#"(gutter/show-column ":line-numbers")"#);
+        janet_bridge::eval(r#"(gutter/hide-column ":line-numbers")"#);
+        janet_bridge::eval(r#"(gutter/show-column ":line-numbers")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":line-numbers").unwrap();
         assert!(col.visible);
     }
@@ -90,7 +90,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/set-column-face ":diagnostics" "diag-face")"#);
+        janet_bridge::eval(r#"(gutter/set-column-face ":diagnostics" "diag-face")"#);
         let col = ed.gutter.columns.iter().find(|c| c.name == ":diagnostics").unwrap();
         assert_eq!(col.face, "diag-face");
     }
@@ -102,7 +102,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let result = janet_bridge::eval(&mut ed, "(length (gutter/column-list))");
+        let result = janet_bridge::eval("(length (gutter/column-list))");
         // Should return "ok" (the eval doesn't capture the return value as a string, but at least not error)
         assert_eq!(result, "ok");
         assert!(!ed.gutter.columns.is_empty());
@@ -116,7 +116,7 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let key = make_buf(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 5 "E" "error-face" 10)"#));
         let col_key = (":diagnostics".to_string(), key);
         assert!(ed.gutter.column_signs.contains_key(&col_key));
@@ -132,9 +132,9 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let key = make_buf(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "W" "warning-face" 5)"#));
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "E" "error-face" 5)"#));
         let col_key = (":diagnostics".to_string(), key);
         let signs = &ed.gutter.column_signs[&col_key][&0];
@@ -154,9 +154,9 @@ mod tests {
             counter2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(())
         });
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(event/on "gutter-sign-changed" (fn [_] (editor/run-command "count-sign-changed")))"#);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 2 "▎" "gutter-vcs-changed" 50)"#));
         ed.events.drain_and_dispatch();
         assert!(counter.load(std::sync::atomic::Ordering::SeqCst) > 0);
@@ -170,11 +170,11 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let key = make_buf(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 0 "▎" "f" 1)"#));
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 1 "▎" "f" 1)"#));
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-clear ":vcs" {key})"#));
         assert!(!ed.gutter.column_signs.contains_key(&(":vcs".to_string(), key)));
     }
@@ -187,11 +187,11 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let key = make_buf(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 0 "▎" "f" 1)"#));
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":vcs" {key} 1 "▎" "f" 1)"#));
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-clear-line ":vcs" {key} 0)"#));
         let col_key = (":vcs".to_string(), key);
         let line_map = &ed.gutter.column_signs[&col_key];
@@ -207,9 +207,9 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let key = make_buf(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             &format!(r#"(gutter/sign-set ":diagnostics" {key} 3 "E" "error-face" 10)"#));
-        let result = janet_bridge::eval(&mut ed,
+        let result = janet_bridge::eval(
             &format!(r#"(gutter/signs ":diagnostics" {key})"#));
         assert_eq!(result, "ok");
     }
@@ -221,7 +221,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/set-line-number-format "gutter-lnum-relative")"#);
+        janet_bridge::eval(r#"(gutter/set-line-number-format "gutter-lnum-relative")"#);
         assert_eq!(ed.gutter.line_number_fn.as_deref(), Some("gutter-lnum-relative"));
     }
 
@@ -230,8 +230,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/set-line-number-format "gutter-lnum-absolute")"#);
-        janet_bridge::eval(&mut ed, r#"(gutter/set-line-number-format nil)"#);
+        janet_bridge::eval(r#"(gutter/set-line-number-format "gutter-lnum-absolute")"#);
+        janet_bridge::eval(r#"(gutter/set-line-number-format nil)"#);
         assert!(ed.gutter.line_number_fn.is_none());
     }
 
@@ -242,7 +242,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(gutter/set-fold-icons "v" ">" "my-fold-face")"#);
+        janet_bridge::eval(r#"(gutter/set-fold-icons "v" ">" "my-fold-face")"#);
         assert_eq!(ed.gutter.fold_icons.open, "v");
         assert_eq!(ed.gutter.fold_icons.closed, ">");
         assert_eq!(ed.gutter.fold_icons.face, "my-fold-face");

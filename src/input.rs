@@ -94,11 +94,12 @@ pub fn dispatch_key(ed: &mut crate::state::Editor, key: &str) {
     }
 
     // ── Raw input interceptor (editor/on-input from Janet) ──────────
-    #[cfg(feature = "janet")]
     if let Some(ref fn_name) = ed.on_input_fn.clone() {
         ed.input_consumed = false;
         let expr = format!("({} {:?})", fn_name, key);
-        crate::janet_bridge::eval(ed, &expr);
+        if let Some(ref mut rt) = ed.runtime {
+            rt.eval(&expr);
+        }
         if ed.input_consumed {
             ed.events.drain_and_dispatch();
             return;

@@ -3,11 +3,13 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 pub(super) fn emit_buffer_changed(ed: &mut crate::state::Editor, key: usize) {
-    let mut data = std::collections::HashMap::new();
-    data.insert("buffer-id".to_string(), key.to_string());
-    ed.events.emit("buffer-changed", data);
+    ed.events.emit_typed(keys::events::BUFFER_CHANGED, BufferChangedPayload {
+        buffer_id: key.to_string(),
+    });
 }
 
 unsafe extern "C-unwind" fn c_buffer_current(_argc: i32, _argv: *mut Janet) -> Janet {

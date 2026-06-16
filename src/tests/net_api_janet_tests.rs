@@ -41,7 +41,6 @@ mod tests {
         // We only check that the function returns a positive integer; we do not
         // wait for the response since the test environment has no network.
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(net/http-request "GET" "http://example.com")"#,
         )
         .unwrap();
@@ -55,7 +54,7 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let before = ed.io.next_net_id;
-        janet_bridge::eval(&mut ed, r#"(net/http-request "GET" "http://example.com")"#);
+        janet_bridge::eval(r#"(net/http-request "GET" "http://example.com")"#);
         assert_eq!(ed.io.next_net_id, before + 1, "next_net_id must increment after http-request");
     }
 
@@ -66,7 +65,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(net/http-get "http://example.com")"#)
+        let r = janet_bridge::eval_result(r#"(net/http-get "http://example.com")"#)
             .unwrap();
         let n: i64 = r.parse().expect("http-get must return a number");
         assert!(n > 0, "request-id must be positive");
@@ -80,7 +79,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(net/http-post "http://example.com" "test-body")"#,
         )
         .unwrap();
@@ -96,7 +94,7 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         // Use a high, unusual port to avoid conflicts during testing
-        let r = janet_bridge::eval_result(&mut ed, r#"(net/tcp-listen 17891)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(net/tcp-listen 17891)"#).unwrap();
         let server_id: u64 = r.parse().expect("tcp-listen must return a number");
         assert!(server_id > 0, "server-id must be positive");
         assert!(
@@ -104,7 +102,7 @@ mod tests {
             "net_servers must contain the new server entry"
         );
         // Clean up: stop the server
-        janet_bridge::eval(&mut ed, &format!("(net/tcp-stop {server_id})"));
+        janet_bridge::eval(&format!("(net/tcp-stop {server_id})"));
         assert!(
             !ed.io.net_servers.contains_key(&server_id),
             "net_servers must not contain the server after tcp-stop"
@@ -116,10 +114,10 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(net/tcp-listen 17892)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(net/tcp-listen 17892)"#).unwrap();
         let sid: u64 = r.parse().expect("server-id must be an integer");
         assert!(sid >= 1);
-        janet_bridge::eval(&mut ed, &format!("(net/tcp-stop {sid})"));
+        janet_bridge::eval(&format!("(net/tcp-stop {sid})"));
     }
 
     // ── net/tcp-broadcast on non-existent server ──────────────────────────────
@@ -131,7 +129,6 @@ mod tests {
         janet_bridge::init(&mut ed);
         // 9999999 is very unlikely to be a valid server id
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(net/tcp-broadcast 9999999 "hello")"#,
         )
         .unwrap();
@@ -147,7 +144,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(net/tcp-send-to 9999999 1 "hello")"#,
         )
         .unwrap();
@@ -162,7 +158,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(truthy? (get *colon-plugins* "collab-start"))"#,
         )
         .unwrap();
@@ -175,7 +170,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(truthy? (get *colon-plugins* "collab-connect"))"#,
         )
         .unwrap();
@@ -188,7 +182,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(truthy? (get *colon-plugins* "collab-stop"))"#,
         )
         .unwrap();
@@ -203,7 +196,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(truthy? (get *colon-plugins* "ssh"))"#,
         )
         .unwrap();
@@ -216,7 +208,6 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(truthy? (get *colon-plugins* "vfs-open"))"#,
         )
         .unwrap();
@@ -232,7 +223,7 @@ mod tests {
         janet_bridge::init(&mut ed);
         // This will attempt to spawn an SSH process which will fail silently —
         // we just verify the Janet function does not panic/crash the VM.
-        let r = janet_bridge::eval(&mut ed, r#"(vfs/open "ssh://user@host/tmp/file.txt")"#);
+        let r = janet_bridge::eval(r#"(vfs/open "ssh://user@host/tmp/file.txt")"#);
         // Janet eval must complete (return "ok" — even if the ssh process fails)
         assert_eq!(r, "ok", "vfs/open with ssh URI must not crash the Janet VM");
     }
@@ -244,7 +235,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(truthy? ssh-fs/open)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(truthy? ssh-fs/open)"#).unwrap();
         assert_eq!(r, "true", "ssh-fs/open must be defined in the Janet environment");
     }
 
@@ -255,7 +246,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(truthy? ssh-fs/read)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(truthy? ssh-fs/read)"#).unwrap();
         assert_eq!(r, "true", "ssh-fs/read must be defined in the Janet environment");
     }
 
@@ -266,7 +257,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(truthy? net/on-response)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(truthy? net/on-response)"#).unwrap();
         assert_eq!(r, "true", "net/on-response must be defined");
     }
 
@@ -277,7 +268,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(table? *net-pending*)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(table? *net-pending*)"#).unwrap();
         assert_eq!(r, "true", "*net-pending* must be a table");
     }
 
@@ -288,7 +279,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(table? *collab-peer-cursors*)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(table? *collab-peer-cursors*)"#).unwrap();
         assert_eq!(r, "true", "*collab-peer-cursors* must be a table");
     }
 
@@ -299,7 +290,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let r = janet_bridge::eval_result(&mut ed, r#"(nil? *collab-server-id*)"#).unwrap();
+        let r = janet_bridge::eval_result(r#"(nil? *collab-server-id*)"#).unwrap();
         assert_eq!(r, "true", "*collab-server-id* must start as nil");
     }
 
@@ -312,7 +303,7 @@ mod tests {
         janet_bridge::init(&mut ed);
         let before = ed.io.next_net_id;
         // tcp-connect to a non-existent host (will fail async, but the ID is allocated sync)
-        janet_bridge::eval(&mut ed, r#"(net/tcp-connect "127.0.0.1" 19999)"#);
+        janet_bridge::eval(r#"(net/tcp-connect "127.0.0.1" 19999)"#);
         assert_eq!(
             ed.io.next_net_id,
             before + 1,
@@ -328,13 +319,12 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         let r = janet_bridge::eval_result(
-            &mut ed,
             r#"(net/tcp-connect "127.0.0.1" 19998)"#,
         )
         .unwrap();
         let n: i64 = r.parse().expect("tcp-connect must return a number");
         assert!(n > 0, "conn-id must be positive");
         // Clean up
-        janet_bridge::eval(&mut ed, &format!("(net/tcp-close {n})"));
+        janet_bridge::eval(&format!("(net/tcp-close {n})"));
     }
 }

@@ -4,6 +4,8 @@ use evil_janet::*;
 use super::conv;
 use super::with_editor;
 use crate::state::mode::Selection;
+use crate::event::payload::*;
+use crate::event::keys;
 
 unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -46,10 +48,7 @@ unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Ja
             }
             _ => {}
         }
-        let mut payload = std::collections::HashMap::new();
-        payload.insert("from".to_string(), old_name);
-        payload.insert("to".to_string(), name);
-        ed.events.emit("mode-changed", payload);
+        ed.events.emit_typed(keys::events::MODE_CHANGED, ModeChangedPayload { from: old_name, to: name });
         conv::nil()
     })
 }

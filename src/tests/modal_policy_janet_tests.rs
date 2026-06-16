@@ -57,7 +57,7 @@ mod tests {
         let mut ed = make_editor("");
         janet_bridge::init(&mut ed);
         assert!(!ed.vim_operators.is_empty());
-        janet_bridge::eval(&mut ed, "(input/clear-operators)");
+        janet_bridge::eval("(input/clear-operators)");
         assert!(ed.vim_operators.is_empty());
     }
 
@@ -66,7 +66,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor("");
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(input/register-operator "X" "delete-line")"#);
+        janet_bridge::eval(r#"(input/register-operator "X" "delete-line")"#);
         assert_eq!(ed.vim_operators.get("X").map(|s| s.as_str()), Some("delete-line"));
     }
 
@@ -88,7 +88,7 @@ mod tests {
         let mut ed = make_editor("");
         janet_bridge::init(&mut ed);
         assert!(ed.vim_prefixes.contains("g"));
-        janet_bridge::eval(&mut ed, r#"(input/unregister-prefix "g")"#);
+        janet_bridge::eval(r#"(input/unregister-prefix "g")"#);
         assert!(!ed.vim_prefixes.contains("g"));
     }
 
@@ -128,7 +128,7 @@ mod tests {
         let mut ed = make_editor("");
         janet_bridge::init(&mut ed);
         assert!(!ed.vim_motions.is_empty());
-        janet_bridge::eval(&mut ed, "(input/clear-motions)");
+        janet_bridge::eval("(input/clear-motions)");
         assert!(ed.vim_motions.is_empty());
     }
 

@@ -4,6 +4,8 @@ use evil_janet::*;
 use super::conv;
 use super::with_editor;
 use crate::state::mode::Selection;
+use crate::event::payload::*;
+use crate::event::keys;
 
 unsafe extern "C-unwind" fn c_selection_get(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -24,7 +26,7 @@ unsafe extern "C-unwind" fn c_selection_set(argc: i32, argv: *mut Janet) -> Jane
         let Some(anchor) = conv::get_int(argc, argv, 0) else { return conv::nil(); };
         let kind = conv::get_str(argc, argv, 1).unwrap_or_else(|| "char".to_string());
         ed.selection = Some(Selection { anchor: anchor as usize, kind });
-        ed.events.emit("selection-changed", std::collections::HashMap::new());
+        ed.events.emit_typed(keys::events::SELECTION_CHANGED, EmptyPayload);
         conv::nil()
     })
 }
@@ -32,7 +34,7 @@ unsafe extern "C-unwind" fn c_selection_set(argc: i32, argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_selection_clear(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         ed.selection = None;
-        ed.events.emit("selection-cleared", std::collections::HashMap::new());
+        ed.events.emit_typed(keys::events::SELECTION_CLEARED, EmptyPayload);
         conv::nil()
     })
 }

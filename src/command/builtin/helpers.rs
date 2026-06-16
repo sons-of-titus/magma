@@ -1,6 +1,8 @@
 //! Shared helpers used by builtin command submodules.
 
 use crate::state::Editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
     editor.windows.focused_window()
@@ -10,12 +12,11 @@ pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
 
 pub(super) fn emit_cursor_moved(editor: &mut Editor) {
     let buf_id = get_current_buffer_id(editor);
-    let mut data = std::collections::HashMap::new();
-    data.insert("buffer-id".to_string(), buf_id.to_string());
-    if let Some(buf) = editor.buffers.get(buf_id) {
-        data.insert("cursor".to_string(), buf.cursor().to_string());
-    }
-    editor.events.emit("cursor-moved", data);
+    let cursor = editor.buffers.get(buf_id).map(|b| b.cursor().to_string());
+    editor.events.emit_typed(keys::events::CURSOR_MOVED, CursorMovedPayload {
+        buffer_id: buf_id.to_string(),
+        cursor: cursor.unwrap_or_default(),
+    });
 }
 
 pub(super) fn current_line(buf: &crate::buffer::Buffer) -> usize {

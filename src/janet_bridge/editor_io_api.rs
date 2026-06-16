@@ -114,11 +114,11 @@ unsafe extern "C-unwind" fn c_editor_fs_exists(argc: i32, argv: *mut Janet) -> J
 }
 
 unsafe extern "C-unwind" fn c_editor_load_file(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    with_editor(|ed| {
+    with_editor(|_ed| {
         let Some(path) = conv::get_str(argc, argv, 0) else {
             conv::signal_err("editor/load-file requires a path")
         };
-        match crate::janet_bridge::load_file(ed, &path) {
+        match crate::janet_bridge::load_file(&path) {
             Ok(()) => conv::nil(),
             Err(e) => conv::signal_err(&e),
         }

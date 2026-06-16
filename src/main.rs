@@ -1,6 +1,8 @@
-use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+
+use magma::event::keys;
+use magma::event::payload::*;
 
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -16,6 +18,8 @@ use magma::render::RenderTrait;
 use magma::runtime::{process_background_event, BackgroundEvent, BackgroundHandle};
 use magma::state::id::BufferId;
 use magma::state::persist;
+#[cfg(feature = "janet")]
+use magma::scripting::ScriptRuntime;
 use magma::state::Editor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,15 +90,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    #[cfg(feature = "janet")]
     {
         let mut ed = editor.write().unwrap();
-        #[cfg(feature = "janet")]
-        magma::janet_bridge::init(&mut ed);
+        let mut rt = magma::janet_bridge::JanetRuntime::new();
+        rt.init(&mut *ed as *mut _);
+        ed.runtime = Some(Box::new(rt));
     }
 
     {
         let mut ed = editor.write().unwrap();
-        ed.events.emit("editor-ready", HashMap::new());
+        ed.events.emit_typed(keys::events::EDITOR_READY, EmptyPayload);
         ed.events.drain_and_dispatch();
     }
 
@@ -317,17 +323,17 @@ fn run_tui(
             #[cfg(feature = "janet")]
             magma::janet_bridge::set_surface_ptr(&mut surface as *mut _);
 
-            let data = std::collections::HashMap::new();
-            ed.events.emit("render-frame", data.clone());
+            ed.events.emit_typed(keys::events::RENDER_FRAME, EmptyPayload);
             if ed.tab_bar_enabled {
-                ed.events.emit("render-tab-bar", data.clone());
+                ed.events.emit_typed(keys::events::RENDER_TAB_BAR, EmptyPayload);
             }
             ed.events.drain_and_dispatch();
 
-            #[cfg(feature = "janet")]
             if let Some(ref fn_name) = ed.modeline_fn.clone() {
                 let expr = format!("({fn_name})");
-                let result = magma::janet_bridge::eval(&mut ed, &expr);
+                let result = ed.runtime.as_mut()
+                    .map(|rt| rt.eval(&expr))
+                    .unwrap_or_default();
                 ed.modeline_rendered = result;
             } else {
                 ed.modeline_rendered.clear();
@@ -335,7 +341,6 @@ fn run_tui(
 
             #[cfg(feature = "janet")]
             magma::janet_bridge::clear_surface_ptr();
-            let _ = data;
         }
 
         renderer.draw(&surface);

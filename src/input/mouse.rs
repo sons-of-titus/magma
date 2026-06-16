@@ -9,6 +9,8 @@
 
 use crate::state::Editor;
 use crate::render::surface::Surface;
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// Route a mouse event to the correct editor element.
 ///
@@ -62,10 +64,10 @@ pub fn dispatch_gutter_click(ed: &mut Editor, surface: &Surface, click_x: u16, c
     let scroll_state = crate::render::frame::compute_scroll_state(ed, buf_id, visible_lines);
     let abs_line = scroll_state.scroll_top + vis_row;
 
-    let mut payload = std::collections::HashMap::new();
-    payload.insert("column".to_string(), col_name);
-    payload.insert("line".to_string(), abs_line.to_string());
-    payload.insert("buf".to_string(), buf_id.to_string());
-    ed.events.emit("gutter-clicked", payload);
+    ed.events.emit_typed(keys::events::GUTTER_CLICKED, GutterClickedPayload {
+        column: col_name,
+        line: abs_line.to_string(),
+        buf: buf_id.to_string(),
+    });
     ed.events.drain_and_dispatch();
 }

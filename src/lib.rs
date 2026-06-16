@@ -42,6 +42,7 @@ pub mod server;
 pub mod terminal;
 pub mod snippet;
 pub mod log;
+pub mod scripting;
 
 #[cfg(feature = "janet")]
 pub mod janet_bridge;

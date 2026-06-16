@@ -41,11 +41,28 @@ pub(super) fn load_builtin(name: &str, source: &str) {
     }
 }
 
-/// Initialise the Janet VM, register all editor APIs, load builtin scripts.
+/// Initialise the Janet VM with EDITOR_PTR set.
+///
+/// Provided for backward compatibility during migration.  New code should
+/// call `init_vm()` after setting EDITOR_PTR directly.
 pub fn init(editor: &mut Editor) {
     EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+    init_vm();
+    #[cfg(feature = "janet")]
+    {
+        editor.runtime = Some(Box::new(super::runtime::JanetRuntime));
+    }
+}
 
-    unsafe { janet_init(); }
+/// Initialise the Janet VM, register all editor APIs, load builtin scripts.
+///
+/// Does NOT set EDITOR_PTR — the caller must ensure it is set before calling
+/// this function (e.g. via `JanetRuntime::init` or directly).
+pub fn init_vm() {
+    static VM_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !VM_INITIALIZED.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        unsafe { janet_init(); }
+    }
 
     let env = unsafe { janet_core_env(std::ptr::null_mut()) };
 

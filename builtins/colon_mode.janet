@@ -2,12 +2,12 @@
 
 # Colon-mode commands — replaces the Rust command-execute, command-backspace, etc.
 
-(command/define "exit-command-mode"
+(command/redefine "exit-command-mode"
   (fn [&]
     (editor/clear-completions)
     (set-vim-mode "normal" false)))
 
-(command/define "command-backspace"
+(command/redefine "command-backspace"
   (fn [&]
     (editor/clear-completions)
     (def detail (editor/mode-detail))
@@ -179,7 +179,7 @@
         (handler rest)
         (print "Unknown command: " verb)))))
 
-(command/define "command-execute"
+(command/redefine "command-execute"
   (fn [&]
     (def detail (editor/mode-detail))
     (def raw-input (get detail :input ""))

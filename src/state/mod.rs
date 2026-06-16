@@ -22,6 +22,7 @@ use crate::event::EventBus;
 use crate::fs::FileSystem;
 use crate::keymap::KeymapManager;
 use crate::runtime::BackgroundHandle;
+use crate::scripting::ScriptRuntime;
 use crate::window::WindowTree;
 
 pub use mode::{EditorMode, Minibuffer, Selection, SearchDirection};
@@ -100,6 +101,7 @@ pub struct Editor {
     pub project_manager: ProjectManager,
     pub io: IoState,
     pub gutter: GutterState,
+    pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
 
 impl Editor {
@@ -180,6 +182,7 @@ impl Editor {
                 if home.is_empty() { vec![] }
                 else { vec![format!("{}/.config/magma/plugins", home)] }
             },
+            runtime: None,
             snippet: SnippetState::default(),
             multi_cursor: MultiCursorState::default(),
             block_visual: BlockVisualState::default(),

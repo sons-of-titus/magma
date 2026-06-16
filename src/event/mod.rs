@@ -3,6 +3,9 @@
 /// Hook chains run Before → Transform → After around each subscriber group.
 use std::collections::{HashMap, VecDeque};
 
+pub mod keys;
+pub mod payload;
+
 pub type EventData = HashMap<String, String>;
 
 #[derive(Debug, Clone)]
@@ -97,6 +100,11 @@ impl EventBus {
             name: event_name.to_string(),
             data,
         });
+    }
+
+    /// Queue an event from a typed payload that implements `Into<EventData>`.
+    pub fn emit_typed<T: Into<EventData>>(&mut self, event_name: &str, data: T) {
+        self.emit(event_name, data.into());
     }
 
     /// Dispatch all queued events in order.  Any events emitted by handlers

@@ -318,17 +318,12 @@ fn handle_eval(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
         None => return Response::error("Missing 'code' argument", req.id),
     };
 
-    #[cfg(feature = "janet")]
-    {
-        let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-        let result = crate::janet_bridge::eval(&mut ed, &code);
-        Response::ok(serde_json::json!({"result": result}), req.id)
-    }
-    #[cfg(not(feature = "janet"))]
-    {
-        let _ = editor;
-        Response::error("Janet not enabled", req.id)
-    }
+    let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
+    let result = match ed.runtime.as_mut() {
+        Some(rt) => rt.eval(&code),
+        None => "Scripting runtime not available".to_string(),
+    };
+    Response::ok(serde_json::json!({"result": result}), req.id)
 }
 
 fn handle_close(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {

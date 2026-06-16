@@ -1,12 +1,13 @@
 //! Janet C functions for workspace management (Sprint 4).
 //! Registered as `extern "C-unwind"` functions via evil-janet.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// (project/workspace?) → {:root "..." :members [...]} or nil
 ///
@@ -147,11 +148,11 @@ unsafe extern "C-unwind" fn c_project_set_current_member(argc: i32, argv: *mut J
         ed.project_manager.project = member_state;
         ed.project_manager.current_project = Some(name.clone());
         ed.project_manager.projects.insert(name.clone(), ed.project_manager.project.clone());
-        let mut data = HashMap::new();
-        data.insert("name".to_string(), name);
-        data.insert("root".to_string(), member_root.to_string_lossy().into_owned());
-        data.insert("project-name".to_string(), project_name);
-        ed.events.emit("project-member-focused", data);
+        ed.events.emit_typed(keys::events::PROJECT_MEMBER_FOCUSED, ProjectMemberFocusedPayload {
+            name,
+            root: member_root.to_string_lossy().into_owned(),
+            project_name,
+        });
         conv::nil()
     })
 }

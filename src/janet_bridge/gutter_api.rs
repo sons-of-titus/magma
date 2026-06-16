@@ -3,6 +3,8 @@
 use evil_janet::*;
 use super::{conv, with_editor};
 use crate::state::{GutterColumn, GutterSign};
+use crate::event::payload::*;
+use crate::event::keys;
 
 // ── Column registry ───────────────────────────────────────────────────────────
 
@@ -102,11 +104,11 @@ unsafe extern "C-unwind" fn c_sign_set(argc: i32, argv: *mut Janet) -> Janet {
             signs.push(GutterSign { face, text, priority });
         }
 
-        let mut payload = std::collections::HashMap::new();
-        payload.insert("column".to_string(), col_name);
-        payload.insert("buffer".to_string(), buf_key.to_string());
-        payload.insert("line".to_string(), line.to_string());
-        ed.events.emit("gutter-sign-changed", payload);
+        ed.events.emit_typed(keys::events::GUTTER_SIGN_CHANGED, GutterSignChangedPayload {
+            column: col_name,
+            buffer: buf_key.to_string(),
+            line: line.to_string(),
+        });
         conv::nil()
     })
 }

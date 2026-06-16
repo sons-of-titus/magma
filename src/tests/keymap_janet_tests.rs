@@ -7,8 +7,11 @@ use crate::janet_bridge;
 /// Create an editor with a clean keymap state after Janet init.
 /// We reset keymaps after `init()` so tests are not polluted by the
 /// default bindings and active layers that `init.janet` installs.
-fn make_clean_editor() -> Editor {
-    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
+/// Returns a `Box<Editor>` so the address stays stable after `init` sets
+/// `EDITOR_PTR` — if we returned by value the struct would move and the
+/// pointer would dangle.
+fn make_clean_editor() -> Box<Editor> {
+    let mut ed = Box::new(Editor::new(Box::new(DiskFileSystem::new())));
     builtin::register_builtin_commands(&mut ed);
     janet_bridge::init(&mut ed);
     ed.keymaps = KeymapManager::new();
@@ -21,7 +24,7 @@ fn make_clean_editor() -> Editor {
 fn set_global_binding() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-s" "save-buffer")"#);
+    let r = janet_bridge::eval(r#"(keymap/set "ctrl-s" "save-buffer")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("ctrl-s"), Some("save-buffer".into()));
 }
@@ -31,9 +34,9 @@ fn set_multiple_global_bindings() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
 
-    janet_bridge::eval(&mut ed, r#"(keymap/set "h" "cursor-left")"#);
-    janet_bridge::eval(&mut ed, r#"(keymap/set "j" "cursor-down")"#);
-    janet_bridge::eval(&mut ed, r#"(keymap/set "k" "cursor-up")"#);
+    janet_bridge::eval(r#"(keymap/set "h" "cursor-left")"#);
+    janet_bridge::eval(r#"(keymap/set "j" "cursor-down")"#);
+    janet_bridge::eval(r#"(keymap/set "k" "cursor-up")"#);
     assert_eq!(ed.keymaps.resolve("h"), Some("cursor-left".into()));
     assert_eq!(ed.keymaps.resolve("j"), Some("cursor-down".into()));
     assert_eq!(ed.keymaps.resolve("k"), Some("cursor-up".into()));
@@ -45,8 +48,8 @@ fn set_overwrites_previous_global_binding() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
 
-    janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-s" "save")"#);
-    janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-s" "write")"#);
+    janet_bridge::eval(r#"(keymap/set "ctrl-s" "save")"#);
+    janet_bridge::eval(r#"(keymap/set "ctrl-s" "write")"#);
     assert_eq!(ed.keymaps.resolve("ctrl-s"), Some("write".into()));
 }
 
@@ -56,7 +59,7 @@ fn set_overwrites_previous_global_binding() {
 fn set_with_layer() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/set "h" "cursor-left" "vim")"#);
+    let r = janet_bridge::eval(r#"(keymap/set "h" "cursor-left" "vim")"#);
     assert_eq!(r, "ok");
 
     // Not active yet → should not resolve
@@ -72,7 +75,7 @@ fn set_with_layer() {
 fn set_with_global_layer_is_global() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-q" "quit" "global")"#);
+    let r = janet_bridge::eval(r#"(keymap/set "ctrl-q" "quit" "global")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("ctrl-q"), Some("quit".into()));
 }
@@ -85,7 +88,7 @@ fn unset_global() {
     let mut ed = make_clean_editor();
 
     ed.keymaps.set("ctrl-q", "quit");
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/unset "ctrl-q")"#);
+    let r = janet_bridge::eval(r#"(keymap/unset "ctrl-q")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("ctrl-q"), None);
 }
@@ -99,7 +102,7 @@ fn unset_with_layer() {
     ed.keymaps.push_layer("vim");
     assert_eq!(ed.keymaps.resolve("h"), Some("cursor-left".into()));
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/unset "h" "vim")"#);
+    let r = janet_bridge::eval(r#"(keymap/unset "h" "vim")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("h"), None);
 }
@@ -110,7 +113,7 @@ fn unset_with_global_layer_is_global() {
     let mut ed = make_clean_editor();
 
     ed.keymaps.set("ctrl-q", "quit");
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/unset "ctrl-q" "global")"#);
+    let r = janet_bridge::eval(r#"(keymap/unset "ctrl-q" "global")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("ctrl-q"), None);
 }
@@ -119,7 +122,7 @@ fn unset_with_global_layer_is_global() {
 fn unset_nonexistent_key_is_safe() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/unset "never-set")"#);
+    let r = janet_bridge::eval(r#"(keymap/unset "never-set")"#);
     assert_eq!(r, "ok");
 }
 
@@ -127,7 +130,7 @@ fn unset_nonexistent_key_is_safe() {
 fn unset_nonexistent_layer_is_safe() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/unset "h" "nonexistent-layer")"#);
+    let r = janet_bridge::eval(r#"(keymap/unset "h" "nonexistent-layer")"#);
     assert_eq!(r, "ok");
 }
 
@@ -140,7 +143,7 @@ fn describe_bound_key() {
 
     ed.keymaps.set("ctrl-s", "save-buffer");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/describe "ctrl-s")"#);
+    let r = janet_bridge::eval(r#"(keymap/describe "ctrl-s")"#);
     assert_eq!(r, "ok", "keymap/describe must not error for a bound key");
     assert_eq!(ed.keymaps.describe("ctrl-s"), Some("save-buffer".into()));
 }
@@ -149,7 +152,7 @@ fn describe_bound_key() {
 fn describe_unbound_key() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/describe "nonexistent-key")"#);
+    let r = janet_bridge::eval(r#"(keymap/describe "nonexistent-key")"#);
     assert_eq!(r, "ok", "keymap/describe must not error for an unbound key");
     assert_eq!(ed.keymaps.describe("nonexistent-key"), None);
 }
@@ -162,7 +165,7 @@ fn describe_with_layer() {
     ed.keymaps.set_layer("vim", "h", "cursor-left");
     ed.keymaps.push_layer("vim");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/describe "h")"#);
+    let r = janet_bridge::eval(r#"(keymap/describe "h")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.describe("h"), Some("cursor-left".into()));
 }
@@ -177,7 +180,7 @@ fn list_all_layers() {
     ed.keymaps.set("ctrl-q", "quit");
     ed.keymaps.set_layer("vim", "h", "cursor-left");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list)"#);
+    let r = janet_bridge::eval(r#"(keymap/list)"#);
     assert_eq!(r, "ok", "keymap/list without args must not error");
 }
 
@@ -189,7 +192,7 @@ fn list_specific_layer() {
     ed.keymaps.set_layer("vim", "h", "cursor-left");
     ed.keymaps.set_layer("vim", "j", "cursor-down");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list "vim")"#);
+    let r = janet_bridge::eval(r#"(keymap/list "vim")"#);
     assert_eq!(r, "ok", "keymap/list with layer must not error");
 }
 
@@ -201,7 +204,7 @@ fn list_global_layer() {
     ed.keymaps.set("ctrl-s", "save");
     ed.keymaps.set("ctrl-q", "quit");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list "global")"#);
+    let r = janet_bridge::eval(r#"(keymap/list "global")"#);
     assert_eq!(r, "ok");
 }
 
@@ -209,7 +212,7 @@ fn list_global_layer() {
 fn list_nonexistent_layer_returns_empty() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list "nobody-home")"#);
+    let r = janet_bridge::eval(r#"(keymap/list "nobody-home")"#);
     assert_eq!(r, "ok", "keymap/list for nonexistent layer must not error");
 }
 
@@ -221,7 +224,7 @@ fn push_activates_layer() {
     let mut ed = make_clean_editor();
 
     assert!(!ed.keymaps.is_layer_active("vim"));
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/push-layer "vim")"#);
+    let r = janet_bridge::eval(r#"(keymap/push-layer "vim")"#);
     assert_eq!(r, "ok");
     assert!(ed.keymaps.is_layer_active("vim"));
 }
@@ -231,8 +234,8 @@ fn push_is_idempotent_via_janet() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
 
-    janet_bridge::eval(&mut ed, r#"(keymap/push-layer "vim")"#);
-    janet_bridge::eval(&mut ed, r#"(keymap/push-layer "vim")"#);
+    janet_bridge::eval(r#"(keymap/push-layer "vim")"#);
+    janet_bridge::eval(r#"(keymap/push-layer "vim")"#);
     // Only one active entry
     assert_eq!(ed.keymaps.active_layers(), vec!["global".to_string(), "vim".to_string()]);
 }
@@ -245,7 +248,7 @@ fn pop_deactivates_layer() {
     ed.keymaps.push_layer("insert");
     assert!(ed.keymaps.is_layer_active("insert"));
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/pop-layer "insert")"#);
+    let r = janet_bridge::eval(r#"(keymap/pop-layer "insert")"#);
     assert_eq!(r, "ok");
     assert!(!ed.keymaps.is_layer_active("insert"));
 }
@@ -254,7 +257,7 @@ fn pop_deactivates_layer() {
 fn pop_inactive_layer_is_safe_via_janet() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/pop-layer "never-pushed")"#);
+    let r = janet_bridge::eval(r#"(keymap/pop-layer "never-pushed")"#);
     assert_eq!(r, "ok");
 }
 
@@ -268,7 +271,7 @@ fn list_layers_returns_global_and_active() {
     ed.keymaps.push_layer("vim");
     ed.keymaps.push_layer("insert");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list-layers)"#);
+    let r = janet_bridge::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok", "keymap/list-layers must not error");
     assert_eq!(ed.keymaps.active_layers(), vec!["global", "vim", "insert"]);
 }
@@ -277,7 +280,7 @@ fn list_layers_returns_global_and_active() {
 fn list_layers_only_global_when_none_active() {
     let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list-layers)"#);
+    let r = janet_bridge::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.active_layers(), vec!["global"]);
 }
@@ -290,20 +293,20 @@ fn layer_priority_via_janet() {
     let mut ed = make_clean_editor();
 
     // Set global + layer bindings via Janet
-    janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-q" "global-quit")"#);
-    janet_bridge::eval(&mut ed, r#"(keymap/set "h" "cursor-left" "vim")"#);
-    janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-q" "vim-quit" "vim")"#);
+    janet_bridge::eval(r#"(keymap/set "ctrl-q" "global-quit")"#);
+    janet_bridge::eval(r#"(keymap/set "h" "cursor-left" "vim")"#);
+    janet_bridge::eval(r#"(keymap/set "ctrl-q" "vim-quit" "vim")"#);
 
     // No layers active → global resolves
     assert_eq!(ed.keymaps.resolve("ctrl-q"), Some("global-quit".into()));
 
     // Push vim layer
-    janet_bridge::eval(&mut ed, r#"(keymap/push-layer "vim")"#);
+    janet_bridge::eval(r#"(keymap/push-layer "vim")"#);
     assert_eq!(ed.keymaps.resolve("h"),       Some("cursor-left".into()));
     assert_eq!(ed.keymaps.resolve("ctrl-q"),  Some("vim-quit".into()));
 
     // Unset layer binding via Janet
-    janet_bridge::eval(&mut ed, r#"(keymap/unset "ctrl-q" "vim")"#);
+    janet_bridge::eval(r#"(keymap/unset "ctrl-q" "vim")"#);
     assert_eq!(ed.keymaps.resolve("ctrl-q"),  Some("global-quit".into()));
 }
 
@@ -313,32 +316,32 @@ fn full_lifecycle_via_janet() {
     let mut ed = make_clean_editor();
 
     // Set global binding
-    janet_bridge::eval(&mut ed, r#"(keymap/set "ctrl-s" "save")"#);
+    janet_bridge::eval(r#"(keymap/set "ctrl-s" "save")"#);
     assert_eq!(ed.keymaps.resolve("ctrl-s"), Some("save".into()));
 
     // Set layer binding
-    janet_bridge::eval(&mut ed, r#"(keymap/set "i" "enter-insert-mode" "vim")"#);
+    janet_bridge::eval(r#"(keymap/set "i" "enter-insert-mode" "vim")"#);
     assert_eq!(ed.keymaps.resolve("i"), None); // vim not active yet
 
     // Activate vim
-    janet_bridge::eval(&mut ed, r#"(keymap/push-layer "vim")"#);
+    janet_bridge::eval(r#"(keymap/push-layer "vim")"#);
     assert_eq!(ed.keymaps.resolve("i"), Some("enter-insert-mode".into()));
 
     // Set insert layer with esc
     ed.keymaps.set_layer("insert", "esc", "exit-insert-mode");
-    janet_bridge::eval(&mut ed, r#"(keymap/push-layer "insert")"#);
+    janet_bridge::eval(r#"(keymap/push-layer "insert")"#);
 
     // Describe via Janet
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/describe "esc")"#);
+    let r = janet_bridge::eval(r#"(keymap/describe "esc")"#);
     assert_eq!(r, "ok");
 
     // Pop insert
-    janet_bridge::eval(&mut ed, r#"(keymap/pop-layer "insert")"#);
+    janet_bridge::eval(r#"(keymap/pop-layer "insert")"#);
     assert!(!ed.keymaps.is_layer_active("insert"));
     assert_eq!(ed.keymaps.resolve("esc"), None);
 
     // List layers
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list-layers)"#);
+    let r = janet_bridge::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.active_layers(), vec!["global", "vim"]);
 }
@@ -352,9 +355,9 @@ fn keymap_list_after_modifications() {
     ed.keymaps.set_layer("test-layer", "a", "cmd-a");
     ed.keymaps.set_layer("test-layer", "b", "cmd-b");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list "test-layer")"#);
+    let r = janet_bridge::eval(r#"(keymap/list "test-layer")"#);
     assert_eq!(r, "ok");
 
-    let r = janet_bridge::eval(&mut ed, r#"(keymap/list)"#);
+    let r = janet_bridge::eval(r#"(keymap/list)"#);
     assert_eq!(r, "ok");
 }

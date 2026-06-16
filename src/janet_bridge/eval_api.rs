@@ -10,12 +10,12 @@ use super::with_editor;
 /// representation as a string.  On error, returns the error message as a
 /// string rather than signalling — callers route both to `*janet-output*`.
 unsafe extern "C-unwind" fn c_editor_eval(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| unsafe {
+    with_editor(|_ed| unsafe {
         let expr = match conv::get_str(argc, argv, 0) {
             Some(s) => s,
             None => conv::signal_err("editor/eval requires an expression string"),
         };
-        match crate::janet_bridge::eval_result(ed, &expr) {
+        match crate::janet_bridge::eval_result(&expr) {
             Ok(s) => conv::string(&s),
             Err(e) => conv::string(&e),
         }

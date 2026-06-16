@@ -1,12 +1,13 @@
 //! Background task system — bridges the tokio async runtime with the
 //! synchronous editor loop via a typed `BackgroundEvent` channel.
 
-use std::collections::HashMap;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use std::sync::Arc;
 
 use crate::state::Editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// Tracks a single managed subprocess.
 #[derive(Debug)]
@@ -177,31 +178,20 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::FileReadResult { path, content, request_id: _ } => {
             match content {
                 Ok(text) => {
-                    let mut data = HashMap::new();
-                    data.insert("path".into(), path);
-                    data.insert("content".into(), text);
-                    ed.events.emit("file-loaded", data);
+                    ed.events.emit_typed(keys::events::FILE_LOADED, FileLoadedPayload { path, content: text });
                 }
                 Err(e) => {
-                    let mut data = HashMap::new();
-                    data.insert("path".into(), path);
-                    data.insert("error".into(), e);
-                    ed.events.emit("file-error", data);
+                    ed.events.emit_typed(keys::events::FILE_ERROR, FileErrorPayload { path, error: e });
                 }
             }
         }
         BackgroundEvent::FileWriteResult { path, result, request_id: _ } => {
             match result {
                 Ok(()) => {
-                    let mut data = HashMap::new();
-                    data.insert("path".into(), path);
-                    ed.events.emit("file-saved", data);
+                    ed.events.emit_typed(keys::events::FILE_SAVED, FileSavedPayload { path });
                 }
                 Err(e) => {
-                    let mut data = HashMap::new();
-                    data.insert("path".into(), path);
-                    data.insert("error".into(), e);
-                    ed.events.emit("file-error", data);
+                    ed.events.emit_typed(keys::events::FILE_ERROR, FileErrorPayload { path, error: e });
                 }
             }
         }
@@ -214,17 +204,17 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     break;
                 }
             }
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("count".into(), count.to_string());
-            data.insert("items".into(), diagnostics.join("\n"));
-            ed.events.emit("lsp-diagnostics", data);
+            ed.events.emit_typed(keys::events::LSP_DIAGNOSTICS, LspDiagnosticsPayload {
+                path,
+                count: count.to_string(),
+                items: diagnostics.join("\n"),
+            });
         }
         BackgroundEvent::LspCompletion { path, items, request_id: _ } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("items".into(), items.join("\n"));
-            ed.events.emit("lsp-completion", data);
+            ed.events.emit_typed(keys::events::LSP_COMPLETION, LspCompletionPayload {
+                path,
+                items: items.join("\n"),
+            });
         }
         BackgroundEvent::TerminalOutput { buf_id, data } => {
             if let Some(buf) = ed.buffers.get_mut(buf_id) {
@@ -254,33 +244,29 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             }
         }
         BackgroundEvent::FileChanged { path, kind } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("kind".into(), kind);
-            ed.events.emit("file-changed", data);
+            ed.events.emit_typed(keys::events::FILE_CHANGED, FileChangedPayload { path, kind });
         }
         BackgroundEvent::ProcessOutput { id, line, stream } => {
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            data.insert("line".into(), line);
-            data.insert("stream".into(), stream);
-            ed.events.emit("process-output", data);
+            ed.events.emit_typed(keys::events::PROCESS_OUTPUT, ProcessOutputPayload {
+                id: id.to_string(),
+                line,
+                stream,
+            });
         }
         BackgroundEvent::ProcessExited { id, exit_code, cmd } => {
             if let Some(state) = ed.io.processes.get_mut(&id) {
                 state.running = false;
             }
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            data.insert("exit-code".into(), exit_code.to_string());
-            data.insert("cmd".into(), cmd);
-            ed.events.emit("process-exit", data);
+            ed.events.emit_typed(keys::events::PROCESS_EXIT, ProcessExitPayload {
+                id: id.to_string(),
+                exit_code: exit_code.to_string(),
+                cmd,
+            });
         }
         BackgroundEvent::TaskReady { id } => {
-            #[cfg(feature = "janet")]
-            crate::janet_bridge::execute_stored_task(ed, id);
-            #[cfg(not(feature = "janet"))]
-            let _ = id;
+            if let Some(ref mut rt) = ed.runtime {
+                rt.execute_stored_task(id);
+            }
         }
         BackgroundEvent::FileIndexed { project_name, files } => {
             // Update the project state in the registry with the file list
@@ -292,130 +278,110 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 ed.project_manager.project.files = files.clone();
                 ed.project_manager.project.file_index_dirty = false;
             }
-            let mut data = HashMap::new();
-            data.insert("project-name".into(), project_name);
-            data.insert("count".into(), files.len().to_string());
-            ed.events.emit("file-indexed", data);
+            ed.events.emit_typed(keys::events::FILE_INDEXED, FileIndexedPayload {
+                project_name,
+                count: files.len().to_string(),
+            });
         }
         // ── Sprint 13 Network API ─────────────────────────────────────────
         BackgroundEvent::HttpResponse { id, status, body } => {
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            data.insert("status".into(), status.to_string());
-            data.insert("body".into(), body);
-            ed.events.emit("http-response", data);
+            ed.events.emit_typed(keys::events::HTTP_RESPONSE, HttpResponsePayload {
+                id: id.to_string(),
+                status: status.to_string(),
+                body,
+            });
         }
         BackgroundEvent::HttpError { id, error } => {
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            data.insert("error".into(), error);
-            ed.events.emit("http-error", data);
+            ed.events.emit_typed(keys::events::HTTP_ERROR, HttpErrorPayload {
+                id: id.to_string(),
+                error,
+            });
         }
         BackgroundEvent::TcpConnected { id } => {
             if let Some(conn) = ed.io.net_connections.get_mut(&id) {
                 conn.connected = true;
             }
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            ed.events.emit("tcp-connected", data);
+            ed.events.emit_typed(keys::events::TCP_CONNECTED, TcpConnectedPayload {
+                id: id.to_string(),
+            });
         }
         BackgroundEvent::TcpData { id, data: line } => {
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            data.insert("data".into(), line);
-            ed.events.emit("tcp-data", data);
+            ed.events.emit_typed(keys::events::TCP_DATA, TcpDataPayload {
+                id: id.to_string(),
+                data: line,
+            });
         }
         BackgroundEvent::TcpClosed { id } => {
             ed.io.net_connections.remove(&id);
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            ed.events.emit("tcp-closed", data);
+            ed.events.emit_typed(keys::events::TCP_CLOSED, TcpClosedPayload {
+                id: id.to_string(),
+            });
         }
         BackgroundEvent::TcpError { id, error } => {
             ed.io.net_connections.remove(&id);
-            let mut data = HashMap::new();
-            data.insert("id".into(), id.to_string());
-            data.insert("error".into(), error);
-            ed.events.emit("tcp-error", data);
+            ed.events.emit_typed(keys::events::TCP_ERROR, TcpErrorPayload {
+                id: id.to_string(),
+                error,
+            });
         }
         BackgroundEvent::TcpClientConnected { server_id, client_id, write_tx } => {
             if let Some(srv) = ed.io.net_servers.get_mut(&server_id) {
                 srv.clients.insert(client_id, write_tx);
             }
-            let mut data = HashMap::new();
-            data.insert("server-id".into(), server_id.to_string());
-            data.insert("client-id".into(), client_id.to_string());
-            ed.events.emit("tcp-client-connected", data);
+            ed.events.emit_typed(keys::events::TCP_CLIENT_CONNECTED, TcpClientConnectedPayload {
+                server_id: server_id.to_string(),
+                client_id: client_id.to_string(),
+            });
         }
         BackgroundEvent::TcpClientData { server_id, client_id, data: line } => {
-            let mut data = HashMap::new();
-            data.insert("server-id".into(), server_id.to_string());
-            data.insert("client-id".into(), client_id.to_string());
-            data.insert("data".into(), line);
-            ed.events.emit("tcp-client-data", data);
+            ed.events.emit_typed(keys::events::TCP_CLIENT_DATA, TcpClientDataPayload {
+                server_id: server_id.to_string(),
+                client_id: client_id.to_string(),
+                data: line,
+            });
         }
         BackgroundEvent::TcpClientDisconnected { server_id, client_id } => {
             if let Some(srv) = ed.io.net_servers.get_mut(&server_id) {
                 srv.clients.remove(&client_id);
             }
-            let mut data = HashMap::new();
-            data.insert("server-id".into(), server_id.to_string());
-            data.insert("client-id".into(), client_id.to_string());
-            ed.events.emit("tcp-client-disconnected", data);
+            ed.events.emit_typed(keys::events::TCP_CLIENT_DISCONNECTED, TcpClientDisconnectedPayload {
+                server_id: server_id.to_string(),
+                client_id: client_id.to_string(),
+            });
         }
         // ─────────────────────────────────────────────────────────────────
         // ── Sprint 5 LSP Power Features ──────────────────────────────────
         BackgroundEvent::LspResponse { path, method, result, request_id: _ } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("method".into(), method);
-            data.insert("result".into(), result);
-            ed.events.emit("lsp-response", data);
+            ed.events.emit_typed(keys::events::LSP_RESPONSE, LspResponsePayload { path, method, result });
         }
         BackgroundEvent::LspHover { path, contents } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("contents".into(), contents);
-            ed.events.emit("lsp-hover", data);
+            ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
         }
         BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("uri".into(), uri);
-            data.insert("start-line".into(), start_line.to_string());
-            data.insert("start-col".into(), start_col.to_string());
-            data.insert("end-line".into(), end_line.to_string());
-            data.insert("end-col".into(), end_col.to_string());
-            ed.events.emit("lsp-definition", data);
+            ed.events.emit_typed(keys::events::LSP_DEFINITION, LspDefinitionPayload {
+                path,
+                uri,
+                start_line: start_line.to_string(),
+                end_line: end_line.to_string(),
+                start_col: start_col.to_string(),
+                end_col: end_col.to_string(),
+            });
         }
         BackgroundEvent::LspCodeActions { path, actions } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("actions".into(), actions);
-            ed.events.emit("lsp-code-actions", data);
+            ed.events.emit_typed(keys::events::LSP_CODE_ACTIONS, LspCodeActionsPayload { path, actions });
         }
         BackgroundEvent::LspCompletionItems { path, items } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("items".into(), items);
-            ed.events.emit("lsp-completion-items", data);
+            ed.events.emit_typed(keys::events::LSP_COMPLETION_ITEMS, LspCompletionItemsPayload { path, items });
         }
         BackgroundEvent::LspRenameResult { path, edit } => {
-            let mut data = HashMap::new();
-            data.insert("path".into(), path);
-            data.insert("edit".into(), edit);
-            ed.events.emit("lsp-rename-result", data);
+            ed.events.emit_typed(keys::events::LSP_RENAME_RESULT, LspRenameResultPayload { path, edit });
         }
         BackgroundEvent::LspProgress { token, message, percentage } => {
-            let mut data = HashMap::new();
-            data.insert("token".into(), token);
-            data.insert("message".into(), message);
-            data.insert("percentage".into(), percentage);
-            ed.events.emit("lsp-progress", data);
+            ed.events.emit_typed(keys::events::LSP_PROGRESS, LspProgressPayload { token, message, percentage });
         }
         // ──────────────────────────────────────────────────────────────────
         BackgroundEvent::Custom(name, payload) => {
-            let mut data = HashMap::new();
+            let mut data = std::collections::HashMap::new();
             data.insert("payload".into(), payload);
             ed.events.emit(&name, data);
         }

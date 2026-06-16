@@ -33,7 +33,6 @@ fn set_completions_populates_items_and_shows_popup() {
     janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(editor/set-completions @["write" "wq" "w"] 1)"#,
     );
     assert_eq!(r, "ok");
@@ -50,7 +49,6 @@ fn set_completions_defaults_idx_to_zero() {
     janet_bridge::init(&mut ed);
 
     let r = janet_bridge::eval(
-        &mut ed,
         r#"(editor/set-completions @["alpha" "beta"])"#,
     );
     assert_eq!(r, "ok");
@@ -63,10 +61,10 @@ fn set_completions_with_empty_array_hides_popup() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, r#"(editor/set-completions @["x"])"#);
+    janet_bridge::eval(r#"(editor/set-completions @["x"])"#);
     assert!(ed.completion.visible);
 
-    let r = janet_bridge::eval(&mut ed, r#"(editor/set-completions @[])"#);
+    let r = janet_bridge::eval(r#"(editor/set-completions @[])"#);
     assert_eq!(r, "ok");
     assert!(!ed.completion.visible);
 }
@@ -79,10 +77,10 @@ fn clear_completions_hides_popup() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, r#"(editor/set-completions @["w" "write"])"#);
+    janet_bridge::eval(r#"(editor/set-completions @["w" "write"])"#);
     assert!(ed.completion.visible);
 
-    let r = janet_bridge::eval(&mut ed, "(editor/clear-completions)");
+    let r = janet_bridge::eval("(editor/clear-completions)");
     assert_eq!(r, "ok");
     assert!(!ed.completion.visible);
     assert!(ed.completion.items.is_empty());

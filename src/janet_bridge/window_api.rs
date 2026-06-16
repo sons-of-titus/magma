@@ -4,6 +4,8 @@ use evil_janet::*;
 use super::conv;
 use super::with_editor;
 use crate::state::Editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// (window/current) → table|nil   (shows id, buffer slab key, position, size)
 unsafe extern "C-unwind" fn c_window_current(_argc: i32, _argv: *mut Janet) -> Janet {
@@ -68,12 +70,10 @@ unsafe extern "C-unwind" fn c_window_focus(argc: i32, argv: *mut Janet) -> Janet
         if let Some(id) = unsafe { conv::get_int(argc, argv, 0) } {
             let wid = crate::state::id::WindowId::from_u64(id as u64);
             ed.windows.focus(wid);
-            let mut data = crate::event::EventData::new();
-            data.insert("id".to_string(), id.to_string());
-            if let Some(buf) = ed.windows.buffer(wid) {
-                data.insert("buffer".to_string(), buf.to_string());
-            }
-            ed.events.emit("window-focused", data);
+            ed.events.emit_typed(keys::events::WINDOW_FOCUSED, WindowFocusedPayload {
+                id: id.to_string(),
+                buffer: ed.windows.buffer(wid).map(|b| b.to_string()).unwrap_or_default(),
+            });
         }
         conv::nil()
     })

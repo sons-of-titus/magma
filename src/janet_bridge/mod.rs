@@ -258,12 +258,20 @@ pub(crate) use process_api::execute_stored_task;
 mod loader;
 
 #[cfg(feature = "janet")]
+mod runtime;
+
+#[cfg(feature = "janet")]
 pub use loader::init;
 
-/// Evaluate a Janet expression.
 #[cfg(feature = "janet")]
-pub fn eval(editor: &mut Editor, expr: &str) -> String {
-    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+pub use runtime::JanetRuntime;
+
+/// Evaluate a Janet expression.
+///
+/// The caller must ensure `EDITOR_PTR` is set (it is set at `init` time and
+/// remains valid for the lifetime of the Editor).
+#[cfg(feature = "janet")]
+pub fn eval(expr: &str) -> String {
     match loader::eval_string("eval", expr) {
         Ok(()) => "ok".to_string(),
         Err(e) => e,
@@ -274,9 +282,10 @@ pub fn eval(editor: &mut Editor, expr: &str) -> String {
 ///
 /// Returns `Ok(result_string)` on success where `result_string` is the
 /// Janet `description` of the returned value, or `Err(msg)` on failure.
+///
+/// The caller must ensure `EDITOR_PTR` is set.
 #[cfg(feature = "janet")]
-pub fn eval_result(editor: &mut Editor, expr: &str) -> Result<String, String> {
-    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
+pub fn eval_result(expr: &str) -> Result<String, String> {
     unsafe {
         let c_name = CString::new("eval").map_err(|e| e.to_string())?;
         let c_source = CString::new(expr).map_err(|e| e.to_string())?;
@@ -302,15 +311,58 @@ pub fn eval_result(editor: &mut Editor, expr: &str) -> Result<String, String> {
     }
 }
 
-/// Load a Janet file from disk.
+/// Look up a command name in `*janet-commands*` and call the stored function.
+///
+/// Called from `execute_command` as the fallthrough path when no Rust command
+/// matches.  Returns `Err` if the name is not found in the Janet table or if
+/// the function call fails.
 #[cfg(feature = "janet")]
-pub fn load_file(editor: &mut Editor, path: &str) -> Result<(), String> {
+pub fn call_janet_command(
+    editor: &mut Editor,
+    name: &str,
+    _args: &std::collections::HashMap<String, crate::command::args::ArgValue>,
+) -> crate::command::CommandResult {
     EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
-    let content = match &editor.background {
-        Some(bg) => {
-            let path = path.to_string();
-            bg.block_on(move || std::fs::read_to_string(&path))
-                .map_err(|e| format!("{e}"))?
+    unsafe {
+        let env = janet_core_env(std::ptr::null_mut());
+        let mut root: Janet = std::mem::zeroed();
+        let sym_bytes = b"*janet-commands*";
+        let cmd_sym = janet_symbol(sym_bytes.as_ptr(), sym_bytes.len() as i32);
+        if janet_resolve(env, cmd_sym, &mut root) == JanetBindingType_JANET_BINDING_NONE {
+            return Err(format!("Unknown command: {name}"));
+        }
+        let table = janet_unwrap_table(root);
+        let key_name = CString::new(name).map_err(|e| e.to_string())?;
+        let key = janet_string(key_name.as_ptr() as *const u8, name.len() as i32);
+        let func_val = janet_table_get(table, janet_wrap_string(key));
+        if janet_checktype(func_val, JanetType_JANET_FUNCTION) == 0 {
+            return Err(format!("Unknown command: {name}"));
+        }
+        let func = janet_unwrap_function(func_val);
+        let mut out: Janet = std::mem::zeroed();
+        let sig = janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
+        if sig != JanetSignal_JANET_SIGNAL_OK {
+            return Err(format!("Janet command '{name}' signaled error"));
+        }
+    }
+    Ok(())
+}
+
+/// Load a Janet file from disk.
+///
+/// The caller must ensure `EDITOR_PTR` is set so that the background handle
+/// (if any) can be accessed through the editor.
+#[cfg(feature = "janet")]
+pub fn load_file(path: &str) -> Result<(), String> {
+    let path_owned = path.to_string();
+    let content = match EDITOR_PTR.with(|cell| cell.get()) {
+        Some(ptr) => {
+            let ed = unsafe { &*ptr };
+            match &ed.background {
+                Some(bg) => bg.block_on(move || std::fs::read_to_string(path_owned))
+                    .map_err(|e| format!("{e}"))?,
+                None => std::fs::read_to_string(path).map_err(|e| format!("{e}"))?,
+            }
         }
         None => std::fs::read_to_string(path).map_err(|e| format!("{e}"))?,
     };
@@ -325,11 +377,11 @@ pub fn init(_editor: &mut Editor) {
 }
 
 #[cfg(not(feature = "janet"))]
-pub fn eval(_editor: &mut Editor, expr: &str) -> String {
+pub fn eval(expr: &str) -> String {
     format!("Janet eval not available: {expr}")
 }
 
 #[cfg(not(feature = "janet"))]
-pub fn load_file(_editor: &mut Editor, _path: &str) -> Result<(), String> {
+pub fn load_file(_path: &str) -> Result<(), String> {
     Err("Janet runtime not available".to_string())
 }

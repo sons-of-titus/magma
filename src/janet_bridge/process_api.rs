@@ -1,12 +1,14 @@
 //! Janet API functions for process and async task management (Sprint 3).
 //! Registered as `extern "C-unwind"` functions via evil-janet.
 
-use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
+use std::collections::HashMap;
 
 /// Send+Sync wrapper for Janet function references stored for background tasks.
 #[derive(Clone, Copy)]
@@ -184,18 +186,16 @@ pub(crate) fn execute_stored_task(ed: &mut crate::state::Editor, task_id: u64) {
             let args = [janet_wrap_nil()];
             let fiber = janet_fiber(func, 64, 1, args.as_ptr());
             if fiber.is_null() {
-                let mut data = HashMap::new();
-                data.insert("id".to_string(), task_id.to_string());
-                data.insert("error".to_string(), "fiber creation failed".to_string());
-                ed.events.emit("task-result", data);
+                ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
+                    id: task_id.to_string(),
+                    value: String::new(),
+                    error: "fiber creation failed".to_string(),
+                });
                 return;
             }
             let mut out: Janet = std::mem::zeroed();
             let sig = janet_continue(fiber, janet_wrap_nil(), &mut out);
-            let mut data = HashMap::new();
-            data.insert("id".to_string(), task_id.to_string());
             if sig == JanetSignal_JANET_SIGNAL_OK {
-                // Convert result to string for the event payload
                 let result = if janet_checktype(out, JanetType_JANET_STRING) != 0 {
                     let ptr = janet_unwrap_string(out);
                     if ptr.is_null() {
@@ -210,11 +210,18 @@ pub(crate) fn execute_stored_task(ed: &mut crate::state::Editor, task_id: u64) {
                 } else {
                     "ok".to_string()
                 };
-                data.insert("value".to_string(), result);
+                ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
+                    id: task_id.to_string(),
+                    value: result,
+                    error: String::new(),
+                });
             } else {
-                data.insert("error".to_string(), format!("signal {}", sig));
+                ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
+                    id: task_id.to_string(),
+                    value: String::new(),
+                    error: format!("signal {}", sig),
+                });
             }
-            ed.events.emit("task-result", data);
         }
     }
 }

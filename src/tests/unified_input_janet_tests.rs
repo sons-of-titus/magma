@@ -36,7 +36,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor("");
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(defn my-interceptor [k] nil) (editor/on-input "my-interceptor")"#);
         assert_eq!(ed.on_input_fn.as_deref(), Some("my-interceptor"));
     }
@@ -47,7 +47,7 @@ mod tests {
         let mut ed = make_editor("hello");
         janet_bridge::init(&mut ed);
         // Register an interceptor that consumes ALL keys via editor/consume-input
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(defn eat-all [k] (editor/consume-input)) (editor/on-input "eat-all")"#);
         ed.keymaps.set_layer("vim", "x", "delete-char");
         let buf_id = ed.windows.focused_window()
@@ -65,7 +65,7 @@ mod tests {
         let mut ed = make_editor("hello");
         janet_bridge::init(&mut ed);
         // Interceptor that does NOT call consume-input — key passes through
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(defn pass-all [k] nil) (editor/on-input "pass-all")"#);
         ed.keymaps.set_layer("vim", "x", "delete-char");
         let buf_id = ed.windows.focused_window()
@@ -82,10 +82,10 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor("");
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(defn some-fn [k] (editor/consume-input)) (editor/on-input "some-fn")"#);
         assert!(ed.on_input_fn.is_some());
-        janet_bridge::eval(&mut ed, "(editor/on-input nil)");
+        janet_bridge::eval("(editor/on-input nil)");
         assert!(ed.on_input_fn.is_none());
     }
 
@@ -95,7 +95,7 @@ mod tests {
         let mut ed = make_editor("ab");
         janet_bridge::init(&mut ed);
         // Interceptor that only consumes 'a'
-        janet_bridge::eval(&mut ed,
+        janet_bridge::eval(
             r#"(defn selective [k] (when (= k "a") (editor/consume-input))) (editor/on-input "selective")"#);
         ed.keymaps.set_layer("vim", "a", "append");
         ed.keymaps.set_layer("vim", "x", "delete-char");

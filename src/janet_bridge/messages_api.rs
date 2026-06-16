@@ -4,6 +4,8 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// Find or create a special buffer by name, returning its slab key.
 ///
@@ -48,10 +50,10 @@ unsafe extern "C-unwind" fn c_editor_log_message(argc: i32, argv: *mut Janet) ->
             buf.read_only = true;
             buf.ephemeral = true;
         }
-        let mut data = std::collections::HashMap::new();
-        data.insert("buffer-id".to_string(), key.to_string());
-        data.insert("text".to_string(), text);
-        ed.events.emit("buffer-message-appended", data);
+        ed.events.emit_typed(keys::events::BUFFER_MESSAGE_APPENDED, BufferMessageAppendedPayload {
+            buffer_id: key.to_string(),
+            text,
+        });
         conv::nil()
     })
 }
@@ -72,10 +74,10 @@ unsafe extern "C-unwind" fn c_editor_warn(argc: i32, argv: *mut Janet) -> Janet 
             buf.read_only = true;
             buf.ephemeral = true;
         }
-        let mut data = std::collections::HashMap::new();
-        data.insert("buffer-id".to_string(), key.to_string());
-        data.insert("text".to_string(), text);
-        ed.events.emit("warning-emitted", data);
+        ed.events.emit_typed(keys::events::WARNING_EMITTED, WarningEmittedPayload {
+            buffer_id: key.to_string(),
+            text,
+        });
         conv::nil()
     })
 }
@@ -104,9 +106,9 @@ unsafe extern "C-unwind" fn c_editor_show_help(argc: i32, argv: *mut Janet) -> J
         if let Some(win) = ed.windows.focused_window_mut() {
             win.buffer_id = Some(key);
         }
-        let mut data = std::collections::HashMap::new();
-        data.insert("buffer-id".to_string(), key.to_string());
-        ed.events.emit("help-shown", data);
+        ed.events.emit_typed(keys::events::HELP_SHOWN, HelpShownPayload {
+            buffer_id: key.to_string(),
+        });
         conv::nil()
     })
 }

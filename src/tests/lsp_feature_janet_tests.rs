@@ -25,7 +25,7 @@ fn lsp_request_c_function_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/request \"test-lang\" \"test/method\" \"{}\")");
+    let result = janet_bridge::eval("(lsp/request \"test-lang\" \"test/method\" \"{}\")");
     assert_eq!(result, "ok", "lsp/request should return ok");
 }
 
@@ -35,7 +35,7 @@ fn lsp_hover_c_function_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/hover \"rust\")");
+    let result = janet_bridge::eval("(lsp/hover \"rust\")");
     assert_eq!(result, "ok", "lsp/hover should return ok");
 }
 
@@ -45,7 +45,7 @@ fn lsp_code_actions_c_function_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/code-actions \"rust\")");
+    let result = janet_bridge::eval("(lsp/code-actions \"rust\")");
     assert_eq!(result, "ok", "lsp/code-actions should return ok");
 }
 
@@ -55,7 +55,7 @@ fn lsp_completion_c_function_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/completion \"rust\")");
+    let result = janet_bridge::eval("(lsp/completion \"rust\")");
     assert_eq!(result, "ok", "lsp/completion should return ok");
 }
 
@@ -65,7 +65,7 @@ fn lsp_rename_c_function_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/rename \"rust\" \"new_name\")");
+    let result = janet_bridge::eval("(lsp/rename \"rust\" \"new_name\")");
     assert_eq!(result, "ok", "lsp/rename should return ok");
 }
 
@@ -75,7 +75,7 @@ fn lsp_apply_edit_c_function_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/apply-edit \"{}\")");
+    let result = janet_bridge::eval("(lsp/apply-edit \"{}\")");
     assert_eq!(result, "ok", "lsp/apply-edit should return ok");
 }
 
@@ -86,7 +86,6 @@ fn lsp_request_with_params_registered() {
     janet_bridge::init(&mut ed);
 
     let result = janet_bridge::eval(
-        &mut ed,
         r#"(lsp/request "rust" "textDocument/hover" "{\"pos\":{}}")"#,
     );
     assert_eq!(result, "ok", "lsp/request with params should return ok");
@@ -98,7 +97,7 @@ fn lsp_start_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/start \"test-lang\" \"echo\" \"arg1\")");
+    let result = janet_bridge::eval("(lsp/start \"test-lang\" \"echo\" \"arg1\")");
     assert_eq!(result, "ok", "lsp/start should return ok");
 }
 
@@ -108,7 +107,7 @@ fn lsp_notify_registered() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(lsp/notify \"test-lang\" \"test/notification\" \"{}\")");
+    let result = janet_bridge::eval("(lsp/notify \"test-lang\" \"test/notification\" \"{}\")");
     assert_eq!(result, "ok", "lsp/notify should return ok");
 }
 

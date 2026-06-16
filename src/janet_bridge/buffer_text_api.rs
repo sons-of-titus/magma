@@ -3,11 +3,13 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 fn emit_buffer_changed(ed: &mut crate::state::Editor, key: usize) {
-    let mut data = std::collections::HashMap::new();
-    data.insert("buffer-id".to_string(), key.to_string());
-    ed.events.emit("buffer-changed", data);
+    ed.events.emit_typed(keys::events::BUFFER_CHANGED, BufferChangedPayload {
+        buffer_id: key.to_string(),
+    });
 }
 
 unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Janet {
@@ -17,9 +19,9 @@ unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Jane
         let text = conv::get_str(argc, argv, 2).unwrap_or_default();
         debug!("BI: buffer/insert buf={}, pos={}, text_len={}", key, pos, text.len());
         if ed.buffers.get(key).map(|b| b.read_only).unwrap_or(false) {
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer-id".to_string(), key.to_string());
-            ed.events.emit("buffer-read-only", data);
+            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, BufferReadOnlyPayload {
+                buffer_id: key.to_string(),
+            });
             return conv::nil();
         }
         if let Some(buf) = ed.buffers.get_mut(key) {
@@ -37,9 +39,9 @@ unsafe extern "C-unwind" fn c_buffer_delete(argc: i32, argv: *mut Janet) -> Jane
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
         debug!("BD: buffer/delete buf={}, start={}, end={}", key, start, end);
         if ed.buffers.get(key).map(|b| b.read_only).unwrap_or(false) {
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer-id".to_string(), key.to_string());
-            ed.events.emit("buffer-read-only", data);
+            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, BufferReadOnlyPayload {
+                buffer_id: key.to_string(),
+            });
             return conv::nil();
         }
         if let Some(buf) = ed.buffers.get_mut(key) {

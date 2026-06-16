@@ -1,12 +1,13 @@
 //! Janet API — project registry: recent projects, multi-project registry, buffer-project mapping,
 //! path existence checks, and raw file reads.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 fn projects_file_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -138,8 +139,7 @@ unsafe extern "C-unwind" fn c_project_unregister(argc: i32, argv: *mut Janet) ->
         if ed.project_manager.current_project.as_deref() == Some(&name) {
             ed.project_manager.current_project = None;
             ed.project_manager.project = crate::state::ProjectState::default();
-            let data = HashMap::new();
-            ed.events.emit("project-closed", data);
+            ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
         }
         conv::nil()
     })

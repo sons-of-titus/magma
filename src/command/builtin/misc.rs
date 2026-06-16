@@ -5,6 +5,8 @@ use std::cmp::Reverse;
 use crate::command::args::{ArgSpec, ArgType};
 use crate::state::Editor;
 use crate::state::mode::{EditorMode, Minibuffer};
+use crate::event::payload::*;
+use crate::event::keys;
 
 use super::colon::execute_colon_command;
 use super::helpers::*;
@@ -15,7 +17,7 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("quit", "Exit the editor",
         vec![],
         |editor, _args| {
-            editor.events.emit("before-quit", std::collections::HashMap::new());
+            editor.events.emit_typed(keys::events::BEFORE_QUIT, EmptyPayload);
             editor.running = false;
             Ok(())
         },
@@ -306,10 +308,10 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(buf) = editor.buffers.get_mut(buf_id) {
                 buf.major_mode = new_mode;
             }
-            let mut data = std::collections::HashMap::new();
-            data.insert("mode".to_string(), name.to_string());
-            data.insert("buffer-id".to_string(), buf_id.to_string());
-            editor.events.emit("major-mode-changed", data);
+            editor.events.emit_typed(keys::events::MAJOR_MODE_CHANGED, MajorModeChangedPayload {
+                mode: name.to_string(),
+                buffer_id: buf_id.to_string(),
+            });
             Ok(())
         },
     );

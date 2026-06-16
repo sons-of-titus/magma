@@ -21,7 +21,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(ui/set-modeline "my-fn")"#);
+        janet_bridge::eval(r#"(ui/set-modeline "my-fn")"#);
         assert_eq!(ed.modeline_fn.as_deref(), Some("my-fn"));
     }
 
@@ -30,8 +30,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(ui/set-modeline "my-fn")"#);
-        janet_bridge::eval(&mut ed, r#"(ui/set-modeline nil)"#);
+        janet_bridge::eval(r#"(ui/set-modeline "my-fn")"#);
+        janet_bridge::eval(r#"(ui/set-modeline nil)"#);
         assert!(ed.modeline_fn.is_none());
     }
 
@@ -40,7 +40,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let result = janet_bridge::eval(&mut ed, r#"(= nil (ui/modeline))"#);
+        let result = janet_bridge::eval(r#"(= nil (ui/modeline))"#);
         // Janet eval returns "ok" on success; the expression result is irrelevant
         // — what matters is the Rust-side state below.
         assert!(ed.modeline_fn.is_none());
@@ -52,7 +52,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(ui/set-modeline "my-status")"#);
+        janet_bridge::eval(r#"(ui/set-modeline "my-status")"#);
         assert_eq!(ed.modeline_fn.as_deref(), Some("my-status"));
     }
 
@@ -63,7 +63,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(ui/set-tab-bar true)"#);
+        janet_bridge::eval(r#"(ui/set-tab-bar true)"#);
         assert!(ed.tab_bar_enabled);
     }
 
@@ -72,8 +72,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(ui/set-tab-bar true)"#);
-        janet_bridge::eval(&mut ed, r#"(ui/set-tab-bar false)"#);
+        janet_bridge::eval(r#"(ui/set-tab-bar true)"#);
+        janet_bridge::eval(r#"(ui/set-tab-bar false)"#);
         assert!(!ed.tab_bar_enabled);
     }
 
@@ -83,7 +83,7 @@ mod tests {
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
         assert!(!ed.tab_bar_enabled);
-        janet_bridge::eval(&mut ed, r#"(ui/set-tab-bar true)"#);
+        janet_bridge::eval(r#"(ui/set-tab-bar true)"#);
         assert!(ed.tab_bar_enabled);
     }
 
@@ -94,7 +94,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(overlay/create 5 10 20 8 nil)"#);
+        janet_bridge::eval(r#"(overlay/create 5 10 20 8 nil)"#);
         assert_eq!(ed.overlays.len(), 1);
         assert_eq!(ed.overlays[0].x, 5);
         assert_eq!(ed.overlays[0].y, 10);
@@ -107,8 +107,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(def oid (overlay/create 0 0 10 5 nil))"#);
-        janet_bridge::eval(&mut ed, r#"(overlay/destroy oid)"#);
+        janet_bridge::eval(r#"(def oid (overlay/create 0 0 10 5 nil))"#);
+        janet_bridge::eval(r#"(overlay/destroy oid)"#);
         assert!(ed.overlays.is_empty());
     }
 
@@ -117,8 +117,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(def oid (overlay/create 0 0 10 5 nil))"#);
-        janet_bridge::eval(&mut ed, r#"(overlay/move oid 15 7)"#);
+        janet_bridge::eval(r#"(def oid (overlay/create 0 0 10 5 nil))"#);
+        janet_bridge::eval(r#"(overlay/move oid 15 7)"#);
         assert_eq!(ed.overlays[0].x, 15);
         assert_eq!(ed.overlays[0].y, 7);
     }
@@ -128,8 +128,8 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        janet_bridge::eval(&mut ed, r#"(overlay/create 0 0 10 5 nil)"#);
-        janet_bridge::eval(&mut ed, r#"(overlay/create 5 5 20 8 nil)"#);
+        janet_bridge::eval(r#"(overlay/create 0 0 10 5 nil)"#);
+        janet_bridge::eval(r#"(overlay/create 5 5 20 8 nil)"#);
         assert_eq!(ed.overlays.len(), 2);
     }
 
@@ -143,7 +143,7 @@ mod tests {
         let key = ed.buffers.insert(crate::buffer::Buffer::new(
             crate::state::id::BufferId(1), "test"));
         let expr = format!(r#"(gutter/sign-set ":diagnostics" {key} 3 "E" "error-face" 10)"#);
-        janet_bridge::eval(&mut ed, &expr);
+        janet_bridge::eval(&expr);
         let col_key = (":diagnostics".to_string(), key);
         let signs = ed.gutter.column_signs.get(&col_key).unwrap().get(&3).unwrap();
         assert_eq!(signs.len(), 1);
@@ -160,8 +160,8 @@ mod tests {
             crate::state::id::BufferId(1), "test"));
         let set_expr = format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "W" "warning-face")"#);
         let clr_expr = format!(r#"(gutter/sign-clear ":diagnostics" {key})"#);
-        janet_bridge::eval(&mut ed, &set_expr);
-        janet_bridge::eval(&mut ed, &clr_expr);
+        janet_bridge::eval(&set_expr);
+        janet_bridge::eval(&clr_expr);
         let col_key = (":diagnostics".to_string(), key);
         assert!(!ed.gutter.column_signs.contains_key(&col_key));
     }
@@ -173,9 +173,9 @@ mod tests {
         janet_bridge::init(&mut ed);
         let key = ed.buffers.insert(crate::buffer::Buffer::new(
             crate::state::id::BufferId(1), "test"));
-        janet_bridge::eval(&mut ed, &format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "E" "error-face")"#));
-        janet_bridge::eval(&mut ed, &format!(r#"(gutter/sign-set ":diagnostics" {key} 1 "W" "warning-face")"#));
-        janet_bridge::eval(&mut ed, &format!(r#"(gutter/sign-clear-line ":diagnostics" {key} 0)"#));
+        janet_bridge::eval(&format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "E" "error-face")"#));
+        janet_bridge::eval(&format!(r#"(gutter/sign-set ":diagnostics" {key} 1 "W" "warning-face")"#));
+        janet_bridge::eval(&format!(r#"(gutter/sign-clear-line ":diagnostics" {key} 0)"#));
         let col_key = (":diagnostics".to_string(), key);
         let line_map = ed.gutter.column_signs.get(&col_key).unwrap();
         assert!(!line_map.contains_key(&0));
@@ -191,7 +191,7 @@ mod tests {
         janet_bridge::init(&mut ed);
         let key = ed.buffers.insert(crate::buffer::Buffer::new(
             crate::state::id::BufferId(1), "test"));
-        janet_bridge::eval(&mut ed, &format!(r#"(buffer/set-header-line {key} "MyHeader")"#));
+        janet_bridge::eval(&format!(r#"(buffer/set-header-line {key} "MyHeader")"#));
         assert_eq!(ed.buffers[key].header_line.as_deref(), Some("MyHeader"));
     }
 
@@ -202,8 +202,8 @@ mod tests {
         janet_bridge::init(&mut ed);
         let key = ed.buffers.insert(crate::buffer::Buffer::new(
             crate::state::id::BufferId(1), "test"));
-        janet_bridge::eval(&mut ed, &format!(r#"(buffer/set-header-line {key} "MyHeader")"#));
-        janet_bridge::eval(&mut ed, &format!(r#"(buffer/set-header-line {key} nil)"#));
+        janet_bridge::eval(&format!(r#"(buffer/set-header-line {key} "MyHeader")"#));
+        janet_bridge::eval(&format!(r#"(buffer/set-header-line {key} nil)"#));
         assert!(ed.buffers[key].header_line.is_none());
     }
 
@@ -252,7 +252,7 @@ mod tests {
         janet_bridge::init(&mut ed);
         let key = make_buf_local(&mut ed);
         assert!(ed.buffers[key].modified(), "new buffer has no save point → modified");
-        let result = janet_bridge::eval(&mut ed, &format!("(buffer/modified? {key})"));
+        let result = janet_bridge::eval(&format!("(buffer/modified? {key})"));
         assert_eq!(result, "ok");
     }
 
@@ -266,7 +266,7 @@ mod tests {
         ed.buffers[key].insert(0, "hello");
         ed.buffers[key].mark_saved();
         assert!(!ed.buffers[key].modified(), "after mark_saved → not modified");
-        let result = janet_bridge::eval(&mut ed, &format!("(buffer/modified? {key})"));
+        let result = janet_bridge::eval(&format!("(buffer/modified? {key})"));
         assert_eq!(result, "ok");
     }
 
@@ -275,7 +275,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let result = janet_bridge::eval(&mut ed, r#"(editor/fs-exists? "/tmp")"#);
+        let result = janet_bridge::eval(r#"(editor/fs-exists? "/tmp")"#);
         assert_eq!(result, "ok");
     }
 
@@ -284,7 +284,7 @@ mod tests {
         let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ed = make_editor();
         janet_bridge::init(&mut ed);
-        let result = janet_bridge::eval(&mut ed,
+        let result = janet_bridge::eval(
             r#"(editor/fs-exists? "/nonexistent-magma-xyz-abc-123")"#);
         assert_eq!(result, "ok");
     }

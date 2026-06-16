@@ -3,10 +3,12 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::event::payload::*;
+use crate::event::keys;
 
 fn emit_font_changed(ed: &mut crate::state::Editor) {
     ed.font_changed = true;
-    ed.events.emit("font-changed", std::collections::HashMap::new());
+    ed.events.emit_typed(keys::events::FONT_CHANGED, EmptyPayload);
 }
 
 /// (editor/set-font family size) → nil

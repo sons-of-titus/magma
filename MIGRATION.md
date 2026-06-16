@@ -94,7 +94,7 @@ From the Architecture Specification Document:
                     │  System  │
                     └────┬─────┘
     ┌────────────────────┼────────────────────┐
-    │              Rust Kernel                 │
+    │              Rust Kernel                │
     │  ┌──────────┐ ┌───────────┐             │
     │  │  Text    │ │ Semantic  │             │
     │  │  Engine  │ │  Engine   │             │

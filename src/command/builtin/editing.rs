@@ -4,6 +4,8 @@ use crate::command::CommandResult;
 use crate::command::args::{ArgSpec, ArgType};
 use crate::state::Editor;
 use crate::state::mode::EditorMode;
+use crate::event::payload::*;
+use crate::event::keys;
 
 use super::helpers::*;
 
@@ -266,14 +268,8 @@ pub(super) fn register(editor: &mut Editor) {
             let expr = args.get("expr")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "Expression required".to_string())?;
-            #[cfg(feature = "janet")]
-            {
-                crate::janet_bridge::eval(editor, expr);
-            }
-            #[cfg(not(feature = "janet"))]
-            {
-                let _ = expr;
-                println!("Janet evaluation not available (compile with --features janet)");
+            if let Some(ref mut rt) = editor.runtime {
+                rt.eval(expr);
             }
             Ok(())
         },
@@ -287,23 +283,19 @@ pub(super) fn register(editor: &mut Editor) {
             match editor.selection_range(cursor) {
                 None => return Err("No selection active".to_string()),
                 Some((start, end)) => {
-                    #[cfg(feature = "janet")]
-                    {
-                        let text = {
-                            let buf = editor.buffers.get(buf_id).ok_or("no buffer")?;
-                            buf.slice(start, end)
-                        };
-                        let (value, error) = match crate::janet_bridge::eval_result(editor, &text) {
-                            Ok(v) => (v, String::new()),
-                            Err(e) => (String::new(), e),
-                        };
-                        let mut data = std::collections::HashMap::new();
-                        data.insert("value".to_string(), value);
-                        data.insert("error".to_string(), error);
-                        editor.events.emit("eval-result", data);
-                    }
-                    #[cfg(not(feature = "janet"))]
-                    { let _ = (start, end); }
+                    let text = {
+                        let buf = editor.buffers.get(buf_id).ok_or("no buffer")?;
+                        buf.slice(start, end)
+                    };
+                    let (value, error) = match editor.runtime.as_mut().map(|rt| rt.eval_result(&text)) {
+                        Some(Ok(v)) => (v, String::new()),
+                        Some(Err(e)) => (String::new(), e),
+                        None => (String::new(), "Scripting runtime not available".to_string()),
+                    };
+                    editor.events.emit_typed(keys::events::EVAL_RESULT, EvalResultPayload {
+                        value,
+                        error,
+                    });
                 }
             }
             Ok(())
@@ -318,19 +310,15 @@ pub(super) fn register(editor: &mut Editor) {
                 let buf = editor.buffers.get(buf_id).ok_or("no buffer")?;
                 buf.slice(0, buf.len())
             };
-            #[cfg(feature = "janet")]
-            {
-                let (value, error) = match crate::janet_bridge::eval_result(editor, &text) {
-                    Ok(v) => (v, String::new()),
-                    Err(e) => (String::new(), e),
-                };
-                let mut data = std::collections::HashMap::new();
-                data.insert("value".to_string(), value);
-                data.insert("error".to_string(), error);
-                editor.events.emit("eval-result", data);
-            }
-            #[cfg(not(feature = "janet"))]
-            { let _ = text; }
+            let (value, error) = match editor.runtime.as_mut().map(|rt| rt.eval_result(&text)) {
+                Some(Ok(v)) => (v, String::new()),
+                Some(Err(e)) => (String::new(), e),
+                None => (String::new(), "Scripting runtime not available".to_string()),
+            };
+            editor.events.emit_typed(keys::events::EVAL_RESULT, EvalResultPayload {
+                value,
+                error,
+            });
             Ok(())
         },
     );

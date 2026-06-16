@@ -26,7 +26,7 @@ fn window_list_returns_one_window_initially() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(length (window/list))");
+    let result = janet_bridge::eval("(length (window/list))");
     assert_eq!(result, "ok");
     assert_eq!(ed.windows.len(), 1);
 }
@@ -38,7 +38,7 @@ fn window_list_returns_all_windows_after_split() {
     janet_bridge::init(&mut ed);
 
     ed.windows.split_vertical(ed.windows.focused_window().unwrap());
-    let result = janet_bridge::eval(&mut ed, "(length (window/list))");
+    let result = janet_bridge::eval("(length (window/list))");
     assert_eq!(result, "ok");
     assert_eq!(ed.windows.len(), 2);
 }
@@ -55,7 +55,6 @@ fn window_focus_changes_focused_window_via_janet() {
     let initial_focused = ed.windows.focused_window();
 
     let result = janet_bridge::eval(
-        &mut ed,
         &format!("(window/focus {})", new_id.0),
     );
     assert_eq!(result, "ok");
@@ -80,7 +79,7 @@ fn window_focus_emits_window_focused_event() {
         None
     });
 
-    janet_bridge::eval(&mut ed, &format!("(window/focus {})", new_id.0));
+    janet_bridge::eval(&format!("(window/focus {})", new_id.0));
     ed.events.drain_and_dispatch();
 
     assert!(*fired.lock().unwrap(), "window-focused event must fire on focus change");
@@ -99,7 +98,6 @@ fn window_resize_sets_fractional_weight() {
     let focused_id = ed.windows.focused_window().unwrap();
 
     let result = janet_bridge::eval(
-        &mut ed,
         &format!("(window/resize {} 0.3)", focused_id.0),
     );
     assert_eq!(result, "ok");
@@ -119,7 +117,6 @@ fn window_set_scroll_top_pins_offset() {
 
     let wid = ed.windows.focused_window().unwrap();
     let result = janet_bridge::eval(
-        &mut ed,
         &format!("(window/set-scroll-top {} 3)", wid.0),
     );
     assert_eq!(result, "ok");
@@ -145,7 +142,6 @@ fn window_scroll_top_returns_pinned_value() {
 
     // window/scroll-top should return the pinned value
     let result = janet_bridge::eval(
-        &mut ed,
         &format!("(= (window/scroll-top {}) 5)", wid.0),
     );
     assert_eq!(result, "ok");
@@ -158,11 +154,10 @@ fn window_unpin_scroll_clears_pin() {
     janet_bridge::init(&mut ed);
 
     let wid = ed.windows.focused_window().unwrap();
-    janet_bridge::eval(&mut ed, &format!("(window/set-scroll-top {} 7)", wid.0));
+    janet_bridge::eval(&format!("(window/set-scroll-top {} 7)", wid.0));
     assert!(ed.windows.window(wid).unwrap().scroll_pinned);
 
     let result = janet_bridge::eval(
-        &mut ed,
         &format!("(window/unpin-scroll {})", wid.0),
     );
     assert_eq!(result, "ok");
@@ -177,7 +172,7 @@ fn editor_save_layout_stores_snapshot() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(editor/save-layout \"my-layout\")");
+    let result = janet_bridge::eval("(editor/save-layout \"my-layout\")");
     assert_eq!(result, "ok");
     assert!(ed.saved_layouts.contains_key("my-layout"), "layout must be stored");
 }
@@ -189,14 +184,14 @@ fn editor_restore_layout_restores_window_count() {
     janet_bridge::init(&mut ed);
 
     // Save single-window layout
-    janet_bridge::eval(&mut ed, "(editor/save-layout \"single\")");
+    janet_bridge::eval("(editor/save-layout \"single\")");
 
     // Add a second window
     ed.windows.split_vertical(ed.windows.focused_window().unwrap());
     assert_eq!(ed.windows.len(), 2);
 
     // Restore single-window layout
-    let result = janet_bridge::eval(&mut ed, "(editor/restore-layout \"single\")");
+    let result = janet_bridge::eval("(editor/restore-layout \"single\")");
     assert_eq!(result, "ok");
     assert_eq!(ed.windows.len(), 1, "restore must return to saved window count");
 }
@@ -211,7 +206,7 @@ fn editor_restore_layout_no_op_when_name_unknown() {
     let count_before = ed.windows.len();
 
     // Restore a name that was never saved — should not crash or change state
-    let result = janet_bridge::eval(&mut ed, "(editor/restore-layout \"nonexistent\")");
+    let result = janet_bridge::eval("(editor/restore-layout \"nonexistent\")");
     assert_eq!(result, "ok");
     assert_eq!(ed.windows.len(), count_before);
 }
@@ -224,15 +219,14 @@ fn editor_layout_list_returns_saved_names() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    janet_bridge::eval(&mut ed, "(editor/save-layout \"alpha\")");
-    janet_bridge::eval(&mut ed, "(editor/save-layout \"beta\")");
+    janet_bridge::eval("(editor/save-layout \"alpha\")");
+    janet_bridge::eval("(editor/save-layout \"beta\")");
 
     assert_eq!(ed.saved_layouts.len(), 2);
     assert!(ed.saved_layouts.contains_key("alpha"));
     assert!(ed.saved_layouts.contains_key("beta"));
 
     let result = janet_bridge::eval(
-        &mut ed,
         "(= (length (editor/layout-list)) 2)",
     );
     assert_eq!(result, "ok");
@@ -246,7 +240,7 @@ fn window_current_returns_focused_window_table() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed, "(get (window/current) :id)");
+    let result = janet_bridge::eval("(get (window/current) :id)");
     assert_eq!(result, "ok");
     // Rust-side: focused window should be window 1
     assert_eq!(ed.windows.focused_window().unwrap().0, 1);

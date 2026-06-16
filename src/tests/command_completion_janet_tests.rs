@@ -38,7 +38,7 @@ fn command_input_returns_nil_outside_command_mode() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, "(nil? (editor/command-input))");
+    let r = janet_bridge::eval("(nil? (editor/command-input))");
     assert_eq!(r, "ok");
 }
 
@@ -50,7 +50,7 @@ fn command_input_returns_current_input_string() {
 
     enter_command(&mut ed, "set nu");
 
-    let r = janet_bridge::eval(&mut ed, r#"(= (editor/command-input) "set nu")"#);
+    let r = janet_bridge::eval(r#"(= (editor/command-input) "set nu")"#);
     assert_eq!(r, "ok");
 }
 
@@ -62,7 +62,7 @@ fn command_input_returns_empty_string_when_no_input() {
 
     enter_command(&mut ed, "");
 
-    let r = janet_bridge::eval(&mut ed, r#"(= (editor/command-input) "")"#);
+    let r = janet_bridge::eval(r#"(= (editor/command-input) "")"#);
     assert_eq!(r, "ok");
 }
 
@@ -76,7 +76,7 @@ fn set_command_input_replaces_input() {
 
     enter_command(&mut ed, "w");
 
-    let r = janet_bridge::eval(&mut ed, r#"(editor/set-command-input "wq")"#);
+    let r = janet_bridge::eval(r#"(editor/set-command-input "wq")"#);
     assert_eq!(r, "ok");
 
     if let Some(ref mb) = ed.editor_mode.minibuffer {
@@ -92,7 +92,7 @@ fn set_command_input_is_noop_outside_command_mode() {
     let mut ed = make_editor();
     janet_bridge::init(&mut ed);
 
-    let r = janet_bridge::eval(&mut ed, r#"(editor/set-command-input "anything")"#);
+    let r = janet_bridge::eval(r#"(editor/set-command-input "anything")"#);
     assert_eq!(r, "ok");
     assert!(ed.editor_mode.is_named("normal"), "mode must remain Normal");
 }

@@ -5,6 +5,8 @@ use evil_janet::*;
 use super::conv;
 use super::with_editor;
 use crate::render::surface::Style;
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// Look up a keyword key in a struct or table via janet_in.
 unsafe fn lookup(ds: Janet, key_name: &str) -> Janet {
@@ -89,9 +91,7 @@ unsafe extern "C-unwind" fn c_editor_define_face(argc: i32, argv: *mut Janet) ->
         };
         let style = if argc > 1 { parse_style(*argv.add(1)) } else { Style::default() };
         ed.faces.insert(name.clone(), style);
-        let mut data = std::collections::HashMap::new();
-        data.insert("face".to_string(), name);
-        ed.events.emit("face-changed", data);
+        ed.events.emit_typed(keys::events::FACE_CHANGED, FaceChangedPayload { face: name });
         conv::nil()
     })
 }

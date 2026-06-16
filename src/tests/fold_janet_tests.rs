@@ -32,7 +32,7 @@ fn buffer_fold_adds_fold_range() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(buffer/fold {} 0 12)", key));
     assert_eq!(result, "ok");
 
@@ -48,9 +48,9 @@ fn buffer_unfold_removes_fold_range() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let _ = janet_bridge::eval(&mut ed,
+    let _ = janet_bridge::eval(
         &format!("(buffer/fold {} 0 12)", key));
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(buffer/unfold {} 0 12)", key));
     assert_eq!(result, "ok");
 
@@ -65,11 +65,11 @@ fn buffer_unfold_all_removes_all_folds() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let _ = janet_bridge::eval(&mut ed,
+    let _ = janet_bridge::eval(
         &format!("(buffer/fold {} 0 6)", key));
-    let _ = janet_bridge::eval(&mut ed,
+    let _ = janet_bridge::eval(
         &format!("(buffer/fold {} 12 18)", key));
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(buffer/unfold-all {})", key));
     assert_eq!(result, "ok");
 
@@ -84,7 +84,7 @@ fn buffer_folds_returns_empty_for_no_folds() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(buffer/folds {})", key));
     assert_eq!(result, "ok");
 }

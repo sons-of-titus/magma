@@ -4,6 +4,8 @@ use evil_janet::*;
 use super::conv;
 use super::with_editor;
 use crate::state::mode::{EditorMode, Minibuffer};
+use crate::event::payload::*;
+use crate::event::keys;
 
 unsafe extern "C-unwind" fn c_minibuffer_open(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -11,10 +13,7 @@ unsafe extern "C-unwind" fn c_minibuffer_open(argc: i32, argv: *mut Janet) -> Ja
         let kind = conv::get_str(argc, argv, 1).unwrap_or_default();
         ed.editor_mode.minibuffer = Some(Minibuffer { prompt: prompt.clone(), input: String::new() });
         ed.plugin_state.insert("minibuffer.kind".to_string(), kind.clone());
-        let mut payload = std::collections::HashMap::new();
-        payload.insert("prompt".to_string(), prompt);
-        payload.insert("kind".to_string(), kind);
-        ed.events.emit("minibuffer-opened", payload);
+        ed.events.emit_typed(keys::events::MINIBUFFER_OPENED, MinibufferOpenedPayload { prompt, kind });
         conv::nil()
     })
 }
@@ -33,7 +32,7 @@ unsafe extern "C-unwind" fn c_minibuffer_set_input(argc: i32, argv: *mut Janet) 
         if let Some(text) = conv::get_str(argc, argv, 0) {
             if let Some(ref mut mb) = ed.editor_mode.minibuffer {
                 mb.input = text;
-                ed.events.emit("minibuffer-input-changed", std::collections::HashMap::new());
+                ed.events.emit_typed(keys::events::MINIBUFFER_INPUT_CHANGED, EmptyPayload);
             }
         }
         conv::nil()
@@ -45,10 +44,7 @@ unsafe extern "C-unwind" fn c_minibuffer_close(_argc: i32, _argv: *mut Janet) ->
         let (input, kind) = ed.editor_mode.minibuffer.take()
             .map(|mb| (mb.input, ed.plugin_state.get("minibuffer.kind").cloned().unwrap_or_default()))
             .unwrap_or_default();
-        let mut payload = std::collections::HashMap::new();
-        payload.insert("input".to_string(), input);
-        payload.insert("kind".to_string(), kind);
-        ed.events.emit("minibuffer-closed", payload);
+        ed.events.emit_typed(keys::events::MINIBUFFER_CLOSED, MinibufferClosedPayload { input, kind });
         conv::nil()
     })
 }

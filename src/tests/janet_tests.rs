@@ -31,7 +31,7 @@ fn type_command(ed: &mut Editor, s: &str) {
 
 #[test]
 fn colon_q_via_janet_fiber() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world");
     janet_bridge::init(&mut ed);
 
@@ -54,7 +54,7 @@ fn colon_q_via_janet_fiber() {
 
 #[test]
 fn colon_w_via_janet_fiber() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world");
     janet_bridge::init(&mut ed);
 
@@ -73,7 +73,7 @@ fn colon_w_via_janet_fiber() {
 
 #[test]
 fn colon_execute_unknown_does_not_crash() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world");
     janet_bridge::init(&mut ed);
 
@@ -91,7 +91,7 @@ fn colon_execute_unknown_does_not_crash() {
 
 #[test]
 fn colon_set_via_fiber_works() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world");
     janet_bridge::init(&mut ed);
 
@@ -109,18 +109,18 @@ fn colon_set_via_fiber_works() {
 
 #[test]
 fn colon_execute_direct() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world");
     janet_bridge::init(&mut ed);
 
     let expr = r#"(colon-execute "q")"#;
-    let _result = janet_bridge::eval(&mut ed, expr);
+    let _result = janet_bridge::eval(expr);
     assert!(!ed.running, "running should be false after :q");
 }
 
 #[test]
 fn mode_detail_keyword_lookup() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world");
     janet_bridge::init(&mut ed);
 
@@ -128,13 +128,13 @@ fn mode_detail_keyword_lookup() {
     crate::input::dispatch_key(&mut ed, "q");
 
     let expr = r#"(= (get (editor/mode-detail) :input "") "q")"#;
-    let result = janet_bridge::eval(&mut ed, expr);
+    let result = janet_bridge::eval(expr);
     assert_eq!(result, "ok", "keyword lookup in mode-detail table should work");
 }
 
 #[test]
 fn colon_substitute_in_buffer() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world hello");
     janet_bridge::init(&mut ed);
 
@@ -169,7 +169,7 @@ fn colon_substitute_in_buffer() {
 
 #[test]
 fn colon_substitute_global() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello world hello");
     janet_bridge::init(&mut ed);
 
@@ -190,7 +190,7 @@ fn colon_substitute_global() {
 
 #[test]
 fn colon_q_quit_qbang() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello");
     janet_bridge::init(&mut ed);
     assert!(ed.running);
@@ -209,7 +209,7 @@ fn colon_q_quit_qbang() {
 
 #[test]
 fn colon_wq_and_x() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello");
     janet_bridge::init(&mut ed);
     assert!(ed.running);
@@ -232,7 +232,7 @@ fn colon_wq_and_x() {
 
 #[test]
 fn colon_write_alias() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello");
     janet_bridge::init(&mut ed);
 
@@ -245,7 +245,7 @@ fn colon_write_alias() {
 
 #[test]
 fn colon_e_edit_r_read() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello");
     janet_bridge::init(&mut ed);
 
@@ -259,7 +259,7 @@ fn colon_e_edit_r_read() {
 
 #[test]
 fn colon_shell_not_broken() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("hello");
     janet_bridge::init(&mut ed);
 
@@ -274,7 +274,7 @@ fn colon_shell_not_broken() {
 
 #[test]
 fn colon_all_verb_extractions_via_eval() {
-    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap();
+    let _lock = crate::janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_editor("test");
     janet_bridge::init(&mut ed);
 
@@ -290,7 +290,7 @@ fn colon_all_verb_extractions_via_eval() {
     for cmd in tests {
         ed.running = true;
         let expr = format!("(try (colon-execute \"{}\") ([e] nil))", cmd);
-        let result = janet_bridge::eval(&mut ed, &expr);
+        let result = janet_bridge::eval(&expr);
         assert_eq!(result, "ok", "colon-execute \"{}\" should not crash janet", cmd);
     }
 }

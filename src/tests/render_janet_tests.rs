@@ -34,7 +34,7 @@ fn font_invalidate_sets_font_changed_flag() {
     janet_bridge::init(&mut ed);
 
     assert!(!ed.font_changed, "font_changed must start false");
-    let r = janet_bridge::eval(&mut ed, "(font/invalidate)");
+    let r = janet_bridge::eval("(font/invalidate)");
     assert_eq!(r, "ok");
     assert!(ed.font_changed, "font_changed must be true after font/invalidate");
 }
@@ -61,7 +61,7 @@ fn font_changed_event_sets_flag_after_drain() {
 
     assert!(!ed.font_changed);
     // Emit the event via Janet (queues it)
-    janet_bridge::eval(&mut ed, r#"(event/emit "font-changed" {})"#);
+    janet_bridge::eval(r#"(event/emit "font-changed" {})"#);
     // Drain dispatches the Rust subscriber, which calls the Janet handler,
     // which calls font/invalidate, which sets ed.font_changed = true.
     ed.events.drain_and_dispatch();

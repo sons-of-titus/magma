@@ -32,7 +32,7 @@ fn ts_set_language_stores_on_buffer() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(ts/set-language {} \"janet\")", key));
     assert_eq!(result, "ok");
 
@@ -48,7 +48,7 @@ fn ts_has_tree_returns_false_by_default() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(ts/has-tree? {})", key));
     assert_eq!(result, "ok");
     // No tree has been parsed yet
@@ -64,9 +64,9 @@ fn ts_parse_without_grammar_returns_false() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let _ = janet_bridge::eval(&mut ed,
+    let _ = janet_bridge::eval(
         &format!("(ts/set-language {} \"rust\")", key));
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(ts/parse {})", key));
     // Should return false since no grammar library is loaded
     // The exact return value depends on how we handle missing grammar
@@ -82,7 +82,7 @@ fn ts_query_without_tree_handles_gracefully() {
     janet_bridge::init(&mut ed);
     let key = focused_key(&ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         &format!("(ts/query {} \"(symbol)\")", key));
     // Should not crash - returns nil or empty
     assert_eq!(result, "ok");
@@ -96,7 +96,7 @@ fn ts_set_language_invalid_buffer_does_not_panic() {
     let mut ed = make_editor("");
     janet_bridge::init(&mut ed);
 
-    let result = janet_bridge::eval(&mut ed,
+    let result = janet_bridge::eval(
         "(ts/set-language 99999 \"janet\")");
     assert_eq!(result, "ok");
 }

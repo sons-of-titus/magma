@@ -8,6 +8,8 @@
 
 use evil_janet::*;
 use super::{conv, with_editor};
+use crate::event::payload::*;
+use crate::event::keys;
 
 /// (buffer/decor-set-inline buf layer line col text face)
 ///
@@ -26,10 +28,10 @@ unsafe extern "C-unwind" fn c_decor_set_inline(argc: i32, argv: *mut Janet) -> J
         let face  = conv::get_str(argc, argv, 5).unwrap_or_default();
         if let Some(buf) = ed.buffers.get_mut(buf_key) {
             buf.decor_set_inline(&layer, line, col, text, face.clone());
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer".to_string(), buf_key.to_string());
-            data.insert("layer".to_string(), layer);
-            ed.events.emit("decoration-changed", data);
+            ed.events.emit_typed(keys::events::DECORATION_CHANGED, DecorationChangedPayload {
+                buffer: buf_key.to_string(),
+                layer,
+            });
         }
         conv::nil()
     })
@@ -49,10 +51,10 @@ unsafe extern "C-unwind" fn c_decor_set_eol(argc: i32, argv: *mut Janet) -> Jane
         let face  = conv::get_str(argc, argv, 4).unwrap_or_default();
         if let Some(buf) = ed.buffers.get_mut(buf_key) {
             buf.decor_set_eol(&layer, line, text, face);
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer".to_string(), buf_key.to_string());
-            data.insert("layer".to_string(), layer);
-            ed.events.emit("decoration-changed", data);
+            ed.events.emit_typed(keys::events::DECORATION_CHANGED, DecorationChangedPayload {
+                buffer: buf_key.to_string(),
+                layer,
+            });
         }
         conv::nil()
     })
@@ -73,10 +75,10 @@ unsafe extern "C-unwind" fn c_decor_set_prefix(argc: i32, argv: *mut Janet) -> J
         let face  = conv::get_str(argc, argv, 4).unwrap_or_default();
         if let Some(buf) = ed.buffers.get_mut(buf_key) {
             buf.decor_set_prefix(&layer, line, text, face);
-            let mut data = std::collections::HashMap::new();
-            data.insert("buffer".to_string(), buf_key.to_string());
-            data.insert("layer".to_string(), layer);
-            ed.events.emit("decoration-changed", data);
+            ed.events.emit_typed(keys::events::DECORATION_CHANGED, DecorationChangedPayload {
+                buffer: buf_key.to_string(),
+                layer,
+            });
         }
         conv::nil()
     })

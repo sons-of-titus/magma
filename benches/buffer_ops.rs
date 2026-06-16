@@ -1,5 +1,5 @@
-use magma::buffer::Buffer;
-use magma::state::id::BufferId;
+use magma::kernel::state::id::BufferId;
+use magma::kernel::text_engine::Buffer;
 
 fn make_buffer(lines: usize) -> Buffer {
     let content = "hello world this is a line of text\n".repeat(lines);
@@ -16,7 +16,11 @@ fn main() {
             buf.insert(pos, "x");
         }
         let elapsed = start.elapsed();
-        println!("10k-line insert x1000: {:?} ({:.1} µs/op)", elapsed, elapsed.as_micros() as f64 / 1000.0);
+        println!(
+            "10k-line insert x1000: {:?} ({:.1} µs/op)",
+            elapsed,
+            elapsed.as_micros() as f64 / 1000.0
+        );
     }
 
     // Benchmark: sequential inserts at 100k lines
@@ -28,7 +32,11 @@ fn main() {
             buf.insert(pos, "x");
         }
         let elapsed = start.elapsed();
-        println!("100k-line insert x1000: {:?} ({:.1} µs/op)", elapsed, elapsed.as_micros() as f64 / 1000.0);
+        println!(
+            "100k-line insert x1000: {:?} ({:.1} µs/op)",
+            elapsed,
+            elapsed.as_micros() as f64 / 1000.0
+        );
     }
 
     // Benchmark: sequential deletes at 10k lines
@@ -43,7 +51,12 @@ fn main() {
             }
         }
         let elapsed = start.elapsed();
-        println!("10k-line delete x1000 (started at {} bytes): {:?} ({:.1} µs/op)", len, elapsed, elapsed.as_micros() as f64 / 1000.0);
+        println!(
+            "10k-line delete x1000 (started at {} bytes): {:?} ({:.1} µs/op)",
+            len,
+            elapsed,
+            elapsed.as_micros() as f64 / 1000.0
+        );
     }
 
     // Benchmark: slice (read) at 100k lines
@@ -55,7 +68,11 @@ fn main() {
             let _ = buf.slice(0, len);
         }
         let elapsed = start.elapsed();
-        println!("100k-line full slice x100: {:?} ({:.1} ms/op)", elapsed, elapsed.as_millis() as f64 / 100.0);
+        println!(
+            "100k-line full slice x100: {:?} ({:.1} ms/op)",
+            elapsed,
+            elapsed.as_millis() as f64 / 100.0
+        );
     }
 
     // Benchmark: cursor movement at 100k lines
@@ -67,6 +84,10 @@ fn main() {
             buf.set_cursor((i * 37) % len);
         }
         let elapsed = start.elapsed();
-        println!("100k-line cursor-set x10000: {:?} ({:.3} µs/op)", elapsed, elapsed.as_micros() as f64 / 10_000.0);
+        println!(
+            "100k-line cursor-set x10000: {:?} ({:.3} µs/op)",
+            elapsed,
+            elapsed.as_micros() as f64 / 10_000.0
+        );
     }
 }

@@ -27,10 +27,9 @@ fn on_input_interceptor_consuming_key() {
     ed.keymaps.set_layer("vim", "x", "delete-char");
     let buf_id = ed.windows.focused_window()
         .and_then(|wid| ed.windows.buffer(wid)).unwrap();
-    ed.buffers.get_mut(buf_id).unwrap().set_cursor(0);
+    ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "x");
-    let text = ed.buffers.get(buf_id).unwrap()
-        .slice(0, ed.buffers.get(buf_id).unwrap().len());
+    let text = { let b = ed.buffers.get(buf_id).unwrap().lock().unwrap(); b.slice(0, b.len()) };
     assert_eq!(text, "hello", "interceptor should have consumed the key");
 }
 
@@ -44,10 +43,9 @@ fn on_input_interceptor_passing_key() {
     ed.keymaps.set_layer("vim", "x", "delete-char");
     let buf_id = ed.windows.focused_window()
         .and_then(|wid| ed.windows.buffer(wid)).unwrap();
-    ed.buffers.get_mut(buf_id).unwrap().set_cursor(0);
+    ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "x");
-    let text = ed.buffers.get(buf_id).unwrap()
-        .slice(0, ed.buffers.get(buf_id).unwrap().len());
+    let text = { let b = ed.buffers.get(buf_id).unwrap().lock().unwrap(); b.slice(0, b.len()) };
     assert_eq!(text, "ello", "key should have been dispatched normally");
 }
 
@@ -73,10 +71,9 @@ fn input_consumed_flag_cleared_each_dispatch() {
     ed.keymaps.set_layer("vim", "x", "delete-char");
     let buf_id = ed.windows.focused_window()
         .and_then(|wid| ed.windows.buffer(wid)).unwrap();
-    ed.buffers.get_mut(buf_id).unwrap().set_cursor(0);
+    ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
     dispatch_key(&mut ed, "a");
     dispatch_key(&mut ed, "x");
-    let text = ed.buffers.get(buf_id).unwrap()
-        .slice(0, ed.buffers.get(buf_id).unwrap().len());
+    let text = { let b = ed.buffers.get(buf_id).unwrap().lock().unwrap(); b.slice(0, b.len()) };
     assert_eq!(text, "b", "first char should have been deleted by x");
 }

@@ -61,19 +61,19 @@ pub(super) fn render_status_bar(
     editor: &Editor,
     buf: &Buffer,
     buf_id: usize,
+    cursor_offset: usize,
     surface: &mut Surface,
     is_terminal_view: bool,
 ) {
-    let cursor_line = {
-        let text = buf.slice(0, buf.len());
-        let cursor_offset = buf.cursor();
-        text[..cursor_offset].chars().filter(|&c| c == '\n').count()
-    };
+    let text = buf.slice(0, buf.len());
+    let cursor_line = text[..cursor_offset.min(text.len())]
+        .chars()
+        .filter(|&c| c == '\n')
+        .count();
     let cursor_col = {
-        let text = buf.slice(0, buf.len());
-        let cursor_offset = buf.cursor().min(text.len());
-        let text_before = &text[..cursor_offset];
-        let last_line = text_before.rfind('\n').map(|p| &text_before[p + 1..]).unwrap_or(text_before);
+        let safe = cursor_offset.min(text.len());
+        let before = &text[..safe];
+        let last_line = before.rfind('\n').map(|p| &before[p + 1..]).unwrap_or(before);
         unicode_width::UnicodeWidthStr::width(last_line)
     };
     let total_lines = buf.line_count();
@@ -115,10 +115,6 @@ pub(super) fn render_status_bar(
 }
 
 /// Draw the command-mode completion popup above the status bar.
-///
-/// Each candidate takes one row; the selected entry is highlighted.
-/// At most 10 items are shown; the list scrolls to keep the selection visible.
-/// Overlays the bottom rows of the buffer area (intentional, like all editor popups).
 pub(super) fn render_command_completion_popup(editor: &Editor, surface: &mut Surface) {
     let items = &editor.completion.items;
     if items.is_empty() { return; }

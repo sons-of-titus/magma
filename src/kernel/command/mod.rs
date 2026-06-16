@@ -118,7 +118,7 @@ pub fn execute_command(
             .and_then(|wid| editor.windows.buffer(wid))
             .unwrap_or(0);
         if editor.buffers.contains(buf_id) {
-            let pos = editor.buffers.get(buf_id).map(|b| b.cursor()).unwrap_or(0);
+            let pos = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             editor.change_list.push(pos);
             editor.change_list_idx = editor.change_list.len();
         }

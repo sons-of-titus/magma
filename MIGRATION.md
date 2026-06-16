@@ -162,23 +162,35 @@ All logic lives under `kernel/<subsystem>/`.
 
 ---
 
-### Phase 1 — Text Engine Overhaul
+### Phase 1 — Text Engine Overhaul ✅ COMPLETE
 
 **Goal:** Transform `kernel/text_engine/` from a buffer-with-LSP into the
 Architecture Spec's Text Engine: buffer, rope storage, decorations, views.
 
-| Step | What |
-|------|------|
-| 1.1 | Introduce **Position** struct (`line`, `column`, `offset`) as the canonical position type throughout the engine |
-| 1.2 | Replace all raw `(line, usize)` / `usize` cursor positions with `Position` |
-| 1.3 | Extract `BufferView` from `Buffer` — a view has cursor state, decorations, folds; the buffer owns only content + undo history |
-| 1.4 | Give `BufferView` its own decoration layer stack (independent of the buffer's layers) |
-| 1.5 | Make `Buffer` reference-counted (`Arc<Buffer>`) so multiple views can share the same backing store |
-| 1.6 | Verify: all cursor operations, undo, editing work identically through the view |
+| Step | What | Status |
+|------|------|--------|
+| 1.1 | Introduce **Position** struct (`line`, `column`, `offset`) as the canonical position type throughout the engine | ✅ |
+| 1.2 | Replace all raw `(line, usize)` / `usize` cursor positions with `Position` | ✅ |
+| 1.3 | Extract `BufferView` from `Buffer` — a view has cursor state, decorations, folds; the buffer owns only content + undo history | ✅ |
+| 1.4 | Give `BufferView` its own decoration layer stack (independent of the buffer's layers) | ✅ |
+| 1.5 | Make `Buffer` reference-counted (`Arc<Mutex<Buffer>>`) so multiple views can share the same backing store | ✅ |
+| 1.6 | Verify: all cursor operations, undo, editing work identically through the view | ✅ |
 
 **Design constraint:** A buffer has N views.  Each view has its own cursor,
 selection, folds, scroll position, and decoration overlay.  The buffer has
 none of these — it is pure content + history.
+
+**Completion notes (2026-06-16):**
+- `editor.buffers: Slab<Arc<Mutex<Buffer>>>` — content is lock-guarded
+- `editor.views: HashMap<usize, BufferView>` — per-window view state
+- `Editor::create_buffer()` / `create_buffer_from_str()` create both atomically
+- All 43 production files and all test files updated to use the new API
+- Double-lock deadlocks (same `Arc` locked twice in one expression) fixed in 9 sites:
+  `helpers.rs`, `colon.rs` (×2), `misc.rs`, `editing.rs`, `completion.rs` (×2),
+  `unified_input_janet_tests.rs` (×3), `text_engine/tests.rs`
+- `render_frame` deadlock fixed: `compute_scroll_state_raw` introduced so the
+  frame renderer can use already-locked buffer data without re-acquiring the lock
+- `cargo test --features janet -- --test-threads=1`: zero failures
 
 ---
 

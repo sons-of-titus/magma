@@ -93,23 +93,27 @@ pub fn draw_status(
     } else if let Some(slab) = ed.windows.focused_window()
         .and_then(|wid| ed.windows.buffer(wid))
     {
-        if let Some(buf) = ed.buffers.get(slab) {
+        if let Some(buf_arc) = ed.buffers.get(slab) {
+            let buf     = buf_arc.lock().unwrap();
+            let cursor  = ed.views.get(&slab).map(|v| v.cursor_offset()).unwrap_or(0);
             let content = buf.slice(0, buf.len());
-            let safe    = safe_boundary(&content, buf.cursor());
+            let safe    = safe_boundary(&content, cursor);
             let before  = &content[..safe];
             let row     = before.chars().filter(|&c| c == '\n').count() + 1;
             let last    = before.rfind('\n').map(|p| &before[p + 1..]).unwrap_or(before);
             let col     = last.chars().count() + 1;
             let dirty   = if buf.modified() { " [+]" } else { "" };
 
-            let sel_info = if let Some((s, e)) = ed.selection_range(buf.cursor()) {
+            let sel_info = if let Some((s, e)) = ed.selection_range(cursor) {
                 let chars = content.get(s..e).map(|t| t.chars().count()).unwrap_or(0);
                 format!("  ({} chars selected)", chars)
             } else {
                 String::new()
             };
+            let name = buf.name.clone();
+            drop(buf);
 
-            format!("  {}  {}{}{}   Ln {}, Col {}", mode, buf.name, dirty, sel_info, row, col)
+            format!("  {}  {}{}{}   Ln {}, Col {}", mode, name, dirty, sel_info, row, col)
         } else {
             format!("  {}  No buffer", mode)
         }

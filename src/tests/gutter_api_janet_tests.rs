@@ -3,8 +3,7 @@
 use crate::kernel::scripting;
 
 fn make_buf(ed: &mut crate::kernel::state::Editor) -> usize {
-    let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(1), "test.rs");
-    ed.buffers.insert(buf)
+    ed.create_buffer("test.rs")
 }
 
 // ── gutter/define-column ─────────────────────────────────────────────────

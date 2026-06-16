@@ -128,7 +128,8 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let path = {
                 let buf_id = get_current_buffer_id(editor);
-                editor.buffers.get(buf_id).and_then(|b| b.path.clone())
+                editor.buffers.get(buf_id)
+                    .and_then(|a| a.lock().unwrap().path.clone())
                     .ok_or_else(|| "current buffer has no file path".to_string())?
             };
             vc_show(editor, VcShow::Blame(path))
@@ -166,7 +167,8 @@ enum VcShow { Diff(Option<String>), Log, Push, Blame(String) }
 fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
     let buf_id = get_current_buffer_id(editor);
     editor.buffers.get(buf_id)
-        .and_then(|b| b.path.as_deref())
+        .and_then(|a| a.lock().unwrap().path.clone())
+        .as_deref()
         .and_then(|p| std::path::Path::new(p).parent())
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
@@ -175,19 +177,34 @@ fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
 /// Return the 0-indexed line the VC buffer cursor is on.
 fn vc_cursor_line(editor: &Editor) -> usize {
     let Some(key) = editor.vc.buf_key else { return 0 };
-    let Some(buf) = editor.buffers.get(key) else { return 0 };
-    buf.slice(0, buf.cursor()).chars().filter(|&c| c == '\n').count()
+    let cursor = editor.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
+    let Some(arc) = editor.buffers.get(key) else { return 0 };
+    let buf = arc.lock().unwrap();
+    buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
 }
 
 /// Write `text` into the VC buffer, preserving cursor line.
 fn vc_write_buf(editor: &mut Editor, text: &str) -> CommandResult {
     let Some(key) = editor.vc.buf_key else { return Ok(()); };
-    let Some(buf) = editor.buffers.get_mut(key) else { return Ok(()); };
-    let saved_line = buf.slice(0, buf.cursor()).chars().filter(|&c| c == '\n').count();
-    let len = buf.len();
-    if len > 0 { buf.delete(0, len); }
-    buf.insert(0, text);
-    if let Some(off) = buf.line_start_offset(saved_line) { buf.set_cursor(off); }
+    if !editor.buffers.contains(key) { return Ok(()); }
+    let saved_line = {
+        let cursor = editor.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
+        let buf = editor.buffers.get(key).unwrap().lock().unwrap();
+        buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
+    };
+    {
+        let arc = editor.buffers.get_mut(key).unwrap();
+        let mut buf = arc.lock().unwrap();
+        let len = buf.len();
+        if len > 0 { buf.delete(0, len); }
+        buf.insert(0, text);
+    }
+    let offset = editor.buffers.get(key).unwrap().lock().unwrap().line_start_offset(saved_line);
+    if let Some(off) = offset {
+        if let Some(view) = editor.views.get_mut(&key) {
+            view.set_cursor(off);
+        }
+    }
     Ok(())
 }
 
@@ -209,22 +226,22 @@ fn vc_open(editor: &mut Editor) -> CommandResult {
     let buf_key = editor.vc.buf_key
         .and_then(|k| editor.buffers.get(k).map(|_| k))
         .unwrap_or_else(|| {
-            let id = editor.next_buffer_id;
-            editor.next_buffer_id += 1;
-            let entry = editor.buffers.vacant_entry();
-            let k = entry.key();
-            entry.insert(crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), "*vc*"));
-            k
+            editor.create_buffer("*vc*")
         });
     editor.vc.buf_key = Some(buf_key);
 
     {
-        let buf = editor.buffers.get_mut(buf_key).unwrap();
+        let arc = editor.buffers.get_mut(buf_key).unwrap();
+        let mut buf = arc.lock().unwrap();
         let len = buf.len();
         if len > 0 { buf.delete(0, len); }
         buf.insert(0, &text);
-        if let Some(off) = buf.line_start_offset(crate::kernel::vc::VC_HEADER_LINES) {
-            buf.set_cursor(off);
+    }
+    let header_offset = editor.buffers.get(buf_key).unwrap().lock().unwrap()
+        .line_start_offset(crate::kernel::vc::VC_HEADER_LINES);
+    if let Some(off) = header_offset {
+        if let Some(view) = editor.views.get_mut(&buf_key) {
+            view.set_cursor(off);
         }
     }
 
@@ -300,22 +317,20 @@ fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
 /// Write `text` into a named scratch buffer and display it.
 fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
     let key = editor.buffers.iter()
-        .find(|(_, b)| b.name == name)
+        .find(|(_, arc)| arc.lock().unwrap().name == name)
         .map(|(k, _)| k)
         .unwrap_or_else(|| {
-            let id = editor.next_buffer_id;
-            editor.next_buffer_id += 1;
-            let entry = editor.buffers.vacant_entry();
-            let k = entry.key();
-            entry.insert(crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), name));
-            k
+            editor.create_buffer(name)
         });
     {
-        let buf = editor.buffers.get_mut(key).unwrap();
+        let arc = editor.buffers.get_mut(key).unwrap();
+        let mut buf = arc.lock().unwrap();
         let len = buf.len();
         if len > 0 { buf.delete(0, len); }
         buf.insert(0, text);
-        buf.set_cursor(0);
+    }
+    if let Some(view) = editor.views.get_mut(&key) {
+        view.set_cursor(0);
     }
     if let Some(win) = editor.windows.focused_window_mut() {
         win.buffer_id = Some(key);
@@ -336,10 +351,14 @@ fn vc_open_commit_buf(editor: &mut Editor) -> CommandResult {
 /// Read and return the trimmed commit message from `*vc-commit*`, stripping `#` lines.
 fn vc_read_commit_buf(editor: &mut Editor) -> Result<String, String> {
     let key = editor.buffers.iter()
-        .find(|(_, b)| b.name == "*vc-commit*")
+        .find(|(_, arc)| arc.lock().unwrap().name == "*vc-commit*")
         .map(|(k, _)| k)
         .ok_or_else(|| "No *vc-commit* buffer open".to_string())?;
-    let text = editor.buffers.get(key).unwrap().slice(0, editor.buffers.get(key).unwrap().len());
+    let text = {
+        let arc = editor.buffers.get(key).unwrap();
+        let buf = arc.lock().unwrap();
+        buf.slice(0, buf.len())
+    };
     let msg: String = text.lines()
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect::<Vec<_>>()

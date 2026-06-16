@@ -1,21 +1,19 @@
-//! Buffer decoration render pass (Sprint 11b).
+//! Buffer decoration render pass.
 //!
 //! Called from `render_frame` after all text and highlights have been drawn.
-//! Iterates `Buffer.decoration_layers` in sorted-name order (deterministic)
-//! and renders each decoration type onto the Surface.
 
-use crate::kernel::text_engine::Decoration;
+use crate::kernel::text_engine::{Buffer, Decoration};
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::{Style, Surface};
 
 /// Compute the width of the widest `LinePrefix` decoration across all layers
-/// for the given buffer.  Returns 0 when no prefix decorations exist.
+/// for the given buffer view.  Returns 0 when no prefix decorations exist.
 pub fn prefix_margin_width(editor: &Editor, buf_id: usize) -> usize {
-    let buf = match editor.buffers.get(buf_id) {
-        Some(b) => b,
+    let view = match editor.views.get(&buf_id) {
+        Some(v) => v,
         None => return 0,
     };
-    buf.decoration_layers.values()
+    view.decoration_layers.values()
         .flat_map(|v| v.iter())
         .filter_map(|d| match d {
             Decoration::LinePrefix { text, .. } => Some(text.chars().count()),
@@ -26,13 +24,10 @@ pub fn prefix_margin_width(editor: &Editor, buf_id: usize) -> usize {
 }
 
 /// Render all decoration layers for the focused buffer.
-///
-/// `row_offset` is the number of surface rows reserved above the buffer area
-/// (tab-bar row + header-line row).  `prefix_margin` is the column count
-/// reserved for `LinePrefix` decorations.
 pub fn render_decorations(
     editor: &Editor,
     buf_id: usize,
+    buf: &Buffer,
     surface: &mut Surface,
     scroll_top: usize,
     visible_lines: usize,
@@ -41,18 +36,18 @@ pub fn render_decorations(
     content_x: u16,
     row_offset: u16,
 ) {
-    let buf = match editor.buffers.get(buf_id) {
-        Some(b) => b,
+    let view = match editor.views.get(&buf_id) {
+        Some(v) => v,
         None => return,
     };
-    if buf.decoration_layers.is_empty() { return; }
+    if view.decoration_layers.is_empty() { return; }
 
     // Collect sorted layer names for deterministic render order.
-    let mut layer_names: Vec<&str> = buf.decoration_layers.keys().map(|s| s.as_str()).collect();
+    let mut layer_names: Vec<&str> = view.decoration_layers.keys().map(|s| s.as_str()).collect();
     layer_names.sort_unstable();
 
     for layer_name in layer_names {
-        let layer = match buf.decoration_layers.get(layer_name) {
+        let layer = match view.decoration_layers.get(layer_name) {
             Some(v) => v,
             None => continue,
         };
@@ -105,7 +100,6 @@ pub fn render_overlays(editor: &Editor, surface: &mut Surface) {
     let overlay_fg = editor.theme_color("fg");
 
     for ov in sorted {
-        // Fill overlay background.
         let bg_style = Style {
             fg: overlay_fg,
             bg: overlay_bg,
@@ -121,9 +115,9 @@ pub fn render_overlays(editor: &Editor, surface: &mut Surface) {
             }
         }
 
-        // Draw the overlay's buffer content if one is associated.
         if let Some(buf_id) = ov.buffer_id {
-            if let Some(buf) = editor.buffers.get(buf_id) {
+            if let Some(arc) = editor.buffers.get(buf_id) {
+                let buf = arc.lock().unwrap();
                 let text = buf.slice(0, buf.len());
                 let lines: Vec<&str> = text.split('\n').collect();
                 let max_rows = ov.height as usize;

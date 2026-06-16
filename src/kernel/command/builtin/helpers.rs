@@ -3,6 +3,7 @@
 use crate::kernel::state::Editor;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
+use crate::kernel::text_engine::BufferView;
 
 pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
     editor.windows.focused_window()
@@ -12,48 +13,55 @@ pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
 
 pub(super) fn emit_cursor_moved(editor: &mut Editor) {
     let buf_id = get_current_buffer_id(editor);
-    let cursor = editor.buffers.get(buf_id).map(|b| b.cursor().to_string());
+    let cursor = editor.views.get(&buf_id).map(|v| v.cursor.offset.to_string());
     editor.events.emit_typed(keys::events::CURSOR_MOVED, CursorMovedPayload {
         buffer_id: buf_id.to_string(),
         cursor: cursor.unwrap_or_default(),
     });
 }
 
-pub(super) fn current_line(buf: &crate::kernel::text_engine::Buffer) -> usize {
-    let pos = buf.cursor();
-    let text = buf.slice(0, pos);
-    text.chars().filter(|&c| c == '\n').count()
+pub(super) fn current_line(view: &BufferView) -> usize {
+    view.cursor.line
 }
 
-pub(super) fn current_col(buf: &crate::kernel::text_engine::Buffer) -> usize {
-    col_at(buf, buf.cursor())
+pub(super) fn current_col(view: &BufferView) -> usize {
+    view.cursor.column
 }
 
-pub(super) fn col_at(buf: &crate::kernel::text_engine::Buffer, pos: usize) -> usize {
+pub(super) fn col_at_offset(view: &BufferView, pos: usize) -> usize {
+    let buf = view.buffer.lock().unwrap();
     let text = buf.slice(0, pos);
+    drop(buf);
     text.chars().rev().position(|c| c == '\n').unwrap_or_else(|| text.chars().count())
 }
 
-pub(super) fn move_to_line_col(buf: &mut crate::kernel::text_engine::Buffer, line: usize, col: usize) {
-    if let Some(offset) = buf.line_start_offset(line) {
+pub(super) fn move_to_line_col(view: &mut BufferView, line: usize, col: usize) {
+    let (offset, line_len) = {
+        let buf = view.buffer.lock().unwrap();
+        let offset = buf.line_start_offset(line);
         let line_text = buf.line(line).unwrap_or_default();
-        let max_col = line_text.len();
-        buf.set_cursor(offset + col.min(max_col));
+        (offset, line_text.len())
+    };
+    if let Some(offset) = offset {
+        view.set_cursor(offset + col.min(line_len));
     }
 }
 
 pub(super) fn move_cursor(editor: &mut Editor, delta: isize) {
     let buf_id = get_current_buffer_id(editor);
-    if let Some(buf) = editor.buffers.get_mut(buf_id) {
-        let pos = buf.cursor();
-        let new_pos = if delta < 0 {
-            let text = buf.slice(0, pos);
-            text.chars().last().map(|c| pos - c.len_utf8()).unwrap_or(0)
-        } else {
-            let text = buf.slice(pos, buf.len());
-            text.chars().next().map(|c| pos + c.len_utf8()).unwrap_or(buf.len())
+    if let Some(view) = editor.views.get_mut(&buf_id) {
+        let pos = view.cursor.offset;
+        let new_pos = {
+            let buf = view.buffer.lock().unwrap();
+            if delta < 0 {
+                let text = buf.slice(0, pos);
+                text.chars().last().map(|c| pos - c.len_utf8()).unwrap_or(0)
+            } else {
+                let text = buf.slice(pos, buf.len());
+                text.chars().next().map(|c| pos + c.len_utf8()).unwrap_or(buf.len())
+            }
         };
-        buf.set_cursor(new_pos);
+        view.set_cursor(new_pos);
     }
     emit_cursor_moved(editor);
 }

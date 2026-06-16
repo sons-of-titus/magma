@@ -36,20 +36,19 @@ pub struct ScrollState {
     pub cursor_line: usize,
 }
 
-/// Compute the scroll offset so the cursor stays `scrolloff` lines from the
-/// scroll window edges.  Also returns cursor visual row, column, and line.
-pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize) -> ScrollState {
-    let scrolloff = int_option(editor, "scrolloff", 0);
-    let text = editor.buffers.get(buf_id)
-        .map(|b| b.slice(0, b.len()))
-        .unwrap_or_default();
-    let total_lines = editor.buffers.get(buf_id)
-        .map(|b| b.line_count())
-        .unwrap_or(1);
-    let cursor_offset = editor.buffers.get(buf_id)
-        .map(|b| b.cursor())
-        .unwrap_or(0);
-    let cursor_line = text[..cursor_offset]
+/// Compute scroll state from pre-extracted buffer data (no locking).
+/// Used by `render_frame` (which already holds the buffer lock) and by
+/// callers that have already extracted text/line-count themselves.
+pub fn compute_scroll_state_raw(
+    text: &str,
+    total_lines: usize,
+    cursor_offset: usize,
+    visible_lines: usize,
+    scrolloff: usize,
+    glyph_widths: &std::collections::HashMap<char, u8>,
+) -> ScrollState {
+    let safe = cursor_offset.min(text.len());
+    let cursor_line = text[..safe]
         .chars()
         .filter(|&c| c == '\n')
         .count()
@@ -65,17 +64,33 @@ pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize
     let scroll_top = scroll_top.min(total_lines.saturating_sub(1));
 
     let cursor_vis_row = cursor_line.saturating_sub(scroll_top);
-    let safe_pos = cursor_offset.min(text.len());
-    let text_before = &text[..safe_pos];
+    let text_before = &text[..safe];
     let last_line = text_before
         .rfind('\n')
         .map(|p| &text_before[p + 1..])
         .unwrap_or(text_before);
     let cursor_col: usize = last_line.chars()
-        .map(|c| cell_width(c, &editor.font_config.glyph_widths))
+        .map(|c| cell_width(c, glyph_widths))
         .sum();
 
     ScrollState { scroll_top, cursor_vis_row, cursor_col, cursor_line }
+}
+
+/// Compute the scroll offset so the cursor stays `scrolloff` lines from the
+/// scroll window edges.  Also returns cursor visual row, column, and line.
+/// Acquires the buffer lock internally — do NOT call while holding the lock.
+pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize) -> ScrollState {
+    let scrolloff = int_option(editor, "scrolloff", 0);
+    let (text, total_lines) = editor.buffers.get(buf_id)
+        .map(|arc| {
+            let buf = arc.lock().unwrap();
+            (buf.slice(0, buf.len()), buf.line_count())
+        })
+        .unwrap_or_default();
+    let cursor_offset = editor.views.get(&buf_id)
+        .map(|v| v.cursor.offset)
+        .unwrap_or(0);
+    compute_scroll_state_raw(&text, total_lines, cursor_offset, visible_lines, scrolloff, &editor.font_config.glyph_widths)
 }
 
 pub fn render_frame(editor: &Editor, surface: &mut Surface) {
@@ -100,13 +115,16 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
     let buffer_id = focused.and_then(|wid| editor.windows.buffer(wid));
 
     if let Some(buf_id) = buffer_id
-        && let Some(buf) = editor.buffers.get(buf_id) {
+        && let Some(arc) = editor.buffers.get(buf_id) {
+            let buf = arc.lock().unwrap();
+            let view = editor.views.get(&buf_id);
+            let cursor_offset = view.map(|v| v.cursor.offset).unwrap_or(0);
             let visible_lines = surface.height.saturating_sub(1 + tab_bar_rows) as usize;
             let is_terminal_view = crate::kernel::terminal::is_terminal(editor, buf_id);
 
             if is_terminal_view {
-                render_terminal_frame(editor, buf, surface, visible_lines);
-                render_status_bar(editor, buf, buf_id, surface, true);
+                render_terminal_frame(editor, &*buf, surface, visible_lines);
+                render_status_bar(editor, &*buf, buf_id, cursor_offset, surface, true);
                 return;
             }
 
@@ -144,8 +162,9 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
 
             let total_lines   = buf.line_count();
             let text          = buf.slice(0, buf.len());
+            let scrolloff     = int_option(editor, "scrolloff", 0);
 
-            let st = compute_scroll_state(editor, buf_id, visible_lines);
+            let st = compute_scroll_state_raw(&text, total_lines, cursor_offset, visible_lines, scrolloff, &editor.font_config.glyph_widths);
             let scroll_top = focused
                 .and_then(|wid| editor.windows.window(wid))
                 .filter(|w| w.scroll_pinned)
@@ -183,7 +202,9 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
             }
 
             // ── Pass 1: draw line numbers and text (fold-aware) ─────────
-            let fold_map: std::collections::HashMap<usize, usize> = buf.folds.iter()
+            let empty_folds = Vec::new();
+            let folds = view.map(|v| &v.folds).unwrap_or(&empty_folds);
+            let fold_map: std::collections::HashMap<usize, usize> = folds.iter()
                 .map(|(s, e)| (*s, *e)).collect();
             {
                 let mut display_row = 0usize;
@@ -307,8 +328,8 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
             }
 
             // ── Pass 2: highlights and visual selection ──────────────────
-            apply_highlights(editor, buf, surface, &text, scroll_top, max_visible,
-                             content_x, row_offset);
+            apply_highlights(editor, &*buf, view, surface, &text, scroll_top, max_visible,
+                             content_x, row_offset, cursor_offset);
 
             // ── Column ruler (colorcolumn) ──────────────────────────────
             let col_col = int_option(editor, "colorcolumn", 0);
@@ -324,7 +345,7 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
             }
 
             // ── Decoration pass ──────────────────────────────────────────
-            render_decorations(editor, buf_id, surface,
+            render_decorations(editor, buf_id, &*buf, surface,
                 scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset);
 
             // ── Cursor (shape-aware) ─────────────────────────────────────
@@ -369,7 +390,7 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
 
             // ── Overlays and status bar ──────────────────────────────────
             render_overlays(editor, surface);
-            render_status_bar(editor, buf, buf_id, surface, false);
+            render_status_bar(editor, &*buf, buf_id, cursor_offset, surface, false);
         }
 
     // ── Command-mode completion popup ────────────────────────────────────

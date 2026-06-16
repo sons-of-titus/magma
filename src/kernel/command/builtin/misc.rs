@@ -32,12 +32,13 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let buf = editor.buffers.get_mut(buf_id)
+            let arc = editor.buffers.get_mut(buf_id)
                 .ok_or_else(|| "No buffer".to_string())?;
-            if let Some(ref path) = buf.path.clone() {
-                let content = buf.slice(0, buf.len());
+            let path = arc.lock().unwrap().path.clone();
+            if let Some(ref path) = path {
+                let content = { let b = arc.lock().unwrap(); b.slice(0, b.len()) };
                 editor.fs.write(path, &content).map_err(|e| e.to_string())?;
-                buf.mark_saved();
+                arc.lock().unwrap().mark_saved();
             }
             editor.running = false;
             Ok(())
@@ -58,8 +59,8 @@ pub(super) fn register(editor: &mut Editor) {
             editor.keymaps.pop_layer("vim");
             editor.editor_mode = EditorMode::new("insert", true);
             editor.keymaps.push_layer("insert");
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.open_undo_session();
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                view.open_undo_session();
             }
             Ok(())
         },
@@ -69,9 +70,12 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                editor.last_insert_pos = buf.cursor();
-                buf.close_undo_session();
+            {
+                let last_insert_pos = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+                editor.last_insert_pos = last_insert_pos;
+                if let Some(view) = editor.views.get_mut(&buf_id) {
+                    view.close_undo_session();
+                }
             }
 
             if editor.block_visual.active {
@@ -80,39 +84,57 @@ pub(super) fn register(editor: &mut Editor) {
                 let pre_pos = editor.block_visual.pre_pos;
                 editor.block_visual.active = false;
 
-                if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                    let post_pos = buf.cursor();
-                    if post_pos > pre_pos {
-                        let inserted = buf.slice(pre_pos, post_pos).to_string();
-                        let mut insert_positions: Vec<(usize, usize)> = Vec::new();
-                        for (i, &line_start) in lines.iter().enumerate().skip(1) {
-                            let line_end = {
+                let post_pos = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+                if post_pos > pre_pos {
+                    let inserted = {
+                        if let Some(view) = editor.views.get(&buf_id) {
+                            view.buffer.lock().unwrap().slice(pre_pos, post_pos).to_string()
+                        } else {
+                            String::new()
+                        }
+                    };
+                    let mut insert_positions: Vec<(usize, usize)> = Vec::new();
+                    for (i, &line_start) in lines.iter().enumerate().skip(1) {
+                        let line_end = {
+                            if let Some(view) = editor.views.get(&buf_id) {
+                                let buf = view.buffer.lock().unwrap();
                                 let text = buf.slice(0, buf.len());
                                 text[line_start..].find('\n')
                                     .map(|e| line_start + e)
                                     .unwrap_or(buf.len())
-                            };
-                            let actual_line_len = line_end - line_start;
-                            let insert_at = line_start + col.min(actual_line_len);
-                            insert_positions.push((insert_at, i));
-                        }
-                        insert_positions.sort_by_key(|b| Reverse(b.0));
-                        for (insert_at, _) in &insert_positions {
-                            buf.insert(*insert_at, &inserted);
+                            } else {
+                                line_start
+                            }
+                        };
+                        let actual_line_len = line_end - line_start;
+                        let insert_at = line_start + col.min(actual_line_len);
+                        insert_positions.push((insert_at, i));
+                    }
+                    insert_positions.sort_by_key(|b| Reverse(b.0));
+                    for (insert_at, _) in &insert_positions {
+                        if let Some(view) = editor.views.get_mut(&buf_id) {
+                            view.insert(*insert_at, &inserted);
                         }
                     }
                 }
 
-                if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                    let first_line = lines[0];
-                    let line_end = {
+                let first_line = lines[0];
+                let (line_end, buf_len) = {
+                    if let Some(view) = editor.views.get(&buf_id) {
+                        let buf = view.buffer.lock().unwrap();
                         let text = buf.slice(0, buf.len());
-                        text[first_line..].find('\n')
+                        let line_end = text[first_line..].find('\n')
                             .map(|e| first_line + e)
-                            .unwrap_or(buf.len())
-                    };
-                    let line_text_len = line_end - first_line;
-                    buf.set_cursor(first_line + col.min(line_text_len));
+                            .unwrap_or(buf.len());
+                        (line_end, buf.len())
+                    } else {
+                        (first_line, 0)
+                    }
+                };
+                let line_text_len = line_end - first_line;
+                let _ = buf_len;
+                if let Some(view) = editor.views.get_mut(&buf_id) {
+                    view.set_cursor(first_line + col.min(line_text_len));
                 }
 
                 editor.editor_mode = EditorMode::new("normal", false);
@@ -125,12 +147,15 @@ pub(super) fn register(editor: &mut Editor) {
             editor.editor_mode = EditorMode::new("normal", false);
             editor.keymaps.pop_layer("insert");
             editor.keymaps.push_layer("vim");
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                if pos > 0 && !buf.is_empty() {
-                    let text = buf.slice(0, pos);
-                    if let Some(ch) = text.chars().last() {
-                        buf.set_cursor(pos - ch.len_utf8());
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor_offset();
+                let (is_empty, last_ch) = {
+                    let buf = view.buffer.lock().unwrap();
+                    (buf.is_empty(), if pos > 0 { buf.slice(0, pos).chars().last() } else { None })
+                };
+                if pos > 0 && !is_empty {
+                    if let Some(ch) = last_ch {
+                        view.set_cursor(pos - ch.len_utf8());
                     }
                 }
             }
@@ -142,11 +167,15 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                if let Some(ch) = text.chars().next() {
-                    buf.set_cursor(pos + ch.len_utf8());
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor_offset();
+                let next_ch_len = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    text.chars().next().map(|c| c.len_utf8())
+                };
+                if let Some(len) = next_ch_len {
+                    view.set_cursor(pos + len);
                 }
             }
             editor.keymaps.pop_layer("vim");
@@ -160,13 +189,16 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let line  = current_line(buf);
-                let start = buf.line_start_offset(line).unwrap_or(0);
-                let text  = buf.line(line).unwrap_or_default();
-                let eol   = start + text.len();
-                buf.set_cursor(eol);
-                buf.insert(eol, "\n");
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let line = current_line(view);
+                let eol = {
+                    let buf = view.buffer.lock().unwrap();
+                    let start = buf.line_start_offset(line).unwrap_or(0);
+                    let text = buf.line(line).unwrap_or_default();
+                    start + text.len()
+                };
+                view.set_cursor(eol);
+                view.insert(eol, "\n");
             }
             editor.keymaps.pop_layer("vim");
             editor.editor_mode = EditorMode::new("insert", true);
@@ -179,12 +211,18 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let line = current_line(buf);
-                if let Some(off) = buf.line_start_offset(line) {
-                    let line_text = buf.line(line).unwrap_or_default();
-                    let indent = line_text.len() - line_text.trim_start().len();
-                    buf.set_cursor(off + indent);
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let line = current_line(view);
+                let target = {
+                    let buf = view.buffer.lock().unwrap();
+                    buf.line_start_offset(line).map(|off| {
+                        let line_text = buf.line(line).unwrap_or_default();
+                        let indent = line_text.len() - line_text.trim_start().len();
+                        off + indent
+                    })
+                };
+                if let Some(pos) = target {
+                    view.set_cursor(pos);
                 }
             }
             editor.keymaps.pop_layer("vim");
@@ -198,11 +236,17 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let line = current_line(buf);
-                if let Some(off) = buf.line_start_offset(line) {
-                    let line_text = buf.line(line).unwrap_or_default();
-                    buf.set_cursor(off + line_text.len());
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let line = current_line(view);
+                let target = {
+                    let buf = view.buffer.lock().unwrap();
+                    buf.line_start_offset(line).map(|off| {
+                        let line_text = buf.line(line).unwrap_or_default();
+                        off + line_text.len()
+                    })
+                };
+                if let Some(pos) = target {
+                    view.set_cursor(pos);
                 }
             }
             editor.keymaps.pop_layer("vim");
@@ -305,8 +349,8 @@ pub(super) fn register(editor: &mut Editor) {
                 .ok_or_else(|| "mode name required".to_string())?;
             let new_mode = crate::kernel::text_engine::MajorMode::from_name(name);
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.major_mode = new_mode;
+            if let Some(arc) = editor.buffers.get_mut(buf_id) {
+                arc.lock().unwrap().major_mode = new_mode;
             }
             editor.events.emit_typed(keys::events::MAJOR_MODE_CHANGED, MajorModeChangedPayload {
                 mode: name.to_string(),
@@ -321,8 +365,8 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get(buf_id) {
-                println!("{}", buf.major_mode.name());
+            if let Some(arc) = editor.buffers.get(buf_id) {
+                println!("{}", arc.lock().unwrap().major_mode.name());
             }
             Ok(())
         },

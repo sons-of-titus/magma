@@ -120,9 +120,11 @@ impl eframe::App for GuiApp {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
             if let Some(slab) = ed.windows.focused_window()
                 .and_then(|wid| ed.windows.buffer(wid))
-                && let Some(buf) = ed.buffers.get(slab) {
+                && let Some(buf_arc) = ed.buffers.get(slab) {
+                    let buf = buf_arc.lock().unwrap();
+                    let cursor = ed.views.get(&slab).map(|v| v.cursor_offset()).unwrap_or(0);
                     let text = buf.slice(0, buf.len());
-                    let safe = super::gui_render::safe_boundary(&text, buf.cursor());
+                    let safe = super::gui_render::safe_boundary(&text, cursor);
                     let crow = text[..safe].chars().filter(|&c| c == '\n').count();
                     if crow < self.scroll_row {
                         self.scroll_row = crow;

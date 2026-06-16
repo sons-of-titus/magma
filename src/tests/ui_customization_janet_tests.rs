@@ -112,8 +112,7 @@ fn overlay_list_returns_all_overlays() {
 #[test]
 fn gutter_sign_set_stores_sign_for_line() {
     janet_test!(ed, {
-        let key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-            crate::kernel::state::id::BufferId(1), "test"));
+        let key = ed.create_buffer("test");
         let expr = format!(r#"(gutter/sign-set ":diagnostics" {key} 3 "E" "error-face" 10)"#);
         scripting::eval(&expr);
         let col_key = (":diagnostics".to_string(), key);
@@ -127,8 +126,7 @@ fn gutter_sign_set_stores_sign_for_line() {
 #[test]
 fn gutter_sign_clear_removes_all_signs_for_buffer() {
     janet_test!(ed, {
-        let key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-            crate::kernel::state::id::BufferId(1), "test"));
+        let key = ed.create_buffer("test");
         let set_expr = format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "W" "warning-face")"#);
         let clr_expr = format!(r#"(gutter/sign-clear ":diagnostics" {key})"#);
         scripting::eval(&set_expr);
@@ -141,8 +139,7 @@ fn gutter_sign_clear_removes_all_signs_for_buffer() {
 #[test]
 fn gutter_sign_clear_line_removes_signs_on_one_line() {
     janet_test!(ed, {
-        let key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-            crate::kernel::state::id::BufferId(1), "test"));
+        let key = ed.create_buffer("test");
         scripting::eval(&format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "E" "error-face")"#));
         scripting::eval(&format!(r#"(gutter/sign-set ":diagnostics" {key} 1 "W" "warning-face")"#));
         scripting::eval(&format!(r#"(gutter/sign-clear-line ":diagnostics" {key} 0)"#));
@@ -158,27 +155,24 @@ fn gutter_sign_clear_line_removes_signs_on_one_line() {
 #[test]
 fn set_header_line_stores_text() {
     janet_test!(ed, {
-        let key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-            crate::kernel::state::id::BufferId(1), "test"));
+        let key = ed.create_buffer("test");
         scripting::eval(&format!(r#"(buffer/set-header-line {key} "MyHeader")"#));
-        assert_eq!(ed.buffers[key].header_line.as_deref(), Some("MyHeader"));
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().header_line.as_deref(), Some("MyHeader"));
     });
 }
 
 #[test]
 fn set_header_line_nil_clears_text() {
     janet_test!(ed, {
-        let key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-            crate::kernel::state::id::BufferId(1), "test"));
+        let key = ed.create_buffer("test");
         scripting::eval(&format!(r#"(buffer/set-header-line {key} "MyHeader")"#));
         scripting::eval(&format!(r#"(buffer/set-header-line {key} nil)"#));
-        assert!(ed.buffers[key].header_line.is_none());
+        assert!(ed.buffers.get(key).unwrap().lock().unwrap().header_line.is_none());
     });
 }
 
 fn make_buf_local(ed: &mut Editor) -> usize {
-    ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-        crate::kernel::state::id::BufferId(99), "test-ui"))
+    ed.create_buffer("test-ui")
 }
 
 #[test]
@@ -198,12 +192,11 @@ fn editor_ready_enables_tab_bar_and_sets_defaults() {
 #[test]
 fn editor_ready_scratch_has_content() {
     janet_test!(ed, {
-        let key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-            crate::kernel::state::id::BufferId(1), "*scratch*"));
+        let key = ed.create_buffer("*scratch*");
         let data = std::collections::HashMap::new();
         ed.events.emit("editor-ready", data.clone());
         ed.events.drain_and_dispatch();
-        assert!(ed.buffers[key].len() > 0, "scratch should have content after init");
+        assert!(ed.buffers.get(key).unwrap().lock().unwrap().len() > 0, "scratch should have content after init");
         let _ = data;
     });
 }
@@ -212,7 +205,7 @@ fn editor_ready_scratch_has_content() {
 fn buffer_modified_c_fn_works_on_new_buffer() {
     janet_test!(ed, {
         let key = make_buf_local(&mut ed);
-        assert!(ed.buffers[key].modified(), "new buffer has no save point → modified");
+        assert!(ed.buffers.get(key).unwrap().lock().unwrap().modified(), "new buffer has no save point → modified");
         let result = scripting::eval(&format!("(buffer/modified? {key})"));
         assert_eq!(result, "ok");
     });
@@ -222,9 +215,9 @@ fn buffer_modified_c_fn_works_on_new_buffer() {
 fn buffer_modified_c_fn_works_after_save() {
     janet_test!(ed, {
         let key = make_buf_local(&mut ed);
-        ed.buffers[key].insert(0, "hello");
-        ed.buffers[key].mark_saved();
-        assert!(!ed.buffers[key].modified(), "after mark_saved → not modified");
+        ed.buffers.get(key).unwrap().lock().unwrap().insert(0, "hello");
+        ed.buffers.get(key).unwrap().lock().unwrap().mark_saved();
+        assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified(), "after mark_saved → not modified");
         let result = scripting::eval(&format!("(buffer/modified? {key})"));
         assert_eq!(result, "ok");
     });

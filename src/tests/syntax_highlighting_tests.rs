@@ -65,10 +65,9 @@ fn editor_resolve_face_style_returns_style() {
 fn buffer_set_highlights_accepts_face_names() {
     let mut ed = helpers::make_editor_with_buffer("hello world");
     let key = focused_key(&ed);
-    let buf = ed.buffers.get_mut(key).unwrap();
     let ranges = vec![(0, 5, "keyword-face".to_string()), (6, 11, "string-face".to_string())];
-    buf.set_highlights(ranges);
-    let hl = &ed.buffers.get(key).unwrap().highlights;
+    ed.views.get_mut(&key).unwrap().set_highlights(ranges);
+    let hl = &ed.views.get(&key).unwrap().highlights;
     assert_eq!(hl.len(), 2);
     assert_eq!(hl[0], (0, 5, "keyword-face".to_string()));
     assert_eq!(hl[1], (6, 11, "string-face".to_string()));
@@ -78,10 +77,9 @@ fn buffer_set_highlights_accepts_face_names() {
 fn buffer_clear_highlights_removes_all() {
     let mut ed = helpers::make_editor_with_buffer("hello");
     let key = focused_key(&ed);
-    let buf = ed.buffers.get_mut(key).unwrap();
-    buf.set_highlights(vec![(0, 5, "keyword-face".to_string())]);
-    buf.clear_highlights();
-    assert!(ed.buffers.get(key).unwrap().highlights.is_empty());
+    ed.views.get_mut(&key).unwrap().set_highlights(vec![(0, 5, "keyword-face".to_string())]);
+    ed.views.get_mut(&key).unwrap().clear_highlights();
+    assert!(ed.views.get(&key).unwrap().highlights.is_empty());
 }
 
 // ── Highlight layers ───────────────────────────────────────────────────
@@ -90,35 +88,34 @@ fn buffer_clear_highlights_removes_all() {
 fn buffer_set_highlights_layer_stores_per_layer() {
     let mut ed = helpers::make_editor_with_buffer("hello world");
     let key = focused_key(&ed);
-    let buf = ed.buffers.get_mut(key).unwrap();
-    buf.set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
-    buf.set_highlights_layer("search", vec![(6, 11, "search-face".to_string())]);
-    assert_eq!(buf.highlight_layers.len(), 2);
-    assert_eq!(buf.highlight_layers.get("syntax").unwrap().len(), 1);
-    assert_eq!(buf.highlight_layers.get("search").unwrap().len(), 1);
+    ed.views.get_mut(&key).unwrap().set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
+    ed.views.get_mut(&key).unwrap().set_highlights_layer("search", vec![(6, 11, "search-face".to_string())]);
+    let view = ed.views.get(&key).unwrap();
+    assert_eq!(view.highlight_layers.len(), 2);
+    assert_eq!(view.highlight_layers.get("syntax").unwrap().len(), 1);
+    assert_eq!(view.highlight_layers.get("search").unwrap().len(), 1);
 }
 
 #[test]
 fn buffer_clear_highlights_layer_removes_only_that_layer() {
     let mut ed = helpers::make_editor_with_buffer("hello");
     let key = focused_key(&ed);
-    let buf = ed.buffers.get_mut(key).unwrap();
-    buf.set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
-    buf.set_highlights_layer("search", vec![(0, 3, "search-face".to_string())]);
-    buf.clear_highlights_layer("syntax");
-    assert!(buf.highlight_layers.get("syntax").is_none());
-    assert!(buf.highlight_layers.get("search").is_some());
+    ed.views.get_mut(&key).unwrap().set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
+    ed.views.get_mut(&key).unwrap().set_highlights_layer("search", vec![(0, 3, "search-face".to_string())]);
+    ed.views.get_mut(&key).unwrap().clear_highlights_layer("syntax");
+    let view = ed.views.get(&key).unwrap();
+    assert!(view.highlight_layers.get("syntax").is_none());
+    assert!(view.highlight_layers.get("search").is_some());
 }
 
 #[test]
 fn buffer_clear_all_highlight_layers_removes_everything() {
     let mut ed = helpers::make_editor_with_buffer("hello");
     let key = focused_key(&ed);
-    let buf = ed.buffers.get_mut(key).unwrap();
-    buf.set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
-    buf.set_highlights_layer("search", vec![(0, 3, "search-face".to_string())]);
-    buf.clear_all_highlight_layers();
-    assert!(buf.highlight_layers.is_empty());
+    ed.views.get_mut(&key).unwrap().set_highlights_layer("syntax", vec![(0, 5, "keyword-face".to_string())]);
+    ed.views.get_mut(&key).unwrap().set_highlights_layer("search", vec![(0, 3, "search-face".to_string())]);
+    ed.views.get_mut(&key).unwrap().clear_all_highlight_layers();
+    assert!(ed.views.get(&key).unwrap().highlight_layers.is_empty());
 }
 
 // ── Scope→face mapping ─────────────────────────────────────────────────

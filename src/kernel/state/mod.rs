@@ -13,9 +13,9 @@ pub mod io;
 pub mod gutter;
 pub mod overlay;
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
-use crate::kernel::text_engine::Buffer;
+use crate::kernel::text_engine::{Buffer, BufferView};
 use crate::kernel::clipboard::Clipboard;
 use crate::kernel::command::CommandRegistry;
 use crate::kernel::event::EventBus;
@@ -39,7 +39,9 @@ pub use overlay::{Overlay, LayoutSnapshot};
 /// The single source of truth for all editor state.
 /// All access is guarded by `Arc<RwLock<Editor>>`.
 pub struct Editor {
-    pub buffers: slab::Slab<Buffer>,
+    pub buffers: slab::Slab<Arc<Mutex<Buffer>>>,
+    /// Per-window view state (indexed by buffer slab key).
+    pub views: std::collections::HashMap<usize, BufferView>,
     pub windows: WindowTree,
     pub events: EventBus,
     pub commands: CommandRegistry,
@@ -126,6 +128,7 @@ impl Editor {
 
         Editor {
             buffers: slab::Slab::new(),
+            views: std::collections::HashMap::new(),
             windows: WindowTree::new(),
             events: EventBus::new(),
             commands: CommandRegistry::new(),
@@ -193,6 +196,46 @@ impl Editor {
         }
     }
 
+    /// Create a new empty buffer + view, insert both, return slab key.
+    pub fn create_buffer(&mut self, name: &str) -> usize {
+        let id = self.allocate_buffer_id();
+        let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), name);
+        let arc = Arc::new(Mutex::new(buf));
+        let key = self.buffers.insert(arc.clone());
+        self.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
+        key
+    }
+
+    /// Create a new buffer + view with initial content.
+    pub fn create_buffer_from_str(&mut self, name: &str, content: &str) -> usize {
+        let id = self.allocate_buffer_id();
+        let buf = crate::kernel::text_engine::Buffer::from_string(crate::kernel::state::id::BufferId(id), name, content);
+        let arc = Arc::new(Mutex::new(buf));
+        let key = self.buffers.insert(arc.clone());
+        self.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
+        key
+    }
+
+    /// Get the focused buffer's slab key (0 if none).
+    pub fn focused_buffer_key(&self) -> usize {
+        self.windows.focused_window()
+            .and_then(|wid| self.windows.buffer(wid))
+            .unwrap_or(0)
+    }
+
+    /// Get the focused window's view.
+    pub fn focused_view(&self) -> Option<&crate::kernel::text_engine::BufferView> {
+        let key = self.focused_buffer_key();
+        self.views.get(&key)
+    }
+
+    /// Get the focused window's view (mutable).
+    pub fn focused_view_mut(&mut self) -> Option<&mut crate::kernel::text_engine::BufferView> {
+        let key = self.windows.focused_window()
+            .and_then(|wid| self.windows.buffer(wid))?;
+        self.views.get_mut(&key)
+    }
+
     /// Look up a theme color by key, falling back to a hardcoded default.
     pub fn theme_color(&self, key: &str) -> (u8, u8, u8) {
         self.theme.get(key).copied().unwrap_or(match key {
@@ -222,7 +265,8 @@ impl Editor {
         let sel = self.selection.as_ref()?;
         if sel.is_line() {
             let buf_id = crate::kernel::input::focused_buffer_id(self);
-            if let Some(buf) = self.buffers.get(buf_id) {
+            if let Some(arc) = self.buffers.get(buf_id) {
+                let buf = arc.lock().unwrap();
                 let a_line = sel.anchor;
                 let c_line = buf.slice(0, cursor).chars().filter(|&c| c == '\n').count();
                 let (first, last) = (a_line.min(c_line), a_line.max(c_line));

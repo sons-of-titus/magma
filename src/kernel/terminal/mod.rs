@@ -53,9 +53,11 @@ pub fn start_terminal(
     let buf = crate::kernel::text_engine::Buffer::from_string(
         crate::kernel::state::id::BufferId(id), &name, "",
     );
+    let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
     let entry = editor.buffers.vacant_entry();
     let buf_key = entry.key();
-    entry.insert(buf);
+    entry.insert(arc.clone());
+    editor.views.insert(buf_key, crate::kernel::text_engine::BufferView::new(arc));
 
     let session = TerminalSession {
         stdin: Arc::new(Mutex::new(writer)),

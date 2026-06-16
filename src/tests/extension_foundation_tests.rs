@@ -40,7 +40,7 @@ fn save_buffer_emits_before_and_after_save() {
     let tmp = std::env::temp_dir().join("sprint1_save.txt");
     let path = tmp.to_string_lossy().to_string();
     let key = helpers::focused_key(&ed);
-    ed.buffers.get_mut(key).unwrap().path = Some(path.clone());
+    ed.buffers.get(key).unwrap().lock().unwrap().path = Some(path.clone());
 
     let before_fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let after_fired:  Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -64,7 +64,7 @@ fn save_buffer_no_longer_emits_buffer_saved() {
     let tmp = std::env::temp_dir().join("sprint1_nosaved.txt");
     let path = tmp.to_string_lossy().to_string();
     let key = helpers::focused_key(&ed);
-    ed.buffers.get_mut(key).unwrap().path = Some(path.clone());
+    ed.buffers.get(key).unwrap().lock().unwrap().path = Some(path.clone());
 
     let old_fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let o = old_fired.clone();
@@ -82,10 +82,7 @@ fn save_buffer_no_longer_emits_buffer_saved() {
 
 fn make_editor_two_buffers() -> crate::kernel::state::Editor {
     let mut ed = helpers::make_editor();
-    let id2 = ed.allocate_buffer_id();
-    let buf2 = crate::kernel::text_engine::Buffer::from_string(crate::kernel::state::id::BufferId(id2), "buf2", "bbb");
-    let e2 = ed.buffers.vacant_entry();
-    e2.insert(buf2);
+    ed.create_buffer_from_str("buf2", "bbb");
     ed
 }
 
@@ -169,10 +166,10 @@ fn local_options_are_isolated_from_global() {
     ed.options.insert("tab-width".to_string(), "4".to_string());
 
     let key = helpers::focused_key(&ed);
-    ed.buffers.get_mut(key).unwrap()
+    ed.buffers.get(key).unwrap().lock().unwrap()
         .local_options.insert("tab-width".to_string(), "2".to_string());
 
-    let local_val = ed.buffers.get(key).unwrap()
+    let local_val = ed.buffers.get(key).unwrap().lock().unwrap()
         .local_options.get("tab-width").cloned();
     let global_val = ed.options.get("tab-width").cloned();
 
@@ -184,7 +181,7 @@ fn local_options_are_isolated_from_global() {
 fn local_options_absent_by_default() {
     let ed = helpers::make_editor_with_buffer("");
     let key = helpers::focused_key(&ed);
-    assert!(ed.buffers.get(key).unwrap().local_options.is_empty(),
+    assert!(ed.buffers.get(key).unwrap().lock().unwrap().local_options.is_empty(),
         "new buffer must have no local options");
 }
 

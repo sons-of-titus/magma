@@ -178,12 +178,13 @@ async fn handle_open_file(editor: &Arc<RwLock<Editor>>, req: &Request) -> Respon
 
     let ed = editor.read().unwrap_or_else(|e| e.into_inner());
     // Check if already open
-    for (key, buf) in ed.buffers.iter() {
+    for (key, arc) in ed.buffers.iter() {
+        let buf = arc.lock().unwrap();
         if buf.path.as_deref() == Some(&path) {
             let result = serde_json::json!({
                 "buffer": key,
-                "name": buf.name,
-                "path": buf.path,
+                "name": buf.name.clone(),
+                "path": buf.path.clone(),
                 "size": buf.len(),
             });
             return Response::ok(result, req.id);
@@ -202,9 +203,11 @@ async fn handle_open_file(editor: &Arc<RwLock<Editor>>, req: &Request) -> Respon
         crate::kernel::state::id::BufferId(id), &name, &content,
     );
     buf.path = Some(path);
+    let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
     let entry = ed.buffers.vacant_entry();
     let key = entry.key();
-    entry.insert(buf);
+    entry.insert(arc.clone());
+    ed.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
 
     let result = serde_json::json!({
         "buffer": key,
@@ -222,14 +225,20 @@ fn handle_get_buffer(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
 
     let ed = editor.read().unwrap_or_else(|e| e.into_inner());
     match ed.buffers.get(buf_id) {
-        Some(buf) => {
+        Some(arc) => {
+            let buf = arc.lock().unwrap();
             let content = buf.slice(0, buf.len());
+            let name = buf.name.clone();
+            let path = buf.path.clone();
+            let size = buf.len();
+            drop(buf);
+            let cursor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             let result = serde_json::json!({
                 "content": content,
-                "name": buf.name,
-                "path": buf.path,
-                "size": buf.len(),
-                "cursor": buf.cursor(),
+                "name": name,
+                "path": path,
+                "size": size,
+                "cursor": cursor,
             });
             Response::ok(result, req.id)
         }
@@ -249,13 +258,16 @@ fn handle_insert(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
     let offset = req.args.get("offset").and_then(|v| v.as_u64()).map(|v| v as usize);
 
     let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    match ed.buffers.get_mut(buf_id) {
-        Some(buf) => {
-            let pos = offset.unwrap_or_else(|| buf.cursor());
-            buf.insert(pos, &text);
-            Response::ok(serde_json::json!({"cursor": buf.cursor(), "size": buf.len()}), req.id)
+    if ed.buffers.contains(buf_id) {
+        let pos = offset.unwrap_or_else(|| ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0));
+        if let Some(view) = ed.views.get_mut(&buf_id) {
+            view.insert(pos, &text);
         }
-        None => Response::error(&format!("Buffer {buf_id} not found"), req.id),
+        let cursor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+        let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+        Response::ok(serde_json::json!({"cursor": cursor, "size": size}), req.id)
+    } else {
+        Response::error(&format!("Buffer {buf_id} not found"), req.id)
     }
 }
 
@@ -274,12 +286,15 @@ fn handle_delete(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
     };
 
     let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    match ed.buffers.get_mut(buf_id) {
-        Some(buf) => {
-            buf.delete(start, end);
-            Response::ok(serde_json::json!({"cursor": buf.cursor(), "size": buf.len()}), req.id)
+    if ed.buffers.contains(buf_id) {
+        if let Some(view) = ed.views.get_mut(&buf_id) {
+            view.delete(start, end);
         }
-        None => Response::error(&format!("Buffer {buf_id} not found"), req.id),
+        let cursor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+        let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+        Response::ok(serde_json::json!({"cursor": cursor, "size": size}), req.id)
+    } else {
+        Response::error(&format!("Buffer {buf_id} not found"), req.id)
     }
 }
 
@@ -291,20 +306,22 @@ fn handle_save(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
 
     let ed = editor.read().unwrap_or_else(|e| e.into_inner());
     match ed.buffers.get(buf_id) {
-        Some(buf) => {
+        Some(arc) => {
+            let buf = arc.lock().unwrap();
             let path = match &buf.path {
                 Some(p) => p.clone(),
                 None => return Response::error("Buffer has no path", req.id),
             };
             let content = buf.slice(0, buf.len());
+            drop(buf);
             drop(ed);
 
             if let Err(e) = std::fs::write(&path, &content) {
                 return Response::error(&format!("Save failed: {e}"), req.id);
             }
             let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-            if let Some(buf) = ed.buffers.get_mut(buf_id) {
-                buf.mark_saved();
+            if let Some(arc) = ed.buffers.get_mut(buf_id) {
+                arc.lock().unwrap().mark_saved();
             }
             Response::ok(serde_json::json!({"path": path}), req.id)
         }
@@ -343,11 +360,12 @@ fn handle_close(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
 
 fn handle_list_buffers(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
     let ed = editor.read().unwrap_or_else(|e| e.into_inner());
-    let buffers: Vec<serde_json::Value> = ed.buffers.iter().map(|(key, buf)| {
+    let buffers: Vec<serde_json::Value> = ed.buffers.iter().map(|(key, arc)| {
+        let buf = arc.lock().unwrap();
         serde_json::json!({
             "id": key,
-            "name": buf.name,
-            "path": buf.path,
+            "name": buf.name.clone(),
+            "path": buf.path.clone(),
             "size": buf.len(),
             "modified": buf.modified(),
         })

@@ -3,7 +3,6 @@
 use crate::kernel::command::CommandResult;
 use crate::kernel::command::args::{ArgSpec, ArgType, ArgValue};
 use crate::kernel::state::Editor;
-use crate::kernel::state::id::BufferId;
 
 use super::helpers::*;
 
@@ -13,10 +12,12 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("open-file-at-cursor", "Open the file path under the cursor",
         vec![],
         |editor, _args| {
+            let buf_id = get_current_buffer_id(editor);
             let path = {
-                let buf = editor.buffers.get(get_current_buffer_id(editor))
+                let view = editor.views.get(&buf_id)
                     .ok_or_else(|| "No buffer".to_string())?;
-                let line_num = current_line(buf);
+                let line_num = current_line(view);
+                let buf = view.buffer.lock().unwrap();
                 buf.line(line_num)
                     .ok_or_else(|| "Could not read line".to_string())?
                     .trim()
@@ -33,14 +34,10 @@ pub(super) fn register(editor: &mut Editor) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.clone());
-            let new_buf_id = editor.allocate_buffer_id();
-            let mut new_buf = crate::kernel::text_engine::Buffer::from_string(
-                BufferId(new_buf_id), &name, &content,
-            );
-            new_buf.path = Some(path);
-            let entry = editor.buffers.vacant_entry();
-            let key = entry.key();
-            entry.insert(new_buf);
+            let key = editor.create_buffer_from_str(&name, &content);
+            if let Some(arc) = editor.buffers.get(key) {
+                arc.lock().unwrap().path = Some(path);
+            }
             if let Some(win) = editor.windows.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
@@ -99,12 +96,12 @@ pub(super) fn register(editor: &mut Editor) {
                     editor.dired.marks.insert(name);
                 }
                 dired_redraw(editor)?;
-                // Advance cursor one line
                 if let Some(key) = editor.dired.buf_key
-                    && let Some(buf) = editor.buffers.get_mut(key) {
-                        let cur_line = buf.slice(0, buf.cursor()).chars().filter(|&c| c == '\n').count();
-                        if let Some(off) = buf.line_start_offset(cur_line + 1) {
-                            buf.set_cursor(off);
+                    && let Some(view) = editor.views.get_mut(&key) {
+                        let cur_line = view.cursor.line;
+                        let next_off = view.buffer.lock().unwrap().line_start_offset(cur_line + 1);
+                        if let Some(off) = next_off {
+                            view.set_cursor(off);
                         }
                     }
             }
@@ -200,7 +197,6 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    // Set up dired keymap layer bindings
     editor.keymaps.set_layer("dired", "return",    "dired-open-at-cursor");
     editor.keymaps.set_layer("dired", "l",         "dired-open-at-cursor");
     editor.keymaps.set_layer("dired", "h",         "dired-parent");
@@ -212,82 +208,84 @@ pub(super) fn register(editor: &mut Editor) {
     editor.keymaps.set_layer("dired", "q",         "dired-close");
 }
 
-/// Return the 0-indexed line the dired buffer cursor is on.
 fn dired_cursor_line(editor: &Editor) -> usize {
     let Some(key) = editor.dired.buf_key else { return 0 };
-    let Some(buf) = editor.buffers.get(key) else { return 0 };
-    let cursor = buf.cursor();
-    buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
+    editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0)
 }
 
-/// Rebuild the dired buffer content from the current state (no disk read).
 fn dired_redraw(editor: &mut Editor) -> CommandResult {
-    let text = crate::kernel::vc::dired::build_display(&editor.dired.dir.clone(), &editor.dired.entries.clone(), &editor.dired.marks);
+    let text = crate::kernel::vc::dired::build_display(
+        &editor.dired.dir.clone(), &editor.dired.entries.clone(), &editor.dired.marks);
     let Some(key) = editor.dired.buf_key else { return Ok(()); };
-    let Some(buf) = editor.buffers.get_mut(key) else { return Ok(()); };
-    let saved_line = buf.slice(0, buf.cursor()).chars().filter(|&c| c == '\n').count();
-    let len = buf.len();
-    if len > 0 { buf.delete(0, len); }
-    buf.insert(0, &text);
-    if let Some(off) = buf.line_start_offset(saved_line) { buf.set_cursor(off); }
+    let saved_line = editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0);
+    if let Some(arc) = editor.buffers.get(key) {
+        let mut buf = arc.lock().unwrap();
+        let len = buf.len();
+        if len > 0 { buf.delete(0, len); }
+        buf.insert(0, &text);
+        let new_off = buf.line_start_offset(saved_line);
+        drop(buf);
+        if let Some(off) = new_off {
+            if let Some(view) = editor.views.get_mut(&key) {
+                view.set_cursor(off);
+            }
+        }
+    }
     Ok(())
 }
 
-/// Re-read the directory from disk and redraw.
 fn dired_refresh_helper(editor: &mut Editor) -> CommandResult {
     let text = editor.dired.reload()?;
     let Some(key) = editor.dired.buf_key else { return Ok(()); };
-    let Some(buf) = editor.buffers.get_mut(key) else { return Ok(()); };
-    let saved_line = buf.slice(0, buf.cursor()).chars().filter(|&c| c == '\n').count();
-    let len = buf.len();
-    if len > 0 { buf.delete(0, len); }
-    buf.insert(0, &text);
-    if let Some(off) = buf.line_start_offset(saved_line) { buf.set_cursor(off); }
+    let saved_line = editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0);
+    if let Some(arc) = editor.buffers.get(key) {
+        let mut buf = arc.lock().unwrap();
+        let len = buf.len();
+        if len > 0 { buf.delete(0, len); }
+        buf.insert(0, &text);
+        let new_off = buf.line_start_offset(saved_line);
+        drop(buf);
+        if let Some(off) = new_off {
+            if let Some(view) = editor.views.get_mut(&key) {
+                view.set_cursor(off);
+            }
+        }
+    }
     Ok(())
 }
 
-/// Open a directory in a dired buffer, creating or reusing `*dired*`.
 fn dired_open(editor: &mut Editor, dir: std::path::PathBuf) -> CommandResult {
     let text = {
         editor.dired.dir = dir;
         editor.dired.marks.clear();
         editor.dired.reload()?
     };
-    // Find or create the *dired* buffer
     let buf_key = editor.dired.buf_key
-        .and_then(|k| editor.buffers.get(k).map(|_| k))
-        .or_else(|| {
-            let entry = editor.buffers.vacant_entry();
-            let k = entry.key();
-            let id = editor.next_buffer_id;
-            editor.next_buffer_id += 1;
-            entry.insert(crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), "*dired*"));
-            Some(k)
-        })
-        .unwrap();
+        .filter(|k| editor.buffers.contains(*k))
+        .unwrap_or_else(|| editor.create_buffer("*dired*"));
     editor.dired.buf_key = Some(buf_key);
     editor.dired.active = true;
-    // Write content
     {
-        let buf = editor.buffers.get_mut(buf_key).unwrap();
+        let arc = editor.buffers.get(buf_key).unwrap();
+        let mut buf = arc.lock().unwrap();
         let len = buf.len();
         if len > 0 { buf.delete(0, len); }
         buf.insert(0, &text);
-        // Place cursor on first entry
-        if let Some(off) = buf.line_start_offset(crate::kernel::vc::dired::HEADER_LINES) {
-            buf.set_cursor(off);
+        let header_off = buf.line_start_offset(crate::kernel::vc::dired::HEADER_LINES);
+        drop(buf);
+        if let Some(off) = header_off {
+            if let Some(view) = editor.views.get_mut(&buf_key) {
+                view.set_cursor(off);
+            }
         }
     }
-    // Display in focused window
     if let Some(win) = editor.windows.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
-    // Push dired keymap layer if not already active
     editor.keymaps.push_layer("dired");
     Ok(())
 }
 
-/// Open the file or descend into the directory under the cursor.
 fn dired_open_at_cursor_helper(editor: &mut Editor) -> CommandResult {
     let line = dired_cursor_line(editor);
     let Some(entry) = editor.dired.entry_at_line(line) else { return Ok(()); };
@@ -302,23 +300,16 @@ fn dired_open_at_cursor_helper(editor: &mut Editor) -> CommandResult {
         editor.keymaps.pop_layer("dired");
         dired_open(editor, canonical)
     } else {
-        // Load the file into a new buffer and switch to it
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
         let fname = path.file_name().map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| name.clone());
-        let id = editor.next_buffer_id;
-        editor.next_buffer_id += 1;
-        let mut buf = crate::kernel::text_engine::Buffer::from_string(crate::kernel::state::id::BufferId(id), &fname, &content);
-        buf.path = Some(path.to_string_lossy().into_owned());
-        let k = {
-            let entry = editor.buffers.vacant_entry();
-            let k = entry.key();
-            entry.insert(buf);
-            k
-        };
+        let key = editor.create_buffer_from_str(&fname, &content);
+        if let Some(arc) = editor.buffers.get(key) {
+            arc.lock().unwrap().path = Some(path.to_string_lossy().into_owned());
+        }
         if let Some(win) = editor.windows.focused_window_mut() {
-            win.buffer_id = Some(k);
+            win.buffer_id = Some(key);
         }
         editor.keymaps.pop_layer("dired");
         editor.dired.active = false;
@@ -326,7 +317,6 @@ fn dired_open_at_cursor_helper(editor: &mut Editor) -> CommandResult {
     }
 }
 
-/// Recursively copy `src` to `dst` (files and directories).
 fn dired_copy_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     if src.is_dir() {
         std::fs::create_dir_all(dst)?;

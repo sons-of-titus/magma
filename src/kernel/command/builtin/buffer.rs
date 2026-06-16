@@ -2,7 +2,6 @@
 
 use crate::kernel::command::args::{ArgSpec, ArgType, ArgValue};
 use crate::kernel::state::Editor;
-use crate::kernel::state::id::BufferId;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
 
@@ -17,22 +16,26 @@ pub(super) fn register(editor: &mut Editor) {
         ],
         |editor, args| {
             let buf_id = get_current_buffer_id(editor);
-            let buf = editor.buffers.get_mut(buf_id)
+            let arc = editor.buffers.get(buf_id)
                 .ok_or_else(|| "No current buffer".to_string())?;
-            let path = args.get("path").and_then(|a| a.as_string())
-                .filter(|p| !p.is_empty())
-                .map(|p| p.to_string())
-                .or_else(|| buf.path.clone())
-                .ok_or_else(|| "No path specified".to_string())?;
-            let content = buf.slice(0, buf.len());
+            let (path, content) = {
+                let buf = arc.lock().unwrap();
+                let path = args.get("path").and_then(|a| a.as_string())
+                    .filter(|p| !p.is_empty())
+                    .map(|p| p.to_string())
+                    .or_else(|| buf.path.clone())
+                    .ok_or_else(|| "No path specified".to_string())?;
+                let content = buf.slice(0, buf.len());
+                (path, content)
+            };
             editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
                 path: path.clone(),
                 buffer_id: buf_id.to_string(),
             });
             editor.fs.write(&path, &content)
                 .map_err(|e| format!("Save failed: {}", e))?;
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.mark_saved();
+            if let Some(arc) = editor.buffers.get(buf_id) {
+                arc.lock().unwrap().mark_saved();
             }
             editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
                 path,
@@ -56,12 +59,13 @@ pub(super) fn register(editor: &mut Editor) {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "untitled".to_string());
-            let buf_id = editor.allocate_buffer_id();
-            let mut buffer = crate::kernel::text_engine::Buffer::from_string(
-                BufferId(buf_id), &name, &content);
-            buffer.path = Some(path.to_string());
-            let entry = editor.buffers.vacant_entry();
-            entry.insert(buffer);
+            let key = editor.create_buffer_from_str(&name, &content);
+            let buf_id = editor.buffers.get(key)
+                .map(|a| a.lock().unwrap().id.0)
+                .unwrap_or(key as u64);
+            if let Some(arc) = editor.buffers.get(key) {
+                arc.lock().unwrap().path = Some(path.to_string());
+            }
             editor.events.emit_typed(keys::events::BUFFER_CREATED, BufferCreatedPayload {
                 buffer_id: buf_id.to_string(),
                 name,
@@ -81,7 +85,6 @@ pub(super) fn register(editor: &mut Editor) {
                 .unwrap_or("");
             let pattern = raw_pattern.to_lowercase();
 
-            // Collect files recursively
             let cwd = std::env::current_dir()
                 .map_err(|e| format!("Can't get cwd: {}", e))?;
             let mut files: Vec<String> = Vec::new();
@@ -119,24 +122,17 @@ pub(super) fn register(editor: &mut Editor) {
                 return Err(format!("No files match '{}'", pattern));
             }
 
-            // Create a finder buffer
             let content = files.join("\n") + "\n";
             let name = format!("*finder:{}*", pattern);
-            let buf_id = editor.allocate_buffer_id();
-            let mut buffer = crate::kernel::text_engine::Buffer::from_string(
-                BufferId(buf_id), &name, &content,
-            );
-            buffer.path = None;
-            let entry = editor.buffers.vacant_entry();
-            let key = entry.key();
-            entry.insert(buffer);
+            let key = editor.create_buffer_from_str(&name, &content);
+            let buf_id = editor.buffers.get(key)
+                .map(|a| a.lock().unwrap().id.0)
+                .unwrap_or(key as u64);
 
-            // Set the current window to show it
             if let Some(win) = editor.windows.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
 
-            // Emit event so Janet can set up keybindings
             editor.events.emit_typed(keys::events::FINDER_RESULTS, FinderResultsPayload {
                 buffer_id: buf_id.to_string(),
                 count: files.len().to_string(),
@@ -166,7 +162,7 @@ pub(super) fn register(editor: &mut Editor) {
                 buffer_id: key.to_string(),
             });
             editor.buffers.remove(key);
-            // If the focused window was showing the closed buffer, switch to another
+            editor.views.remove(&key);
             let focused_shows_closed = editor.windows.focused_window()
                 .and_then(|wid| editor.windows.buffer(wid))
                 == Some(key);
@@ -197,9 +193,7 @@ pub(super) fn register(editor: &mut Editor) {
                 }
                 switched_to = Some(alt_key);
             }
-            // On first use with no alternate, set it to the last buffer if one exists
             if editor.alternate_buffer.is_none() {
-                // Find any other buffer
                 let others: Vec<usize> = editor.buffers.iter()
                     .map(|(k, _)| k)
                     .filter(|k| *k != current)

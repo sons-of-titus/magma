@@ -144,7 +144,7 @@ fn colon_substitute_in_buffer() {
     assert!(ed.editor_mode.is_named("normal"),
         "should be normal mode after :s");
     let focused = crate::kernel::input::focused_buffer_id(&ed);
-    let buf = ed.buffers.get(focused).unwrap();
+    let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
     assert_eq!(buf.slice(0, buf.len()), "goodbye world hello",
         "substitute should replace first occurrence only");
 }
@@ -165,7 +165,7 @@ fn colon_substitute_global() {
     assert!(ed.editor_mode.is_named("normal"),
         "should be normal mode after :s with g flag");
     let focused = crate::kernel::input::focused_buffer_id(&ed);
-    let buf = ed.buffers.get(focused).unwrap();
+    let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
     assert_eq!(buf.slice(0, buf.len()), "goodbye world goodbye",
         "global substitute should replace all occurrences");
 }
@@ -197,7 +197,7 @@ fn colon_wq_and_x() {
     assert!(ed.running);
 
     let focused = crate::kernel::input::focused_buffer_id(&ed);
-    ed.buffers.get_mut(focused).unwrap().path = Some("/tmp/test_wq".to_string());
+    ed.buffers.get(focused).unwrap().lock().unwrap().path = Some("/tmp/test_wq".to_string());
     std::fs::write("/tmp/test_wq", "").expect("cannot create /tmp/test_wq for test");
 
     type_command(&mut ed, "wq");
@@ -206,7 +206,7 @@ fn colon_wq_and_x() {
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
     let focused = crate::kernel::input::focused_buffer_id(&ed);
-    ed.buffers.get_mut(focused).unwrap().path = Some("/tmp/test_x".to_string());
+    ed.buffers.get(focused).unwrap().lock().unwrap().path = Some("/tmp/test_x".to_string());
     std::fs::write("/tmp/test_x", "").expect("cannot create /tmp/test_x for test");
     type_command(&mut ed, "x");
     assert!(!ed.running, "running should be false after :x");
@@ -220,7 +220,7 @@ fn colon_write_alias() {
 
     type_command(&mut ed, "write /tmp/test_write_alias");
     let focused = crate::kernel::input::focused_buffer_id(&ed);
-    let buf = ed.buffers.get(focused).unwrap();
+    let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
     assert_eq!(buf.path, Some("/tmp/test_write_alias".to_string()),
         ":write should set buffer path");
 }

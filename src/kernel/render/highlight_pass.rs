@@ -1,6 +1,6 @@
 //! Highlight and selection rendering passes for the buffer content area.
 
-use crate::kernel::text_engine::Buffer;
+use crate::kernel::text_engine::{Buffer, BufferView};
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::{Style, Surface};
 
@@ -10,23 +10,30 @@ use crate::kernel::render::surface::{Style, Surface};
 pub fn apply_highlights(
     editor: &Editor,
     buf: &Buffer,
+    view: Option<&BufferView>,
     surface: &mut Surface,
     text: &str,
     scroll_top: usize,
     max_visible: usize,
     content_x: u16,
     row_offset: u16,
+    cursor_offset: usize,
 ) {
     let layer_order: [&str; 5] = ["base", "syntax", "semantic", "search", "selection"];
+    let empty_vec = Vec::new();
+    let empty_map = std::collections::HashMap::new();
+    let highlights = view.map(|v| &v.highlights).unwrap_or(&empty_vec);
+    let highlight_layers = view.map(|v| &v.highlight_layers).unwrap_or(&empty_map);
+
     let all_highlights: Vec<(usize, usize, String)> = {
         let mut items = Vec::new();
-        for (s, e, f) in &buf.highlights { items.push((*s, *e, f.clone())); }
+        for (s, e, f) in highlights { items.push((*s, *e, f.clone())); }
         for layer_name in &layer_order {
-            if let Some(layer) = buf.highlight_layers.get(*layer_name) {
+            if let Some(layer) = highlight_layers.get(*layer_name) {
                 for (s, e, f) in layer { items.push((*s, *e, f.clone())); }
             }
         }
-        for (layer_name, layer) in &buf.highlight_layers {
+        for (layer_name, layer) in highlight_layers {
             if !layer_order.contains(&layer_name.as_str()) {
                 for (s, e, f) in layer { items.push((*s, *e, f.clone())); }
             }
@@ -76,7 +83,7 @@ pub fn apply_highlights(
     }
 
     // Visual-selection highlight
-    let sel = editor.selection_range(buf.cursor());
+    let sel = editor.selection_range(cursor_offset);
     if let Some((sel_start, sel_end)) = sel {
         let total_lines = buf.line_count();
         let mut byte = 0usize;

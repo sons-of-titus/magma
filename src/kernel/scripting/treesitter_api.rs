@@ -48,14 +48,17 @@ unsafe extern "C-unwind" fn c_ts_query(argc: i32, argv: *mut Janet) -> Janet {
         let Some(query_str) = conv::get_str(argc, argv, 1) else {
             return conv::nil();
         };
-        let Some(buf) = ed.buffers.get(buf_id) else {
-            return conv::nil();
-        };
         let lang_name = match ed.ts_languages.get(&buf_id) {
             Some(n) => n.clone(),
             None => return conv::nil(),
         };
-        let text = buf.slice(0, buf.len()).to_string();
+        let text = match ed.buffers.get(buf_id) {
+            Some(arc) => {
+                let buf = arc.lock().unwrap();
+                buf.slice(0, buf.len()).to_string()
+            }
+            None => return conv::nil(),
+        };
         let text_bytes = text.as_bytes();
 
         let result = with_language_map(|map| {

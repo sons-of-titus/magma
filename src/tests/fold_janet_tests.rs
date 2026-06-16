@@ -14,7 +14,7 @@ fn buffer_fold_adds_fold_range() {
         &format!("(buffer/fold {} 0 12)", key));
     assert_eq!(result, "ok");
 
-    let folds = &ed.buffers.get(key).unwrap().folds;
+    let folds = ed.views.get(&key).unwrap().folds.clone();
     assert_eq!(folds.len(), 1);
     assert_eq!(folds[0], (0, 12));
 }
@@ -32,7 +32,7 @@ fn buffer_unfold_removes_fold_range() {
         &format!("(buffer/unfold {} 0 12)", key));
     assert_eq!(result, "ok");
 
-    let folds = &ed.buffers.get(key).unwrap().folds;
+    let folds = ed.views.get(&key).unwrap().folds.clone();
     assert!(folds.is_empty());
 }
 
@@ -51,7 +51,7 @@ fn buffer_unfold_all_removes_all_folds() {
         &format!("(buffer/unfold-all {})", key));
     assert_eq!(result, "ok");
 
-    let folds = &ed.buffers.get(key).unwrap().folds;
+    let folds = ed.views.get(&key).unwrap().folds.clone();
     assert!(folds.is_empty());
 }
 

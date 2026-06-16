@@ -79,9 +79,9 @@ pub(super) fn register(editor: &mut Editor) {
 
 fn completion_trigger(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
-    if let Some(buf) = editor.buffers.get(buf_id) {
-        let cursor = buf.cursor();
-        let text = buf.slice(0, buf.len());
+    if let Some(view) = editor.views.get(&buf_id) {
+        let cursor = view.cursor_offset();
+        let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
 
         // Find the current word prefix
         let before = &text[..cursor];
@@ -134,10 +134,11 @@ fn completion_accept(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> 
     }
     let buf_id = get_current_buffer_id(editor);
     let item = &editor.completion.items[editor.completion.idx];
-    let suffix = &item[editor.completion.prefix.len()..];
+    let suffix = item[editor.completion.prefix.len()..].to_string();
 
-    if let Some(buf) = editor.buffers.get_mut(buf_id) {
-        buf.insert(buf.cursor(), suffix);
+    if let Some(view) = editor.views.get_mut(&buf_id) {
+        let pos = view.cursor_offset();
+        view.insert(pos, &suffix);
     }
     editor.completion.visible = false;
     editor.completion.items.clear();
@@ -156,9 +157,9 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
 
     // Extract trigger word before any mutable borrow
     let (word_start, trigger) = {
-        let Some(buf) = editor.buffers.get(buf_id) else { return Ok(()); };
-        let cursor = buf.cursor();
-        let text = buf.slice(0, buf.len());
+        let Some(view) = editor.views.get(&buf_id) else { return Ok(()); };
+        let cursor = view.cursor_offset();
+        let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
         let before = &text[..cursor];
         let ws = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
         if cursor <= ws { return Ok(()); }
@@ -166,14 +167,15 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
         (ws, trig)
     };
 
-    if let Some(expansion) = crate::kernel::snippet::expand_snippet(editor, &trigger)
-        && let Some(buf) = editor.buffers.get_mut(buf_id) {
-            buf.replace(word_start, word_start + trigger.len(), &expansion);
-            buf.set_cursor(word_start);
+    if let Some(expansion) = crate::kernel::snippet::expand_snippet(editor, &trigger) {
+        if let Some(view) = editor.views.get_mut(&buf_id) {
+            view.replace(word_start, word_start + trigger.len(), &expansion);
+            view.set_cursor(word_start);
             editor.snippet.active = true;
             editor.snippet.tabstops = crate::kernel::snippet::parse_tabstops(&expansion);
             editor.snippet.tabstop_idx = 0;
         }
+    }
     emit_cursor_moved(editor);
     Ok(())
 }
@@ -184,22 +186,23 @@ fn snippet_next_tabstop(editor: &mut Editor, _args: &HashMap<String, ArgValue>) 
         // If completion was not visible either, insert a literal tab
         if !editor.completion.visible {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.insert(buf.cursor(), "\t");
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor_offset();
+                view.insert(pos, "\t");
             }
         }
         return Ok(());
     }
     let buf_id = get_current_buffer_id(editor);
-    if let Some(buf) = editor.buffers.get_mut(buf_id) {
+    if let Some(view) = editor.views.get_mut(&buf_id) {
         if editor.snippet.tabstop_idx + 1 < editor.snippet.tabstops.len() {
             editor.snippet.tabstop_idx += 1;
-            let ts = &editor.snippet.tabstops[editor.snippet.tabstop_idx];
-            buf.set_cursor(ts.offset);
-            // Select placeholder if present
-            if !ts.text.is_empty() {
+            let ts_offset = editor.snippet.tabstops[editor.snippet.tabstop_idx].offset;
+            let ts_text = editor.snippet.tabstops[editor.snippet.tabstop_idx].text.clone();
+            view.set_cursor(ts_offset);
+            if !ts_text.is_empty() {
                 editor.editor_mode = EditorMode::new("visual", false);
-                editor.selection = Some(Selection { anchor: ts.offset, kind: "char".into() });
+                editor.selection = Some(Selection { anchor: ts_offset, kind: "char".into() });
                 editor.keymaps.push_layer("visual");
             }
         } else {
@@ -218,9 +221,9 @@ fn snippet_prev_tabstop(editor: &mut Editor, _args: &HashMap<String, ArgValue>) 
     if editor.snippet.tabstop_idx > 0 {
         editor.snippet.tabstop_idx -= 1;
         let buf_id = get_current_buffer_id(editor);
-        if let Some(buf) = editor.buffers.get_mut(buf_id) {
-            let ts = &editor.snippet.tabstops[editor.snippet.tabstop_idx];
-            buf.set_cursor(ts.offset);
+        let ts_offset = editor.snippet.tabstops[editor.snippet.tabstop_idx].offset;
+        if let Some(view) = editor.views.get_mut(&buf_id) {
+            view.set_cursor(ts_offset);
         }
     }
     emit_cursor_moved(editor);

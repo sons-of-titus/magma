@@ -179,9 +179,9 @@ pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
             return;
         }
 
-        if let Some(buf) = ed.buffers.get_mut(slab) {
-            let cur = buf.cursor();
-            buf.insert(cur, key);
+        if let Some(view) = ed.views.get_mut(&slab) {
+            let cur = view.cursor_offset();
+            view.insert(cur, key);
         }
     }
 }
@@ -190,8 +190,8 @@ pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
 fn apply_to_all_cursors(ed: &mut crate::kernel::state::Editor, slab: usize, key: &str) {
     let mut cursors: Vec<usize> = Vec::new();
     cursors.push({
-        if let Some(buf) = ed.buffers.get(slab) {
-            buf.cursor()
+        if let Some(view) = ed.views.get(&slab) {
+            view.cursor_offset()
         } else {
             return;
         }
@@ -203,16 +203,16 @@ fn apply_to_all_cursors(ed: &mut crate::kernel::state::Editor, slab: usize, key:
     cursors.dedup();
 
     for &pos in cursors.iter().rev() {
-        if let Some(buf) = ed.buffers.get_mut(slab) {
-            buf.set_cursor(pos);
-            buf.insert(pos, key);
+        if let Some(view) = ed.views.get_mut(&slab) {
+            view.set_cursor(pos);
+            view.insert(pos, key);
         }
     }
 
     if let Some(&first) = cursors.first()
-        && let Some(buf) = ed.buffers.get_mut(slab) {
+        && let Some(view) = ed.views.get_mut(&slab) {
             let adjustment = key.len();
-            buf.set_cursor(first + adjustment);
+            view.set_cursor(first + adjustment);
         }
 }
 

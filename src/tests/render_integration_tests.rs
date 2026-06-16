@@ -10,8 +10,7 @@ fn render_frame_event_modifies_surface() {
     let mut ed = crate::tests::helpers::make_editor();
 
     // Create *scratch* so it exists (matching production behaviour).
-    let buf_key = ed.buffers.insert(crate::kernel::text_engine::Buffer::new(
-        crate::kernel::state::id::BufferId(1), "*scratch*"));
+    let buf_key = ed.create_buffer("*scratch*");
     if let Some(win) = ed.windows.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }

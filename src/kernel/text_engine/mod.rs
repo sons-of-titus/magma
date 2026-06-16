@@ -1,12 +1,16 @@
-//! Buffer layer — text storage (rope), undo/redo, marks, highlights, and diagnostics.
+//! Buffer layer — text storage (rope), undo/redo, marks, diagnostics.
 
 pub mod rope;
 pub mod undo;
 pub mod marks;
 pub mod decoration;
+pub mod position;
+pub mod view;
 mod fold;
 
 pub use decoration::Decoration;
+pub use position::Position;
+pub use view::BufferView;
 
 use rope::Rope;
 use undo::{UndoTree, UndoOp};
@@ -61,15 +65,9 @@ pub struct Buffer {
     pub rope: Rope,
     pub undo: UndoTree,
     pub marks: MarkSet,
-    pub cursor: usize,
     pub major_mode: MajorMode,
     pub encoding: String,
     pub len: usize,
-    /// Highlight regions as `(start_byte, end_byte, face_name)` tuples.
-    pub highlights: Vec<(usize, usize, String)>,
-    /// Per-layer highlight regions. Layer merge order:
-    /// `base → syntax → semantic → search → selection` (higher wins per cell).
-    pub highlight_layers: std::collections::HashMap<String, Vec<(usize, usize, String)>>,
     /// LSP diagnostics for this buffer (formatted strings).
     pub diagnostics: Vec<String>,
     /// Per-buffer options that shadow global `editor.options`.
@@ -78,10 +76,6 @@ pub struct Buffer {
     pub read_only: bool,
     /// Ephemeral buffers skip "save before closing?" prompts and session restore.
     pub ephemeral: bool,
-    /// Folded byte ranges [start, end).  Lines inside are hidden during rendering.
-    pub folds: Vec<(usize, usize)>,
-    /// Named decoration layers owned by extensions.
-    pub decoration_layers: std::collections::HashMap<String, Vec<Decoration>>,
     /// Pre-rendered text drawn above the buffer content area.
     pub header_line: Option<String>,
 }
@@ -95,18 +89,13 @@ impl Buffer {
             rope: Rope::new(),
             undo: UndoTree::new(10000),
             marks: MarkSet::new(),
-            cursor: 0,
             major_mode: MajorMode::Fundamental,
             encoding: "utf-8".to_string(),
             len: 0,
-            highlights: Vec::new(),
-            highlight_layers: std::collections::HashMap::new(),
             diagnostics: Vec::new(),
             local_options: std::collections::HashMap::new(),
             read_only: false,
             ephemeral: false,
-            folds: Vec::new(),
-            decoration_layers: std::collections::HashMap::new(),
             header_line: None,
         }
     }
@@ -143,9 +132,6 @@ impl Buffer {
         self.rope.insert(offset, text);
         self.marks.adjust_for_insert(offset, text.len());
         self.len = self.rope.len();
-        if offset <= self.cursor {
-            self.cursor += text.len();
-        }
     }
 
     pub fn delete(&mut self, start: usize, end: usize) {
@@ -158,13 +144,6 @@ impl Buffer {
         self.rope.delete(start, end);
         self.marks.adjust_for_delete(start, end);
         self.len = self.rope.len();
-        if self.cursor > start {
-            self.cursor = if self.cursor <= end {
-                start
-            } else {
-                self.cursor - (end - start)
-            };
-        }
     }
 
     pub fn replace(&mut self, start: usize, end: usize, text: &str) {
@@ -184,15 +163,6 @@ impl Buffer {
         self.rope.insert(start, text);
         self.marks.adjust_for_insert(start, text.len());
         self.len = self.rope.len();
-
-        if self.cursor >= start {
-            let deleted = end - start;
-            self.cursor = if self.cursor <= end {
-                start + text.len()
-            } else {
-                self.cursor - deleted + text.len()
-            };
-        }
     }
 
     pub fn slice(&self, start: usize, end: usize) -> String {
@@ -267,52 +237,18 @@ impl Buffer {
         self.undo.mark_saved();
     }
 
-    // ── Cursor ──
+    // ── Undo sessions (called through BufferView normally) ──
 
-    pub fn cursor(&self) -> usize {
-        self.cursor
-    }
-
-    pub fn set_cursor(&mut self, pos: usize) {
-        // Allow cursor at len (end-of-buffer) so the last char is reachable for appending.
-        self.cursor = pos.min(self.len());
-    }
-
-    // ── Undo sessions ──
-
-    pub fn open_undo_session(&mut self) {
-        let offset = self.cursor;
+    pub fn open_undo_session_at(&mut self, cursor_offset: usize) {
         let mark_states = self.marks.all_positions();
         self.undo.open_session(undo::UndoOp::Insert {
-            offset,
+            offset: cursor_offset,
             text: String::new(),
         }, mark_states);
     }
 
     pub fn close_undo_session(&mut self) {
         self.undo.close_session();
-    }
-
-    // ── Highlights ──
-
-    pub fn set_highlights(&mut self, ranges: Vec<(usize, usize, String)>) {
-        self.highlights = ranges;
-    }
-
-    pub fn clear_highlights(&mut self) {
-        self.highlights.clear();
-    }
-
-    pub fn set_highlights_layer(&mut self, layer: &str, ranges: Vec<(usize, usize, String)>) {
-        self.highlight_layers.insert(layer.to_string(), ranges);
-    }
-
-    pub fn clear_highlights_layer(&mut self, layer: &str) {
-        self.highlight_layers.remove(layer);
-    }
-
-    pub fn clear_all_highlight_layers(&mut self) {
-        self.highlight_layers.clear();
     }
 
     // ── Diagnostics ──

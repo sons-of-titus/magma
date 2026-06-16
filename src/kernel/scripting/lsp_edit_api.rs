@@ -55,16 +55,20 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
 
         for (path, mut edits) in edits_by_uri {
             edits.sort_by_key(|b| std::cmp::Reverse(b.0));
-            for (_, buf) in ed.buffers.iter_mut() {
-                if buf.path.as_deref() == Some(&path) {
+            // Find the slab key for this path
+            let key = ed.buffers.iter()
+                .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(&path))
+                .map(|(k, _)| k);
+            if let Some(key) = key {
+                if let Some(view) = ed.views.get_mut(&key) {
+                    let buf_len = view.buffer.lock().unwrap().len();
                     for (start, end, new_text) in &edits {
                         let start = *start;
                         let end = *end;
-                        if end > buf.len() || start > end { continue; }
-                        if start < end { buf.delete(start, end); }
-                        if !new_text.is_empty() { buf.insert(start, new_text); }
+                        if end > buf_len || start > end { continue; }
+                        if start < end { view.delete(start, end); }
+                        if !new_text.is_empty() { view.insert(start, new_text); }
                     }
-                    break;
                 }
             }
         }

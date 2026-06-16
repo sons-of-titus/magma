@@ -12,21 +12,24 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                // Skip non-word characters, then skip word characters, then skip any following whitespace
-                // to land at the start of the next word (Vim `w` semantics).
-                let word_start = text.find(|c: char| c.is_alphanumeric() || c == '_');
-                if let Some(ws) = word_start {
-                    let after = &text[ws..];
-                    let word_end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
-                    let after_word = &after[word_end..];
-                    let next_start = after_word.find(|c: char| c.is_alphanumeric() || c == '_').unwrap_or(after_word.len());
-                    buf.set_cursor(pos + ws + word_end + next_start);
-                } else {
-                    buf.set_cursor(buf.len());
-                }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let (new_pos, buf_len) = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    let word_start = text.find(|c: char| c.is_alphanumeric() || c == '_');
+                    let np = if let Some(ws) = word_start {
+                        let after = &text[ws..];
+                        let word_end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
+                        let after_word = &after[word_end..];
+                        let next_start = after_word.find(|c: char| c.is_alphanumeric() || c == '_').unwrap_or(after_word.len());
+                        pos + ws + word_end + next_start
+                    } else {
+                        buf.len()
+                    };
+                    (np, buf.len())
+                };
+                view.set_cursor(new_pos.min(buf_len));
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -37,18 +40,19 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
                 if pos == 0 { return Ok(()); }
-                let text = buf.slice(0, pos);
-                // Skip any trailing non-word chars
-                let trimmed = text.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
-                if trimmed.is_empty() { return Ok(()); }
-                // Find start of last word
-                let word_start = trimmed.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .map(|i| i + 1)
-                    .unwrap_or(0);
-                buf.set_cursor(word_start);
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(0, pos);
+                    let trimmed = text.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
+                    if trimmed.is_empty() { return Ok(()); }
+                    trimmed.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+                        .map(|i| i + 1)
+                        .unwrap_or(0)
+                };
+                view.set_cursor(new_pos);
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -59,16 +63,21 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                // Find first alphanumeric/underscore char
-                let word_start = text.find(|c: char| c.is_alphanumeric() || c == '_');
-                if let Some(ws) = word_start {
-                    let after = &text[ws..];
-                    let word_end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
-                    buf.set_cursor(pos + ws + word_end);
-                }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    let word_start = text.find(|c: char| c.is_alphanumeric() || c == '_');
+                    if let Some(ws) = word_start {
+                        let after = &text[ws..];
+                        let word_end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
+                        pos + ws + word_end
+                    } else {
+                        pos
+                    }
+                };
+                view.set_cursor(new_pos);
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -84,12 +93,14 @@ pub(super) fn register(editor: &mut Editor) {
             let ch = args.get("char").and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "char required".to_string())?;
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                if let Some(offset) = text.find(ch) {
-                    buf.set_cursor(pos + offset);
-                }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    text.find(ch).map(|offset| pos + offset)
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             editor.last_find = Some((ch, true, false));
             emit_cursor_moved(editor);
@@ -106,12 +117,14 @@ pub(super) fn register(editor: &mut Editor) {
             let ch = args.get("char").and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "char required".to_string())?;
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(0, pos);
-                if let Some(offset) = text.rfind(ch) {
-                    buf.set_cursor(offset);
-                }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(0, pos);
+                    text.rfind(ch)
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             editor.last_find = Some((ch, false, false));
             emit_cursor_moved(editor);
@@ -128,13 +141,16 @@ pub(super) fn register(editor: &mut Editor) {
             let ch = args.get("char").and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "char required".to_string())?;
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                if let Some(offset) = text.find(ch)
-                    && offset > 0 {
-                        buf.set_cursor(pos + offset - 1);
-                    }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    if let Some(offset) = text.find(ch) {
+                        if offset > 0 { Some(pos + offset - 1) } else { None }
+                    } else { None }
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             editor.last_find = Some((ch, true, true));
             emit_cursor_moved(editor);
@@ -151,15 +167,17 @@ pub(super) fn register(editor: &mut Editor) {
             let ch = args.get("char").and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "char required".to_string())?;
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(0, pos);
-                if let Some(offset) = text.rfind(ch) {
-                    let next_char = offset + ch.len_utf8();
-                    if next_char < pos {
-                        buf.set_cursor(next_char);
-                    }
-                }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(0, pos);
+                    text.rfind(ch).and_then(|offset| {
+                        let next_char = offset + ch.len_utf8();
+                        if next_char < pos { Some(next_char) } else { None }
+                    })
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             editor.last_find = Some((ch, false, true));
             emit_cursor_moved(editor);
@@ -172,7 +190,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             if let Some((ch, forward, till)) = editor.last_find {
                 let buf_id = get_current_buffer_id(editor);
-                if let Some(_buf) = editor.buffers.get_mut(buf_id) {
+                if editor.views.contains_key(&buf_id) {
                     let cmd = if forward {
                         if till { "find-till-forward" } else { "find-forward" }
                     } else {
@@ -193,7 +211,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             if let Some((ch, forward, till)) = editor.last_find {
                 let buf_id = get_current_buffer_id(editor);
-                if let Some(_buf) = editor.buffers.get_mut(buf_id) {
+                if editor.views.contains_key(&buf_id) {
                     let cmd = if forward {
                         if till { "find-till-backward" } else { "find-backward" }
                     } else {
@@ -213,39 +231,45 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(0, buf.len());
-                let ch = text[pos..].chars().next()
-                    .or_else(|| text[..pos].chars().next_back());
-                if let Some(c) = ch {
-                    let pairs = [('(', ')'), ('[', ']'), ('{', '}')];
-                    for &(open, close) in &pairs {
-                        if c == open {
-                            let remaining = &text[pos..];
-                            let mut depth = 0;
-                            for (i, ch) in remaining.char_indices() {
-                                if ch == open { depth += 1; }
-                                if ch == close { depth -= 1; }
-                                if depth == 0 {
-                                    buf.set_cursor(pos + i);
-                                    break;
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(0, buf.len());
+                    let ch = text[pos..].chars().next()
+                        .or_else(|| text[..pos].chars().next_back());
+                    if let Some(c) = ch {
+                        let pairs = [('(', ')'), ('[', ']'), ('{', '}')];
+                        let mut found = None;
+                        for &(open, close) in &pairs {
+                            if c == open {
+                                let remaining = &text[pos..];
+                                let mut depth = 0;
+                                for (i, ch) in remaining.char_indices() {
+                                    if ch == open { depth += 1; }
+                                    if ch == close { depth -= 1; }
+                                    if depth == 0 {
+                                        found = Some(pos + i);
+                                        break;
+                                    }
                                 }
-                            }
-                        } else if c == close {
-                            let before = &text[..=pos];
-                            let mut depth = 0;
-                            for (i, ch) in before.char_indices().rev() {
-                                if ch == close { depth += 1; }
-                                if ch == open { depth -= 1; }
-                                if depth == 0 {
-                                    buf.set_cursor(i);
-                                    break;
+                            } else if c == close {
+                                let before = &text[..=pos];
+                                let mut depth = 0;
+                                for (i, ch) in before.char_indices().rev() {
+                                    if ch == close { depth += 1; }
+                                    if ch == open { depth -= 1; }
+                                    if depth == 0 {
+                                        found = Some(i);
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
-                }
+                        found
+                    } else { None }
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -256,20 +280,26 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                let lines: Vec<&str> = text.split('\n').collect();
-                let mut found_empty = false;
-                for (i, line) in lines.iter().enumerate() {
-                    if line.trim().is_empty() {
-                        found_empty = true;
-                    } else if found_empty {
-                        let offset: usize = lines[..i].iter().map(|l| l.len() + 1).sum();
-                        buf.set_cursor(pos + offset);
-                        break;
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    let lines: Vec<&str> = text.split('\n').collect();
+                    let mut found_empty = false;
+                    let mut result = None;
+                    for (i, line) in lines.iter().enumerate() {
+                        if line.trim().is_empty() {
+                            found_empty = true;
+                        } else if found_empty {
+                            let offset: usize = lines[..i].iter().map(|l| l.len() + 1).sum();
+                            result = Some(pos + offset);
+                            break;
+                        }
                     }
-                }
+                    result
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -280,20 +310,26 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(0, pos);
-                let lines: Vec<&str> = text.split('\n').collect();
-                let mut found_content = false;
-                for (i, line) in lines.iter().enumerate().rev() {
-                    if line.trim().is_empty() && found_content {
-                        let offset: usize = lines[..=i].iter().map(|l| l.len() + 1).sum();
-                        buf.set_cursor(offset.max(1) - 1);
-                        break;
-                    } else if !line.trim().is_empty() {
-                        found_content = true;
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(0, pos);
+                    let lines: Vec<&str> = text.split('\n').collect();
+                    let mut found_content = false;
+                    let mut result = None;
+                    for (i, line) in lines.iter().enumerate().rev() {
+                        if line.trim().is_empty() && found_content {
+                            let offset: usize = lines[..=i].iter().map(|l| l.len() + 1).sum();
+                            result = Some(offset.max(1) - 1);
+                            break;
+                        } else if !line.trim().is_empty() {
+                            found_content = true;
+                        }
                     }
-                }
+                    result
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -304,15 +340,19 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                let text = buf.slice(pos, buf.len());
-                if let Some(idx) = text.find(['.', '!', '?']) {
-                    let after = &text[idx..];
-                    let end = after.find(|c: char| c != '.' && c != '!' && c != '?' && c != ' ' && c != '\t')
-                        .unwrap_or(after.len());
-                    buf.set_cursor(pos + idx + end);
-                }
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(pos, buf.len());
+                    text.find(['.', '!', '?']).map(|idx| {
+                        let after = &text[idx..];
+                        let end = after.find(|c: char| c != '.' && c != '!' && c != '?' && c != ' ' && c != '\t')
+                            .unwrap_or(after.len());
+                        pos + idx + end
+                    })
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -323,28 +363,34 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor.offset;
                 if pos == 0 { return Ok(()); }
-                let text = buf.slice(0, pos);
-                let mut i = pos;
-                while i > 0 {
-                    let c = text[i.saturating_sub(1)..].chars().next().unwrap_or(' ');
-                    i -= c.len_utf8();
-                    let check = text[i..].chars().next().unwrap_or(' ');
-                    if check == '.' || check == '!' || check == '?' {
-                        let mut j = i + check.len_utf8();
-                        while j < pos {
-                            let c2 = text[j..].chars().next().unwrap_or(' ');
-                            if c2 != ' ' && c2 != '\t' && c2 != '.' && c2 != '!' && c2 != '?' {
-                                break;
+                let new_pos = {
+                    let buf = view.buffer.lock().unwrap();
+                    let text = buf.slice(0, pos);
+                    let mut result = None;
+                    let mut i = pos;
+                    while i > 0 {
+                        let c = text[i.saturating_sub(1)..].chars().next().unwrap_or(' ');
+                        i -= c.len_utf8();
+                        let check = text[i..].chars().next().unwrap_or(' ');
+                        if check == '.' || check == '!' || check == '?' {
+                            let mut j = i + check.len_utf8();
+                            while j < pos {
+                                let c2 = text[j..].chars().next().unwrap_or(' ');
+                                if c2 != ' ' && c2 != '\t' && c2 != '.' && c2 != '!' && c2 != '?' {
+                                    break;
+                                }
+                                j += c2.len_utf8();
                             }
-                            j += c2.len_utf8();
+                            result = Some(j);
+                            break;
                         }
-                        buf.set_cursor(j);
-                        break;
                     }
-                }
+                    result
+                };
+                if let Some(np) = new_pos { view.set_cursor(np); }
             }
             emit_cursor_moved(editor);
             Ok(())

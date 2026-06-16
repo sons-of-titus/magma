@@ -13,7 +13,7 @@ fn buffer_major_mode_returns_fundamental_by_default() {
         );
         assert_eq!(result, "ok", "buffer/major-mode eval should not error");
 
-        assert_eq!(ed.buffers.get(key).unwrap().major_mode.name(), "fundamental");
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "fundamental");
     });
 }
 
@@ -32,7 +32,7 @@ fn buffer_major_mode_reflects_set_major_mode_command() {
             ),
         );
         assert_eq!(result, "ok");
-        assert_eq!(ed.buffers.get(key).unwrap().major_mode.name(), "text",
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "text",
             "major mode must be text after set-major-mode");
     });
 }
@@ -54,7 +54,7 @@ fn option_set_local_isolated_from_global() {
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
         assert_eq!(
-            ed.buffers.get(key).unwrap().local_options.get("tab-width").map(|s| s.as_str()),
+            ed.buffers.get(key).unwrap().lock().unwrap().local_options.get("tab-width").map(|s| s.as_str()),
             Some("2"),
             "local option must be 2"
         );
@@ -155,7 +155,7 @@ fn major_mode_define_setup_fn_called_on_activate() {
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
         assert_eq!(
-            ed.buffers.get(key).unwrap().local_options.get("indent-width").map(|s| s.as_str()),
+            ed.buffers.get(key).unwrap().lock().unwrap().local_options.get("indent-width").map(|s| s.as_str()),
             Some("2"),
             "setup fn must set the local option when mode activates"
         );
@@ -171,8 +171,8 @@ fn auto_detect_mode_activates_when_command_registered() {
             let buf_id = ed.windows.focused_window()
                 .and_then(|wid| ed.windows.buffer(wid))
                 .unwrap_or(0);
-            if let Some(buf) = ed.buffers.get_mut(buf_id) {
-                buf.major_mode = crate::kernel::text_engine::MajorMode::Custom("zig-mode".to_string());
+            if let Some(arc) = ed.buffers.get(buf_id) {
+                arc.lock().unwrap().major_mode = crate::kernel::text_engine::MajorMode::Custom("zig-mode".to_string());
             }
             Ok(())
         });
@@ -192,7 +192,7 @@ fn auto_detect_mode_activates_when_command_registered() {
         let key = ed.windows.focused_window()
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
-        assert_eq!(ed.buffers.get(key).unwrap().major_mode.name(), "zig-mode",
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "zig-mode",
             "auto-detect logic must activate zig-mode when invoked directly");
     });
 }
@@ -209,7 +209,7 @@ fn auto_detect_mode_skips_when_command_not_registered() {
         let key = ed.windows.focused_window()
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
-        assert_eq!(ed.buffers.get(key).unwrap().major_mode.name(), "fundamental",
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "fundamental",
             "auto-detect must not crash when mode command is not registered");
     });
 }
@@ -226,7 +226,7 @@ fn auto_detect_skips_buffer_without_path() {
         let key = ed.windows.focused_window()
             .and_then(|wid| ed.windows.buffer(wid))
             .unwrap();
-        assert_eq!(ed.buffers.get(key).unwrap().major_mode.name(), "fundamental");
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().major_mode.name(), "fundamental");
     });
 }
 

@@ -15,34 +15,26 @@ fn get_or_create_special(
     ed: &mut crate::kernel::state::Editor,
     name: &str,
 ) -> usize {
-    for (key, buf) in &ed.buffers {
-        if buf.name == name {
+    for (key, arc) in &ed.buffers {
+        if arc.lock().unwrap().name == name {
             return key;
         }
     }
-    let buf_id = ed.allocate_buffer_id();
-    let mut buf = crate::kernel::text_engine::Buffer::new(
-        crate::kernel::state::id::BufferId(buf_id),
-        name,
-    );
-    buf.ephemeral = true;
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(buf);
+    let key = ed.create_buffer(name);
+    if let Some(arc) = ed.buffers.get_mut(key) {
+        arc.lock().unwrap().ephemeral = true;
+    }
     key
 }
 
 /// (editor/log-message text)
-///
-/// Append `text` followed by a newline to the `*Messages*` buffer, creating
-/// it on first use.  The buffer is read-only between calls; this function
-/// bypasses the flag to append.  Emits `buffer-message-appended`.
 unsafe extern "C-unwind" fn c_editor_log_message(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let text = conv::get_str(argc, argv, 0).unwrap_or_default();
         let key = get_or_create_special(ed, "*Messages*");
-        // Bypass read-only: write directly via the rope
-        if let Some(buf) = ed.buffers.get_mut(key) {
+        // Bypass read-only: write directly via the buffer
+        if let Some(arc) = ed.buffers.get_mut(key) {
+            let mut buf = arc.lock().unwrap();
             buf.read_only = false;
             let end = buf.len();
             let line = format!("{}\n", text);
@@ -59,14 +51,12 @@ unsafe extern "C-unwind" fn c_editor_log_message(argc: i32, argv: *mut Janet) ->
 }
 
 /// (editor/warn text)
-///
-/// Append `text` followed by a newline to the `*Warnings*` buffer, creating
-/// it on first use.  Emits `warning-emitted`.
 unsafe extern "C-unwind" fn c_editor_warn(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let text = conv::get_str(argc, argv, 0).unwrap_or_default();
         let key = get_or_create_special(ed, "*Warnings*");
-        if let Some(buf) = ed.buffers.get_mut(key) {
+        if let Some(arc) = ed.buffers.get_mut(key) {
+            let mut buf = arc.lock().unwrap();
             buf.read_only = false;
             let end = buf.len();
             let line = format!("{}\n", text);
@@ -83,15 +73,12 @@ unsafe extern "C-unwind" fn c_editor_warn(argc: i32, argv: *mut Janet) -> Janet 
 }
 
 /// (editor/show-help text)
-///
-/// Write `text` into the `*Help*` buffer (replacing any previous content),
-/// mark it read-only and ephemeral, and focus it in the current window.
-/// Emits `help-shown`.
 unsafe extern "C-unwind" fn c_editor_show_help(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let text = conv::get_str(argc, argv, 0).unwrap_or_default();
         let key = get_or_create_special(ed, "*Help*");
-        if let Some(buf) = ed.buffers.get_mut(key) {
+        if let Some(arc) = ed.buffers.get_mut(key) {
+            let mut buf = arc.lock().unwrap();
             buf.read_only = false;
             // Replace entire content
             let old_len = buf.len();

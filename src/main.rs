@@ -45,9 +45,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let id = ed.allocate_buffer_id();
         let mut buffer = Buffer::new(BufferId(id), "*scratch*");
         buffer.major_mode = magma::kernel::text_engine::MajorMode::Prog;
+        let arc = std::sync::Arc::new(std::sync::Mutex::new(buffer));
         let entry = ed.buffers.vacant_entry();
         let buf_key = entry.key();
-        entry.insert(buffer);
+        entry.insert(arc.clone());
+        ed.views.insert(buf_key, magma::kernel::text_engine::BufferView::new(arc));
 
         if let Some(win) = ed.windows.focused_window_mut() {
             win.buffer_id = Some(buf_key);
@@ -75,7 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match magma::kernel::storage::watcher::FileWatcher::new(bg_sender.clone()) {
             Ok(mut fw) => {
                 let ed = editor.read().unwrap();
-                for (_, buf) in ed.buffers.iter() {
+                for (_, arc) in ed.buffers.iter() {
+                    let buf = arc.lock().unwrap();
                     if let Some(ref path) = buf.path {
                         fw.watch(path);
                     }
@@ -203,8 +206,9 @@ async fn auto_save_loop(editor: Arc<RwLock<Editor>>, bg: BackgroundHandle) {
                 Err(_) => continue,
             };
             ed.buffers.iter()
-                .filter(|(_, buf)| buf.modified())
-                .filter_map(|(key, buf)| {
+                .filter(|(_, arc)| arc.lock().unwrap().modified())
+                .filter_map(|(key, arc)| {
+                    let buf = arc.lock().unwrap();
                     buf.path.clone().map(|p| (key, p, buf.slice(0, buf.len())))
                 })
                 .collect()
@@ -222,8 +226,8 @@ async fn auto_save_loop(editor: Arc<RwLock<Editor>>, bg: BackgroundHandle) {
                 })();
                 if result.is_ok()
                     && let Ok(mut ed) = editor.write()
-                        && let Some(buf) = ed.buffers.get_mut(key) {
-                            buf.mark_saved();
+                        && let Some(arc) = ed.buffers.get_mut(key) {
+                            arc.lock().unwrap().mark_saved();
                         }
             });
         }

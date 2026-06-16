@@ -198,7 +198,8 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::LspDiagnostics { path, diagnostics } => {
             let count = diagnostics.len();
             // Store on the buffer if we can find it
-            for (_, buf) in ed.buffers.iter_mut() {
+            for (_, arc) in ed.buffers.iter_mut() {
+                let mut buf = arc.lock().unwrap();
                 if buf.path.as_deref() == Some(&path) {
                     buf.set_diagnostics(diagnostics.clone());
                     break;
@@ -217,8 +218,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             });
         }
         BackgroundEvent::TerminalOutput { buf_id, data } => {
-            if let Some(buf) = ed.buffers.get_mut(buf_id) {
-                apply_terminal_output(buf, &data);
+            if let Some(arc) = ed.buffers.get_mut(buf_id) {
+                let mut buf = arc.lock().unwrap();
+                apply_terminal_output(&mut buf, &data);
             }
         }
         BackgroundEvent::TerminalExited { buf_id, exit_code: _ } => {

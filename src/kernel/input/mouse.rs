@@ -36,13 +36,13 @@ pub fn dispatch_gutter_click(ed: &mut Editor, surface: &Surface, click_x: u16, c
 
     let tab_bar_rows: u16 = if ed.tab_bar_enabled { 1 } else { 0 };
     let header_rows: u16 = if ed.buffers.get(buf_id)
-        .map(|b| b.header_line.is_some()).unwrap_or(false) { 1 } else { 0 };
+        .map(|a| a.lock().unwrap().header_line.is_some()).unwrap_or(false) { 1 } else { 0 };
     let row_offset = tab_bar_rows + header_rows;
 
     let prefix_margin = crate::kernel::render::decorations::prefix_margin_width(ed, buf_id);
     let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
 
-    let total_lines = ed.buffers.get(buf_id).map(|b| b.line_count()).unwrap_or(1);
+    let total_lines = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().line_count()).unwrap_or(1);
     let ln_col_width = (total_lines.max(1).ilog10() as usize + 1).max(2) + 1;
 
     let mut col_x = prefix_cols as u16;

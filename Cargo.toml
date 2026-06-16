@@ -37,6 +37,30 @@ paste = "1.0"
 name = "buffer_ops"
 harness = false
 
+[[bench]]
+name = "rope_ops"
+harness = false
+
+[[bench]]
+name = "event_bus"
+harness = false
+
+[[bench]]
+name = "command_dispatch"
+harness = false
+
+[[bench]]
+name = "keymap_resolution"
+harness = false
+
+[[bench]]
+name = "surface_ops"
+harness = false
+
+[[bench]]
+name = "undo_ops"
+harness = false
+
 [features]
 default = ["janet", "gui"]
 janet = ["dep:evil-janet"]

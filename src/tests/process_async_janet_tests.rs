@@ -6,11 +6,7 @@ fn setup_background_editor() -> crate::kernel::state::Editor {
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
     ed.background = Some(crate::kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
-    let id = ed.allocate_buffer_id();
-    let buf = crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(id), "test");
-    let e = ed.buffers.vacant_entry();
-    let k = e.key();
-    e.insert(buf);
+    let k = ed.create_buffer("test");
     if let Some(win) = ed.windows.focused_window_mut() {
         win.buffer_id = Some(k);
     }

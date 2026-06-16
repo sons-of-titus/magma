@@ -121,7 +121,7 @@ fn buffer_set_highlights_with_face_names() {
         &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"] [6 11 \"string-face\"]])", key));
     assert_eq!(result, "ok");
 
-    let hl = &ed.buffers.get(key).unwrap().highlights;
+    let hl = ed.views.get(&key).unwrap().highlights.clone();
     assert_eq!(hl.len(), 2);
     assert_eq!(hl[0].2, "keyword-face");
     assert_eq!(hl[1].2, "string-face");
@@ -138,7 +138,7 @@ fn buffer_set_highlights_without_face_defaults_to_highlight() {
         &format!("(buffer/set-highlights {} [[0 5]])", key));
     assert_eq!(result, "ok");
 
-    let hl = &ed.buffers.get(key).unwrap().highlights;
+    let hl = ed.views.get(&key).unwrap().highlights.clone();
     assert_eq!(hl.len(), 1);
     assert_eq!(hl[0].2, "highlight");
 }
@@ -154,7 +154,7 @@ fn buffer_set_highlights_empty_clears() {
         &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"]])", key));
     let _ = scripting::eval(
         &format!("(buffer/set-highlights {})", key));
-    assert!(ed.buffers.get(key).unwrap().highlights.is_empty());
+    assert!(ed.views.get(&key).unwrap().highlights.is_empty());
 }
 
 // ── buffer/set-highlights-layer and buffer/clear-highlights-layer ──────
@@ -170,8 +170,8 @@ fn buffer_set_highlights_layer_stores_per_layer() {
         &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
     assert_eq!(result, "ok");
 
-    let buf = ed.buffers.get(key).unwrap();
-    let layer = buf.highlight_layers.get("syntax");
+    let view = ed.views.get(&key).unwrap();
+    let layer = view.highlight_layers.get("syntax");
     assert!(layer.is_some());
     assert_eq!(layer.unwrap().len(), 1);
     assert_eq!(layer.unwrap()[0].2, "keyword-face");
@@ -190,8 +190,8 @@ fn buffer_clear_highlights_layer_removes_named_layer() {
         &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
     assert_eq!(result, "ok");
 
-    let buf = ed.buffers.get(key).unwrap();
-    assert!(buf.highlight_layers.get("syntax").is_none());
+    let view = ed.views.get(&key).unwrap();
+    assert!(view.highlight_layers.get("syntax").is_none());
 }
 
 #[test]
@@ -208,9 +208,9 @@ fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
     let _ = scripting::eval(
         &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
 
-    let buf = ed.buffers.get(key).unwrap();
-    assert!(buf.highlight_layers.get("syntax").is_none());
-    assert!(buf.highlight_layers.get("search").is_some());
+    let view = ed.views.get(&key).unwrap();
+    assert!(view.highlight_layers.get("syntax").is_none());
+    assert!(view.highlight_layers.get("search").is_some());
 }
 
 // ── Default faces from init.janet ──────────────────────────────────────

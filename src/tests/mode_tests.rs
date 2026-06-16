@@ -50,7 +50,8 @@ fn mode_name_command() {
 #[test]
 fn visual_anchor_set_at_cursor() {
     let mut ed = helpers::make_editor_with_buffer("hello");
-    ed.buffers.get_mut(0).unwrap().set_cursor(2);
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(2);
     helpers::run(&mut ed, "enter-visual-mode");
     assert_eq!(visual_anchor(&ed), Some(2));
 }
@@ -67,7 +68,8 @@ fn exit_visual_clears_anchor() {
 #[test]
 fn delete_selection_removes_chars() {
     let mut ed = helpers::make_editor_with_buffer("hello world");
-    ed.buffers.get_mut(0).unwrap().set_cursor(0);
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
     helpers::run(&mut ed, "enter-visual-mode");
     // select "hello" (5 chars)
     for _ in 0..4 { helpers::run(&mut ed, "cursor-right"); }
@@ -81,7 +83,8 @@ fn delete_selection_removes_chars() {
 #[test]
 fn change_selection_deletes_and_enters_insert() {
     let mut ed = helpers::make_editor_with_buffer("hi there");
-    ed.buffers.get_mut(0).unwrap().set_cursor(0);
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
     helpers::run(&mut ed, "enter-visual-mode");
     helpers::run(&mut ed, "cursor-right"); // select "hi" (2 chars)
     helpers::run(&mut ed, "change-selection");
@@ -94,7 +97,8 @@ fn change_selection_deletes_and_enters_insert() {
 #[test]
 fn replace_mode_inserts_char() {
     let mut ed = helpers::make_editor_with_buffer("hello");
-    ed.buffers.get_mut(0).unwrap().set_cursor(0);
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
     helpers::run(&mut ed, "enter-replace-mode");
     crate::kernel::input::dispatch_key(&mut ed, "H");
     assert!(helpers::buf_text(&ed).starts_with('H'));
@@ -103,7 +107,8 @@ fn replace_mode_inserts_char() {
 #[test]
 fn replace_mode_advances_cursor() {
     let mut ed = helpers::make_editor_with_buffer("abc");
-    ed.buffers.get_mut(0).unwrap().set_cursor(0);
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
     helpers::run(&mut ed, "enter-replace-mode");
     handle_text_input(&mut ed, "X");
     assert_eq!(helpers::cursor(&ed), 1); // advanced past replaced char

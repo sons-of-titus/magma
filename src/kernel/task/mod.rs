@@ -110,21 +110,25 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
 
     // Try to find an existing buffer for this file
     let existing_key = editor.buffers.iter()
-        .find(|(_, buf)| buf.path.as_deref() == Some(path.as_str()))
+        .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(path.as_str()))
         .map(|(key, _)| key);
 
     if let Some(key) = existing_key {
-        if let Some(buf) = editor.buffers.get_mut(key) {
-            buf.set_diagnostics(diags);
-            let target = buf.line_start_offset(qf.line.saturating_sub(1))
-                .unwrap_or(0);
-            let line_text = buf.line(qf.line.saturating_sub(1))
-                .unwrap_or_default();
-            let char_offset: usize = line_text.chars()
-                .take(qf.col.saturating_sub(1))
-                .map(|c| c.len_utf8())
-                .sum();
-            buf.set_cursor(target + char_offset);
+        if let Some(arc) = editor.buffers.get_mut(key) {
+            let (target, char_offset) = {
+                let mut buf = arc.lock().unwrap();
+                buf.set_diagnostics(diags);
+                let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
+                let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
+                let char_offset: usize = line_text.chars()
+                    .take(qf.col.saturating_sub(1))
+                    .map(|c| c.len_utf8())
+                    .sum();
+                (target, char_offset)
+            };
+            if let Some(view) = editor.views.get_mut(&key) {
+                view.set_cursor(target + char_offset);
+            }
         }
         if let Some(win) = editor.windows.focused_window_mut() {
             win.buffer_id = Some(key);
@@ -140,21 +144,20 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
                 crate::kernel::state::id::BufferId(id), &name, &content,
             );
             buf.path = Some(path.clone());
+            buf.set_diagnostics(diags);
+            let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
+            let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
+            let char_offset: usize = line_text.chars()
+                .take(qf.col.saturating_sub(1))
+                .map(|c| c.len_utf8())
+                .sum();
+            let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
             let slab_entry = editor.buffers.vacant_entry();
             let key = slab_entry.key();
-            slab_entry.insert(buf);
-            if let Some(buf) = editor.buffers.get_mut(key) {
-                buf.set_diagnostics(diags);
-                let target = buf.line_start_offset(qf.line.saturating_sub(1))
-                    .unwrap_or(0);
-                let line_text = buf.line(qf.line.saturating_sub(1))
-                    .unwrap_or_default();
-                let char_offset: usize = line_text.chars()
-                    .take(qf.col.saturating_sub(1))
-                    .map(|c| c.len_utf8())
-                    .sum();
-                buf.set_cursor(target + char_offset);
-            }
+            slab_entry.insert(arc.clone());
+            let mut view = crate::kernel::text_engine::BufferView::new(arc);
+            view.set_cursor(target + char_offset);
+            editor.views.insert(key, view);
             if let Some(win) = editor.windows.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
@@ -169,9 +172,11 @@ fn create_output_buffer(editor: &mut Editor, base_name: &str, content: &str, cmd
     let buf = crate::kernel::text_engine::Buffer::from_string(
         crate::kernel::state::id::BufferId(id), &name, content,
     );
+    let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
     let entry = editor.buffers.vacant_entry();
     let key = entry.key();
-    entry.insert(buf);
+    entry.insert(arc.clone());
+    editor.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
     if let Some(win) = editor.windows.focused_window_mut() {
         win.buffer_id = Some(key);
     }

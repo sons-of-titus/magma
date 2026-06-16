@@ -27,10 +27,11 @@ unsafe extern "C-unwind" fn c_buffer_current(_argc: i32, _argv: *mut Janet) -> J
 unsafe extern "C-unwind" fn c_buffer_list(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let arr = janet_wrap_array(janet_array(ed.buffers.len() as i32));
-        for (key, buf) in ed.buffers.iter() {
+        for (key, arc) in ed.buffers.iter() {
+            let buf = arc.lock().unwrap();
             let tbl = janet_wrap_table(janet_table(0));
             janet_table_put(janet_unwrap_table(tbl), conv::keyword("slab"), conv::integer(key as i32));
-            janet_table_put(janet_unwrap_table(tbl), conv::keyword("name"), conv::string(&buf.name));
+            janet_table_put(janet_unwrap_table(tbl), conv::keyword("name"), conv::string(&buf.name.clone()));
             janet_table_put(janet_unwrap_table(tbl), conv::keyword("len"), conv::integer(buf.len() as i32));
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
@@ -42,15 +43,11 @@ unsafe extern "C-unwind" fn c_buffer_create(argc: i32, argv: *mut Janet) -> Jane
     with_editor(|ed| unsafe {
         let name = conv::get_str(argc, argv, 0).unwrap_or_default();
         let content = conv::get_str(argc, argv, 1).unwrap_or_default();
-        let buf_id = ed.allocate_buffer_id();
-        let buf = if content.is_empty() {
-            crate::kernel::text_engine::Buffer::new(crate::kernel::state::id::BufferId(buf_id), &name)
+        let key = if content.is_empty() {
+            ed.create_buffer(&name)
         } else {
-            crate::kernel::text_engine::Buffer::from_string(crate::kernel::state::id::BufferId(buf_id), &name, &content)
+            ed.create_buffer_from_str(&name, &content)
         };
-        let entry = ed.buffers.vacant_entry();
-        let key = entry.key();
-        entry.insert(buf);
         if !content.is_empty() {
             emit_buffer_changed(&mut *ed, key);
         }
@@ -61,7 +58,7 @@ unsafe extern "C-unwind" fn c_buffer_create(argc: i32, argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_buffer_name(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let name = ed.buffers.get(key).map(|b| b.name.clone()).unwrap_or_default();
+        let name = ed.buffers.get(key).map(|a| a.lock().unwrap().name.clone()).unwrap_or_default();
         conv::string(&name)
     })
 }
@@ -70,8 +67,8 @@ unsafe extern "C-unwind" fn c_buffer_path(argc: i32, argv: *mut Janet) -> Janet 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(buf) => match &buf.path {
-                Some(p) => conv::string(p),
+            Some(arc) => match arc.lock().unwrap().path.clone() {
+                Some(p) => conv::string(&p),
                 None => conv::nil(),
             },
             None => conv::nil(),
@@ -85,8 +82,8 @@ unsafe extern "C-unwind" fn c_buffer_set_path(argc: i32, argv: *mut Janet) -> Ja
         let Some(path) = conv::get_str(argc, argv, 1) else {
             return conv::nil();
         };
-        if let Some(buf) = ed.buffers.get_mut(key) {
-            buf.path = Some(path);
+        if let Some(arc) = ed.buffers.get_mut(key) {
+            arc.lock().unwrap().path = Some(path);
         }
         conv::nil()
     })
@@ -96,7 +93,7 @@ unsafe extern "C-unwind" fn c_buffer_major_mode(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(buf) => conv::string(buf.major_mode.name()),
+            Some(arc) => conv::string(arc.lock().unwrap().major_mode.name()),
             None => conv::string("fundamental"),
         }
     })
@@ -106,7 +103,7 @@ unsafe extern "C-unwind" fn c_buffer_line_count(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(buf) => conv::integer(buf.line_count() as i32),
+            Some(arc) => conv::integer(arc.lock().unwrap().line_count() as i32),
             None => conv::integer(0),
         }
     })
@@ -117,7 +114,7 @@ unsafe extern "C-unwind" fn c_buffer_line_start_offset(argc: i32, argv: *mut Jan
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let line = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         match ed.buffers.get(key) {
-            Some(buf) => match buf.line_start_offset(line) {
+            Some(arc) => match arc.lock().unwrap().line_start_offset(line) {
                 Some(offset) => conv::integer(offset as i32),
                 None => conv::nil(),
             },
@@ -129,9 +126,10 @@ unsafe extern "C-unwind" fn c_buffer_line_start_offset(argc: i32, argv: *mut Jan
 unsafe extern "C-unwind" fn c_buffer_line_number(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let cursor = ed.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
         match ed.buffers.get(key) {
-            Some(buf) => {
-                let cursor = buf.cursor();
+            Some(arc) => {
+                let buf = arc.lock().unwrap();
                 let text = buf.slice(0, cursor);
                 let line = text.chars().filter(|&c| c == '\n').count();
                 conv::integer(line as i32)
@@ -145,7 +143,7 @@ unsafe extern "C-unwind" fn c_buffer_modified(argc: i32, argv: *mut Janet) -> Ja
     with_editor(|ed| {
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(buf) => conv::boolean(buf.modified()),
+            Some(arc) => conv::boolean(arc.lock().unwrap().modified()),
             None => conv::boolean(false),
         }
     })
@@ -155,7 +153,7 @@ unsafe extern "C-unwind" fn c_buffer_diagnostics(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let diags = match ed.buffers.get(key) {
-            Some(buf) => buf.get_diagnostics().to_vec(),
+            Some(arc) => arc.lock().unwrap().get_diagnostics().to_vec(),
             None => Vec::new(),
         };
         let arr_ptr = janet_array(diags.len() as i32);

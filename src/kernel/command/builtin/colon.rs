@@ -16,17 +16,20 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
     match verb {
         "w" | "write" => {
             let buf_id = get_current_buffer_id(editor);
-            let buf = editor.buffers.get_mut(buf_id)
+            let arc = editor.buffers.get_mut(buf_id)
                 .ok_or_else(|| "No buffer".to_string())?;
             let path = if rest.is_empty() {
-                buf.path.clone().ok_or_else(|| "No file path (use :w <path>)".to_string())?
+                arc.lock().unwrap().path.clone().ok_or_else(|| "No file path (use :w <path>)".to_string())?
             } else {
                 rest.to_string()
             };
-            let content = buf.slice(0, buf.len());
+            let content = { let b = arc.lock().unwrap(); b.slice(0, b.len()) };
             editor.fs.write(&path, &content).map_err(|e| e.to_string())?;
-            buf.path = Some(path);
-            buf.mark_saved();
+            {
+                let mut buf = editor.buffers.get_mut(buf_id).unwrap().lock().unwrap();
+                buf.path = Some(path);
+                buf.mark_saved();
+            }
             Ok(())
         }
         "q" | "quit" | "q!" => {
@@ -35,13 +38,13 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
         }
         "wq" | "x" => {
             let buf_id = get_current_buffer_id(editor);
-            let buf = editor.buffers.get_mut(buf_id)
+            let arc = editor.buffers.get_mut(buf_id)
                 .ok_or_else(|| "No buffer".to_string())?;
-            let path = buf.path.clone()
+            let path = arc.lock().unwrap().path.clone()
                 .ok_or_else(|| "No file path (use :w <path> first)".to_string())?;
-            let content = buf.slice(0, buf.len());
+            let content = { let b = arc.lock().unwrap(); b.slice(0, b.len()) };
             editor.fs.write(&path, &content).map_err(|e| e.to_string())?;
-            buf.mark_saved();
+            arc.lock().unwrap().mark_saved();
             editor.running = false;
             Ok(())
         }
@@ -56,9 +59,11 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
                 crate::kernel::state::id::BufferId(id), &name, &content,
             );
             buf.path = Some(rest.to_string());
+            let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
             let entry = editor.buffers.vacant_entry();
             let key = entry.key();
-            entry.insert(buf);
+            entry.insert(arc.clone());
+            editor.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
             if let Some(win) = editor.windows.focused_window_mut() {
                 win.buffer_id = Some(key);
             }
@@ -96,8 +101,8 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
             let flags = if parts.len() > 2 { parts[2].clone() } else { String::new() };
             let global = flags.contains('g');
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let text = buf.slice(0, buf.len());
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
                 let result = if global {
                     text.replace(&pattern, &replacement)
                 } else {
@@ -107,10 +112,11 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
                         r.push_str(&text[idx+pattern.len()..]);
                         r
                     } else {
-                        text
+                        text.clone()
                     }
                 };
-                buf.replace(0, buf.len(), &result);
+                let len = view.buffer.lock().unwrap().len();
+                view.replace(0, len, &result);
             }
             Ok(())
         }
@@ -137,9 +143,9 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
             if rest.is_empty() { return Err(":r requires a file path".to_string()); }
             let content = editor.fs.read(rest).map_err(|e| e.to_string())?;
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                let pos = buf.cursor();
-                buf.insert(pos, &content);
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                let pos = view.cursor_offset();
+                view.insert(pos, &content);
             }
             Ok(())
         }
@@ -154,9 +160,11 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
                 crate::kernel::state::id::BufferId(id), &name, &content,
             );
             buf.path = Some(rest.to_string());
+            let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
             let entry = editor.buffers.vacant_entry();
             let key = entry.key();
-            entry.insert(buf);
+            entry.insert(arc.clone());
+            editor.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
             if let Some(win) = editor.windows.focused_window_mut() {
                 win.buffer_id = Some(key);
             }

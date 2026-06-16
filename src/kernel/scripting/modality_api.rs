@@ -29,18 +29,18 @@ unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Ja
             "visual" => {
                 if ed.selection.is_none() {
                     let buf_id = crate::kernel::input::focused_buffer_id(ed);
-                    let anchor = ed.buffers.get(buf_id).map(|b| b.cursor()).unwrap_or(0);
+                    let anchor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                     ed.selection = Some(Selection { anchor, kind: "char".into() });
                 }
             }
             "visual-line" => {
                 let buf_id = crate::kernel::input::focused_buffer_id(ed);
-                let anchor = ed.buffers.get(buf_id).map(|b| b.cursor()).unwrap_or(0);
+                let anchor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                 ed.selection = Some(Selection { anchor, kind: "line".into() });
             }
             "visual-block" => {
                 let buf_id = crate::kernel::input::focused_buffer_id(ed);
-                let anchor = ed.buffers.get(buf_id).map(|b| b.cursor()).unwrap_or(0);
+                let anchor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                 ed.selection = Some(Selection { anchor, kind: "block".into() });
             }
             "normal" | "insert" | "replace" | "command" | "cmdline" | "search" => {

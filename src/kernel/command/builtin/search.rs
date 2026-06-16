@@ -52,16 +52,16 @@ pub(super) fn register(editor: &mut Editor) {
             } else {
                 false
             };
-        if should_exit {
-            editor.editor_mode = EditorMode::new("normal", false);
-            editor.keymaps.pop_layer("search");
-            editor.keymaps.push_layer("vim");
-            let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.clear_highlights();
+            if should_exit {
+                editor.editor_mode = EditorMode::new("normal", false);
+                editor.keymaps.pop_layer("search");
+                editor.keymaps.push_layer("vim");
+                let buf_id = get_current_buffer_id(editor);
+                if let Some(view) = editor.views.get_mut(&buf_id) {
+                    view.clear_highlights();
+                }
             }
-        }
-        Ok(())
+            Ok(())
         },
     );
 
@@ -73,8 +73,8 @@ pub(super) fn register(editor: &mut Editor) {
             editor.keymaps.push_layer("vim");
             // Clear search highlights
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.clear_highlights();
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                view.clear_highlights();
             }
             Ok(())
         },
@@ -129,23 +129,33 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get(buf_id) {
-                let pos = buf.cursor();
+            let (pos, text, word_start, word_end) = {
+                let Some(view) = editor.views.get(&buf_id) else { return Ok(()); };
+                let pos = view.cursor_offset();
+                let buf = view.buffer.lock().unwrap();
                 let text = buf.slice(0, buf.len());
-                let before = &text[..pos];
+                let before = text[..pos].to_string();
                 let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
                     .map(|i| i + 1).unwrap_or(0);
                 let word_slice = &text[word_start..];
                 let word_end = word_slice.find(|c: char| !(c.is_alphanumeric() || c == '_'))
                     .unwrap_or(word_slice.len());
-                let word = &text[word_start..word_start + word_end];
+                (pos, text, word_start, word_start + word_end)
+            };
+            if word_start < word_end {
+                let word = text[word_start..word_end].to_string();
                 if !word.is_empty() {
                     let search_from = pos + 1;
-                    let search_text = &text[search_from..];
-                    if let Some(idx) = search_text.find(word)
-                        && let Some(buf) = editor.buffers.get_mut(buf_id) {
-                            buf.set_cursor(search_from + idx);
+                    let found = if search_from < text.len() {
+                        text[search_from..].find(&word[..]).map(|idx| search_from + idx)
+                    } else {
+                        None
+                    };
+                    if let Some(new_pos) = found {
+                        if let Some(view) = editor.views.get_mut(&buf_id) {
+                            view.set_cursor(new_pos);
                         }
+                    }
                 }
             }
             emit_cursor_moved(editor);
@@ -157,22 +167,29 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get(buf_id) {
-                let pos = buf.cursor();
+            let (pos, text, word_start, word_end) = {
+                let Some(view) = editor.views.get(&buf_id) else { return Ok(()); };
+                let pos = view.cursor_offset();
+                let buf = view.buffer.lock().unwrap();
                 let text = buf.slice(0, buf.len());
-                let before = &text[..pos];
+                let before = text[..pos].to_string();
                 let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
                     .map(|i| i + 1).unwrap_or(0);
                 let word_slice = &text[word_start..];
                 let word_end = word_slice.find(|c: char| !(c.is_alphanumeric() || c == '_'))
                     .unwrap_or(word_slice.len());
-                let word = &text[word_start..word_start + word_end];
+                (pos, text, word_start, word_start + word_end)
+            };
+            if word_start < word_end {
+                let word = text[word_start..word_end].to_string();
                 if !word.is_empty() {
                     let search_text = &text[..pos.saturating_sub(1)];
-                    if let Some(idx) = search_text.rfind(word)
-                        && let Some(buf) = editor.buffers.get_mut(buf_id) {
-                            buf.set_cursor(idx);
+                    let found = search_text.rfind(&word[..]);
+                    if let Some(idx) = found {
+                        if let Some(view) = editor.views.get_mut(&buf_id) {
+                            view.set_cursor(idx);
                         }
+                    }
                 }
             }
             emit_cursor_moved(editor);
@@ -184,8 +201,9 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(buf) = editor.buffers.get(buf_id) {
-                let pos = buf.cursor();
+            if let Some(view) = editor.views.get(&buf_id) {
+                let pos = view.cursor_offset();
+                let buf = view.buffer.lock().unwrap();
                 let text = buf.slice(0, buf.len());
                 let before = &text[..pos];
                 let word_start = before.rfind(|c: char| !c.is_alphanumeric() && c != '_')
@@ -228,72 +246,74 @@ pub(super) fn register(editor: &mut Editor) {
 }
 
 fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
-    if let Some(buf) = editor.buffers.get(buf_id) {
-        let text = buf.slice(0, buf.len());
-        if text.is_empty() || pattern.is_empty() {
-            return;
-        }
-        let mut ranges = Vec::new();
-        let mut offset = 0usize;
-        while let Some(idx) = text[offset..].find(pattern) {
-            let start = offset + idx;
-            let end = start + pattern.len();
-            ranges.push((start, end, "search".to_string()));
-            offset = end;
-        }
-        if let Some(buf) = editor.buffers.get_mut(buf_id) {
-            buf.set_highlights(ranges);
-        }
+    let text = {
+        let Some(view) = editor.views.get(&buf_id) else { return; };
+        let buf = view.buffer.lock().unwrap();
+        buf.slice(0, buf.len())
+    };
+    if text.is_empty() || pattern.is_empty() {
+        return;
+    }
+    let mut ranges = Vec::new();
+    let mut offset = 0usize;
+    while let Some(idx) = text[offset..].find(pattern) {
+        let start = offset + idx;
+        let end = start + pattern.len();
+        ranges.push((start, end, "search".to_string()));
+        offset = end;
+    }
+    if let Some(view) = editor.views.get_mut(&buf_id) {
+        view.set_highlights(ranges);
     }
 }
 
 fn execute_search(editor: &mut Editor, pattern: &str, forward: bool) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
-    if let Some(buf) = editor.buffers.get(buf_id) {
-        let pos = buf.cursor();
+    let (pos, text) = {
+        let Some(view) = editor.views.get(&buf_id) else { return Ok(()); };
+        let pos = view.cursor_offset();
+        let buf = view.buffer.lock().unwrap();
         let text = buf.slice(0, buf.len());
-        if text.is_empty() || pattern.is_empty() {
-            // Clear highlights on empty pattern
-            if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                buf.clear_highlights();
+        (pos, text)
+    };
+    if text.is_empty() || pattern.is_empty() {
+        if let Some(view) = editor.views.get_mut(&buf_id) {
+            view.clear_highlights();
+        }
+        return Ok(());
+    }
+    // Highlight all matches
+    highlight_all_matches(editor, buf_id, pattern);
+    if forward {
+        let start = (pos + 1).min(text.len());
+        if let Some(idx) = text[start..].find(pattern) {
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                view.set_cursor(start + idx);
             }
+            emit_cursor_moved(editor);
             return Ok(());
         }
-        // Highlight all matches
-        highlight_all_matches(editor, buf_id, pattern);
-        if forward {
-            let start = (pos + 1).min(text.len());
-            let search_from = &text[start..];
-            if let Some(idx) = search_from.find(pattern) {
-                if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                    buf.set_cursor(start + idx);
-                }
-                emit_cursor_moved(editor);
-                return Ok(());
+        if let Some(idx) = text[..start.saturating_sub(1)].find(pattern) {
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                view.set_cursor(idx);
             }
-            if let Some(idx) = text[..start.saturating_sub(1)].find(pattern) {
-                if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                    buf.set_cursor(idx);
-                }
-                emit_cursor_moved(editor);
-                return Ok(());
+            emit_cursor_moved(editor);
+            return Ok(());
+        }
+    } else {
+        if let Some(idx) = text[..pos].rfind(pattern) {
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                view.set_cursor(idx);
             }
-        } else {
-            let search_text = &text[..pos];
-            if let Some(idx) = search_text.rfind(pattern) {
-                if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                    buf.set_cursor(idx);
-                }
-                emit_cursor_moved(editor);
-                return Ok(());
+            emit_cursor_moved(editor);
+            return Ok(());
+        }
+        if let Some(idx) = text[pos..].rfind(pattern) {
+            if let Some(view) = editor.views.get_mut(&buf_id) {
+                view.set_cursor(pos + idx);
             }
-            if let Some(idx) = text[pos..].rfind(pattern) {
-                if let Some(buf) = editor.buffers.get_mut(buf_id) {
-                    buf.set_cursor(pos + idx);
-                }
-                emit_cursor_moved(editor);
-                return Ok(());
-            }
+            emit_cursor_moved(editor);
+            return Ok(());
         }
     }
     Ok(())

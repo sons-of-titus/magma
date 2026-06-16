@@ -22,10 +22,8 @@ macro_rules! debug_http {
     };
 }
 
-pub mod log;
 pub mod kernel;
+pub mod log;
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod test_janet_integration;

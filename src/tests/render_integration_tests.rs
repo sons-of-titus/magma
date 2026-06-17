@@ -27,7 +27,7 @@ fn render_frame_event_modifies_surface() {
 
     // Create a surface and run render_frame.
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface);
+    render_frame(&ed, &mut surface, false);
 
     // Remember what the status bar looks like after Rust's render.
     let rust_status_row: String = (0..80)

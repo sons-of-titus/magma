@@ -96,12 +96,15 @@ pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize
 }
 
 /// Populate `surface` from editor state by traversing the ViewTree.
-pub fn render_frame(editor: &Editor, surface: &mut Surface) {
+///
+/// When `editor_pane_only` is true (GUI mode), the tab bar reservation and
+/// status bar are omitted — those are rendered as native egui panels instead.
+pub fn render_frame(editor: &Editor, surface: &mut Surface, editor_pane_only: bool) {
     surface.clear();
 
-    let tab_bar_rows: u16 = if editor.tab_bar_enabled { 1 } else { 0 };
+    let tab_bar_rows: u16 = if !editor_pane_only && editor.tab_bar_enabled { 1 } else { 0 };
 
-    if editor.tab_bar_enabled {
+    if !editor_pane_only && editor.tab_bar_enabled {
         let tb_style = Style {
             fg: editor.theme_color("status-fg"),
             bg: editor.theme_color("status-bg"),
@@ -128,6 +131,10 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
 
     // ── Overlays (z-ordered, above all pane content) ─────────────────────
     render_overlays(editor, surface);
+
+    if editor_pane_only {
+        return;
+    }
 
     // ── Status bar (single global bar for the focused pane) ──────────────
     let focused = editor.view_tree.focused_window();

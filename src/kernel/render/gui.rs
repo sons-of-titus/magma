@@ -1,8 +1,8 @@
-//! Graphical renderer using eframe / egui.
+//! Graphical renderer using eframe / egui — native IDE layout.
 
 use std::sync::{Arc, RwLock};
 
-use eframe::egui::{self, FontFamily, FontId, Key, Rect, Vec2, Pos2};
+use eframe::egui::{self, FontFamily, FontId};
 use tokio::sync::mpsc;
 
 use crate::kernel::input::{self, NON_INSERTABLE};
@@ -14,12 +14,16 @@ use crate::kernel::runtime::{process_background_event, BackgroundEvent};
 use crate::kernel::state::Editor;
 
 use super::gui_fonts::apply_fonts_to_egui;
-use super::gui_render::{present, draw_status};
+use super::gui_layout::GuiLayout;
+use super::gui_render::present;
+use super::gui_sidebar::ProjectTree;
+use super::gui_status::StatusBar;
+use super::gui_tabs::{TabAction, TabBar};
 
 pub struct GuiApp {
     editor: Arc<RwLock<Editor>>,
     font_size: f32,
-    scroll_row: usize,
+    layout: GuiLayout,
     bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
     atlas: GpuGlyphAtlas,
     gpu_path_ready: bool,
@@ -32,7 +36,7 @@ impl GuiApp {
         Self {
             editor,
             font_size: 15.0,
-            scroll_row: 0,
+            layout: GuiLayout::default(),
             bg_receiver: rx,
             atlas: GpuGlyphAtlas::new(),
             gpu_path_ready: false,
@@ -44,7 +48,7 @@ impl GuiApp {
         Self {
             editor,
             font_size: 15.0,
-            scroll_row: 0,
+            layout: GuiLayout::default(),
             bg_receiver,
             atlas: GpuGlyphAtlas::new(),
             gpu_path_ready: false,
@@ -55,11 +59,13 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // ── Background events ──────────────────────────────────────────────
         while let Ok(event) = self.bg_receiver.try_recv() {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             process_background_event(&mut ed, event);
         }
 
+        // ── GPU init + font rebuild ────────────────────────────────────────
         if let Some(rs) = frame.wgpu_render_state() {
             if self.target_format.is_none() {
                 self.target_format = Some(rs.target_format);
@@ -76,6 +82,7 @@ impl eframe::App for GuiApp {
             }
         }
 
+        // ── Key events ────────────────────────────────────────────────────
         let mut key_events: Vec<String> = Vec::new();
         ctx.input(|i| {
             for ev in &i.events {
@@ -84,7 +91,6 @@ impl eframe::App for GuiApp {
                 }
             }
         });
-
         {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             for key in &key_events {
@@ -93,6 +99,7 @@ impl eframe::App for GuiApp {
             }
         }
 
+        // ── Running check ─────────────────────────────────────────────────
         {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
             if !ed.running {
@@ -101,6 +108,7 @@ impl eframe::App for GuiApp {
             }
         }
 
+        // ── Font metrics ──────────────────────────────────────────────────
         self.font_size = {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
             ed.font_config.size
@@ -110,63 +118,72 @@ impl eframe::App for GuiApp {
             f.glyph_width(&font_id, 'M'),
             f.row_height(&font_id),
         ));
-
-        let status_h = line_h + 8.0;
-        let approx_visible = {
-            let h = ctx.screen_rect().height() - status_h;
-            ((h / line_h).floor() as usize).max(1)
-        };
-        {
-            let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
-            if let Some(slab) = ed.view_tree.focused_window()
-                .and_then(|wid| ed.view_tree.buffer(wid))
-                && let Some(buf_arc) = ed.buffers.get(slab) {
-                    let buf = buf_arc.lock().unwrap();
-                    let cursor = ed.views.get(&slab).map(|v| v.cursor_offset()).unwrap_or(0);
-                    let text = buf.slice(0, buf.len());
-                    let safe = super::gui_render::safe_boundary(&text, cursor);
-                    let crow = text[..safe].chars().filter(|&c| c == '\n').count();
-                    if crow < self.scroll_row {
-                        self.scroll_row = crow;
-                    } else if crow + 1 > self.scroll_row + approx_visible {
-                        self.scroll_row = crow + 1 - approx_visible;
-                    }
-                }
-        }
-
-        let font_ref    = &font_id;
-        let editor_ref  = &self.editor;
         let bg_color = {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
             let (r, g, b) = ed.theme_color("gui-bg");
             egui::Color32::from_rgb(r, g, b)
         };
 
+        // ── Panel layout ──────────────────────────────────────────────────
+        let ea = Arc::clone(&self.editor);
+        let sidebar_open = self.layout.sidebar_open;
+        let sidebar_width = self.layout.sidebar_width;
+        let status_h = line_h + 8.0;
+        let mut tab_action: Option<TabAction> = None;
+
+        // Status bar — declared before central panel
+        egui::TopBottomPanel::bottom("magma_status")
+            .exact_height(status_h)
+            .show(ctx, |ui| {
+                let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+                StatusBar::show(ui, &ed);
+            });
+
+        // Tab bar — declared before central panel
+        egui::TopBottomPanel::top("magma_tabs")
+            .show(ctx, |ui| {
+                let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+                if let Some(a) = TabBar::show(ui, &ed) {
+                    tab_action = Some(a);
+                }
+            });
+
+        // Sidebar — declared before central panel
+        if sidebar_open {
+            egui::SidePanel::left("magma_sidebar")
+                .default_width(sidebar_width)
+                .show(ctx, |ui| {
+                    let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+                    ProjectTree::show(ui, &ed);
+                });
+        }
+
+        // Apply tab action before rendering the central editor pane
+        if let Some(action) = tab_action.take() {
+            let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
+            action.apply(&mut ed);
+        }
+
+        // ── Central panel: surface-based editor ───────────────────────────
+        let gpu_ready = self.gpu_path_ready;
+        let target_fmt = self.target_format;
+        let atlas_ref = &self.atlas;
+
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(bg_color))
             .show(ctx, |ui| {
                 let full = ui.available_rect_before_wrap();
-                let text_h  = (full.height() - status_h).max(0.0);
-                let visible_rows = ((text_h / line_h).floor() as usize).max(1);
-
-                let text_rect = Rect::from_min_size(full.min, Vec2::new(full.width(), text_h));
-                let status_rect = Rect::from_min_size(
-                    Pos2::new(full.min.x, full.min.y + text_h),
-                    Vec2::new(full.width(), status_h),
-                );
-
-                let visible_cols = (full.width() / char_w).floor() as usize;
-                let surface_rows = visible_rows + 1;
-                let mut surface = Surface::new(visible_cols as u16, surface_rows as u16);
+                let visible_cols = ((full.width() / char_w).floor() as usize).max(1);
+                let visible_rows = ((full.height() / line_h).floor() as usize).max(1);
+                let mut surface = Surface::new(visible_cols as u16, visible_rows as u16);
                 {
-                    let ed = editor_ref.read().unwrap_or_else(|e| e.into_inner());
-                    render_frame(&ed, &mut surface);
+                    let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+                    render_frame(&ed, &mut surface, true);
                 }
 
-                if self.gpu_path_ready
-                    && let Some(fmt) = self.target_format
+                if gpu_ready
+                    && let Some(fmt) = target_fmt
                 {
-                    use std::sync::Arc;
                     let bg = [
                         bg_color.r() as f32 / 255.0,
                         bg_color.g() as f32 / 255.0,
@@ -174,12 +191,12 @@ impl eframe::App for GuiApp {
                         1.0,
                     ];
                     let glyphs = build_glyph_instances(
-                        &surface, &self.atlas, char_w, line_h,
-                        text_rect.min.x, text_rect.min.y, true,
+                        &surface, atlas_ref, char_w, line_h,
+                        full.min.x, full.min.y, true,
                     );
                     let rects = build_rect_instances(
                         &surface, char_w, line_h,
-                        text_rect.min.x, text_rect.min.y, bg, true,
+                        full.min.x, full.min.y, bg, true,
                     );
                     let callback = MagmaPaintCallback {
                         glyphs,
@@ -189,13 +206,11 @@ impl eframe::App for GuiApp {
                         target_format: fmt,
                         atlas: Arc::new(GpuGlyphAtlas::new()),
                     };
-                    let painter = ui.painter_at(text_rect);
-                    painter.add(callback.into_paint_callback(text_rect));
+                    let painter = ui.painter_at(full);
+                    painter.add(callback.into_paint_callback(full));
                 } else {
-                    present(ui, editor_ref, &surface, text_rect, char_w, line_h, 0);
+                    present(ui, &ea, &surface, full, char_w, line_h, 0);
                 }
-
-                draw_status(ui, editor_ref, status_rect, font_ref, line_h);
             });
 
         ctx.request_repaint();
@@ -205,6 +220,7 @@ impl eframe::App for GuiApp {
 fn translate_event(ev: &egui::Event) -> Option<String> {
     match ev {
         egui::Event::Key { key, pressed: true, modifiers, .. } => {
+            use egui::Key;
             let ctrl  = modifiers.ctrl || modifiers.command;
             let alt   = modifiers.alt;
             let shift = modifiers.shift;
@@ -265,8 +281,8 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
     }
 }
 
-fn key_char(key: Key) -> Option<char> {
-    use Key::*;
+fn key_char(key: egui::Key) -> Option<char> {
+    use egui::Key::*;
     match key {
         A => Some('a'), B => Some('b'), C => Some('c'), D => Some('d'),
         E => Some('e'), F => Some('f'), G => Some('g'), H => Some('h'),

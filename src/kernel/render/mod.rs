@@ -7,7 +7,6 @@ pub mod view;
 pub mod view_tree;
 pub mod editor_view;
 pub mod terminal_view;
-pub mod sidebar_view;
 pub mod gutter;
 pub mod gutter_providers;
 pub(crate) mod status_and_popup;
@@ -22,6 +21,14 @@ pub mod gui;
 pub(crate) mod gui_fonts;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_render;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_layout;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_tabs;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_sidebar;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_status;
 
 pub use view_tree::{ViewTree, Pane, LayoutConstraint, SplitDirection};
 

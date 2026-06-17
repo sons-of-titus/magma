@@ -319,7 +319,7 @@ fn run_tui(
 
         {
             let ed = editor.read().unwrap();
-            render_frame(&ed, &mut surface);
+            render_frame(&ed, &mut surface, false);
         }
 
         {

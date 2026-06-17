@@ -1,8 +1,7 @@
 use crate::kernel::render::view_tree::{ViewTree, LayoutConstraint, SplitDirection};
-use crate::kernel::render::view::{Rect, View, ViewKind};
+use crate::kernel::render::view::{View, ViewKind};
 use crate::kernel::render::editor_view::EditorView;
 use crate::kernel::render::terminal_view::TerminalView;
-use crate::kernel::render::sidebar_view::SidebarView;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::state::id::WindowId;
 use crate::tests::helpers;
@@ -121,29 +120,6 @@ fn terminal_view_kind_is_terminal() {
     assert_eq!(v.kind(), ViewKind::Terminal);
 }
 
-#[test]
-fn sidebar_view_kind_is_sidebar() {
-    let v = SidebarView;
-    assert_eq!(v.kind(), ViewKind::Sidebar);
-}
-
-// ── View renders into area bounds ─────────────────────────────────────────
-
-#[test]
-fn sidebar_render_only_writes_within_area() {
-    use crate::kernel::render::view::{View, RenderCtx};
-    let ed = helpers::make_editor();
-    let mut surface = Surface::new(80, 24);
-    let area = Rect::new(0, 0, 20, 10);
-    SidebarView.render(&mut surface, &RenderCtx { editor: &ed, area });
-
-    // Nothing outside the area width should have changed from default (space).
-    for x in 20..80u16 {
-        let cell = surface.cell(x, 0).unwrap();
-        assert_eq!(cell.ch, ' ', "sidebar must not write beyond area.width");
-    }
-}
-
 // ── render_frame with ViewTree ─────────────────────────────────────────────
 
 #[test]
@@ -151,7 +127,7 @@ fn render_frame_with_no_buffer_does_not_panic() {
     use crate::kernel::render::frame::render_frame;
     let ed = helpers::make_editor();
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface);
+    render_frame(&ed, &mut surface, false);
 }
 
 #[test]
@@ -163,7 +139,7 @@ fn render_frame_with_buffer_writes_content() {
         .unwrap_or_else(|| ed.buffers.iter().next().map(|(k, _)| k).unwrap_or(0));
     ed.view_tree.set_buffer(focused, buf_key);
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface);
+    render_frame(&ed, &mut surface, false);
     let row0: String = (0..80).filter_map(|x| surface.cell(x, 0)).map(|c| c.ch).collect();
     assert!(row0.contains('h') || row0.contains(' '),
         "render_frame should write buffer content to the surface");
@@ -179,5 +155,5 @@ fn multi_pane_render_frame_does_not_panic() {
     ed.view_tree.set_buffer(id, buf_key);
     ed.view_tree.split_horizontal(id);
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface);
+    render_frame(&ed, &mut surface, false);
 }

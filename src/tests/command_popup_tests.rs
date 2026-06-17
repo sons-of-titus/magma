@@ -70,7 +70,7 @@ fn command_popup_renders_items_above_status_bar() {
     ed.completion.visible = true;
 
     let mut surface = Surface::new(80, 10);
-    render_frame(&ed, &mut surface);
+    render_frame(&ed, &mut surface, false);
 
     let popup_y = 10u16 - 1 - 3;
     let cell = surface.cell(0, popup_y).unwrap();
@@ -88,7 +88,7 @@ fn command_popup_not_rendered_outside_command_mode() {
     ed.completion.visible = true;
 
     let mut surface = Surface::new(80, 10);
-    render_frame(&ed, &mut surface);
+    render_frame(&ed, &mut surface, false);
 
     let cell = surface.cell(0, 8).unwrap();
     let sel_bg = ed.theme_color("selection-bg");

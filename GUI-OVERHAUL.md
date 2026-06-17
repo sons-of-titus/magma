@@ -239,24 +239,29 @@ hover-only close, Catppuccin Mocha colours). Added `ViewTree::reorder()` to
 
 ---
 
-### Phase 2 — Project Sidebar (Tree View)
+### Phase 2 — Project Sidebar (Tree View) ✅ COMPLETE
 
 **Goal:** Replace the 35-line `sidebar_view.rs` flat file list with a
 full-featured tree sidebar like IntelliJ's Project view.
 
-| Step | What | Risk |
-|------|------|------|
-| 2.1 | Define `SidebarState` — `width`, `visible`, `tree`, `expanded_dirs: HashSet<String>`, `selected: Option<String>` | Low |
-| 2.2 | Implement `ProjectTree` egui widget: recursive tree rendering from `ProjectManager.files`, with collapse/expand icons, indentation, file name + extension | Medium — egui tree rendering |
-| 2.3 | Implement collapse/expand — clicking the arrow toggles directory expansion; state persisted in `SidebarState.expanded_dirs` | Low |
-| 2.4 | Implement click-to-open: single click selects, double click opens file in editor | Low |
-| 2.5 | Implement file icons: a simple icon map by extension (`.rs` → 🦀, `.janet` → 🟢, `.py` → 🐍, `.toml` → ⚙️, directory → 📁) | Low |
-| 2.6 | Add resize handle: draggable right edge of sidebar panel | Low — egui `SidePanel` provides this |
-| 2.7 | Add toggle shortcut (ctrl-\ or similar) to show/hide sidebar | Low |
-| 2.8 | Delete `sidebar_view.rs` — fully replaced | Low |
+| Step | What | Status |
+|------|------|--------|
+| 2.1 | Define `SidebarState` — `expanded_dirs: HashSet<String>`, `selected: Option<String>` | ✅ Done |
+| 2.2 | Implement `ProjectTree` egui widget: recursive tree rendering from `ProjectManager.files`, with collapse/expand icons, indentation, file name + extension | ✅ Done |
+| 2.3 | Implement collapse/expand — clicking the arrow toggles directory expansion; state persisted in `SidebarState.expanded_dirs` | ✅ Done |
+| 2.4 | Implement click-to-open: single click selects, double click opens file via `open-file` command | ✅ Done |
+| 2.5 | Implement file icons: `.rs` → 🦀, `.janet` → 🟢, `.py` → 🐍, `.toml` → ⚙, directory → 📁/📂 | ✅ Done |
+| 2.6 | Add resize handle: `SidePanel::resizable(true)` | ✅ Done |
+| 2.7 | Add toggle shortcut: `ctrl-\` toggles sidebar visibility | ✅ Done |
+| 2.8 | `sidebar_view.rs` was already deleted in Phase 0 | ✅ Done |
 
-**Verification:** Sidebar shows project tree.  Collapse/expand works.  Clicking
-a file opens it.  Resizing works.  Toggle shows/hides.
+**Verification:** `cargo test --features janet` — 1238 passed, 0 failed.
+`cargo build --features janet,gui` — clean. TUI build — clean.
+
+**Files changed:** Rewrote `gui_sidebar.rs` (`SidebarState`, `FileNode` tree,
+recursive `render_nodes`, `ProjectTree::show` returning `Option<String>`).
+Updated `gui.rs` (`sidebar_state` field, ctrl-\ toggle, `open-file` dispatch,
+`Key::Backslash` in `translate_event`).
 
 ---
 

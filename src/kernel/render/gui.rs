@@ -16,7 +16,7 @@ use crate::kernel::state::Editor;
 use super::gui_fonts::apply_fonts_to_egui;
 use super::gui_layout::GuiLayout;
 use super::gui_render::present;
-use super::gui_sidebar::ProjectTree;
+use super::gui_sidebar::{ProjectTree, SidebarState};
 use super::gui_status::StatusBar;
 use super::gui_tabs::{TabAction, TabBar};
 
@@ -24,6 +24,7 @@ pub struct GuiApp {
     editor: Arc<RwLock<Editor>>,
     font_size: f32,
     layout: GuiLayout,
+    sidebar_state: SidebarState,
     bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
     atlas: GpuGlyphAtlas,
     gpu_path_ready: bool,
@@ -37,6 +38,7 @@ impl GuiApp {
             editor,
             font_size: 15.0,
             layout: GuiLayout::default(),
+            sidebar_state: SidebarState::default(),
             bg_receiver: rx,
             atlas: GpuGlyphAtlas::new(),
             gpu_path_ready: false,
@@ -49,6 +51,7 @@ impl GuiApp {
             editor,
             font_size: 15.0,
             layout: GuiLayout::default(),
+            sidebar_state: SidebarState::default(),
             bg_receiver,
             atlas: GpuGlyphAtlas::new(),
             gpu_path_ready: false,
@@ -95,6 +98,11 @@ impl eframe::App for GuiApp {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             for key in &key_events {
                 if key == "ctrl-q" { ed.running = false; break; }
+                // ctrl-\ toggles the sidebar without going through Janet
+                if key == "ctrl-\\" {
+                    self.layout.sidebar_open = !self.layout.sidebar_open;
+                    continue;
+                }
                 input::dispatch_key(&mut ed, key);
             }
         }
@@ -130,6 +138,7 @@ impl eframe::App for GuiApp {
         let sidebar_width = self.layout.sidebar_width;
         let status_h = line_h + 8.0;
         let mut tab_action: Option<TabAction> = None;
+        let mut sidebar_file: Option<String> = None;
 
         // Status bar — declared before central panel
         egui::TopBottomPanel::bottom("magma_status")
@@ -152,9 +161,10 @@ impl eframe::App for GuiApp {
         if sidebar_open {
             egui::SidePanel::left("magma_sidebar")
                 .default_width(sidebar_width)
+                .resizable(true)
                 .show(ctx, |ui| {
                     let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-                    ProjectTree::show(ui, &ed);
+                    sidebar_file = ProjectTree::show(ui, &ed, &mut self.sidebar_state);
                 });
         }
 
@@ -162,6 +172,15 @@ impl eframe::App for GuiApp {
         if let Some(action) = tab_action.take() {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             action.apply(&mut ed);
+        }
+
+        // Open file requested by sidebar double-click
+        if let Some(path) = sidebar_file {
+            use crate::kernel::command::{execute_command, args::ArgValue};
+            let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
+            let mut args = std::collections::HashMap::new();
+            args.insert("path".to_string(), ArgValue::Path(path));
+            let _ = execute_command(&mut ed, "open-file", &args);
         }
 
         // ── Central panel: surface-based editor ───────────────────────────
@@ -250,6 +269,11 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
             if let Some(s) = special { return Some(s.to_string()); }
 
             if ctrl || alt {
+                // Handle punctuation keys that aren't in key_char's A-Z/0-9 map.
+                if *key == Key::Backslash {
+                    let prefix = if ctrl { "ctrl" } else { "meta" };
+                    return Some(format!("{}-\\", prefix));
+                }
                 let ch = key_char(*key)?;
                 let prefix = if ctrl { "ctrl" } else { "meta" };
                 return Some(format!("{}-{}", prefix, ch));

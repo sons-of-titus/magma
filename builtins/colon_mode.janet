@@ -52,8 +52,12 @@
 
 
 # Plugin hook — plugins register colon verbs here.
-# Format: (put *colon-plugins* "verb" (fn [rest] ...))
 (def *colon-plugins* @{})
+
+# Register a named colon-mode verb.
+# (colon/define "verb" (fn [arg] ...))
+(defn colon/define [verb handler]
+  (put *colon-plugins* verb handler))
 
 (defn colon-edit
   [path]

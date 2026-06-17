@@ -59,35 +59,34 @@
 
 # ── Colon verbs ───────────────────────────────────────────────────────────────
 
-(when (function? colon/define)
-  (colon/define "dbg-start"
-    (fn [arg]
-      (debug/start (if (empty? arg) "codelldb" arg))))
+(colon/define "dbg-start"
+  (fn [arg]
+    (debug/start (if (empty? arg) "codelldb" arg))))
 
-  (colon/define "dbg-bp"
-    (fn [_]
-      (debug/toggle-breakpoint)))
+(colon/define "dbg-bp"
+  (fn [_]
+    (debug/toggle-breakpoint)))
 
-  (colon/define "dbg-continue"
-    (fn [_]
-      (debug/continue)))
+(colon/define "dbg-continue"
+  (fn [_]
+    (debug/continue)))
 
-  (colon/define "dbg-step-in"
-    (fn [_]
-      (debug/step-in)))
+(colon/define "dbg-step-in"
+  (fn [_]
+    (debug/step-in)))
 
-  (colon/define "dbg-step-over"
-    (fn [_]
-      (debug/step-over)))
+(colon/define "dbg-step-over"
+  (fn [_]
+    (debug/step-over)))
 
-  (colon/define "dbg-step-out"
-    (fn [_]
-      (debug/step-out)))
+(colon/define "dbg-step-out"
+  (fn [_]
+    (debug/step-out)))
 
-  (colon/define "dbg-eval"
-    (fn [expr]
-      (when (not (empty? expr))
-        (debug/evaluate expr)))))
+(colon/define "dbg-eval"
+  (fn [expr]
+    (when (not (empty? expr))
+      (debug/evaluate expr))))
 
 # Register the toggle-breakpoint command so it can be bound to a key.
 (command/define "debug/toggle-breakpoint"

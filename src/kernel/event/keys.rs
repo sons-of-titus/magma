@@ -80,6 +80,9 @@ pub mod events {
     pub const AGENT_ACTION: &str = "agent-action";
     pub const AGENT_RESULT: &str = "agent-result";
     pub const AGENT_ERROR: &str = "agent-error";
+    pub const LANGUAGE_REGISTERED: &str = "language-registered";
+    pub const LANGUAGE_LOADED: &str = "language-loaded";
+    pub const LANGUAGE_UNREGISTERED: &str = "language-unregistered";
 }
 
 pub mod keys {

@@ -26,7 +26,7 @@ use crate::kernel::render::view_tree::ViewTree;
 use crate::kernel::debug::DebugManager;
 use crate::kernel::agent::AgentManager;
 use crate::kernel::extension::ExtensionRegistry;
-use crate::kernel::semantic::SemanticEngine;
+use crate::kernel::semantic::{SemanticEngine, LanguageRegistry};
 use crate::kernel::task::TaskScheduler;
 use crate::kernel::scheduler::WorkScheduler;
 
@@ -112,6 +112,7 @@ pub struct Editor {
     pub io: IoState,
     pub gutter: GutterRegistry,
     pub semantic: SemanticEngine,
+    pub language_registry: LanguageRegistry,
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
     pub scheduler: WorkScheduler,
@@ -208,6 +209,7 @@ impl Editor {
             io: IoState::default(),
             gutter: GutterRegistry::default(),
             semantic: SemanticEngine::new(),
+            language_registry: LanguageRegistry::new(),
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),
             scheduler: WorkScheduler::new(),

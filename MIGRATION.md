@@ -539,18 +539,34 @@ intercepted, logged, or rejected by the security model.
 
 ---
 
-### Phase 12 — Language Provider Ecosystem
+### Phase 12 — Language Provider Ecosystem ✅ COMPLETE
 
 **Goal:** Languages are external Janet+modules loaded from `languages/`,
 not hardcoded in Rust.
 
-| Step | What |
-|------|------|
-| 12.1 | Define `languages/<lang>/` directory convention |
-| 12.2 | Each language directory provides: `provider.janet` (Language Provider impl), `syntax.scm` (tree-sitter queries), `config.janet` (format, completion settings) |
-| 12.3 | Build `LanguageRegistry` in `kernel/semantic/` — discovers languages, loads providers |
-| 12.4 | Port existing Rust LSP logic into Janet language providers where possible |
-| 12.5 | Add Janet API: `(language/register name provider)`, `(language/list)`, `(language/for-buffer buffer-id)` |
+| Step | What | Status |
+|------|------|--------|
+| 12.1 | Define `languages/<lang>/` directory convention | ✅ |
+| 12.2 | Each language directory provides: `provider.janet` (Language Provider impl), `syntax.scm` (tree-sitter queries), `config.janet` (format, completion settings) | ✅ |
+| 12.3 | Build `LanguageRegistry` in `kernel/semantic/` — discovers languages, loads providers | ✅ |
+| 12.4 | Port existing Rust LSP logic into Janet language providers where possible | ✅ |
+| 12.5 | Add Janet API: `(language/register name provider)`, `(language/list)`, `(language/for-buffer buffer-id)` | ✅ |
+
+**Completion notes (2026-06-17):**
+- `kernel/semantic/language_registry.rs` — `LanguageInfo`, `LanguageRegistry`: register, unregister, get, list (sorted), mark_loaded, is_loaded, discover
+- `LanguageRegistry::discover(root)` — scans a root directory for language sub-directories; registers whichever of `provider.janet`, `syntax.scm`, `config.janet` exist
+- `editor.language_registry: LanguageRegistry` added to `Editor`
+- `kernel/scripting/language_api.rs` — 5 Janet C functions: `language/register`, `language/unregister`, `language/list`, `language/for-buffer`, `language/load`
+- `language/load` evaluates a language's `provider.janet` via `eval_result` (uses `janet_dostring`, safe from C callback context)
+- `kernel/event/keys.rs` — `LANGUAGE_REGISTERED`, `LANGUAGE_LOADED`, `LANGUAGE_UNREGISTERED`
+- `kernel/event/payload.rs` — `LanguageRegisteredPayload`, `LanguageLoadedPayload`, `LanguageUnregisteredPayload`
+- `builtins/language.janet` — `language/discover` Janet helper; event handlers for all three events; colon verbs `:lang-list`, `:lang-load`, `:lang-info`; buffer-focused auto-load hook
+- `languages/rust/` — `provider.janet` (tree-sitter + LSP, `rust-analyzer`), `syntax.scm` (12 query patterns), `config.janet`
+- `languages/janet/` — `provider.janet` (tree-sitter only, no LSP), `syntax.scm` (4 query patterns), `config.janet`
+- `languages/python/` — `provider.janet` (tree-sitter + LSP, `pylsp`), `syntax.scm` (4 query patterns), `config.janet`
+- `docs/api/janet-api.md` — `language/` namespace section with 6 function docs, events table, and colon-verb table
+- 39 new tests in `tests/language_ecosystem_tests.rs` (27 Rust) + `tests/language_ecosystem_janet_tests.rs` (12 Janet)
+- `cargo test --features janet -- --test-threads=1`: 1240 passed, 0 failed
 
 ---
 

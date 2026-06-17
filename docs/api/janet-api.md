@@ -1520,3 +1520,94 @@ Return an array of all agent session records, sorted by ascending session ID.
 |------|--------|
 | `:agent-ask <prompt>` | Ask the agent a natural-language question |
 | `:agent-task <description>` | Submit a structured task (`run:`, `goto:`, `diagnose:` prefixes) |
+
+---
+
+## `language/` — Language Provider Ecosystem (Phase 12)
+
+Languages are external Janet modules discovered from the `languages/`
+directory.  Each language sub-directory provides:
+
+| File | Purpose |
+|------|---------|
+| `provider.janet` | Janet-side Language Provider implementation |
+| `syntax.scm` | Tree-sitter query file for symbol extraction |
+| `config.janet` | Format, completion, and debug-adapter settings |
+
+### `(language/register name &opt provider-path syntax-path config-path)` → `:ok`
+
+Register a language by name.  Optional positional arguments supply paths to
+the language's Janet files.  Re-registering an existing name replaces its
+entry (the loaded flag resets to false).
+
+```janet
+(language/register "rust"
+  "/path/to/languages/rust/provider.janet"
+  "/path/to/languages/rust/syntax.scm"
+  "/path/to/languages/rust/config.janet")
+```
+
+### `(language/unregister name)` → nil
+
+Remove a language from the registry.  Emits `language-unregistered`.
+
+### `(language/list)` → `[{:name :loaded :provider-path :syntax-path :config-path} …]`
+
+Return all registered languages, sorted alphabetically by name.
+
+```janet
+(each l (language/list)
+  (print (get l :name) " loaded=" (get l :loaded)))
+```
+
+### `(language/for-buffer buf-id)` → string or nil
+
+Return the language name associated with `buf-id` (read from the
+`ts_languages` map set by `treesitter/set-language`), or nil if no language
+has been assigned.
+
+```janet
+(def lang (language/for-buffer (editor/current-buffer)))
+(when lang
+  (print "current language: " lang))
+```
+
+### `(language/load name)` → `:ok` or `:error`
+
+Read the named language's `provider.janet` from disk and evaluate it in the
+Janet VM.  Marks the language as loaded on success.  Returns `:error` if the
+language is not registered, has no `provider-path`, or if the file cannot be
+read or evaluated.
+
+```janet
+(when (= :error (language/load "rust"))
+  (print "rust provider not available"))
+```
+
+### `(language/discover root)` → count
+
+Scan `root` for sub-directories and call `language/register` for each one
+found, pointing at whichever of `provider.janet`, `syntax.scm`, and
+`config.janet` exist.  Returns the number of languages discovered.
+
+```janet
+(language/discover "/usr/share/magma/languages")
+```
+
+---
+
+### Language Events
+
+| Event | Payload keys | When fired |
+|-------|-------------|------------|
+| `language-registered` | `name` | `language/register` succeeded |
+| `language-loaded` | `name` | `language/load` succeeded |
+| `language-unregistered` | `name` | `language/unregister` removed a language |
+
+### Colon-mode verbs
+
+| Verb | Action |
+|------|--------|
+| `:lang-list` | List all registered languages with their load status |
+| `:lang-load <name>` | Load a language's `provider.janet` |
+| `:lang-info <name>` | Show all registered paths for a language |

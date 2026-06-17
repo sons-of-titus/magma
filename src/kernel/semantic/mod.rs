@@ -11,6 +11,7 @@ pub mod treesitter_provider;
 pub mod symbol_index;
 pub mod project_graph;
 pub mod engine;
+pub mod language_registry;
 
 /// The original LSP JSON-RPC client — spawns and manages server processes.
 pub mod client;
@@ -27,3 +28,4 @@ pub use treesitter_provider::TreesitterLanguageProvider;
 pub use symbol_index::{SymbolIndex, SymbolRef};
 pub use project_graph::{FileNode, ProjectGraph};
 pub use engine::SemanticEngine;
+pub use language_registry::{LanguageInfo, LanguageRegistry};

@@ -103,3 +103,6 @@ event_payload!(AgentThoughtPayload { session_id, thought });
 event_payload!(AgentActionPayload { session_id, command, description });
 event_payload!(AgentResultPayload { session_id, result });
 event_payload!(AgentErrorPayload { session_id, error });
+event_payload!(LanguageRegisteredPayload { name });
+event_payload!(LanguageLoadedPayload { name });
+event_payload!(LanguageUnregisteredPayload { name });

@@ -94,3 +94,6 @@ event_payload!(WorkspaceSavedPayload { path, buffer_count });
 event_payload!(WorkspaceRestoredPayload { path, buffer_count });
 event_payload!(WorkspaceSessionSavedPayload { name, buffer_count });
 event_payload!(WorkspaceSessionLoadedPayload { name, buffer_count });
+event_payload!(SchedulerWorkProgressPayload { id, name, done, total });
+event_payload!(SchedulerWorkCompletedPayload { id, name });
+event_payload!(SchedulerWorkFailedPayload { id, name, error });

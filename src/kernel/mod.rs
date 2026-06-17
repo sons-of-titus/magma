@@ -1,6 +1,7 @@
 //! Magma kernel — all core subsystems.
 
 pub mod event;
+pub mod scheduler;
 pub mod debug;
 pub mod project;
 pub mod state;

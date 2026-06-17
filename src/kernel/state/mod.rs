@@ -26,6 +26,7 @@ use crate::kernel::render::view_tree::ViewTree;
 use crate::kernel::debug::DebugManager;
 use crate::kernel::semantic::SemanticEngine;
 use crate::kernel::task::TaskScheduler;
+use crate::kernel::scheduler::WorkScheduler;
 
 pub use mode::{EditorMode, Minibuffer, Selection, SearchDirection};
 pub use font::{ContextFont, FontConfig};
@@ -111,6 +112,7 @@ pub struct Editor {
     pub semantic: SemanticEngine,
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
+    pub scheduler: WorkScheduler,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
 
@@ -204,6 +206,7 @@ impl Editor {
             semantic: SemanticEngine::new(),
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),
+            scheduler: WorkScheduler::new(),
         }
     }
 

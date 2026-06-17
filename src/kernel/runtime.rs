@@ -171,6 +171,13 @@ pub enum BackgroundEvent {
     /// DAP: a generic adapter response (evaluate result, unknown event) — Phase 6.
     DapResponse { session_id: u64, event_type: String, data: String },
     Custom(String, String),
+    // ── Phase 9 Concurrency Model ─────────────────────────────────────────────
+    /// A directly-submitted work item reported progress.
+    WorkProgress { id: u64, done: u64, total: u64 },
+    /// A directly-submitted work item completed successfully.
+    WorkCompleted { id: u64 },
+    /// A directly-submitted work item failed.
+    WorkFailed { id: u64, error: String },
 }
 
 /// Handle for spawning background tasks and sending events to the main thread.
@@ -270,6 +277,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::ProcessExited { id, exit_code, cmd } => {
             if let Some(state) = ed.io.processes.get_mut(&id) {
                 state.running = false;
+            }
+            if exit_code == 0 {
+                ed.scheduler.complete_process(id);
+            } else {
+                ed.scheduler.fail_process(id, format!("exit code {exit_code}"));
             }
             ed.events.emit_typed(keys::events::PROCESS_EXIT, ProcessExitPayload {
                 id: id.to_string(),
@@ -444,6 +456,28 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             data.insert("payload".into(), payload);
             ed.events.emit(&name, data);
         }
+        // ── Phase 9 Concurrency Model ─────────────────────────────────────────
+        BackgroundEvent::WorkProgress { id, done, total } => {
+            ed.scheduler.update_progress(id, done, total);
+            let name = ed.scheduler.name(id).unwrap_or("").to_string();
+            ed.events.emit_typed(keys::events::SCHEDULER_WORK_PROGRESS, crate::kernel::event::payload::SchedulerWorkProgressPayload {
+                id: id.to_string(), name, done: done.to_string(), total: total.to_string(),
+            });
+        }
+        BackgroundEvent::WorkCompleted { id } => {
+            let name = ed.scheduler.name(id).unwrap_or("").to_string();
+            ed.scheduler.mark_completed(id);
+            ed.events.emit_typed(keys::events::SCHEDULER_WORK_COMPLETED, crate::kernel::event::payload::SchedulerWorkCompletedPayload {
+                id: id.to_string(), name,
+            });
+        }
+        BackgroundEvent::WorkFailed { id, error } => {
+            let name = ed.scheduler.name(id).unwrap_or("").to_string();
+            ed.scheduler.mark_failed(id, error.clone());
+            ed.events.emit_typed(keys::events::SCHEDULER_WORK_FAILED, crate::kernel::event::payload::SchedulerWorkFailedPayload {
+                id: id.to_string(), name, error,
+            });
+        }
         BackgroundEvent::TaskRunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
             use crate::kernel::task::TaskOutput;
             let output = TaskOutput { stdout, stderr, exit_code, duration_ms };
@@ -452,6 +486,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 .unwrap_or_default();
             if exit_code == 0 {
                 ed.task_scheduler.mark_completed(id, output);
+                ed.scheduler.complete_task(id);
                 ed.events.emit_typed(keys::events::TASK_COMPLETED, TaskCompletedPayload {
                     id: id.to_string(),
                     name: task_name,
@@ -461,6 +496,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             } else {
                 let err = format!("exit code {exit_code}");
                 ed.task_scheduler.mark_failed(id, err.clone(), output);
+                ed.scheduler.fail_task(id, err.clone());
                 ed.events.emit_typed(keys::events::TASK_FAILED, TaskFailedPayload {
                     id: id.to_string(),
                     name: task_name,

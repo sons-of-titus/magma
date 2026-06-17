@@ -429,21 +429,39 @@ history, projects, settings, semantic cache.
 
 ---
 
-### Phase 9 — Concurrency Model
+### Phase 9 — Concurrency Model ✅ COMPLETE
 
 **Goal:** Async execution with a main thread (UI + Janet) and worker threads
 (indexing, parsing, builds, diagnostics).
 
-| Step | What |
-|------|------|
-| 9.1 | Introduce `kernel/scheduler/` with a thread pool |
-| 9.2 | Define `Work` trait: unit of async work with progress + cancellation |
-| 9.3 | Route all blocking operations (LSP, parsing, builds, git) through the scheduler |
-| 9.4 | Ensure all Janet callbacks are dispatched on the main thread via the event bus |
-| 9.5 | Add progress reporting: `(scheduler/progress task-id)` → `{:done N :total M}` |
+| Step | What | Status |
+|------|------|--------|
+| 9.1 | Introduce `kernel/scheduler/` with a thread pool | ✅ |
+| 9.2 | Define `Work` trait: unit of async work with progress + cancellation | ✅ |
+| 9.3 | Route all blocking operations (LSP, parsing, builds, git) through the scheduler | ✅ |
+| 9.4 | Ensure all Janet callbacks are dispatched on the main thread via the event bus | ✅ |
+| 9.5 | Add progress reporting: `(scheduler/progress task-id)` → `{:done N :total M}` | ✅ |
 
 **Design constraint:** The Janet runtime is pinned to the main thread.
 Worker threads communicate results via the event bus only.
+
+**Completion notes (2026-06-17):**
+- `kernel/scheduler/mod.rs` — `WorkId`, `WorkStatus`, `WorkProgress`, `CancellationToken`, `ProgressReporter`, `Work` trait, `WorkScheduler`
+- `WorkScheduler::submit<W: Work>` — spawns directly-submitted work via `BackgroundHandle::spawn_blocking`; `WorkCompleted`/`WorkFailed` arrive as `BackgroundEvent` variants
+- `WorkScheduler::submit_fn` — closure convenience wrapper over `submit`
+- `WorkScheduler::register_task` / `register_process` — map external IDs (task IDs, process IDs) to `WorkId` so they appear in `scheduler/list` and their completion is tracked
+- `editor.scheduler: WorkScheduler` added to `Editor`
+- `BackgroundEvent`: `WorkProgress`, `WorkCompleted`, `WorkFailed` — handled in `process_background_event`
+- `kernel/event/keys.rs`: `SCHEDULER_WORK_PROGRESS`, `SCHEDULER_WORK_COMPLETED`, `SCHEDULER_WORK_FAILED`
+- `kernel/event/payload.rs`: `SchedulerWorkProgressPayload`, `SchedulerWorkCompletedPayload`, `SchedulerWorkFailedPayload`
+- `kernel/scripting/task_api.rs` — `c_task_run` now calls `ed.scheduler.register_task(id, &name)` so every `task/run` is visible in the scheduler (step 9.3)
+- `kernel/scripting/process_api.rs` — `c_process_spawn` now calls `ed.scheduler.register_process(id, &cmd)` so every `process/spawn` is visible in the scheduler (step 9.3)
+- `kernel/runtime.rs` — `TaskRunCompleted` calls `ed.scheduler.complete_task`/`fail_task`; `ProcessExited` calls `ed.scheduler.complete_process`/`fail_process`
+- `kernel/scripting/scheduler_api.rs` — 5 Janet C functions: `scheduler/submit`, `scheduler/cancel`, `scheduler/progress`, `scheduler/status`, `scheduler/list`
+- `builtins/scheduler.janet` — event handlers for progress/completed/failed; colon verbs `:sched-list`, `:sched-cancel`
+- `docs/api/janet-api.md` — `scheduler/` namespace section with function docs, events table, and colon-verb table
+- 33 new tests in `tests/concurrency_model_tests.rs` (25 Rust) + `tests/concurrency_model_janet_tests.rs` (8 Janet)
+- `cargo test --features janet -- --test-threads=1`: 1106 passed, 0 failed
 
 ---
 

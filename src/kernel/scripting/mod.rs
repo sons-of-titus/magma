@@ -256,6 +256,8 @@ mod clipboard_api;
 mod task_api;
 #[cfg(feature = "janet")]
 mod debug_api;
+#[cfg(feature = "janet")]
+mod scheduler_api;
 
 #[cfg(feature = "janet")]
 pub(crate) use process_api::execute_stored_task;

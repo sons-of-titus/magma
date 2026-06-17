@@ -71,6 +71,9 @@ pub mod events {
     pub const WORKSPACE_SAVED: &str = "workspace-saved";
     pub const WORKSPACE_SESSION_LOADED: &str = "workspace-session-loaded";
     pub const WORKSPACE_SESSION_SAVED: &str = "workspace-session-saved";
+    pub const SCHEDULER_WORK_PROGRESS: &str = "scheduler-work-progress";
+    pub const SCHEDULER_WORK_COMPLETED: &str = "scheduler-work-completed";
+    pub const SCHEDULER_WORK_FAILED: &str = "scheduler-work-failed";
 }
 
 pub mod keys {

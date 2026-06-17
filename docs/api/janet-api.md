@@ -1311,3 +1311,54 @@ Return an array of all saved session names on disk (without the `.json` suffix).
 | `:ws-session-load <name>` | Load a named session |
 | `:ws-sessions` | List saved sessions in the message area |
 
+
+
+---
+
+## scheduler/ — Work Scheduler (Phase 9)
+
+The Work Scheduler manages background work items with progress tracking and
+cancellation.  All Janet callbacks fire on the main thread via the event bus
+— the Janet runtime is never accessed from worker threads.
+
+### `(scheduler/submit name cmd)` → work-id
+
+Submit a named shell command as a tracked work item.  The command runs on the
+blocking thread pool; completion fires `scheduler-work-completed` and failure
+fires `scheduler-work-failed`.  Returns a stable numeric `work-id`.
+
+### `(scheduler/cancel id)` → nil
+
+Cancel a work item.  Directly-submitted work checks the cancellation token;
+externally-tracked items (tasks, processes) have their status set to
+`:cancelled` immediately.
+
+### `(scheduler/progress id)` → `{:done N :total M}` or nil
+
+Return the progress table for `id`, or nil if the id is not found.
+
+### `(scheduler/status id)` → keyword
+
+Return a keyword describing the status:
+`:running` `:completed` `:failed` `:cancelled` `:not-found`
+
+### `(scheduler/list)` → `[{:id :name :status :done :total} …]`
+
+Return an array of tables describing all tracked work items, sorted by id.
+
+---
+
+### Scheduler Events
+
+| Event | Payload keys | When fired |
+|-------|-------------|------------|
+| `scheduler-work-progress` | `:id`, `:name`, `:done`, `:total` | Work item reports progress |
+| `scheduler-work-completed` | `:id`, `:name` | Work item completed successfully |
+| `scheduler-work-failed` | `:id`, `:name`, `:error` | Work item failed |
+
+### Colon-mode verbs
+
+| Verb | Action |
+|------|--------|
+| `:sched-list` | List all tracked work items |
+| `:sched-cancel <id>` | Cancel work item by numeric id |

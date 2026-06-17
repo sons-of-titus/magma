@@ -106,6 +106,8 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             });
         });
 
+        // Phase 9: register process in the work scheduler for progress tracking
+        ed.scheduler.register_process(id, &full_cmd);
         ed.io.processes.insert(id, crate::kernel::runtime::ProcessState {
             cmd: full_cmd,
             running: true,

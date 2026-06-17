@@ -105,6 +105,8 @@ unsafe extern "C-unwind" fn c_task_run(argc: i32, argv: *mut Janet) -> Janet {
         let task_name = ed.task_scheduler.tasks.get(&id)
             .map(|t| t.name.clone())
             .unwrap_or_default();
+        // Phase 9: register task in work scheduler so progress can be observed
+        ed.scheduler.register_task(id, &task_name);
         ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
             id: id.to_string(),
             name: task_name,

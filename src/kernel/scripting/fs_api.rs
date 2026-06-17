@@ -2,11 +2,15 @@
 
 use evil_janet::*;
 use super::conv;
+use crate::kernel::extension::Capability;
 
 /// (fs/cwd) → string
 ///
 /// Return the current working directory as an absolute path string.
 unsafe extern "C-unwind" fn c_fs_cwd(_argc: i32, _argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::Filesystem) {
+        conv::signal_err("fs/cwd requires the Filesystem capability");
+    }
     match std::env::current_dir() {
         Ok(path) => conv::string(&path.to_string_lossy()),
         Err(e) => conv::signal_err(&format!("fs/cwd: {e}")),
@@ -19,6 +23,9 @@ unsafe extern "C-unwind" fn c_fs_cwd(_argc: i32, _argv: *mut Janet) -> Janet {
 /// if the directory does not exist or is not accessible.
 unsafe extern "C-unwind" fn c_fs_chdir(argc: i32, argv: *mut Janet) -> Janet {
     unsafe {
+        if !super::extension_api::check_capability(&Capability::Filesystem) {
+            conv::signal_err("fs/chdir requires the Filesystem capability");
+        }
         let path = match conv::get_str(argc, argv, 0) {
             Some(p) => p,
             None => conv::signal_err("fs/chdir requires a path"),

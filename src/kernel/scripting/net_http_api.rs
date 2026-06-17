@@ -3,8 +3,12 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::kernel::extension::Capability;
 
 unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::Network) {
+        conv::signal_err("net/http-request requires the Network capability");
+    }
     with_editor(|ed| unsafe {
         let method = match conv::get_str(argc, argv, 0) {
             Some(s) => s,
@@ -51,6 +55,9 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
 }
 
 unsafe extern "C-unwind" fn c_http_get(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::Network) {
+        conv::signal_err("net/http-get requires the Network capability");
+    }
     with_editor(|ed| unsafe {
         let url = match conv::get_str(argc, argv, 0) {
             Some(s) => s,
@@ -87,6 +94,9 @@ unsafe extern "C-unwind" fn c_http_get(argc: i32, argv: *mut Janet) -> Janet {
 }
 
 unsafe extern "C-unwind" fn c_http_post(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::Network) {
+        conv::signal_err("net/http-post requires the Network capability");
+    }
     with_editor(|ed| unsafe {
         let url = match conv::get_str(argc, argv, 0) {
             Some(s) => s,

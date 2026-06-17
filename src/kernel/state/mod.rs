@@ -24,6 +24,7 @@ use crate::kernel::runtime::BackgroundHandle;
 use crate::kernel::scripting::ScriptRuntime;
 use crate::kernel::render::view_tree::ViewTree;
 use crate::kernel::debug::DebugManager;
+use crate::kernel::extension::ExtensionRegistry;
 use crate::kernel::semantic::SemanticEngine;
 use crate::kernel::task::TaskScheduler;
 use crate::kernel::scheduler::WorkScheduler;
@@ -113,6 +114,7 @@ pub struct Editor {
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
     pub scheduler: WorkScheduler,
+    pub extension_registry: ExtensionRegistry,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
 
@@ -207,6 +209,7 @@ impl Editor {
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),
             scheduler: WorkScheduler::new(),
+            extension_registry: ExtensionRegistry::new(),
         }
     }
 

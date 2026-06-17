@@ -1362,3 +1362,79 @@ Return an array of tables describing all tracked work items, sorted by id.
 |------|--------|
 | `:sched-list` | List all tracked work items |
 | `:sched-cancel <id>` | Cancel work item by numeric id |
+
+---
+
+## extension/ — Plugin Capability System (Phase 10)
+
+Extensions declare required capabilities in a manifest.  The runtime enforces
+them: code executing under a named extension context can only call C functions
+whose required capability appears in the extension's declared manifest.  Core
+builtins and user init code (no active extension) are always trusted.
+
+### Capabilities
+
+| Keyword | Governs |
+|---------|---------|
+| `:filesystem` | `fs/cwd`, `fs/chdir` |
+| `:network` | `net/http-*`, `net/tcp-*` |
+| `:process-execution` | `process/spawn`, `task/spawn` |
+| `:editor-access` | Buffer, cursor, command, event APIs |
+
+### `(extension/declare name version entry-point capabilities)` → `:ok`
+
+Register the manifest for the currently-loading extension and activate its
+capability context.  `capabilities` is a Janet array of keywords from the
+table above.  Must be called at the top of an extension file; subsequent C
+function calls in that loading session are checked against the declared
+capabilities.
+
+```janet
+(extension/declare "my-ext" "1.0" "my-ext.janet" @[:filesystem :editor-access])
+```
+
+### `(extension/undeclare)` → nil
+
+Clear the active extension context.  Should be called after an extension's
+file has finished loading to restore the trusted core context.
+
+### `(extension/manifest)` → `{:name :version :capabilities :entry-point}` or nil
+
+Return the manifest table for the currently-active extension, or nil if no
+extension is active.
+
+```janet
+(def m (extension/manifest))
+(print (get m :name)) # "my-ext"
+(print (get m :capabilities)) # @[:filesystem :editor-access]
+```
+
+### `(extension/list)` → `[{:name :version :capabilities :entry-point} …]`
+
+Return an array of manifest tables for all registered extensions, sorted by
+name.
+
+### `(extension/capabilities name)` → array of keywords or nil
+
+Return the capability keywords declared by extension `name`, or nil if the
+extension is not registered.
+
+```janet
+(extension/capabilities "my-ext") # => @[:filesystem :editor-access]
+```
+
+---
+
+### Extension Events
+
+| Event | Payload keys | When fired |
+|-------|-------------|------------|
+| `extension-declared` | `:name`, `:version` | Extension calls `extension/declare` |
+| `extension-undeclared` | `:name` | Extension calls `extension/undeclare` |
+
+### Colon-mode verbs
+
+| Verb | Action |
+|------|--------|
+| `:ext-list` | List all registered extensions with their capabilities |
+| `:ext-capabilities <name>` | Show capabilities for the named extension |

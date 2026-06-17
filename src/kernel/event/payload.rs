@@ -97,3 +97,5 @@ event_payload!(WorkspaceSessionLoadedPayload { name, buffer_count });
 event_payload!(SchedulerWorkProgressPayload { id, name, done, total });
 event_payload!(SchedulerWorkCompletedPayload { id, name });
 event_payload!(SchedulerWorkFailedPayload { id, name, error });
+event_payload!(ExtensionDeclaredPayload { name, version });
+event_payload!(ExtensionUndeclaredPayload { name });

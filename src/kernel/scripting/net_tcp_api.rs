@@ -5,12 +5,16 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::kernel::extension::Capability;
 
 /// `(net/tcp-connect host port)` → conn-id
 ///
 /// Open an outbound TCP connection.  Emits `tcp-connected` on success,
 /// `tcp-data` per received line, `tcp-closed` on EOF, `tcp-error` on failure.
 unsafe extern "C-unwind" fn c_tcp_connect(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::Network) {
+        conv::signal_err("net/tcp-connect requires the Network capability");
+    }
     with_editor(|ed| unsafe {
         let host = match conv::get_str(argc, argv, 0) {
             Some(s) => s,
@@ -100,6 +104,9 @@ unsafe extern "C-unwind" fn c_tcp_close(argc: i32, argv: *mut Janet) -> Janet {
 /// Bind a TCP listener and start accepting clients.  Emits `tcp-client-connected`,
 /// `tcp-client-data`, `tcp-client-disconnected` events.
 unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::Network) {
+        conv::signal_err("net/tcp-listen requires the Network capability");
+    }
     with_editor(|ed| unsafe {
         let port = match conv::get_int(argc, argv, 0) {
             Some(p) => p as u16,

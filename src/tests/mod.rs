@@ -33,7 +33,7 @@ test_pairs!(
     buffer_decoration, gutter_provider, unified_input, modality,
     namespace_refactor, net_api, magma_utils, view_tree,
     semantic_engine, task_system, project_model, debug_system,
-    workspace_persist, concurrency_model
+    workspace_persist, concurrency_model, extension_capability
 );
 
 #[cfg(feature = "janet")] mod janet_tests;

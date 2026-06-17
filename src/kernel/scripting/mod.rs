@@ -258,6 +258,8 @@ mod task_api;
 mod debug_api;
 #[cfg(feature = "janet")]
 mod scheduler_api;
+#[cfg(feature = "janet")]
+mod extension_api;
 
 #[cfg(feature = "janet")]
 pub(crate) use process_api::execute_stored_task;

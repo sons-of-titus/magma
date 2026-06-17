@@ -465,19 +465,40 @@ Worker threads communicate results via the event bus only.
 
 ---
 
-### Phase 10 — Plugin Capability System
+### Phase 10 — Plugin Capability System ✅ COMPLETE
 
 **Goal:** Extensions declare capabilities (filesystem, network, process,
 editor access).  The runtime enforces them.
 
-| Step | What |
-|------|------|
-| 10.1 | Define `Capability` enum: `Filesystem`, `Network`, `ProcessExecution`, `EditorAccess` |
-| 10.2 | Define `ExtensionManifest`: `name`, `version`, `capabilities: Vec<Capability>`, `entry_point` |
-| 10.3 | Build `ExtensionRegistry` in `kernel/runtime/` |
-| 10.4 | Add manifest validation at load time — reject extensions requesting unapproved capabilities |
-| 10.5 | Wrap all Janet bridge C functions in capability checks — `fs-write` requires `Filesystem`, `shell` requires `ProcessExecution` |
-| 10.6 | Add Janet API: `(extension/manifest)`, `(extension/list)`, `(extension/capabilities name)` |
+| Step | What | Status |
+|------|------|--------|
+| 10.1 | Define `Capability` enum: `Filesystem`, `Network`, `ProcessExecution`, `EditorAccess` | ✅ |
+| 10.2 | Define `ExtensionManifest`: `name`, `version`, `capabilities: Vec<Capability>`, `entry_point` | ✅ |
+| 10.3 | Build `ExtensionRegistry` in `kernel/extension/` | ✅ |
+| 10.4 | Add manifest validation at load time — reject extensions requesting unapproved capabilities | ✅ |
+| 10.5 | Wrap all Janet bridge C functions in capability checks — `fs/*` requires `Filesystem`, `process/spawn` + `task/spawn` require `ProcessExecution`, `net/*` require `Network` | ✅ |
+| 10.6 | Add Janet API: `(extension/declare)`, `(extension/undeclare)`, `(extension/manifest)`, `(extension/list)`, `(extension/capabilities name)` | ✅ |
+
+**Completion notes (2026-06-17):**
+- `kernel/extension/mod.rs` — `Capability` enum (4 variants), `ExtensionManifest`, `ExtensionRegistry`
+- `Capability::as_str()` / `Capability::from_str()` — string round-trips for all 4 variants
+- `ExtensionRegistry`: `register`, `unregister`, `get`, `list` (sorted by name), `has_capability`, `count`
+- `editor.extension_registry: ExtensionRegistry` added to `Editor`
+- `CURRENT_EXTENSION: thread_local<RefCell<Option<String>>>` in `extension_api.rs` — tracks the active extension name during Janet execution; `None` = core code (always trusted)
+- `check_capability(cap)` — public-to-module fn; returns `true` if no extension active, else checks `ed.extension_registry.has_capability(current_ext, cap)`
+- Capability guards added to:
+  - `kernel/scripting/fs_api.rs`: `fs/cwd`, `fs/chdir` → `Filesystem`
+  - `kernel/scripting/process_api.rs`: `process/spawn`, `task/spawn` → `ProcessExecution`
+  - `kernel/scripting/net_http_api.rs`: `net/http-request`, `net/http-get`, `net/http-post` → `Network`
+  - `kernel/scripting/net_tcp_api.rs`: `net/tcp-connect`, `net/tcp-listen` → `Network`
+- `kernel/scripting/extension_api.rs` — 5 Janet C functions: `extension/declare`, `extension/undeclare`, `extension/manifest`, `extension/list`, `extension/capabilities`
+- `reset_current_extension()` called from `loader::init()` so each test session starts clean
+- `kernel/event/keys.rs` — `EXTENSION_DECLARED`, `EXTENSION_UNDECLARED`
+- `kernel/event/payload.rs` — `ExtensionDeclaredPayload { name, version }`, `ExtensionUndeclaredPayload { name }`
+- `builtins/extension.janet` — event handlers logging declare/undeclare; colon verbs `:ext-list`, `:ext-capabilities <name>`
+- `docs/api/janet-api.md` — `extension/` namespace section with capability table, function docs, events table, and colon-verb table
+- 39 new tests in `tests/extension_capability_tests.rs` (26 Rust) + `tests/extension_capability_janet_tests.rs` (13 Janet)
+- `cargo test --features janet -- --test-threads=1`: 1145 passed, 0 failed
 
 ---
 

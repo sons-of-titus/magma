@@ -8,6 +8,7 @@ use super::conv;
 use super::with_editor;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
+use crate::kernel::extension::Capability;
 use std::collections::HashMap;
 
 /// Send+Sync wrapper for Janet function references stored for background tasks.
@@ -28,6 +29,9 @@ static TASK_FUNCTIONS: LazyLock<Mutex<HashMap<u64, JanetSend>>> =
 /// via the tokio runtime.  stdout and stderr lines are streamed as
 /// `process-output` events; process exit emits `process-exit`.
 unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::ProcessExecution) {
+        conv::signal_err("process/spawn requires the ProcessExecution capability");
+    }
     with_editor(|ed| unsafe {
         let cmd = match conv::get_str(argc, argv, 0) {
             Some(s) => s,
@@ -235,6 +239,9 @@ pub(crate) fn execute_stored_task(ed: &mut crate::kernel::state::Editor, task_id
 /// The result (or error) is delivered via the `task-result` event with
 /// `{:id n :value "…" :error "…"}`.
 unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::ProcessExecution) {
+        conv::signal_err("task/spawn requires the ProcessExecution capability");
+    }
     with_editor(|ed| unsafe {
         if argc < 1 {
             conv::signal_err("task/spawn requires a function argument");

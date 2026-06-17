@@ -329,20 +329,36 @@ run, dependency graph, and module structure.
 
 ---
 
-### Phase 6 — Debug System
+### Phase 6 — Debug System ✅ COMPLETE
 
 **Goal:** Debugger as a core subsystem, not a plugin.  Supports breakpoints,
 stepping, watches, evaluation, timeline debugging.
 
-| Step | What |
-|------|------|
-| 6.1 | Create `kernel/debug/` with `DebugManager` orchestrating sessions |
-| 6.2 | Define `DebugSession` — owns a process, thread list, frame stack, variable cache |
-| 6.3 | Define DAP types: `Breakpoint`, `StackFrame`, `Variable`, `Thread`, `MemoryRegion` |
-| 6.4 | Implement DAP client (reuse or wrap `lsp_client.rs` patterns) |
-| 6.5 | Implement `DebugAdapterProvider` as a Language Provider method — each language provides its adapter |
-| 6.6 | Wire breakpoints into the Gutter Provider system (breakpoint gutter column) |
-| 6.7 | Add Janet API: `(debug/start adapter)`, `(debug/continue)`, `(debug/step-in)`, `(debug/step-over)`, `(debug/step-out)`, `(debug/add-breakpoint file line)`, `(debug/evaluate expr)` |
+| Step | What | Status |
+|------|------|--------|
+| 6.1 | Create `kernel/debug/` with `DebugManager` orchestrating sessions | ✅ |
+| 6.2 | Define `DebugSession` — owns a process, thread list, frame stack, variable cache | ✅ |
+| 6.3 | Define DAP types: `Breakpoint`, `StackFrame`, `Variable`, `Thread`, `MemoryRegion` | ✅ |
+| 6.4 | Implement DAP client (reuse or wrap `lsp_client.rs` patterns) | ✅ |
+| 6.5 | Implement `DebugAdapterProvider` as a Language Provider method — each language provides its adapter | ✅ |
+| 6.6 | Wire breakpoints into the Gutter Provider system (breakpoint gutter column) | ✅ |
+| 6.7 | Add Janet API: `(debug/start adapter)`, `(debug/continue)`, `(debug/step-in)`, `(debug/step-over)`, `(debug/step-out)`, `(debug/add-breakpoint file line)`, `(debug/evaluate expr)` | ✅ |
+
+**Completion notes (2026-06-17):**
+- `kernel/debug/types.rs` — `SessionId`, `ThreadId`, `FrameId`, `Breakpoint`, `StackFrame`, `Variable`, `Thread`, `MemoryRegion`
+- `kernel/debug/session.rs` — `DebugSession`: per-session state (threads, frames, variables, stopped flag, seq counter)
+- `kernel/debug/dap_client.rs` — `DapClient`: async DAP process + Content-Length framing reader, `dispatch_dap_message` emits `BackgroundEvent::Dap*`
+- `kernel/debug/mod.rs` — `DebugManager`: session registry, breakpoint map (`file → [Breakpoint]`), `set_breakpoints_args()` JSON helper
+- `editor.debug: DebugManager` added to `Editor`
+- `BackgroundEvent`: `DapStopped`, `DapOutput`, `DapTerminated`, `DapResponse` — handled in `process_background_event`
+- `kernel/event/keys.rs`: `DEBUG_BREAKPOINT_CHANGED`, `DEBUG_EVALUATE_RESULT`, `DEBUG_OUTPUT`, `DEBUG_SESSION_ENDED`, `DEBUG_SESSION_STARTED`, `DEBUG_STOPPED`
+- `kernel/event/payload.rs`: six typed debug payload structs
+- `kernel/scripting/debug_api.rs` — 10 Janet C functions; static `DAP_CLIENTS` stores stdin handles for async writes (same pattern as LSP API)
+- `debug/add-breakpoint` / `debug/remove-breakpoint` update both `DebugManager.breakpoints` and the `:breakpoints` gutter column (step 6.6)
+- `builtins/debug.janet` — event handlers for all debug events; colon verbs `:dbg-start`, `:dbg-bp`, `:dbg-continue`, `:dbg-step-in`, `:dbg-step-over`, `:dbg-step-out`, `:dbg-eval`; `debug/toggle-breakpoint` command
+- `LanguageProvider::debug_adapter()` already existed in `kernel/semantic/provider.rs` (step 6.5 satisfied)
+- 39 new tests in `tests/debug_system_tests.rs` + `tests/debug_system_janet_tests.rs`
+- `cargo test --features janet -- --test-threads=1`: 1035 passed, 0 failed
 
 ---
 

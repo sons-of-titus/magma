@@ -254,6 +254,8 @@ mod search_api;
 mod clipboard_api;
 #[cfg(feature = "janet")]
 mod task_api;
+#[cfg(feature = "janet")]
+mod debug_api;
 
 #[cfg(feature = "janet")]
 pub(crate) use process_api::execute_stored_task;

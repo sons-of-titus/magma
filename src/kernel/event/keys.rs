@@ -1,5 +1,11 @@
 pub mod events {
     pub const BEFORE_QUIT: &str = "before-quit";
+    pub const DEBUG_BREAKPOINT_CHANGED: &str = "debug-breakpoint-changed";
+    pub const DEBUG_EVALUATE_RESULT: &str = "debug-evaluate-result";
+    pub const DEBUG_OUTPUT: &str = "debug-output";
+    pub const DEBUG_SESSION_ENDED: &str = "debug-session-ended";
+    pub const DEBUG_SESSION_STARTED: &str = "debug-session-started";
+    pub const DEBUG_STOPPED: &str = "debug-stopped";
     pub const BUFFER_AFTER_SAVE: &str = "buffer-after-save";
     pub const BUFFER_BEFORE_SAVE: &str = "buffer-before-save";
     pub const BUFFER_CHANGED: &str = "buffer-changed";

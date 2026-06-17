@@ -162,6 +162,14 @@ pub enum BackgroundEvent {
     // ─────────────────────────────────────────────────────────────────────
     /// A task defined in the TaskScheduler has completed (Phase 4).
     TaskRunCompleted { id: u64, exit_code: i32, stdout: String, stderr: String, duration_ms: u64 },
+    /// DAP: the debuggee stopped (breakpoint hit, step complete, etc.) — Phase 6.
+    DapStopped { session_id: u64, reason: String, thread_id: u64 },
+    /// DAP: a line of console/stdout output from the debuggee — Phase 6.
+    DapOutput { session_id: u64, category: String, output: String },
+    /// DAP: the debug adapter process terminated — Phase 6.
+    DapTerminated { session_id: u64 },
+    /// DAP: a generic adapter response (evaluate result, unknown event) — Phase 6.
+    DapResponse { session_id: u64, event_type: String, data: String },
     Custom(String, String),
 }
 
@@ -388,6 +396,49 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             ed.events.emit_typed(keys::events::LSP_PROGRESS, LspProgressPayload { token, message, percentage });
         }
         // ──────────────────────────────────────────────────────────────────
+        // ── Phase 6 Debug System ─────────────────────────────────────────────
+        BackgroundEvent::DapStopped { session_id, reason, thread_id } => {
+            if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+                session.stopped = true;
+                session.stopped_thread = Some(thread_id);
+            }
+            ed.events.emit_typed(keys::events::DEBUG_STOPPED, crate::kernel::event::payload::DebugStoppedPayload {
+                session_id: session_id.to_string(),
+                reason,
+                thread_id: thread_id.to_string(),
+            });
+        }
+        BackgroundEvent::DapOutput { session_id, category, output } => {
+            ed.events.emit_typed(keys::events::DEBUG_OUTPUT, crate::kernel::event::payload::DebugOutputPayload {
+                session_id: session_id.to_string(),
+                category,
+                output,
+            });
+        }
+        BackgroundEvent::DapTerminated { session_id } => {
+            ed.debug.sessions.remove(&session_id);
+            if ed.debug.active_session == Some(session_id) {
+                ed.debug.active_session = None;
+            }
+            ed.events.emit_typed(keys::events::DEBUG_SESSION_ENDED, crate::kernel::event::payload::DebugSessionEndedPayload {
+                session_id: session_id.to_string(),
+            });
+        }
+        BackgroundEvent::DapResponse { session_id, event_type, data } => {
+            if event_type == "evaluate" {
+                ed.events.emit_typed(keys::events::DEBUG_EVALUATE_RESULT, crate::kernel::event::payload::DebugEvaluateResultPayload {
+                    session_id: session_id.to_string(),
+                    result: data,
+                });
+            } else {
+                let mut payload = std::collections::HashMap::new();
+                payload.insert("session-id".into(), session_id.to_string());
+                payload.insert("event-type".into(), event_type);
+                payload.insert("data".into(), data);
+                ed.events.emit("debug-dap-event", payload);
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
         BackgroundEvent::Custom(name, payload) => {
             let mut data = std::collections::HashMap::new();
             data.insert("payload".into(), payload);

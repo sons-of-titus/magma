@@ -1203,3 +1203,63 @@ Register a language provider for `lang`.  `type` is `"lsp"` (default) or `"trees
 ### `(semantic/diagnostics buf-id)` → `[[line col severity message] …]`
 
 Return typed diagnostics for the buffer's file path.  `severity` is one of `"error"`, `"warning"`, `"info"`, `"hint"`.  Diagnostics are populated from LSP `textDocument/publishDiagnostics` notifications.
+
+---
+
+## debug/ — Debug System (Phase 6)
+
+The debug subsystem speaks the Debug Adapter Protocol (DAP) over a spawned subprocess.  All DAP I/O runs on a background thread; results arrive via events on the main thread.
+
+### `(debug/start adapter)` → session-id
+
+Spawn the debug adapter binary `adapter` (e.g. `"codelldb"`, `"debugpy"`) and perform the DAP `initialize` handshake.  Returns a numeric session ID.  The first session started becomes the *active* session.  Emits `debug-session-started`.
+
+### `(debug/continue &opt thread-id)` → nil
+
+Resume execution in the active session.  Uses the stopped thread from the last `debug-stopped` event if `thread-id` is omitted.
+
+### `(debug/step-in &opt thread-id)` → nil
+
+Step into the next function call.
+
+### `(debug/step-over &opt thread-id)` → nil
+
+Step over the current line (DAP `next` command).
+
+### `(debug/step-out &opt thread-id)` → nil
+
+Step out of the current function frame.
+
+### `(debug/add-breakpoint file line)` → nil
+
+Add a breakpoint at line `line` (1-based) of the source file at absolute path `file`.  Updates the `:breakpoints` gutter column for any buffer open on that file.  If an active session exists, sends a DAP `setBreakpoints` request.  Emits `debug-breakpoint-changed` with `:action "add"`.
+
+### `(debug/remove-breakpoint file line)` → nil
+
+Remove the breakpoint at `(file, line)`.  Updates the gutter and notifies the active session.  Emits `debug-breakpoint-changed` with `:action "remove"`.
+
+### `(debug/evaluate expr &opt frame-id)` → nil
+
+Evaluate the expression `expr` in the context of frame `frame-id` (defaults to 0).  The result arrives asynchronously via the `debug-evaluate-result` event as `{:session-id :result}`.
+
+### `(debug/session)` → session-id or nil
+
+Return the active session ID, or `nil` if no session is running.
+
+### `(debug/breakpoints file)` → `[line …]`
+
+Return an array of line numbers (integers) for all breakpoints set in `file`.
+
+---
+
+### Debug Events
+
+| Event | Payload keys | When fired |
+|-------|-------------|------------|
+| `debug-session-started` | `:session-id`, `:adapter` | A new DAP session was started |
+| `debug-session-ended` | `:session-id` | The adapter process terminated |
+| `debug-stopped` | `:session-id`, `:reason`, `:thread-id` | Debuggee stopped (breakpoint, step, etc.) |
+| `debug-output` | `:session-id`, `:category`, `:output` | Console output from the debuggee |
+| `debug-evaluate-result` | `:session-id`, `:result` | Evaluate response from the adapter |
+| `debug-breakpoint-changed` | `:file`, `:line`, `:action` | Breakpoint added or removed |
+

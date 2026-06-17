@@ -60,6 +60,7 @@ pub fn init(editor: &mut Editor) {
     super::event_api::reset_handlers();
     super::process_api::reset_task_functions();
     super::task_api::reset_task_complete_callbacks();
+    super::debug_api::reset_dap_clients();
     init_vm();
     #[cfg(feature = "janet")]
     {
@@ -126,6 +127,7 @@ pub fn init_vm() {
         regs.extend(super::search_api::register());
         regs.extend(super::clipboard_api::register());
         regs.extend(super::task_api::register());
+        regs.extend(super::debug_api::register());
         regs.push(evil_janet::JanetReg {
             name: std::ptr::null(),
             cfun: None,
@@ -179,6 +181,7 @@ pub fn init_vm() {
     load_builtin("builtins/collab.janet",          include_str!("../../../builtins/collab.janet"));
     load_builtin("builtins/ssh_fs.janet",          include_str!("../../../builtins/ssh_fs.janet"));
     load_builtin("builtins/task.janet",            include_str!("../../../builtins/task.janet"));
+    load_builtin("builtins/debug.janet",           include_str!("../../../builtins/debug.janet"));
 
     let home = std::env::var("HOME").unwrap_or_default();
     if !home.is_empty() {

@@ -99,3 +99,7 @@ event_payload!(SchedulerWorkCompletedPayload { id, name });
 event_payload!(SchedulerWorkFailedPayload { id, name, error });
 event_payload!(ExtensionDeclaredPayload { name, version });
 event_payload!(ExtensionUndeclaredPayload { name });
+event_payload!(AgentThoughtPayload { session_id, thought });
+event_payload!(AgentActionPayload { session_id, command, description });
+event_payload!(AgentResultPayload { session_id, result });
+event_payload!(AgentErrorPayload { session_id, error });

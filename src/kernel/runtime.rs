@@ -171,6 +171,15 @@ pub enum BackgroundEvent {
     /// DAP: a generic adapter response (evaluate result, unknown event) — Phase 6.
     DapResponse { session_id: u64, event_type: String, data: String },
     Custom(String, String),
+    // ── Phase 11 AI/Agent Architecture ───────────────────────────────────────
+    /// Agent emitted a reasoning step.
+    AgentThought { session_id: u64, thought: String },
+    /// Agent decided to execute a command; args are JSON-encoded key=value pairs.
+    AgentAction { session_id: u64, command: String, description: String },
+    /// Agent completed a session successfully.
+    AgentResult { session_id: u64, result: String },
+    /// Agent session failed.
+    AgentError { session_id: u64, error: String },
     // ── Phase 9 Concurrency Model ─────────────────────────────────────────────
     /// A directly-submitted work item reported progress.
     WorkProgress { id: u64, done: u64, total: u64 },
@@ -512,6 +521,34 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     let _ = ed.task_scheduler.launch(rid, &bg);
                 }
             }
+        }
+        // ── Phase 11 AI/Agent Architecture ───────────────────────────────────
+        BackgroundEvent::AgentThought { session_id, thought } => {
+            ed.events.emit_typed(keys::events::AGENT_THOUGHT, crate::kernel::event::payload::AgentThoughtPayload {
+                session_id: session_id.to_string(),
+                thought,
+            });
+        }
+        BackgroundEvent::AgentAction { session_id, command, description } => {
+            ed.events.emit_typed(keys::events::AGENT_ACTION, crate::kernel::event::payload::AgentActionPayload {
+                session_id: session_id.to_string(),
+                command,
+                description,
+            });
+        }
+        BackgroundEvent::AgentResult { session_id, result } => {
+            ed.agent.complete_session(session_id, result.clone());
+            ed.events.emit_typed(keys::events::AGENT_RESULT, crate::kernel::event::payload::AgentResultPayload {
+                session_id: session_id.to_string(),
+                result,
+            });
+        }
+        BackgroundEvent::AgentError { session_id, error } => {
+            ed.agent.fail_session(session_id, error.clone());
+            ed.events.emit_typed(keys::events::AGENT_ERROR, crate::kernel::event::payload::AgentErrorPayload {
+                session_id: session_id.to_string(),
+                error,
+            });
         }
     }
 }

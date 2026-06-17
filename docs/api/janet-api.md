@@ -1438,3 +1438,85 @@ extension is not registered.
 |------|--------|
 | `:ext-list` | List all registered extensions with their capabilities |
 | `:ext-capabilities <name>` | Show capabilities for the named extension |
+
+---
+
+## `agent/` — AI/Agent Architecture (Phase 11)
+
+Agents are system participants that observe editor state, reason about a goal,
+and dispatch editor commands through the command registry.  They never block
+the UI — all planning runs on background threads with results arriving via the
+event bus.
+
+### `(agent/ask prompt)` → session-id
+
+Submit a natural-language query to the BuiltinPlanner.  The planner snapshots
+the current editor context (active buffer, language, diagnostics, symbols,
+project info) and generates a plan.  Returns a numeric session ID immediately.
+Results arrive as `agent-thought` and `agent-result` events.
+
+```janet
+(def id (agent/ask "what diagnostics are in this file?"))
+(print "session:" id)
+```
+
+### `(agent/run-task description)` → session-id
+
+Submit a structured task.  The BuiltinPlanner recognises the following
+prefixes in `description`:
+
+| Prefix | Effect |
+|--------|--------|
+| `run:<name>` | Dispatch `task/run name` |
+| `goto:<symbol>` | Look up symbol definition via `semantic/definitions` |
+| `diagnose:<path>` | Summarise diagnostics for the given path |
+| *(anything else)* | Echo a context summary with no editor mutations |
+
+```janet
+(agent/run-task "run:build")    # dispatches the "build" task
+(agent/run-task "goto:MyStruct") # looks up MyStruct
+```
+
+### `(agent/on-event kind callback)` → nil
+
+Subscribe `callback` to the agent event named `kind`.
+Convenience wrapper for `(event/on (string "agent-" kind) callback)`.
+Recognised kinds: `"thought"`, `"action"`, `"result"`, `"error"`.
+
+```janet
+(agent/on-event "result"
+  (fn [data]
+    (print "Agent finished: " (get data "result"))))
+```
+
+### `(agent/status id)` → keyword
+
+Return the status of agent session `id`:
+`:running`, `:completed`, `:failed`, or `:not-found`.
+
+### `(agent/result id)` → string or nil
+
+Return the result string for a completed session, or nil if the session is
+still running, failed, or not found.
+
+### `(agent/list)` → `[{:id :prompt :status :result} …]`
+
+Return an array of all agent session records, sorted by ascending session ID.
+
+---
+
+### Agent Events
+
+| Event | Payload keys | When fired |
+|-------|-------------|------------|
+| `agent-thought` | `session-id`, `thought` | Planner emits its rationale |
+| `agent-action` | `session-id`, `command`, `description` | Planner schedules a command step |
+| `agent-result` | `session-id`, `result` | Session completed successfully |
+| `agent-error` | `session-id`, `error` | Session failed |
+
+### Colon-mode verbs
+
+| Verb | Action |
+|------|--------|
+| `:agent-ask <prompt>` | Ask the agent a natural-language question |
+| `:agent-task <description>` | Submit a structured task (`run:`, `goto:`, `diagnose:` prefixes) |

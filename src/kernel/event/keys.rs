@@ -76,6 +76,10 @@ pub mod events {
     pub const SCHEDULER_WORK_FAILED: &str = "scheduler-work-failed";
     pub const EXTENSION_DECLARED: &str = "extension-declared";
     pub const EXTENSION_UNDECLARED: &str = "extension-undeclared";
+    pub const AGENT_THOUGHT: &str = "agent-thought";
+    pub const AGENT_ACTION: &str = "agent-action";
+    pub const AGENT_RESULT: &str = "agent-result";
+    pub const AGENT_ERROR: &str = "agent-error";
 }
 
 pub mod keys {

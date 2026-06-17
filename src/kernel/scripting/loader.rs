@@ -131,6 +131,7 @@ pub fn init_vm() {
         regs.extend(super::debug_api::register());
         regs.extend(super::scheduler_api::register());
         regs.extend(super::extension_api::register());
+        regs.extend(super::agent_api::register());
         regs.push(evil_janet::JanetReg {
             name: std::ptr::null(),
             cfun: None,
@@ -188,6 +189,7 @@ pub fn init_vm() {
     load_builtin("builtins/workspace.janet",        include_str!("../../../builtins/workspace.janet"));
     load_builtin("builtins/scheduler.janet",        include_str!("../../../builtins/scheduler.janet"));
     load_builtin("builtins/extension.janet",        include_str!("../../../builtins/extension.janet"));
+    load_builtin("builtins/agent.janet",            include_str!("../../../builtins/agent.janet"));
 
     let home = std::env::var("HOME").unwrap_or_default();
     if !home.is_empty() {

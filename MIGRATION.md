@@ -502,24 +502,40 @@ editor access).  The runtime enforces them.
 
 ---
 
-### Phase 11 — AI / Agent Architecture
+### Phase 11 — AI / Agent Architecture ✅ COMPLETE
 
 **Goal:** AI is a system participant with access to editor APIs, not a chat
 window.
 
-| Step | What |
-|------|------|
-| 11.1 | Create `kernel/agent/` |
-| 11.2 | Define `ContextProvider` trait — gathers editor state, buffer content, symbols, diagnostics, project structure |
-| 11.3 | Define `Planner` trait — takes a goal + context, produces a plan (sequence of editor API calls) |
-| 11.4 | Define `Executor` trait — executes a plan against the editor, reports results |
-| 11.5 | Implement `LlmContextProvider` (wraps an LLM API), `BuiltinPlanner` (simple tool-use), `SafeExecutor` (sandboxed) |
-| 11.6 | Wire agent events into the event bus: `agent/thought`, `agent/action`, `agent/error` |
-| 11.7 | Add Janet API: `(agent/ask prompt)`, `(agent/run-task description)`, `(agent/on-event kind callback)` |
+| Step | What | Status |
+|------|------|--------|
+| 11.1 | Create `kernel/agent/` | ✅ |
+| 11.2 | Define `ContextProvider` trait — gathers editor state, buffer content, symbols, diagnostics, project structure | ✅ |
+| 11.3 | Define `Planner` trait — takes a goal + context, produces a plan (sequence of editor API calls) | ✅ |
+| 11.4 | Define `Executor` trait — executes a plan against the editor, reports results | ✅ |
+| 11.5 | Implement `LlmContextProvider` (wraps an LLM API), `BuiltinPlanner` (simple tool-use), `SafeExecutor` (sandboxed) | ✅ |
+| 11.6 | Wire agent events into the event bus: `agent-thought`, `agent-action`, `agent-result`, `agent-error` | ✅ |
+| 11.7 | Add Janet API: `(agent/ask prompt)`, `(agent/run-task description)`, `(agent/on-event kind callback)` | ✅ |
 
 **Design constraint:** Agents never block the UI.  Agent actions are
 dispatched as commands through the command registry, which means they can be
 intercepted, logged, or rejected by the security model.
+
+**Completion notes (2026-06-17):**
+- `kernel/agent/types.rs` — `AgentContext`, `ContextProvider` trait, `PlanStep`, `Plan`, `Planner` trait, `ExecutionResult`, `Executor` trait
+- `kernel/agent/context.rs` — `EditorContextProvider`: snapshots focused buffer content, cursor position, typed diagnostics, symbol index, project name/language; `LlmContextProvider`: wraps the editor provider and formats context as an LLM-ready prompt string
+- `kernel/agent/planner.rs` — `BuiltinPlanner`: deterministic tool-use planner; `run:<name>` → `task/run`, `goto:<symbol>` → `semantic/definitions`, `diagnose:<path>` → diagnostic summary, default → context echo
+- `kernel/agent/executor.rs` — `SafeExecutor`: iterates `Plan.steps`, emits `agent-action` event before each step, dispatches each step through `execute_command` (capability-checked)
+- `kernel/agent/mod.rs` — `AgentManager`: `AgentSession` + `AgentStatus`, `create/complete/fail_session`, `status`, `result`, `list`, `count`; in-module unit tests
+- `editor.agent: AgentManager` added to the `Editor` struct
+- `BackgroundEvent`: `AgentThought`, `AgentAction`, `AgentResult`, `AgentError` — handled in `process_background_event`; `AgentResult`/`AgentError` update the session in `AgentManager`
+- `kernel/event/keys.rs`: `AGENT_THOUGHT`, `AGENT_ACTION`, `AGENT_RESULT`, `AGENT_ERROR`
+- `kernel/event/payload.rs`: `AgentThoughtPayload`, `AgentActionPayload`, `AgentResultPayload`, `AgentErrorPayload`
+- `kernel/scripting/agent_api.rs` — 5 Janet C functions: `agent/ask`, `agent/run-task`, `agent/status`, `agent/result`, `agent/list`; `agent/on-event` implemented in Janet to avoid C→Janet reentrancy
+- `builtins/agent.janet` — event handlers for all four agent events; `agent/on-event` Janet helper (calls `event/on` with `"agent-"` prefix); colon verbs `:agent-ask`, `:agent-task`
+- `docs/api/janet-api.md` — `agent/` namespace section with function docs, prefix table, events table, and colon-verb table
+- 43 new tests: `tests/agent_system_tests.rs` (25 Rust) + `tests/agent_system_janet_tests.rs` (10 Janet) + 8 in-module unit tests in `planner.rs`, `executor.rs`, `mod.rs`
+- `cargo test --features janet -- --test-threads=1`: 1188 passed, 0 failed
 
 ---
 

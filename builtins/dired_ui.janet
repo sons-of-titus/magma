@@ -1,20 +1,11 @@
-# Dired colour layer.
+# Dired highlight layer.
 #
-# Applies a "dired" highlight layer to the *dired* buffer whenever it gains
-# focus or its content changes.  The layer is recomputed from the raw text,
-# so it stays correct after refresh.
-#
-# Entry types detected by suffix in the Name column:
-#   name/   → directory       → type-face     (blue)
-#   name@   → symlink         → operator-face (sky)
-#   [D] …   → marked delete   → error-face    (red)
-#   perms with x → executable → string-face   (green)
-# Header / separator rows use keyword-face / comment-face.
+# Applies a "dired" highlight layer to the *dired* buffer.
+# Uses dedicated dired faces from init.janet so users can theme them.
 
-(def- HEADER 4)   # lines before first entry (matches dired.rs HEADER_LINES)
+(def- HEADER 4)
 
 (defn- dired-highlights [buf]
-  "Return a highlight tuple array for the *dired* buffer."
   (let [text  (buffer/slice buf 0 (buffer/len buf))
         lines (string/split "\n" text)
         out   @[]]
@@ -22,45 +13,42 @@
     (loop [i :range [0 (length lines)]]
       (let [line (get lines i)
             len  (length line)
-            lend (+ byte len)]   # exclusive end (newline not included)
+            lend (+ byte len)]
         (cond
-          # Row 0: directory path → highlight entire line in blue
           (= i 0)
-          (array/push out [byte lend "type-face"])
+          (array/push out [byte lend "dired-path-face"])
 
-          # Row 2: column headers → keyword (mauve/bold)
           (= i 2)
-          (array/push out [byte lend "keyword-face"])
+          (array/push out [byte lend "dired-header-face"])
 
-          # Row 3: separator line → dim
           (= i 3)
           (array/push out [byte lend "comment-face"])
 
-          # Entry rows (i >= HEADER)
           (>= i HEADER)
-          (cond
-            # Marked for deletion: line starts with "[D]"
-            (string/has-prefix? "[D]" (string/trim line))
-            (array/push out [byte lend "error-face"])
+          (let [stripped (string/trim line)]
+            (cond
+              (string/has-prefix? "[" stripped)
+              (array/push out [byte lend "dired-marked-face"])
 
-            # Directory: name column ends with "/"
-            (string/has-suffix? "/" (string/trim line))
-            (array/push out [byte lend "type-face"])
+              (string/has-suffix? "/" stripped)
+              (array/push out [byte lend "dired-directory-face"])
 
-            # Symlink: name column ends with "@"
-            (string/has-suffix? "@" (string/trim line))
-            (array/push out [byte lend "operator-face"])
+              (string/has-suffix? "@" stripped)
+              (array/push out [byte lend "dired-symlink-face"])
 
-            # Executable: perms string contains "x" in owner position (col 4)
-            (do
-              (def perms-start (+ byte 4))  # skip "[D] " or "    "
-              (def maybe-exec
-                (and (> (length line) 4)
-                     (= "x" (string/slice line 3 4))))
-              maybe-exec)
-            (array/push out [byte lend "string-face"])))
+              (do
+                (def maybe-exec
+                  (and (> (length line) 4)
+                       (= "x" (string/slice line 3 4))))
+                maybe-exec)
+              (array/push out [byte lend "dired-executable-face"])))
 
-        # Advance byte counter: +1 for the newline
+          (string/has-prefix? "  Marks" (string/trim line))
+          (array/push out [byte lend "dired-flagged-face"])
+
+          (string/has-prefix? "  [filter" (string/trim line))
+          (array/push out [byte lend "dired-filter-face"]))
+
         (+= byte (+ len 1))))
     out))
 
@@ -69,7 +57,6 @@
     (when buf
       (buffer/set-highlights-layer buf "dired" (dired-highlights buf)))))
 
-# Re-colour whenever the dired buffer gains focus or is refreshed.
 (event/on "buffer-focused"
   (fn [data]
     (def raw (get data :buffer-id))
@@ -78,8 +65,6 @@
       (when (and buf (= (buffer/name buf) "*dired*"))
         (apply-dired-highlights)))))
 
-# Also re-colour right after a dired refresh (the command emits buffer-after-save
-# when it rewrites the buffer, or we can hook buffer-modified).
 (event/on "buffer-after-save"
   (fn [data]
     (def raw (get data :buffer-id))
@@ -87,3 +72,33 @@
       (def buf (scan-number raw))
       (when (and buf (= (buffer/name buf) "*dired*"))
         (apply-dired-highlights)))))
+
+# ── Wrapper commands for keybindings that need fixed args ─────────────
+
+(command/define "dired-mark-copy"
+  (fn [&] (editor/run-command "dired-mark-with-type" "copy")))
+
+(command/define "dired-mark-move"
+  (fn [&] (editor/run-command "dired-mark-with-type" "move")))
+
+# ── Dired keybindings (layer "dired") ──────────────────────────────────
+# Pushed automatically by the `dired` command in Rust, popped on file-open
+# or dired-close.
+
+(keymap/set "return"    "dired-open-at-cursor"         "dired")
+(keymap/set "l"         "dired-open-at-cursor"         "dired")
+(keymap/set "h"         "dired-parent"                 "dired")
+(keymap/set "j"         "cursor-down"                  "dired")
+(keymap/set "k"         "cursor-up"                    "dired")
+(keymap/set "d"         "dired-mark"                   "dired")
+(keymap/set "c"         "dired-mark-copy"              "dired")
+(keymap/set "m"         "dired-mark-move"              "dired")
+(keymap/set "u"         "dired-unmark-all"             "dired")
+(keymap/set "U"         "dired-invert-marks"           "dired")
+(keymap/set "x"         "dired-execute-deletion"       "dired")
+(keymap/set "g"         "dired-refresh"                "dired")
+(keymap/set "r"         "dired-refresh"                "dired")
+(keymap/set "q"         "dired-close"                  "dired")
+(keymap/set "."         "dired-toggle-hidden"          "dired")
+(keymap/set "s"         "dired-toggle-sort"            "dired")
+(keymap/set "S"         "dired-toggle-sort-reverse"    "dired")

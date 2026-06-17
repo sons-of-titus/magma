@@ -43,6 +43,33 @@ pub use crate::kernel::project::{
 pub use io::IoState;
 pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
 pub use overlay::{Overlay, LayoutSnapshot};
+pub use crate::kernel::input::event::{MouseButton, MouseEventKind};
+
+/// Tracks mouse press/drag state across frames.
+#[derive(Debug, Clone)]
+pub struct MouseState {
+    pub pressed: bool,
+    pub button: MouseButton,
+    pub press_x: u16,
+    pub press_y: u16,
+    pub last_x: u16,
+    pub last_y: u16,
+    pub drag_active: bool,
+}
+
+impl Default for MouseState {
+    fn default() -> Self {
+        MouseState {
+            pressed: false,
+            button: MouseButton::Left,
+            press_x: 0,
+            press_y: 0,
+            last_x: 0,
+            last_y: 0,
+            drag_active: false,
+        }
+    }
+}
 
 /// The single source of truth for all editor state.
 /// All access is guarded by `Arc<RwLock<Editor>>`.
@@ -100,6 +127,7 @@ pub struct Editor {
     pub next_overlay_id: usize,
     pub tab_bar_enabled: bool,
     pub last_layout: LayoutSnapshot,
+    pub mouse_state: MouseState,
     pub on_input_fn: Option<String>,
     pub input_consumed: bool,
 
@@ -193,6 +221,7 @@ impl Editor {
             next_overlay_id: 1,
             tab_bar_enabled: false,
             last_layout: LayoutSnapshot::default(),
+            mouse_state: MouseState::default(),
             on_input_fn: None,
             input_consumed: false,
             module_paths: {

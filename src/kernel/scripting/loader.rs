@@ -152,6 +152,7 @@ pub fn init_vm() {
     load_builtin("builtins/scroll_commands.janet", include_str!("../../../builtins/scroll_commands.janet"));
     load_builtin("builtins/indent_commands.janet", include_str!("../../../builtins/indent_commands.janet"));
     load_builtin("builtins/colon_mode.janet",      include_str!("../../../builtins/colon_mode.janet"));
+    load_builtin("builtins/colon_dired.janet",     include_str!("../../../builtins/colon_dired.janet"));
     load_builtin("builtins/completion_mode.janet", include_str!("../../../builtins/completion_mode.janet"));
     load_builtin("builtins/multi_cursor.janet",    include_str!("../../../builtins/multi_cursor.janet"));
     load_builtin("builtins/major_modes.janet",     include_str!("../../../builtins/major_modes.janet"));

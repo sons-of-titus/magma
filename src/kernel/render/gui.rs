@@ -6,6 +6,8 @@ use eframe::egui::{self, FontFamily, FontId};
 use tokio::sync::mpsc;
 
 use crate::kernel::input::{self, NON_INSERTABLE};
+use crate::kernel::input::event::{MouseEvent, MouseEventKind, MouseButton};
+use crate::kernel::input::mouse;
 use crate::kernel::render::frame::render_frame;
 use crate::kernel::render::gpu_atlas::{build_glyph_instances, build_rect_instances, GpuGlyphAtlas};
 use crate::kernel::render::gpu_paint_callback::MagmaPaintCallback;
@@ -102,12 +104,52 @@ impl eframe::App for GuiApp {
             }
         }
 
-        // ── Key events ────────────────────────────────────────────────────
+        // ── Font metrics (must precede input collection for MouseWheel unit conversion) ─
+        self.font_size = {
+            let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
+            ed.font_config.size
+        };
+        let font_id = FontId::new(self.font_size, FontFamily::Monospace);
+        let (char_w, line_h) = ctx.fonts(|f| (
+            f.glyph_width(&font_id, 'M'),
+            f.row_height(&font_id),
+        ));
+
+        // ── Key + mouse events ──────────────────────────────────────────────
         let mut key_events: Vec<String> = Vec::new();
+        let mut raw_mouse_events: Vec<RawMouseEvent> = Vec::new();
         ctx.input(|i| {
             for ev in &i.events {
                 if let Some(s) = translate_event(ev) {
                     key_events.push(s);
+                }
+                match ev {
+                    egui::Event::PointerButton { pos, button, pressed, modifiers } => {
+                        let mb = match button {
+                            egui::PointerButton::Primary => MouseButton::Left,
+                            egui::PointerButton::Secondary => MouseButton::Right,
+                            egui::PointerButton::Middle => MouseButton::Middle,
+                            _ => MouseButton::Left,
+                        };
+                        let mods = format_modifiers(modifiers);
+                        let kind = if *pressed { MouseEventKind::Click } else { MouseEventKind::Release };
+                        raw_mouse_events.push(RawMouseEvent { px: pos.x, py: pos.y, kind, button: mb, modifiers: mods });
+                    }
+                    egui::Event::PointerMoved(pos) if i.pointer.any_down() => {
+                        raw_mouse_events.push(RawMouseEvent { px: pos.x, py: pos.y, kind: MouseEventKind::Drag, button: MouseButton::Left, modifiers: String::new() });
+                    }
+                    egui::Event::MouseWheel { unit, delta, modifiers } => {
+                        let dy = match unit {
+                            egui::MouseWheelUnit::Point => (delta.y / line_h).round() as i32,
+                            egui::MouseWheelUnit::Line => delta.y.round() as i32,
+                            egui::MouseWheelUnit::Page => delta.y.round() as i32,
+                        };
+                        if dy != 0 {
+                            let mods = format_modifiers(modifiers);
+                            raw_mouse_events.push(RawMouseEvent { px: 0.0, py: 0.0, kind: MouseEventKind::Scroll(dy), button: MouseButton::Left, modifiers: mods });
+                        }
+                    }
+                    _ => {}
                 }
             }
         });
@@ -129,16 +171,6 @@ impl eframe::App for GuiApp {
             }
         }
 
-        // ── Font metrics ──────────────────────────────────────────────────
-        self.font_size = {
-            let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
-            ed.font_config.size
-        };
-        let font_id = FontId::new(self.font_size, FontFamily::Monospace);
-        let (char_w, line_h) = ctx.fonts(|f| (
-            f.glyph_width(&font_id, 'M'),
-            f.row_height(&font_id),
-        ));
         let bg_color = {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
             let (r, g, b) = ed.theme_color("gui-bg");
@@ -270,6 +302,23 @@ impl eframe::App for GuiApp {
                 } else {
                     present(ui, &ea, &surface, full, char_w, line_h, 0);
                 }
+
+                // ── Mouse dispatch (pixel → cell coords) ──────────────
+                if !raw_mouse_events.is_empty() {
+                    let mut ed = ea.write().unwrap_or_else(|e| e.into_inner());
+                    for raw in raw_mouse_events.drain(..) {
+                        let cell_x = ((raw.px - full.min.x) / char_w).max(0.0) as u16;
+                        let cell_y = ((raw.py - full.min.y) / line_h).max(0.0) as u16;
+                        let me = MouseEvent {
+                            kind: raw.kind,
+                            x: cell_x,
+                            y: cell_y,
+                            button: raw.button,
+                            modifiers: raw.modifiers,
+                        };
+                        mouse::dispatch_mouse(&mut ed, &surface, &me);
+                    }
+                }
             });
 
         // Floating tool windows — rendered on top of everything.
@@ -280,6 +329,24 @@ impl eframe::App for GuiApp {
 
         ctx.request_repaint();
     }
+}
+
+/// A mouse event in pixel coordinates, converted to cell coords
+/// inside the CentralPanel closure.
+struct RawMouseEvent {
+    px: f32,
+    py: f32,
+    kind: MouseEventKind,
+    button: MouseButton,
+    modifiers: String,
+}
+
+fn format_modifiers(mods: &egui::Modifiers) -> String {
+    let mut parts = Vec::new();
+    if mods.ctrl || mods.command { parts.push("ctrl"); }
+    if mods.shift { parts.push("shift"); }
+    if mods.alt { parts.push("alt"); }
+    parts.join(",")
 }
 
 fn translate_event(ev: &egui::Event) -> Option<String> {

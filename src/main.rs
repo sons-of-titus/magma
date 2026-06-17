@@ -312,7 +312,7 @@ fn run_tui(
                 }
                 InputEvent::Mouse(m) => {
                     let mut ed = editor.write().unwrap();
-                    magma::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, m.x, m.y);
+                    magma::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &m);
                 }
             }
         }

@@ -94,6 +94,7 @@ fn input_event_mouse_debug() {
         x: 5,
         y: 10,
         button: MouseButton::Left,
+        modifiers: String::new(),
     });
     let s = format!("{:?}", ev);
     assert!(s.contains("Mouse"));

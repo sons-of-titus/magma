@@ -1604,6 +1604,35 @@ found, pointing at whichever of `provider.janet`, `syntax.scm`, and
 | `language-loaded` | `name` | `language/load` succeeded |
 | `language-unregistered` | `name` | `language/unregister` removed a language |
 
+### Dired commands
+
+These are Rust commands invoked via `editor/run-command` (or colon-mode verbs).
+
+| Command | Action |
+|---------|--------|
+| `dired [path]` | Open a directory browser at `path` (default: cwd) |
+| `dired-refresh` | Reload the current directory listing |
+| `dired-open-at-cursor` | Open file or enter directory under cursor |
+| `dired-parent` | Navigate to the parent directory |
+| `dired-mark [type]` | Toggle mark on entry (type: delete/copy/move, default: delete) |
+| `dired-mark-with-type type` | Mark entry with explicit type |
+| `dired-unmark-all` | Clear all marks |
+| `dired-invert-marks` | Invert all marks (mark unmarked, unmark marked) |
+| `dired-execute-deletion` | Delete all files marked with delete mark |
+| `dired-execute-copy dest` | Copy all files marked with copy mark to `dest` |
+| `dired-execute-move dest` | Move all files marked with move mark to `dest` |
+| `dired-rename name` | Rename the file under cursor to `name` |
+| `dired-copy name` | Copy the file under cursor to `name` |
+| `dired-move name` | Move the file under cursor to `name` |
+| `dired-symlink name` | Create a symlink to the file under cursor |
+| `dired-mkdir name` | Create a new directory |
+| `dired-filter pattern` | Filter entries by substring (empty clears) |
+| `dired-clear-filter` | Clear the active filter |
+| `dired-toggle-hidden` | Toggle display of dotfiles |
+| `dired-toggle-sort` | Cycle sort field: name → size → date |
+| `dired-toggle-sort-reverse` | Reverse current sort direction |
+| `dired-close` | Close the dired buffer |
+
 ### Colon-mode verbs
 
 | Verb | Action |

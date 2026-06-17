@@ -1,11 +1,29 @@
-//! Directory editor — dired-style buffer that lists a directory and supports
-//! file operations (open, navigate, mark/delete, rename, copy, mkdir).
+//! Directory editor — dired-style buffer state and types.
+//!
+//! Display formatting and directory reading live in the sibling module
+//! `dired_display`, which is re-exported from here for convenience.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+// Re-export display utilities so consumers can `use dired::*`.
+pub use super::dired_display::*;
+
+/// How entries are sorted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortField {
+    Name,
+    Size,
+    Date,
+}
+
+/// What a mark on a file means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MarkType {
+    Delete,
+    Copy,
+    Move,
+}
 
 /// A single entry in a dired listing.
 #[derive(Debug, Clone)]
@@ -16,166 +34,38 @@ pub struct DiredEntry {
     pub size: u64,
     pub perms: String,
     pub modified: String,
+    pub modified_raw: u64,
 }
 
 /// Active dired session state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DiredState {
-    /// Absolute path of the displayed directory.
     pub dir: PathBuf,
-    /// Sorted entries for the current directory.
     pub entries: Vec<DiredEntry>,
-    /// Files marked for deletion.
-    pub marks: HashSet<String>,
-    /// Slab key of the `*dired*` buffer, if currently open.
+    pub marks: HashMap<String, MarkType>,
     pub buf_key: Option<usize>,
-    /// Whether a dired buffer is currently active.
     pub active: bool,
+    pub sort_field: SortField,
+    pub sort_reverse: bool,
+    pub show_hidden: bool,
+    pub filter_pattern: Option<String>,
 }
 
-/// Number of header lines above the first entry (0-indexed).
-pub const HEADER_LINES: usize = 4;
-
-// ── Formatting helpers ────────────────────────────────────────────────────────
-
-fn format_size(bytes: u64) -> String {
-    match bytes {
-        b if b < 1_024 => format!("{b}B"),
-        b if b < 1_048_576 => format!("{}K", b / 1_024),
-        b if b < 1_073_741_824 => format!("{}M", b / 1_048_576),
-        b => format!("{}G", b / 1_073_741_824),
-    }
-}
-
-#[cfg(unix)]
-fn format_perms(is_dir: bool, is_symlink: bool, mode: u32) -> String {
-    let type_char = if is_dir { 'd' } else if is_symlink { 'l' } else { '-' };
-    let bits = [
-        (0o400, 'r'), (0o200, 'w'), (0o100, 'x'),
-        (0o040, 'r'), (0o020, 'w'), (0o010, 'x'),
-        (0o004, 'r'), (0o002, 'w'), (0o001, 'x'),
-    ];
-    let rwx: String = bits.iter().map(|(bit, ch)| if mode & bit != 0 { *ch } else { '-' }).collect();
-    format!("{type_char}{rwx}")
-}
-
-#[cfg(not(unix))]
-fn format_perms(is_dir: bool, _is_symlink: bool, _mode: u32) -> String {
-    if is_dir { "d---------".to_string() } else { "----------".to_string() }
-}
-
-fn format_modified(time: std::time::SystemTime) -> String {
-    let Ok(dur) = time.duration_since(std::time::UNIX_EPOCH) else {
-        return "?".to_string();
-    };
-    let secs = dur.as_secs();
-    // Minimal UTC breakdown (no external crate)
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600) % 24;
-    let days = secs / 86400;
-    // Approx year/month/day from epoch days
-    let year = 1970 + days / 365;
-    let day_of_year = days % 365;
-    let month = (day_of_year / 30).min(11);
-    let day = day_of_year % 30 + 1;
-    let months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    format!("{} {:>2} {:02}:{:02}:{:02} {}", months[month as usize], day, h, m, s, year)
-}
-
-// ── Directory reading ─────────────────────────────────────────────────────────
-
-/// Read `dir`, returning entries sorted: `.` and `..` first, dirs before files,
-/// then alphabetically within each group.
-pub fn read_dir(dir: &Path) -> Result<Vec<DiredEntry>, String> {
-    let mut entries: Vec<DiredEntry> = Vec::new();
-
-    // Always add . and ..
-    for special in [".", ".."] {
-        let path = if special == "." { dir.to_path_buf() } else {
-            dir.parent().unwrap_or(dir).to_path_buf()
-        };
-        if let Ok(meta) = std::fs::metadata(&path) {
-            #[cfg(unix)]
-            let mode = meta.permissions().mode();
-            #[cfg(not(unix))]
-            let mode = 0u32;
-            let modified = meta.modified().map(format_modified).unwrap_or_else(|_| "?".to_string());
-            entries.push(DiredEntry {
-                name: special.to_string(),
-                is_dir: true,
-                is_symlink: false,
-                size: meta.len(),
-                perms: format_perms(true, false, mode),
-                modified,
-            });
+impl Default for DiredState {
+    fn default() -> Self {
+        DiredState {
+            dir: PathBuf::new(),
+            entries: Vec::new(),
+            marks: HashMap::new(),
+            buf_key: None,
+            active: false,
+            sort_field: SortField::Name,
+            sort_reverse: false,
+            show_hidden: false,
+            filter_pattern: None,
         }
     }
-
-    let read = std::fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {e}"))?;
-    let mut rest: Vec<DiredEntry> = read
-        .filter_map(|r| r.ok())
-        .filter_map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let meta = entry.metadata().ok()?;
-            let symlink_meta = std::fs::symlink_metadata(entry.path()).ok()?;
-            let is_symlink = symlink_meta.file_type().is_symlink();
-            let is_dir = meta.is_dir();
-            #[cfg(unix)]
-            let mode = symlink_meta.permissions().mode();
-            #[cfg(not(unix))]
-            let mode = 0u32;
-            let modified = meta.modified().map(format_modified).unwrap_or_else(|_| "?".to_string());
-            Some(DiredEntry {
-                perms: format_perms(is_dir, is_symlink, mode),
-                size: meta.len(),
-                modified,
-                name,
-                is_dir,
-                is_symlink,
-            })
-        })
-        .collect();
-
-    rest.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    entries.extend(rest);
-    Ok(entries)
 }
-
-// ── Display ───────────────────────────────────────────────────────────────────
-
-/// Build the full text content for the dired buffer.
-pub fn build_display(dir: &Path, entries: &[DiredEntry], marks: &HashSet<String>) -> String {
-    let dir_str = dir.to_string_lossy();
-    let mut out = format!(
-        "{dir_str}\n\n  {:<10}  {:>6}  {:<21}  {}\n  {}\n",
-        "Perms", "Size", "Modified", "Name",
-        "──────────  ──────  ─────────────────────  ──────────────────────────",
-    );
-    for entry in entries {
-        let mark = if marks.contains(&entry.name) { "[D]" } else { "   " };
-        let size = if entry.is_dir { "<DIR>".to_string() } else { format_size(entry.size) };
-        let display_name = if entry.is_dir {
-            format!("{}/", entry.name)
-        } else if entry.is_symlink {
-            format!("{}@", entry.name)
-        } else {
-            entry.name.clone()
-        };
-        out.push_str(&format!(
-            "{mark} {:<10}  {:>6}  {:<21}  {}\n",
-            &entry.perms[..entry.perms.len().min(10)],
-            size,
-            &entry.modified[..entry.modified.len().min(21)],
-            display_name,
-        ));
-    }
-    out
-}
-
-// ── State operations ──────────────────────────────────────────────────────────
 
 impl DiredState {
     pub fn new() -> Self {
@@ -185,7 +75,9 @@ impl DiredState {
     /// Return the entry for display line `line` (0-indexed), or `None`.
     pub fn entry_at_line(&self, line: usize) -> Option<&DiredEntry> {
         let idx = line.checked_sub(HEADER_LINES)?;
-        self.entries.get(idx)
+        let view = view_entries(&self.entries, self.filter_pattern.as_deref(),
+            self.show_hidden, self.sort_field, self.sort_reverse);
+        view.get(idx).copied()
     }
 
     /// Full path for a named entry in the current directory.
@@ -196,6 +88,50 @@ impl DiredState {
     /// Reload entries from disk and return updated display text.
     pub fn reload(&mut self) -> Result<String, String> {
         self.entries = read_dir(&self.dir.clone())?;
-        Ok(build_display(&self.dir, &self.entries, &self.marks))
+        Ok(build_display(&self.dir, &self.entries, &self.marks,
+            self.sort_field, self.sort_reverse,
+            self.filter_pattern.as_deref(), self.show_hidden))
+    }
+
+    /// Get visible entry at line index within the filtered/sorted view.
+    pub fn visible_entries(&self) -> Vec<&DiredEntry> {
+        view_entries(&self.entries, self.filter_pattern.as_deref(),
+            self.show_hidden, self.sort_field, self.sort_reverse)
+    }
+
+    /// Toggle a mark type on a file entry.
+    pub fn toggle_mark(&mut self, name: &str, mt: MarkType) {
+        if name == "." || name == ".." { return; }
+        if self.marks.get(name) == Some(&mt) {
+            self.marks.remove(name);
+        } else {
+            self.marks.insert(name.to_string(), mt);
+        }
+    }
+
+    /// Count marks of each type.
+    pub fn mark_counts(&self) -> Vec<(MarkType, usize)> {
+        let mut counts: HashMap<MarkType, usize> = HashMap::new();
+        for (_, mt) in &self.marks {
+            *counts.entry(*mt).or_default() += 1;
+        }
+        vec![
+            (MarkType::Delete, counts.get(&MarkType::Delete).copied().unwrap_or(0)),
+            (MarkType::Copy, counts.get(&MarkType::Copy).copied().unwrap_or(0)),
+            (MarkType::Move, counts.get(&MarkType::Move).copied().unwrap_or(0)),
+        ]
+    }
+
+    /// Invert marks: mark all unmarked entries, unmark all marked.
+    pub fn invert_marks(&mut self) {
+        let view: Vec<&DiredEntry> = self.visible_entries();
+        let mut new_marks: HashMap<String, MarkType> = HashMap::new();
+        for entry in &view {
+            if entry.name == "." || entry.name == ".." { continue; }
+            if !self.marks.contains_key(&entry.name) {
+                new_marks.insert(entry.name.clone(), MarkType::Delete);
+            }
+        }
+        self.marks = new_marks;
     }
 }

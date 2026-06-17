@@ -174,6 +174,26 @@ location.  This is the ground truth for both Rust and Janet subscribers.
 | `project-member-focused` | `root` | String | |
 | `project-member-focused` | `project-name` | String | |
 
+## Mouse
+
+| Event | Key | Type | Emitter |
+|-------|-----|------|---------|
+| `mouse-clicked` | `buf` | usize | `input/mouse.rs` — `dispatch_text_click` |
+| `mouse-clicked` | `line` | usize | |
+| `mouse-clicked` | `col` | usize | |
+| `mouse-clicked` | `button` | String | |
+| `mouse-clicked` | `x` | u16 | |
+| `mouse-clicked` | `y` | u16 | |
+| `mouse-dragged` | `buf` | usize | `input/mouse.rs` — `dispatch_drag` |
+| `mouse-dragged` | `start-line` | usize | |
+| `mouse-dragged` | `start-col` | usize | |
+| `mouse-dragged` | `end-line` | usize | |
+| `mouse-dragged` | `end-col` | usize | |
+| `text-clicked` | `buf` | usize | `input/mouse.rs` — `dispatch_text_click` |
+| `text-clicked` | `line` | usize | |
+| `text-clicked` | `col` | usize | |
+| `text-clicked` | `button` | String | |
+
 ## Gutter / Decoration
 
 | Event | Key | Type | Emitter |

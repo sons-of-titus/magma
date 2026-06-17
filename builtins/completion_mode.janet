@@ -12,7 +12,9 @@
    "tab" "tabedit" "tabn" "tabnext" "tabp" "tabprev"
    "find" "find-files"
    "terminal" "term"
-   "dired" "Drename" "Dcopy" "Dmkdir"
+    "dired" "Drename" "Dcopy" "Dmove" "Dsymlink" "Dmkdir"
+    "Dfilter" "Dsort" "Dsortr" "Dhidden" "Dclear" "Dinv"
+    "Dmark" "Dcopymark" "Dmovemark" "Dexec-copy" "Dexec-move"
    "vc" "VCdiff" "VClog" "VCcommit" "VCcommit-save" "VCpush" "VCblame"
    "!" "colorscheme" "scrollpolicy" ])
 

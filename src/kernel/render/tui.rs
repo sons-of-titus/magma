@@ -12,7 +12,7 @@ use ratatui::{
     text::{Line, Span},
     Terminal,
 };
-use std::io::stdout;
+use std::io::{stdout, Write};
 
 use super::RenderTrait;
 use crate::kernel::render::surface::Surface as MagmaSurface;
@@ -32,6 +32,9 @@ impl TuiRenderer {
         stdout().execute(EnterAlternateScreen)?;
         terminal::enable_raw_mode()?;
         let _ = stdout().execute(EnableMouseCapture);
+        // Enable SGR encoding and button-event tracking for drag / extended coordinates.
+        let _ = write!(stdout(), "\x1b[?1002h\x1b[?1006h");
+        let _ = stdout().flush();
         let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
         terminal.clear()?;
         let size = terminal.size()?;
@@ -46,6 +49,7 @@ impl TuiRenderer {
 
 impl Drop for TuiRenderer {
     fn drop(&mut self) {
+        let _ = write!(stdout(), "\x1b[?1006l\x1b[?1002l");
         let _ = stdout().execute(DisableMouseCapture);
         let _ = terminal::disable_raw_mode();
         let _ = stdout().execute(LeaveAlternateScreen);
@@ -121,12 +125,46 @@ impl RenderTrait for TuiRenderer {
                     self.height = h;
                     Some(InputEvent::Resize(w, h))
                 }
-                Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
+                Event::Mouse(m) => {
+                    let (kind, button) = match m.kind {
+                        MouseEventKind::Down(btn) => {
+                            let b = match btn {
+                                MouseButton::Left => MagmaMouseButton::Left,
+                                MouseButton::Right => MagmaMouseButton::Right,
+                                MouseButton::Middle => MagmaMouseButton::Middle,
+                            };
+                            (MagmaMouseKind::Click, b)
+                        }
+                        MouseEventKind::Up(btn) => {
+                            let b = match btn {
+                                MouseButton::Left => MagmaMouseButton::Left,
+                                MouseButton::Right => MagmaMouseButton::Right,
+                                MouseButton::Middle => MagmaMouseButton::Middle,
+                            };
+                            (MagmaMouseKind::Release, b)
+                        }
+                        MouseEventKind::Drag(btn) => {
+                            let b = match btn {
+                                MouseButton::Left => MagmaMouseButton::Left,
+                                MouseButton::Right => MagmaMouseButton::Right,
+                                MouseButton::Middle => MagmaMouseButton::Middle,
+                            };
+                            (MagmaMouseKind::Drag, b)
+                        }
+                        MouseEventKind::ScrollDown => (MagmaMouseKind::Scroll(1), MagmaMouseButton::Left),
+                        MouseEventKind::ScrollUp => (MagmaMouseKind::Scroll(-1), MagmaMouseButton::Left),
+                        _ => return None,
+                    };
+                    let mut mods: Vec<&str> = Vec::new();
+                    if m.modifiers.contains(KeyModifiers::SHIFT) { mods.push("shift"); }
+                    if m.modifiers.contains(KeyModifiers::CONTROL) { mods.push("ctrl"); }
+                    if m.modifiers.contains(KeyModifiers::ALT) { mods.push("alt"); }
                     Some(InputEvent::Mouse(MouseEvent {
-                        kind: MagmaMouseKind::Click,
+                        kind,
                         x: m.column,
                         y: m.row,
-                        button: MagmaMouseButton::Left,
+                        button,
+                        modifiers: mods.join(","),
                     }))
                 }
                 _ => None,

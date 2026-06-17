@@ -106,3 +106,6 @@ event_payload!(AgentErrorPayload { session_id, error });
 event_payload!(LanguageRegisteredPayload { name });
 event_payload!(LanguageLoadedPayload { name });
 event_payload!(LanguageUnregisteredPayload { name });
+event_payload!(MouseClickedPayload { buf, line, col, button, x, y });
+event_payload!(MouseDraggedPayload { buf, start_line, start_col, end_line, end_col });
+event_payload!(TextClickedPayload { buf, line, col, button });

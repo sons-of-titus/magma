@@ -22,6 +22,9 @@ pub struct MouseEvent {
     pub x: u16,
     pub y: u16,
     pub button: MouseButton,
+    /// Comma-separated modifier names: "shift", "ctrl", "alt".
+    /// Populated by the renderer backend from the platform event.
+    pub modifiers: String,
 }
 
 /// The kind of mouse action.
@@ -29,6 +32,8 @@ pub struct MouseEvent {
 pub enum MouseEventKind {
     /// Button pressed (click).
     Click,
+    /// Mouse moved while a button is held (drag).
+    Drag,
     /// Scroll wheel moved.  Positive delta = scroll down.
     Scroll(i32),
     /// Button released.

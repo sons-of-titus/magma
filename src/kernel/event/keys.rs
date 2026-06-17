@@ -45,6 +45,9 @@ pub mod events {
     pub const MINIBUFFER_INPUT_CHANGED: &str = "minibuffer-input-changed";
     pub const MINIBUFFER_OPENED: &str = "minibuffer-opened";
     pub const MODE_CHANGED: &str = "mode-changed";
+    pub const MOUSE_CLICKED: &str = "mouse-clicked";
+    pub const MOUSE_DRAGGED: &str = "mouse-dragged";
+    pub const TEXT_CLICKED: &str = "text-clicked";
     pub const PROCESS_EXIT: &str = "process-exit";
     pub const PROCESS_OUTPUT: &str = "process-output";
     pub const PROJECT_CLOSED: &str = "project-closed";

@@ -102,6 +102,8 @@ pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize
 pub fn render_frame(editor: &Editor, surface: &mut Surface, editor_pane_only: bool) {
     surface.clear();
 
+    // Surface-based tab bar row — TUI only.  When editor_pane_only is true
+    // (GUI mode) the tab bar is a native egui widget in GuiApp::update().
     let tab_bar_rows: u16 = if !editor_pane_only && editor.tab_bar_enabled { 1 } else { 0 };
 
     if !editor_pane_only && editor.tab_bar_enabled {

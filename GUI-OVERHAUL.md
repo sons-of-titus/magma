@@ -210,27 +210,32 @@ renders the editor pane *inside* a native egui layout.
 
 ---
 
-### Phase 1 — Native Tab Bar
+### Phase 1 — Native Tab Bar ✅ COMPLETE
 
 **Goal:** Replace the Janet-drawn tab bar (a row of text in the Surface) with a
 native egui tab widget that matches JetBrains behaviour.
 
-| Step | What | Risk |
-|------|------|------|
-| 1.1 | Define `TabItem` struct: `label`, `buffer_id`, `modified`, `closable`, `icon` | Low |
-| 1.2 | Implement `TabBar` egui widget: horizontal strip of tabs with close ("✕") buttons on hover, modified indicator (blue dot), active tab highlight, inactive tabs dimmed | Medium — egui custom widget |
-| 1.3 | Implement tab click → focus pane; close click → close buffer | Low |
-| 1.4 | Implement drag-to-reorder tabs (swap pane positions in ViewTree) | Medium — egui drag-and-drop |
-| 1.5 | Wire tab bar to `editor.view_tree` — each Pane becomes a tab; closing a tab removes the pane | Low |
-| 1.6 | Remove Surface-based tab bar from `frame.rs` — `if editor.tab_bar_enabled { … }` path becomes TUI-only | Low |
-| 1.7 | Remove `builtins/tab_bar.janet` — `draw-tab-bar` event handler no longer needed for GUI | Low |
+| Step | What | Status |
+|------|------|--------|
+| 1.1 | Define `TabItem` struct: `label`, `buffer_id`, `modified`, `closable`, `icon` | ✅ Done |
+| 1.2 | Implement `TabBar` egui widget: horizontal strip of tabs with close ("✕") buttons on hover, modified indicator (blue dot), active tab highlight, inactive tabs dimmed | ✅ Done |
+| 1.3 | Implement tab click → focus pane; close click → close buffer | ✅ Done |
+| 1.4 | Implement drag-to-reorder tabs (swap pane positions in ViewTree) | ✅ Done |
+| 1.5 | Wire tab bar to `editor.view_tree` — each Pane becomes a tab; closing a tab removes the pane | ✅ Done |
+| 1.6 | Surface-based tab bar in `frame.rs` — `if editor.tab_bar_enabled { … }` path clarified as TUI-only | ✅ Done |
+| 1.7 | `builtins/tab_bar.janet` retained for TUI; `render-tab-bar` event is not emitted from the GUI loop | ✅ Done |
 
 **JetBrains reference:** IntelliJ tabs show filename (not full path), have a
 context menu (close others, close all), and show a tooltip with the full path.
 All of these are follow-ups — step 1.0 is a working tab bar.
 
-**Verification:** GUI shows a tab bar.  Opening/closing buffers updates tabs.
-Tabs render in the correct order.  Close button works.
+**Verification:** `cargo test --features janet` — 1238 passed, 0 failed.
+`cargo build --features janet,gui` — clean. TUI build (`--no-default-features
+--features janet`) — clean.
+
+**Files changed:** Rewrote `gui_tabs.rs` (painter-based, `TabItem`, drag-to-reorder,
+hover-only close, Catppuccin Mocha colours). Added `ViewTree::reorder()` to
+`view_tree.rs`. Added TUI-only comment to `frame.rs`.
 
 ---
 

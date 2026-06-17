@@ -269,4 +269,14 @@ impl ViewTree {
     pub fn focused_buffer(&self) -> Option<usize> {
         self.focused_window().and_then(|id| self.buffer(id))
     }
+
+    /// Swap the positions of two panes by ID (used for tab drag-to-reorder).
+    pub fn reorder(&mut self, from: WindowId, to: WindowId) {
+        if let (Some(a), Some(b)) = (
+            self.panes.iter().position(|p| p.id == from),
+            self.panes.iter().position(|p| p.id == to),
+        ) {
+            self.panes.swap(a, b);
+        }
+    }
 }

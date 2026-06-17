@@ -67,6 +67,10 @@ pub mod events {
     pub const TCP_ERROR: &str = "tcp-error";
     pub const WARNING_EMITTED: &str = "warning-emitted";
     pub const WINDOW_FOCUSED: &str = "window-focused";
+    pub const WORKSPACE_RESTORED: &str = "workspace-restored";
+    pub const WORKSPACE_SAVED: &str = "workspace-saved";
+    pub const WORKSPACE_SESSION_LOADED: &str = "workspace-session-loaded";
+    pub const WORKSPACE_SESSION_SAVED: &str = "workspace-session-saved";
 }
 
 pub mod keys {

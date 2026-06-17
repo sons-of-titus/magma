@@ -394,19 +394,38 @@ can contribute a gutter column.
 
 ---
 
-### Phase 8 — Workspace Persistence
+### Phase 8 — Workspace Persistence ✅ COMPLETE
 
 **Goal:** The editor saves and restores its full state: open buffers, layout,
 history, projects, settings, semantic cache.
 
-| Step | What |
-|------|------|
-| 8.1 | Create `kernel/storage/workspace.rs` |
-| 8.2 | Define `WorkspaceState` — serializable snapshot of Editor state |
-| 8.3 | Implement `workspace.save()` — writes to `~/.magma/workspace/` |
-| 8.4 | Implement `workspace.restore()` — reads and reconstructs Editor state |
-| 8.5 | Persist: buffers/ (unsaved content), history/ (command + search history), index/ (semantic cache), settings/ (options), sessions/ (named session snapshots) |
-| 8.6 | Add Janet API: `(workspace/save)`, `(workspace/restore)`, `(workspace/session-save name)`, `(workspace/session-load name)` |
+| Step | What | Status |
+|------|------|--------|
+| 8.1 | Create `kernel/storage/workspace.rs` | ✅ |
+| 8.2 | Define `WorkspaceState` — serializable snapshot of Editor state | ✅ |
+| 8.3 | Implement `workspace.save()` — writes to `~/.magma/workspace/` | ✅ |
+| 8.4 | Implement `workspace.restore()` — reads and reconstructs Editor state | ✅ |
+| 8.5 | Persist: buffers/ (unsaved content), history/ (command + search history), settings/ (options), sessions/ (named session snapshots) | ✅ |
+| 8.6 | Add Janet API: `(workspace/save)`, `(workspace/restore)`, `(workspace/session-save name)`, `(workspace/session-load name)` | ✅ |
+
+**Completion notes (2026-06-17):**
+- `kernel/storage/workspace.rs` — `PersistedBuffer`, `WorkspaceState` (serde), `WorkspaceManager`
+- `WorkspaceManager::snapshot(editor)` — builds a `WorkspaceState` from Editor: non-ephemeral buffers (scratch buffers include content; file-backed buffers store path only), command history, search pattern, options, registers, plugin state
+- `WorkspaceManager::apply(editor, state)` — restores Editor from a `WorkspaceState`; file buffers re-read from disk (missing files silently skipped); scratch buffers get content verbatim; options/registers/plugin_state merged
+- `WorkspaceManager::save(editor)` / `save_to(editor, dir)` — serialize snapshot as JSON to `<workspace-dir>/workspace.json`
+- `WorkspaceManager::restore(editor)` / `restore_from(editor, dir)` — deserialize and apply
+- `WorkspaceManager::session_save(editor, name)` / `session_save_to(editor, name, dir)` — named snapshots in `<workspace-dir>/sessions/<name>.json`; names are sanitised (alphanumeric + `-` only)
+- `WorkspaceManager::session_load(editor, name)` / `session_load_from(editor, name, dir)` — load named session
+- `WorkspaceManager::session_list()` / `session_list_from(dir)` — enumerate available sessions
+- `kernel/storage/mod.rs` — exports `WorkspaceManager`, `WorkspaceState`, `PersistedBuffer`
+- `kernel/scripting/workspace_api.rs` — 5 new Janet C functions: `workspace/save`, `workspace/restore`, `workspace/session-save`, `workspace/session-load`, `workspace/session-list`; all return `{:status "ok" ...}` or `{:status "error" :error "..."}` tables; all emit typed events on success
+- `kernel/event/keys.rs` — `WORKSPACE_SAVED`, `WORKSPACE_RESTORED`, `WORKSPACE_SESSION_SAVED`, `WORKSPACE_SESSION_LOADED`
+- `kernel/event/payload.rs` — `WorkspaceSavedPayload`, `WorkspaceRestoredPayload`, `WorkspaceSessionSavedPayload`, `WorkspaceSessionLoadedPayload`
+- `builtins/workspace.janet` — event handlers logging save/restore; colon verbs `:ws-save`, `:ws-restore`, `:ws-session-save`, `:ws-session-load`, `:ws-sessions`; `workspace/save` and `workspace/restore` commands
+- `kernel/scripting/loader.rs` — loads `builtins/workspace.janet` after `builtins/debug.janet`
+- `docs/api/janet-api.md` — `workspace/` namespace section with function docs, events table, and colon-verb table
+- 39 new tests in `tests/workspace_persist_tests.rs` (25 Rust) + `tests/workspace_persist_janet_tests.rs` (14 Janet)
+- `cargo test --features janet -- --test-threads=1`: 1073 passed, 0 failed
 
 ---
 

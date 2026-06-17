@@ -1253,3 +1253,61 @@ Return an array of line numbers (integers) for all breakpoints set in `file`.
 | `debug-evaluate-result` | `:session-id`, `:result` | Evaluate response from the adapter |
 | `debug-breakpoint-changed` | `:file`, `:line`, `:action` | Breakpoint added or removed |
 
+---
+
+## workspace/ — Workspace Persistence (Phase 8)
+
+The workspace subsystem saves and restores the full editor state: open buffers,
+command history, search pattern, options, registers, and plugin state.
+
+State files live under `~/.magma/workspace/` (or `$MAGMA_DIR/magma/workspace/`).
+Named sessions are stored in the `sessions/` subdirectory.
+
+### `(workspace/save)` → `{:status "ok"}` or `{:status "error" :error "…"}`
+
+Snapshot the current editor state and write it to `workspace.json` in the
+workspace directory.  Emits `workspace-saved` on success.
+
+### `(workspace/restore)` → `{:status "ok" :count N}` or `{:status "error" :error "…"}`
+
+Read `workspace.json` and reconstruct editor state.  File-backed buffers are
+re-read from disk; scratch buffers have their content restored verbatim.
+Returns the number of buffers recreated in `:count`.  Emits `workspace-restored`
+on success.
+
+### `(workspace/session-save name)` → `{:status "ok"}` or `{:status "error" :error "…"}`
+
+Save the current editor state as named session `name` under `sessions/<name>.json`.
+Session names are sanitised (alphanumeric and `-` only); all other characters
+become `_`.  Emits `workspace-session-saved`.
+
+### `(workspace/session-load name)` → `{:status "ok" :count N}` or `{:status "error" :error "…"}`
+
+Load the named session `name` and apply it to the editor.  Returns the number
+of buffers recreated in `:count`.  Emits `workspace-session-loaded`.
+
+### `(workspace/session-list)` → `["name" …]`
+
+Return an array of all saved session names on disk (without the `.json` suffix).
+
+---
+
+### Workspace Events
+
+| Event | Payload keys | When fired |
+|-------|-------------|------------|
+| `workspace-saved` | `:path`, `:buffer-count` | Workspace saved to disk |
+| `workspace-restored` | `:path`, `:buffer-count` | Workspace restored from disk |
+| `workspace-session-saved` | `:name`, `:buffer-count` | Named session saved |
+| `workspace-session-loaded` | `:name`, `:buffer-count` | Named session loaded |
+
+### Colon-mode verbs
+
+| Verb | Action |
+|------|--------|
+| `:ws-save` | Save the workspace |
+| `:ws-restore` | Restore the workspace |
+| `:ws-session-save <name>` | Save a named session |
+| `:ws-session-load <name>` | Load a named session |
+| `:ws-sessions` | List saved sessions in the message area |
+

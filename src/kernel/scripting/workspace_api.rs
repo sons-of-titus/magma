@@ -1,4 +1,4 @@
-//! Janet C functions for workspace management (Sprint 4).
+//! Janet C functions for workspace management and persistence.
 //! Registered as `extern "C-unwind"` functions via evil-janet.
 
 use std::path::PathBuf;
@@ -8,6 +8,7 @@ use super::conv;
 use super::with_editor;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
+use crate::kernel::storage::WorkspaceManager;
 
 /// (project/workspace?) → {:root "..." :members [...]} or nil
 ///
@@ -156,6 +157,156 @@ unsafe extern "C-unwind" fn c_project_set_current_member(argc: i32, argv: *mut J
     })
 }
 
+// ── Workspace persistence (Phase 8) ──────────────────────────────────────────
+
+/// (workspace/save) → {:status "ok"} or {:status "error" :error "..."}
+///
+/// Snapshot the current editor state and write it to `~/.magma/workspace/workspace.json`.
+/// Emits `workspace-saved` on success.
+unsafe extern "C-unwind" fn c_workspace_save(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let path = WorkspaceManager::workspace_dir().join("workspace.json");
+        match WorkspaceManager::save(ed) {
+            Ok(()) => {
+                let snapshot = WorkspaceManager::snapshot(ed);
+                let count = snapshot.buffers.len();
+                ed.events.emit_typed(keys::events::WORKSPACE_SAVED, WorkspaceSavedPayload {
+                    path: path.to_string_lossy().into_owned(),
+                    buffer_count: count.to_string(),
+                });
+                let tbl = janet_wrap_table(janet_table(1));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("ok"));
+                tbl
+            }
+            Err(e) => {
+                let tbl = janet_wrap_table(janet_table(2));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("error"));
+                janet_table_put(t, conv::keyword("error"), conv::string(&e));
+                tbl
+            }
+        }
+    })
+}
+
+/// (workspace/restore) → {:status "ok" :count N} or {:status "error" :error "..."}
+///
+/// Read `~/.magma/workspace/workspace.json` and reconstruct Editor state.
+/// Emits `workspace-restored` on success.
+unsafe extern "C-unwind" fn c_workspace_restore(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let path = WorkspaceManager::workspace_dir().join("workspace.json");
+        match WorkspaceManager::restore(ed) {
+            Ok(count) => {
+                ed.events.emit_typed(keys::events::WORKSPACE_RESTORED, WorkspaceRestoredPayload {
+                    path: path.to_string_lossy().into_owned(),
+                    buffer_count: count.to_string(),
+                });
+                let tbl = janet_wrap_table(janet_table(2));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("ok"));
+                janet_table_put(t, conv::keyword("count"), conv::integer(count as i32));
+                tbl
+            }
+            Err(e) => {
+                let tbl = janet_wrap_table(janet_table(2));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("error"));
+                janet_table_put(t, conv::keyword("error"), conv::string(&e));
+                tbl
+            }
+        }
+    })
+}
+
+/// (workspace/session-save name) → {:status "ok"} or {:status "error" :error "..."}
+///
+/// Save the current editor state as named session `name`.
+/// Emits `workspace-session-saved`.
+unsafe extern "C-unwind" fn c_workspace_session_save(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let name = match conv::get_str(argc, argv, 0) {
+            Some(s) => s,
+            None => conv::signal_err("workspace/session-save: expected session name"),
+        };
+        let snapshot = WorkspaceManager::snapshot(ed);
+        let count = snapshot.buffers.len();
+        match WorkspaceManager::session_save(ed, &name) {
+            Ok(()) => {
+                ed.events.emit_typed(
+                    keys::events::WORKSPACE_SESSION_SAVED,
+                    WorkspaceSessionSavedPayload {
+                        name: name.clone(),
+                        buffer_count: count.to_string(),
+                    },
+                );
+                let tbl = janet_wrap_table(janet_table(1));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("ok"));
+                tbl
+            }
+            Err(e) => {
+                let tbl = janet_wrap_table(janet_table(2));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("error"));
+                janet_table_put(t, conv::keyword("error"), conv::string(&e));
+                tbl
+            }
+        }
+    })
+}
+
+/// (workspace/session-load name) → {:status "ok" :count N} or {:status "error" :error "..."}
+///
+/// Load named session `name` and apply it to the editor.
+/// Emits `workspace-session-loaded`.
+unsafe extern "C-unwind" fn c_workspace_session_load(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let name = match conv::get_str(argc, argv, 0) {
+            Some(s) => s,
+            None => conv::signal_err("workspace/session-load: expected session name"),
+        };
+        match WorkspaceManager::session_load(ed, &name) {
+            Ok(count) => {
+                ed.events.emit_typed(
+                    keys::events::WORKSPACE_SESSION_LOADED,
+                    WorkspaceSessionLoadedPayload {
+                        name: name.clone(),
+                        buffer_count: count.to_string(),
+                    },
+                );
+                let tbl = janet_wrap_table(janet_table(2));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("ok"));
+                janet_table_put(t, conv::keyword("count"), conv::integer(count as i32));
+                tbl
+            }
+            Err(e) => {
+                let tbl = janet_wrap_table(janet_table(2));
+                let t = janet_unwrap_table(tbl);
+                janet_table_put(t, conv::keyword("status"), conv::string("error"));
+                janet_table_put(t, conv::keyword("error"), conv::string(&e));
+                tbl
+            }
+        }
+    })
+}
+
+/// (workspace/session-list) → ["name" ...]
+///
+/// List all named sessions available on disk.
+unsafe extern "C-unwind" fn c_workspace_session_list(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|_ed| unsafe {
+        let sessions = WorkspaceManager::session_list();
+        let arr = janet_wrap_array(janet_array(sessions.len() as i32));
+        for s in &sessions {
+            janet_array_push(janet_unwrap_array(arr), conv::string(s));
+        }
+        arr
+    })
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
@@ -177,6 +328,31 @@ pub fn register() -> Vec<JanetReg> {
             name: c"project/set-current-member".as_ptr() as *const _,
             cfun: Some(c_project_set_current_member as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Switch the active workspace member".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"workspace/save".as_ptr() as *const _,
+            cfun: Some(c_workspace_save as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Snapshot editor state to ~/.magma/workspace/workspace.json".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"workspace/restore".as_ptr() as *const _,
+            cfun: Some(c_workspace_restore as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Restore editor state from ~/.magma/workspace/workspace.json".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"workspace/session-save".as_ptr() as *const _,
+            cfun: Some(c_workspace_session_save as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Save the current state as a named session".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"workspace/session-load".as_ptr() as *const _,
+            cfun: Some(c_workspace_session_load as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Load a named session and apply it to the editor".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"workspace/session-list".as_ptr() as *const _,
+            cfun: Some(c_workspace_session_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Return an array of saved session names".as_ptr() as *const _,
         },
     ]
 }

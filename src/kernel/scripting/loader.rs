@@ -182,6 +182,7 @@ pub fn init_vm() {
     load_builtin("builtins/ssh_fs.janet",          include_str!("../../../builtins/ssh_fs.janet"));
     load_builtin("builtins/task.janet",            include_str!("../../../builtins/task.janet"));
     load_builtin("builtins/debug.janet",           include_str!("../../../builtins/debug.janet"));
+    load_builtin("builtins/workspace.janet",       include_str!("../../../builtins/workspace.janet"));
 
     let home = std::env::var("HOME").unwrap_or_default();
     if !home.is_empty() {

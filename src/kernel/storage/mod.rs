@@ -47,5 +47,7 @@ pub trait AsyncFileSystem: Send + Sync {
 
 pub mod disk;
 pub mod watcher;
+pub mod workspace;
 
 pub use disk::DiskFileSystem;
+pub use workspace::{WorkspaceManager, WorkspaceState, PersistedBuffer};

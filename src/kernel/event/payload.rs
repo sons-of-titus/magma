@@ -90,3 +90,7 @@ event_payload!(DebugOutputPayload { session_id, category, output });
 event_payload!(DebugSessionEndedPayload { session_id });
 event_payload!(DebugSessionStartedPayload { session_id, adapter });
 event_payload!(DebugStoppedPayload { session_id, reason, thread_id });
+event_payload!(WorkspaceSavedPayload { path, buffer_count });
+event_payload!(WorkspaceRestoredPayload { path, buffer_count });
+event_payload!(WorkspaceSessionSavedPayload { name, buffer_count });
+event_payload!(WorkspaceSessionLoadedPayload { name, buffer_count });

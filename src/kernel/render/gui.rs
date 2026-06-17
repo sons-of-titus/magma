@@ -269,6 +269,10 @@ impl eframe::App for GuiApp {
                 let visible_rows = ((full.height() / line_h).floor() as usize).max(1);
                 let mut surface = Surface::new(visible_cols as u16, visible_rows as u16);
                 {
+                    let mut ed = ea.write().unwrap_or_else(|e| e.into_inner());
+                    ed.view_tree.resize(visible_cols as u16, visible_rows as u16);
+                }
+                {
                     let ed = ea.read().unwrap_or_else(|e| e.into_inner());
                     render_frame(&ed, &mut surface, true);
                 }

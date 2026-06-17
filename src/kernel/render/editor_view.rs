@@ -32,7 +32,6 @@ impl View for EditorView {
         let view = editor.views.get(&buf_id);
         let cursor_offset = view.map(|v| v.cursor.offset).unwrap_or(0);
 
-        let tab_bar_rows: u16 = if editor.tab_bar_enabled { 1 } else { 0 };
         let header_rows: u16 = if buf.header_line.is_some() { 1 } else { 0 };
 
         let style_theme = |fg_key: &str, bg_key: &str| -> Style {
@@ -43,14 +42,14 @@ impl View for EditorView {
         if let Some(ref hl_text) = buf.header_line {
             let hl_style = style_theme("status-fg", "status-bg");
             for x in 0..area.width {
-                surface.set_cell(area.x + x, tab_bar_rows, ' ', Some(hl_style));
+                surface.set_cell(area.x + x, area.y, ' ', Some(hl_style));
             }
-            surface.set_text(area.x, tab_bar_rows, hl_text, Some(hl_style));
+            surface.set_text(area.x, area.y, hl_text, Some(hl_style));
         }
 
-        let row_offset = area.y + tab_bar_rows + header_rows;
+        let row_offset = area.y + header_rows;
         let visible_lines = (area.height as usize)
-            .saturating_sub((tab_bar_rows + header_rows) as usize);
+            .saturating_sub(header_rows as usize);
 
         let prefix_margin = prefix_margin_width(editor, buf_id);
         let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };

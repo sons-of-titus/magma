@@ -97,5 +97,6 @@
     (detect-branch)
     (option/set "number" "true")
     (option/set "scrolloff" (string *scroll-amount*))
+    (option/set "mouse-support" "true")
     (ui/set-tab-bar true)
     (editor/log-message "Magma UI ready (tab-bar, modeline, line-numbers)")))

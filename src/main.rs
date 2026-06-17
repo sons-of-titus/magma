@@ -279,6 +279,10 @@ fn run_tui(
     let mut renderer = TuiRenderer::new()?;
     let (width, height) = renderer.dimensions();
     let mut surface = Surface::new(width, height);
+    {
+        let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
+        ed.view_tree.resize(width, height);
+    }
 
     loop {
         {

@@ -3,14 +3,13 @@
 //! `MagmaPaintCallback` is registered via `egui_wgpu::Callback::new_paint_callback`
 //! once per frame.  On the first frame it creates all wgpu resources (pipeline,
 //! atlas texture, vertex buffer) and stores them in `egui_wgpu::CallbackResources`
-//! so they survive frame-to-frame.  Subsequent frames only update the vertex buffer.
-
-use std::sync::Arc;
+//! so they survive frame-to-frame.  Subsequent frames only update the vertex
+//! buffer, and re-upload the atlas texture when `atlas_pixels` is `Some`.
 
 use eframe::egui_wgpu::{self, ScreenDescriptor};
 use eframe::wgpu::{self, util::DeviceExt as _};
 
-use super::gpu_atlas::{GlyphInstance, GpuGlyphAtlas, RectInstance, glyphs_to_vertices, rects_to_vertices};
+use super::gpu_atlas::{GlyphInstance, RectInstance, glyphs_to_vertices, rects_to_vertices};
 
 // ── WGSL shader ───────────────────────────────────────────────────────────────
 
@@ -45,6 +44,8 @@ pub struct GpuRenderResources {
     screen_uniform:  wgpu::Buffer,
     screen_bind:     wgpu::BindGroup,
     atlas_bind:      wgpu::BindGroup,
+    /// Kept so we can rebuild `atlas_bind` when the font changes.
+    atlas_bgl:       wgpu::BindGroupLayout,
     vertex_capacity: u64,
     vertex_count:    u32,
 }
@@ -57,7 +58,9 @@ impl GpuRenderResources {
         device:        &wgpu::Device,
         queue:         &wgpu::Queue,
         target_format: wgpu::TextureFormat,
-        atlas:         &GpuGlyphAtlas,
+        atlas_width:   u32,
+        atlas_height:  u32,
+        atlas_pixels:  &[u8],
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label:  Some("magma_shader"),
@@ -142,45 +145,7 @@ impl GpuRenderResources {
             cache:         None,
         });
 
-        // Atlas texture (placeholder: solid white; Sprint 10 fills with real glyphs)
-        let tex_size = wgpu::Extent3d {
-            width: atlas.atlas_width, height: atlas.atlas_height, depth_or_array_layers: 1,
-        };
-        let atlas_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label:           Some("magma_atlas"),
-            size:            tex_size,
-            mip_level_count: 1,
-            sample_count:    1,
-            dimension:       wgpu::TextureDimension::D2,
-            format:          wgpu::TextureFormat::Rgba8Unorm,
-            usage:           wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats:    &[],
-        });
-        queue.write_texture(
-            atlas_tex.as_image_copy(),
-            &atlas.generate_placeholder_pixels(),
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(atlas.atlas_width * 4),
-                rows_per_image: None,
-            },
-            tex_size,
-        );
-        let atlas_view = atlas_tex.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("magma_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let atlas_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label:   Some("magma_atlas_bg"),
-            layout:  &atlas_bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&atlas_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
-            ],
-        });
+        let atlas_bind = make_atlas_bind(device, queue, &atlas_bgl, atlas_width, atlas_height, atlas_pixels);
 
         // Screen uniform buffer
         let screen_uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -203,9 +168,22 @@ impl GpuRenderResources {
         });
 
         GpuRenderResources {
-            pipeline, vertex_buf, screen_uniform, screen_bind, atlas_bind,
+            pipeline, vertex_buf, screen_uniform, screen_bind,
+            atlas_bind, atlas_bgl,
             vertex_capacity: INITIAL_VERTS, vertex_count: 0,
         }
+    }
+
+    /// Re-upload the atlas texture (called when the font changes).
+    pub fn update_atlas(
+        &mut self,
+        device: &wgpu::Device,
+        queue:  &wgpu::Queue,
+        width:  u32,
+        height: u32,
+        pixels: &[u8],
+    ) {
+        self.atlas_bind = make_atlas_bind(device, queue, &self.atlas_bgl, width, height, pixels);
     }
 
     fn update_vertices(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, verts: &[[f32; 8]]) {
@@ -226,6 +204,53 @@ impl GpuRenderResources {
     }
 }
 
+/// Create (or recreate) the atlas texture and its bind group.
+fn make_atlas_bind(
+    device:  &wgpu::Device,
+    queue:   &wgpu::Queue,
+    bgl:     &wgpu::BindGroupLayout,
+    width:   u32,
+    height:  u32,
+    pixels:  &[u8],
+) -> wgpu::BindGroup {
+    let tex_size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
+    let tex = device.create_texture(&wgpu::TextureDescriptor {
+        label:           Some("magma_atlas"),
+        size:            tex_size,
+        mip_level_count: 1,
+        sample_count:    1,
+        dimension:       wgpu::TextureDimension::D2,
+        format:          wgpu::TextureFormat::Rgba8Unorm,
+        usage:           wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats:    &[],
+    });
+    queue.write_texture(
+        tex.as_image_copy(),
+        pixels,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: None,
+        },
+        tex_size,
+    );
+    let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label:      Some("magma_sampler"),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label:   Some("magma_atlas_bg"),
+        layout:  bgl,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+        ],
+    })
+}
+
 // ── PaintCallback ─────────────────────────────────────────────────────────────
 
 /// Submitted to egui's painter once per frame to batch all glyph and rect draws.
@@ -235,11 +260,13 @@ pub struct MagmaPaintCallback {
     pub char_w:        f32,
     pub line_h:        f32,
     pub target_format: wgpu::TextureFormat,
-    pub atlas:         Arc<GpuGlyphAtlas>,
+    pub atlas_width:   u32,
+    pub atlas_height:  u32,
+    /// `Some(pixels)` → re-upload atlas texture this frame; `None` → reuse.
+    pub atlas_pixels:  Option<Vec<u8>>,
 }
 
 impl MagmaPaintCallback {
-    /// Wrap this callback in an `eframe::epaint::PaintCallback` for use with egui's painter.
     pub fn into_paint_callback(self, rect: eframe::egui::Rect) -> eframe::epaint::PaintCallback {
         egui_wgpu::Callback::new_paint_callback(rect, self)
     }
@@ -254,10 +281,29 @@ impl egui_wgpu::CallbackTrait for MagmaPaintCallback {
         _egui_encoder:     &mut wgpu::CommandEncoder,
         resources:         &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        if resources.get::<GpuRenderResources>().is_none() {
-            let res = GpuRenderResources::create(device, queue, self.target_format, &self.atlas);
+        let first_frame = resources.get::<GpuRenderResources>().is_none();
+
+        if first_frame {
+            // Use provided pixels (rasterized) or fall back to placeholder.
+            let placeholder;
+            let pixels: &[u8] = match &self.atlas_pixels {
+                Some(p) => p,
+                None => {
+                    placeholder = vec![255u8; (self.atlas_width * self.atlas_height * 4) as usize];
+                    &placeholder
+                }
+            };
+            let res = GpuRenderResources::create(
+                device, queue, self.target_format,
+                self.atlas_width, self.atlas_height, pixels,
+            );
             resources.insert(res);
+        } else if let Some(pixels) = &self.atlas_pixels {
+            // Font changed — re-upload atlas texture.
+            let res = resources.get_mut::<GpuRenderResources>().unwrap();
+            res.update_atlas(device, queue, self.atlas_width, self.atlas_height, pixels);
         }
+
         let res = resources.get_mut::<GpuRenderResources>().unwrap();
 
         // Update screen uniform
@@ -268,8 +314,8 @@ impl egui_wgpu::CallbackTrait for MagmaPaintCallback {
             bytemuck::cast_slice(&[w as f32 / ppx, h as f32 / ppx, 0.0f32, 0.0f32]),
         );
 
-        // Rects first (background), then glyphs (foreground)
-        let mut verts = rects_to_vertices(&self.rects);
+        // Build vertex buffer: rects first (background), then glyphs (foreground).
+        let mut verts = rects_to_vertices(&self.rects, self.atlas_width, self.atlas_height);
         verts.extend(glyphs_to_vertices(&self.glyphs, self.char_w, self.line_h));
         res.update_vertices(device, queue, &verts);
 

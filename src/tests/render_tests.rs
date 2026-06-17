@@ -62,7 +62,7 @@ fn atlas_normalize_sums_to_one_for_full_cell() {
 #[test]
 fn atlas_placeholder_pixels_correct_size() {
     let atlas = GpuGlyphAtlas::new();
-    let pixels = atlas.generate_placeholder_pixels();
+    let pixels = atlas.generate_atlas_pixels();
     assert_eq!(pixels.len(), (atlas.atlas_width * atlas.atlas_height * 4) as usize);
     assert!(pixels.iter().all(|&b| b == 255), "placeholder should be all-white RGBA");
 }
@@ -178,8 +178,9 @@ fn rects_to_vertices_produces_6_verts_per_rect() {
     surface.set_cell(1, 0, ' ', Some(blue_bg_style()));
 
     let default_bg = [0.0f32, 0.0, 0.0, 1.0];
+    let atlas = GpuGlyphAtlas::new();
     let rects = build_rect_instances(&surface, 8.0, 16.0, 0.0, 0.0, default_bg, false);
-    let verts = rects_to_vertices(&rects);
+    let verts = rects_to_vertices(&rects, atlas.atlas_width, atlas.atlas_height);
     assert_eq!(verts.len(), rects.len() * 6);
 }
 

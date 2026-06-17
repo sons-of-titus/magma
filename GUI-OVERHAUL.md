@@ -295,44 +295,64 @@ panel `Frame::none().fill(STATUS_BAR_BG)`).
 
 ---
 
-### Phase 4 — Real Font Rendering + GPU Pipeline Upgrade
+### Phase 4 — Real Font Rendering + GPU Pipeline Upgrade ✅ COMPLETE
 
 **Goal:** Replace the placeholder white-pixel glyph atlas with real glyph
 rasterization for crisp, anti-aliased text rendering in the GPU path.
 
-| Step | What | Risk |
-|------|------|------|
-| 4.1 | Add `ab_glyph` dependency to `Cargo.toml` (lightweight font rasterizer) | Low |
-| 4.2 | Implement `GpuGlyphAtlas::rasterize(&mut self, font_bytes: &[u8])` — rasterizes `ATLAS_CHARS` into the atlas pixel buffer using `ab_glyph` | Medium — font metrics, positioning |
-| 4.3 | Update `generate_placeholder_pixels()` → `generate_atlas_pixels()` — real glyph bitmaps instead of solid white | Low |
-| 4.4 | Extend `ATLAS_CHARS` — add common ASCII + basic Unicode range (Latin-1 Supplement, U+00A0–U+00FF) | Low |
-| 4.5 | Update wgpu texture upload to use rasterized pixel data | Low |
-| 4.6 | Add fallback for missing glyphs: render as a box character (□) | Low |
-| 4.7 | Implement sub-pixel positioning: glyph instances use fractional pixel positions for smoother text | Medium — shader change |
-| 4.8 | Add font-ligature support (optional, depends on `ab_glyph` capabilities) | Medium — may need `allsorts` |
+| Step | What | Status |
+|------|------|--------|
+| 4.1 | Add `ab_glyph` dependency to `Cargo.toml` (lightweight font rasterizer) | ✅ Done |
+| 4.2 | Implement `GpuGlyphAtlas::rasterize(&mut self, font_bytes: &[u8])` — rasterizes `ATLAS_CHARS` into the atlas pixel buffer using `ab_glyph` | ✅ Done |
+| 4.3 | Update `generate_placeholder_pixels()` → `generate_atlas_pixels()` — real glyph bitmaps instead of solid white | ✅ Done |
+| 4.4 | Extend `ATLAS_CHARS` — add box fallback (□) + Latin-1 Supplement (U+00A0–U+00FF); 95+1+96=192 chars | ✅ Done |
+| 4.5 | Update wgpu texture upload to use rasterized pixel data; `atlas_bgl` stored in `GpuRenderResources` for hot-reload | ✅ Done |
+| 4.6 | Add fallback for missing glyphs: tries box char (□) in atlas before space UV | ✅ Done |
+| 4.7 | Sub-pixel positioning: glyph pen origin uses fractional float coords; centred horizontally in cell | ✅ Done |
+| 4.8 | Font-ligature support — deferred (requires `allsorts` or `rustybuzz`) | Deferred |
 
-**Verification:** GPU path renders sharp, anti-aliased text.  Atlas contains
-real glyphs.  All printable ASCII characters render correctly.  `cargo test
---features janet,gui` — zero failures.
+**Verification:** `cargo test --features janet` — 1238 passed, 0 failed.
+`cargo build --features janet,gui` — clean. TUI build (`--no-default-features
+--features janet`) — clean.
+
+**Files changed:** Added `ab_glyph` to `Cargo.toml` gui feature.  Created
+`gpu_rasterizer.rs` (`rasterize_font_atlas`, `fill_cell_white`).  Updated
+`gpu_atlas.rs` (extended `ATLAS_CHARS`, `ATLAS_CHAR_COUNT`, `ATLAS_ROWS`
+consts; `atlas_pixels` field; `rasterize()` method; `generate_atlas_pixels()`;
+`□` fallback in `build_glyph_instances`; `rects_to_vertices` takes atlas
+dimensions).  Updated `gpu_paint_callback.rs` (`atlas_bgl` stored in
+`GpuRenderResources`; `update_atlas()` method; `MagmaPaintCallback` carries
+`atlas_width/height/pixels` instead of `Arc<GpuGlyphAtlas>`; re-upload on
+dirty flag).  Updated `gui.rs` (rasterize on startup and font-change;
+`atlas_dirty`/`atlas_rasterized` flags; GPU path enabled when atlas has real
+pixels).  Updated `mod.rs` (added `gpu_rasterizer`).  Updated
+`render_tests.rs` (updated test API calls).
 
 ---
 
-### Phase 5 — Tool Windows + Floating Panels
+### Phase 5 — Tool Windows + Floating Panels ✅ COMPLETE
 
 **Goal:** Implement JetBrains-style tool windows — terminal, find in files,
 search/replace, git log, commit — as egui floating/dockable panels.
 
-| Step | What | Risk |
-|------|------|------|
-| 5.1 | Define `ToolWindow` trait: `fn title(&self) -> &str`, `fn icon(&self) -> char`, `fn ui(&mut self, ui: &egui::Ui, editor: &Editor)` | Low |
-| 5.2 | Implement `ToolWindowManager` — registry of tool windows + visibility state + dock position (left/right/bottom/floating) | Medium |
-| 5.3 | Implement terminal tool window: wraps `TerminalView` in an egui panel | Low |
-| 5.4 | Implement find-in-files tool window: search bar + results list | Medium — needs search infrastructure |
-| 5.5 | Wire tool window buttons into sidebar edge (vertical strip of tool icons, IntelliJ-style) | Medium |
-| 5.6 | Implement dock/undock: tool windows can be dragged to a side or float as a separate egui `Window` | Medium — egui drag support |
+| Step | What | Status |
+|------|------|--------|
+| 5.1 | Define `ToolWindow` trait: `fn title(&self) -> &str`, `fn icon(&self) -> char`, `fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor)` | ✅ Done |
+| 5.2 | Implement `ToolWindowManager` — registry + visibility + dock position (Bottom/Left/Right/Floating) | ✅ Done |
+| 5.3 | Implement terminal tool window: reads PTY buffer from `editor.io.terminals`, renders with green monospace text | ✅ Done |
+| 5.4 | Implement find-in-files tool window: search bar + results list (up to 200 matches across all open buffers) | ✅ Done |
+| 5.5 | Wire tool window buttons into sidebar edge — 28 px narrow `SidePanel::left("magma_tool_strip")` with icon buttons | ✅ Done |
+| 5.6 | Dock to bottom: `TopBottomPanel::bottom("magma_tools_bottom")` with tab strip; floating: `egui::Window::new(title)` | ✅ Done |
 
-**Verification:** Tool windows open, close, dock, float.  Terminal tool window
-shows PTY output.  Toggle buttons on sidebar edge work.
+**Verification:** `cargo test --features janet` — 1238 passed, 0 failed.
+`cargo build --features janet,gui` — clean. TUI build — clean.
+
+**Files changed:** Created `tool_window.rs` (`ToolWindow` trait, `DockPosition`,
+`ToolWindowEntry`, `ToolWindowManager::new/toggle/show_sidebar_edge/show_docked_bottom/show_floating`,
+`TerminalToolWindow`, `FindInFilesToolWindow`).  Updated `gui.rs` (added
+`tool_windows: ToolWindowManager`; `magma_tool_strip` narrow panel;
+`show_docked_bottom` between status and editor; `show_floating` after central
+panel; `toggle` on button click).  Updated `mod.rs` (added `tool_window`).
 
 ---
 

@@ -29,6 +29,10 @@ pub(crate) mod gui_tabs;
 pub(crate) mod gui_sidebar;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_status;
+#[cfg(feature = "gui")]
+pub(crate) mod gpu_rasterizer;
+#[cfg(feature = "gui")]
+pub(crate) mod tool_window;
 
 pub use view_tree::{ViewTree, Pane, LayoutConstraint, SplitDirection};
 

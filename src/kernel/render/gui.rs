@@ -19,43 +19,56 @@ use super::gui_render::present;
 use super::gui_sidebar::{ProjectTree, SidebarState};
 use super::gui_status::{StatusBar, STATUS_BAR_BG};
 use super::gui_tabs::{TabAction, TabBar};
+use super::tool_window::ToolWindowManager;
 
 pub struct GuiApp {
-    editor: Arc<RwLock<Editor>>,
-    font_size: f32,
-    layout: GuiLayout,
-    sidebar_state: SidebarState,
-    bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
-    atlas: GpuGlyphAtlas,
-    gpu_path_ready: bool,
-    target_format: Option<eframe::wgpu::TextureFormat>,
+    editor:          Arc<RwLock<Editor>>,
+    font_size:       f32,
+    layout:          GuiLayout,
+    sidebar_state:   SidebarState,
+    bg_receiver:     mpsc::UnboundedReceiver<BackgroundEvent>,
+    atlas:           GpuGlyphAtlas,
+    /// True once the atlas has been rasterized with real font data.
+    atlas_rasterized: bool,
+    /// True when `atlas_pixels` must be re-uploaded to the GPU this frame.
+    atlas_dirty:     bool,
+    target_format:   Option<eframe::wgpu::TextureFormat>,
+    tool_windows:    ToolWindowManager,
 }
 
 impl GuiApp {
     pub fn new(editor: Arc<RwLock<Editor>>) -> Self {
         let (_tx, rx) = mpsc::unbounded_channel();
-        Self {
-            editor,
-            font_size: 15.0,
-            layout: GuiLayout::default(),
-            sidebar_state: SidebarState::default(),
-            bg_receiver: rx,
-            atlas: GpuGlyphAtlas::new(),
-            gpu_path_ready: false,
-            target_format: None,
-        }
+        Self::init(editor, rx)
     }
 
     pub fn new_with_bg(editor: Arc<RwLock<Editor>>, bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>) -> Self {
+        Self::init(editor, bg_receiver)
+    }
+
+    fn init(editor: Arc<RwLock<Editor>>, bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>) -> Self {
+        let (font_size, font_bytes) = {
+            let ed = editor.read().unwrap_or_else(|e| e.into_inner());
+            (ed.font_config.size, ed.font_config.loaded_fonts.values().next().cloned())
+        };
+        let mut atlas = GpuGlyphAtlas::new();
+        let atlas_rasterized = if let Some(bytes) = font_bytes {
+            atlas.rasterize(&bytes, font_size);
+            true
+        } else {
+            false
+        };
         Self {
             editor,
-            font_size: 15.0,
+            font_size,
             layout: GuiLayout::default(),
             sidebar_state: SidebarState::default(),
             bg_receiver,
-            atlas: GpuGlyphAtlas::new(),
-            gpu_path_ready: false,
+            atlas,
+            atlas_rasterized,
+            atlas_dirty: true,
             target_format: None,
+            tool_windows: ToolWindowManager::new(),
         }
     }
 }
@@ -80,8 +93,12 @@ impl eframe::App for GuiApp {
                 (changed, ed.font_config.clone())
             };
             if needs_rebuild {
-                self.atlas.mark_dirty();
                 apply_fonts_to_egui(ctx, &font_config);
+                if let Some(bytes) = font_config.loaded_fonts.values().next() {
+                    self.atlas.rasterize(bytes, self.font_size);
+                    self.atlas_rasterized = true;
+                    self.atlas_dirty = true;
+                }
             }
         }
 
@@ -97,12 +114,8 @@ impl eframe::App for GuiApp {
         {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             for key in &key_events {
-                if key == "ctrl-q" { ed.running = false; break; }
-                // ctrl-\ toggles the sidebar without going through Janet
-                if key == "ctrl-\\" {
-                    self.layout.sidebar_open = !self.layout.sidebar_open;
-                    continue;
-                }
+                if key == "ctrl-q"  { ed.running = false; break; }
+                if key == "ctrl-\\" { self.layout.sidebar_open = !self.layout.sidebar_open; continue; }
                 input::dispatch_key(&mut ed, key);
             }
         }
@@ -133,14 +146,14 @@ impl eframe::App for GuiApp {
         };
 
         // ── Panel layout ──────────────────────────────────────────────────
-        let ea = Arc::clone(&self.editor);
-        let sidebar_open = self.layout.sidebar_open;
-        let sidebar_width = self.layout.sidebar_width;
-        let status_h = line_h + 8.0;
-        let mut tab_action: Option<TabAction> = None;
-        let mut sidebar_file: Option<String> = None;
+        let ea             = Arc::clone(&self.editor);
+        let sidebar_open   = self.layout.sidebar_open;
+        let sidebar_width  = self.layout.sidebar_width;
+        let status_h       = line_h + 8.0;
+        let mut tab_action:   Option<TabAction> = None;
+        let mut sidebar_file: Option<String>    = None;
 
-        // Status bar — declared before central panel
+        // Status bar — outermost bottom panel.
         egui::TopBottomPanel::bottom("magma_status")
             .exact_height(status_h)
             .frame(egui::Frame::none().fill(STATUS_BAR_BG).inner_margin(egui::Margin::symmetric(6.0, 0.0)))
@@ -149,7 +162,13 @@ impl eframe::App for GuiApp {
                 StatusBar::show(ui, &ed);
             });
 
-        // Tab bar — declared before central panel
+        // Docked-bottom tool windows — inside the status bar, outside the editor.
+        {
+            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+            self.tool_windows.show_docked_bottom(ctx, &ed);
+        }
+
+        // Tab bar — top panel.
         egui::TopBottomPanel::top("magma_tabs")
             .show(ctx, |ui| {
                 let ed = ea.read().unwrap_or_else(|e| e.into_inner());
@@ -158,7 +177,21 @@ impl eframe::App for GuiApp {
                 }
             });
 
-        // Sidebar — declared before central panel
+        // Tool window icon strip — outermost left strip (28 px wide).
+        let mut toggled_tool: Option<usize> = None;
+        egui::SidePanel::left("magma_tool_strip")
+            .exact_width(28.0)
+            .resizable(false)
+            .frame(egui::Frame::none().fill(egui::Color32::from_rgb(17, 17, 27))
+                .inner_margin(egui::Margin::same(0.0)))
+            .show(ctx, |ui| {
+                toggled_tool = self.tool_windows.show_sidebar_edge(ui);
+            });
+        if let Some(idx) = toggled_tool {
+            self.tool_windows.toggle(idx);
+        }
+
+        // Project tree sidebar.
         if sidebar_open {
             egui::SidePanel::left("magma_sidebar")
                 .default_width(sidebar_width)
@@ -169,13 +202,13 @@ impl eframe::App for GuiApp {
                 });
         }
 
-        // Apply tab action before rendering the central editor pane
+        // Apply tab action before rendering the central editor pane.
         if let Some(action) = tab_action.take() {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             action.apply(&mut ed);
         }
 
-        // Open file requested by sidebar double-click
+        // Open file requested by sidebar double-click.
         if let Some(path) = sidebar_file {
             use crate::kernel::command::{execute_command, args::ArgValue};
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
@@ -185,15 +218,22 @@ impl eframe::App for GuiApp {
         }
 
         // ── Central panel: surface-based editor ───────────────────────────
-        let gpu_ready = self.gpu_path_ready;
+        let use_gpu = self.target_format.is_some() && self.atlas_rasterized;
         let target_fmt = self.target_format;
-        let atlas_ref = &self.atlas;
+
+        // Drain the dirty flag exactly once per frame.
+        let atlas_pixels_upload = if self.atlas_dirty {
+            self.atlas_dirty = false;
+            Some(self.atlas.generate_atlas_pixels().to_vec())
+        } else {
+            None
+        };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(bg_color))
             .show(ctx, |ui| {
                 let full = ui.available_rect_before_wrap();
-                let visible_cols = ((full.width() / char_w).floor() as usize).max(1);
+                let visible_cols = ((full.width()  / char_w).floor() as usize).max(1);
                 let visible_rows = ((full.height() / line_h).floor() as usize).max(1);
                 let mut surface = Surface::new(visible_cols as u16, visible_rows as u16);
                 {
@@ -201,9 +241,7 @@ impl eframe::App for GuiApp {
                     render_frame(&ed, &mut surface, true);
                 }
 
-                if gpu_ready
-                    && let Some(fmt) = target_fmt
-                {
+                if use_gpu && let Some(fmt) = target_fmt {
                     let bg = [
                         bg_color.r() as f32 / 255.0,
                         bg_color.g() as f32 / 255.0,
@@ -211,7 +249,7 @@ impl eframe::App for GuiApp {
                         1.0,
                     ];
                     let glyphs = build_glyph_instances(
-                        &surface, atlas_ref, char_w, line_h,
+                        &surface, &self.atlas, char_w, line_h,
                         full.min.x, full.min.y, true,
                     );
                     let rects = build_rect_instances(
@@ -224,14 +262,21 @@ impl eframe::App for GuiApp {
                         char_w,
                         line_h,
                         target_format: fmt,
-                        atlas: Arc::new(GpuGlyphAtlas::new()),
+                        atlas_width:   self.atlas.atlas_width,
+                        atlas_height:  self.atlas.atlas_height,
+                        atlas_pixels:  atlas_pixels_upload,
                     };
-                    let painter = ui.painter_at(full);
-                    painter.add(callback.into_paint_callback(full));
+                    ui.painter_at(full).add(callback.into_paint_callback(full));
                 } else {
                     present(ui, &ea, &surface, full, char_w, line_h, 0);
                 }
             });
+
+        // Floating tool windows — rendered on top of everything.
+        {
+            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+            self.tool_windows.show_floating(ctx, &ed);
+        }
 
         ctx.request_repaint();
     }
@@ -270,7 +315,6 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
             if let Some(s) = special { return Some(s.to_string()); }
 
             if ctrl || alt {
-                // Handle punctuation keys that aren't in key_char's A-Z/0-9 map.
                 if *key == Key::Backslash {
                     let prefix = if ctrl { "ctrl" } else { "meta" };
                     return Some(format!("{}-\\", prefix));
@@ -282,9 +326,7 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
 
             if !ctrl && !alt
                 && let Some(c) = key_char(*key) {
-                    if shift && !c.is_ascii_alphabetic() {
-                        return None;
-                    }
+                    if shift && !c.is_ascii_alphabetic() { return None; }
                     let out = if shift { c.to_uppercase().next().unwrap_or(c) } else { c };
                     return Some(out.to_string());
                 }

@@ -2084,6 +2084,7 @@ dependencies = [
 name = "magma"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "anyhow",
  "arboard",
  "bytemuck",

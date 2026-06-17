@@ -27,7 +27,7 @@ pub mod events {
     pub const FINDER_RESULTS: &str = "finder-results";
     pub const FONT_CHANGED: &str = "font-changed";
     pub const GUTTER_CLICKED: &str = "gutter-clicked";
-    pub const GUTTER_SIGN_CHANGED: &str = "gutter-sign-changed";
+    pub const GUTTER_PROVIDER_UPDATED: &str = "gutter-provider-updated";
     pub const HELP_SHOWN: &str = "help-shown";
     pub const HTTP_ERROR: &str = "http-error";
     pub const HTTP_RESPONSE: &str = "http-response";

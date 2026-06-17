@@ -1,12 +1,15 @@
 //! EditorView — renders a buffer's text, gutter, cursor, and decorations.
 
+use std::collections::HashMap;
+
 use crate::kernel::state::id::WindowId;
 use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{View, ViewKind, RenderCtx};
-use crate::kernel::render::frame::{cell_width, compute_scroll_state_raw, int_option, bool_option};
+use crate::kernel::render::frame::{cell_width, compute_scroll_state_raw, int_option};
 use crate::kernel::render::decorations::{prefix_margin_width, render_decorations};
 use crate::kernel::render::highlight_pass::apply_highlights;
 use crate::kernel::render::status_and_popup::render_insert_completion_popup;
+use crate::kernel::render::gutter::{GutterCtx, GutterRegistry};
 
 pub struct EditorView {
     pub buf_id: usize,
@@ -52,23 +55,10 @@ impl View for EditorView {
         let prefix_margin = prefix_margin_width(editor, buf_id);
         let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
 
-        let show_number = bool_option(editor, "number");
-        let show_rel = bool_option(editor, "relativenumber");
-        let use_col_gutter = !editor.gutter.columns.is_empty();
-        let ln_col_width = (buf.line_count().max(1).ilog10() as usize + 1).max(2) + 1;
-        let gutter_width = prefix_cols + if use_col_gutter {
-            editor.gutter.columns.iter()
-                .filter(|c| c.visible)
-                .map(|c| if c.width == 0 { ln_col_width } else { c.width })
-                .sum::<usize>()
-        } else if show_number || show_rel {
-            ln_col_width
-        } else {
-            0
-        };
+        let total_lines = buf.line_count();
+        let gutter_width = prefix_cols + editor.gutter.total_width(total_lines);
         let content_x = area.x + gutter_width as u16;
 
-        let total_lines = buf.line_count();
         let text = buf.slice(0, buf.len());
         let scrolloff = int_option(editor, "scrolloff", 0);
 
@@ -95,7 +85,8 @@ impl View for EditorView {
             }
         }
 
-        let mut diag_lines: std::collections::HashMap<usize, char> = std::collections::HashMap::new();
+        // Pre-compute diagnostic severity per line from buf.diagnostics strings.
+        let mut diag_lines: HashMap<usize, char> = HashMap::new();
         for d in &buf.diagnostics {
             if let Some(rest) = d.strip_prefix('[') {
                 let sev = rest.chars().next().unwrap_or('?');
@@ -107,10 +98,12 @@ impl View for EditorView {
             }
         }
 
-        // ── Pass 1: line numbers + text (fold-aware) ──────────────────────
+        let buf_path_owned: Option<String> = buf.path.clone();
+
+        // ── Pass 1: gutter + text (fold-aware) ───────────────────────────────
         let empty_folds = Vec::new();
         let folds = view.map(|v| &v.folds).unwrap_or(&empty_folds);
-        let fold_map: std::collections::HashMap<usize, usize> =
+        let fold_map: HashMap<usize, usize> =
             folds.iter().map(|(s, e)| (*s, *e)).collect();
         let mut display_row = 0usize;
         let mut abs_line = scroll_top;
@@ -120,9 +113,9 @@ impl View for EditorView {
             let mut line_text = &text[line_start..line_end];
             let surf_row = row_offset + display_row as u16;
 
-            let is_folded = fold_map.contains_key(&line_start);
+            let is_fold_start = fold_map.contains_key(&line_start);
             let fold_str;
-            if is_folded {
+            if is_fold_start {
                 let fold_end = fold_map[&line_start];
                 fold_str = format!("--- {} lines folded ---",
                     text[line_start..fold_end].chars().filter(|&c| c == '\n').count());
@@ -131,88 +124,31 @@ impl View for EditorView {
                     .chars().filter(|&c| c == '\n').count().max(1);
             }
 
-            if use_col_gutter {
+            // ── Render gutter providers ───────────────────────────────────
+            if !editor.gutter.providers.is_empty() {
+                let gutter_ctx = GutterCtx {
+                    editor,
+                    buf_id,
+                    buf_path: buf_path_owned.as_deref(),
+                    cursor_line,
+                    line_count: total_lines,
+                    line_start_offset: line_start,
+                    is_fold_start,
+                    diag_lines: &diag_lines,
+                };
+                let gutter_bg = style_theme("line-num", "line-num-bg");
                 let mut col_x = area.x + prefix_cols as u16;
-                for col in editor.gutter.columns.iter().filter(|c| c.visible) {
-                    let col_w = if col.width == 0 { ln_col_width } else { col.width };
-                    let col_bg_style = editor.resolve_face_style(&col.face)
-                        .unwrap_or_else(|| style_theme("line-num", "line-num-bg"));
+                for provider in &editor.gutter.providers {
+                    let col_w = GutterRegistry::provider_width(provider.as_ref(), total_lines);
+                    // Fill background.
                     for dx in 0..col_w as u16 {
-                        surface.set_cell(col_x + dx, surf_row, ' ', Some(col_bg_style));
+                        surface.set_cell(col_x + dx, surf_row, ' ', Some(gutter_bg));
                     }
-                    match col.name.as_str() {
-                        ":line-numbers" => {
-                            let display_num = if show_rel && abs_line != cursor_line {
-                                abs_line.abs_diff(cursor_line)
-                            } else { abs_line + 1 };
-                            let num_style = if abs_line == cursor_line {
-                                style_theme("line-num-current", "line-num-bg")
-                            } else {
-                                style_theme("line-num", "line-num-bg")
-                            };
-                            surface.set_text(col_x, surf_row,
-                                &format!("{:>width$} ", display_num, width = col_w.saturating_sub(1)),
-                                Some(num_style));
-                        }
-                        ":folding" => {
-                            let icon = if fold_map.contains_key(&line_start) {
-                                &editor.gutter.fold_icons.closed
-                            } else { " " };
-                            let fold_style = editor.resolve_face_style(&editor.gutter.fold_icons.face)
-                                .unwrap_or(col_bg_style);
-                            surface.set_text(col_x, surf_row, icon, Some(fold_style));
-                        }
-                        col_name => {
-                            let key = (col_name.to_string(), buf_id);
-                            if let Some(line_map) = editor.gutter.column_signs.get(&key)
-                                && let Some(signs) = line_map.get(&abs_line)
-                                && let Some(top) = signs.iter().max_by_key(|s| s.priority)
-                            {
-                                let s = editor.resolve_face_style(&top.face).unwrap_or(col_bg_style);
-                                surface.set_text(col_x, surf_row, &top.text, Some(s));
-                            }
-                        }
+                    // Render provider cell.
+                    if let Some(cell) = provider.render(abs_line, &gutter_ctx) {
+                        surface.set_text(col_x, surf_row, &cell.text, Some(cell.style));
                     }
                     col_x += col_w as u16;
-                }
-            } else if gutter_width > 0 {
-                let display_num = if show_rel && abs_line != cursor_line {
-                    abs_line.abs_diff(cursor_line)
-                } else { abs_line + 1 };
-                let num_style = if abs_line == cursor_line {
-                    style_theme("line-num-current", "line-num-bg")
-                } else {
-                    style_theme("line-num", "line-num-bg")
-                };
-                let num_start = area.x + prefix_cols as u16;
-                let num_chars = gutter_width - prefix_cols;
-                surface.set_text(num_start, surf_row,
-                    &format!("{:>width$} ", display_num, width = num_chars.saturating_sub(1)),
-                    Some(num_style));
-
-                let sign_col = area.x + (gutter_width - 1) as u16;
-                let sign_drawn = if let Some(line_signs) = editor.gutter.signs
-                    .get(&buf_id).and_then(|lm| lm.get(&abs_line))
-                {
-                    if let Some(top) = line_signs.iter().max_by_key(|s| s.priority) {
-                        let s = editor.resolve_face_style(&top.face)
-                            .unwrap_or_else(|| Style {
-                                fg: editor.theme_color("fg"), bg: (bg_r, bg_g, bg_b), ..Default::default()
-                            });
-                        surface.set_text(sign_col, surf_row, &top.text, Some(s));
-                        true
-                    } else { false }
-                } else { false };
-
-                if !sign_drawn {
-                    if let Some(sev) = diag_lines.get(&abs_line) {
-                        let dstyle = if *sev == 'E' {
-                            Style { fg: editor.theme_color("diag-error"), bg: (bg_r, bg_g, bg_b), bold: true, ..Default::default() }
-                        } else {
-                            Style { fg: editor.theme_color("diag-warn"), bg: (bg_r, bg_g, bg_b), bold: true, ..Default::default() }
-                        };
-                        surface.set_cell(sign_col, surf_row, *sev, Some(dstyle));
-                    }
                 }
             }
 
@@ -221,14 +157,14 @@ impl View for EditorView {
                 surface.set_cell(content_x + i as u16, surf_row, ch, None);
             }
             display_row += 1;
-            if !is_folded { abs_line += 1; }
+            if !is_fold_start { abs_line += 1; }
         }
 
-        // ── Pass 2: highlights + visual selection ──────────────────────────
+        // ── Pass 2: highlights + visual selection ─────────────────────────
         apply_highlights(editor, &*buf, view, surface, &text, scroll_top, max_visible,
                          content_x, row_offset, cursor_offset);
 
-        // ── Column ruler ───────────────────────────────────────────────────
+        // ── Column ruler ──────────────────────────────────────────────────
         let col_col = int_option(editor, "colorcolumn", 0);
         if col_col > 0 {
             let ruler_x = col_col as u16 + content_x;
@@ -243,11 +179,11 @@ impl View for EditorView {
             }
         }
 
-        // ── Decorations ────────────────────────────────────────────────────
+        // ── Decorations ───────────────────────────────────────────────────
         render_decorations(editor, buf_id, &*buf, surface,
             scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset);
 
-        // ── Cursor + multi-cursor + completion popup (focused pane only) ───
+        // ── Cursor + multi-cursor + completion popup (focused pane only) ──
         if is_focused {
             if cursor_vis_row < visible_lines
                 && cursor_col < area.width.saturating_sub(gutter_width as u16) as usize

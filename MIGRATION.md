@@ -362,17 +362,35 @@ stepping, watches, evaluation, timeline debugging.
 
 ---
 
-### Phase 7 — Gutter Provider Architecture
+### Phase 7 — Gutter Provider Architecture ✅ COMPLETE
 
 **Goal:** Replace the fixed gutter with a provider system where any subsystem
 can contribute a gutter column.
 
-| Step | What |
-|------|------|
-| 7.1 | Define `GutterProvider` trait: `fn render(&self, line: usize, ctx: &GutterCtx) -> Cell`, `fn width(&self) -> usize`, `fn update(&mut self, buffer: &Buffer)` |
-| 7.2 | Implement providers: `LineNumbers`, `GitSigns` (from VC), `Diagnostics` (from Semantic Engine), `Breakpoints` (from Debug System), `Coverage` (future) |
-| 7.3 | Replace `GutterState` with a provider registry — ordered list of active providers per buffer view |
-| 7.4 | Add Janet API: `(gutter/add-provider name provider-fn)`, `(gutter/remove-provider name)` |
+| Step | What | Status |
+|------|------|--------|
+| 7.1 | Define `GutterProvider` trait: `fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell>`, `fn width(&self) -> usize`, `fn update(&mut self, buf_id: usize, buffer: &Buffer)` | ✅ |
+| 7.2 | Implement providers: `LineNumbers`, `Folding`, `GitSigns` (from VC), `Diagnostics` (from Semantic Engine), `Breakpoints` (from Debug System), `Coverage` (future placeholder) | ✅ |
+| 7.3 | Replace `GutterState` with `GutterRegistry` — ordered `Vec<Box<dyn GutterProvider>>` + `sign_cache` + `fold_icons` + `line_number_fn` | ✅ |
+| 7.4 | Add Janet API: `(gutter/add-provider name &opt provider-fn)`, `(gutter/remove-provider name)`, `(gutter/provider-update name buf-id cells)`, `(gutter/provider-list)` | ✅ |
+
+**Completion notes (2026-06-17):**
+- `kernel/render/gutter.rs` — `GutterProvider: Send + Sync` trait, `GutterCtx<'a>`, `GutterCell`, `FoldIcons`, `GutterRegistry`
+- `kernel/render/gutter_providers.rs` — `LineNumbers` (dynamic width), `Folding`, `GitSigns` (cache-backed), `Diagnostics` (reads `ctx.diag_lines`), `Breakpoints` (live from `ed.debug.breakpoints`), `Coverage` (placeholder), `JanetProvider` (cache-backed)
+- `kernel/state/gutter.rs` — deleted `GutterState`, `GutterColumn`, `GutterSign`; now re-exports `GutterRegistry`, `FoldIcons`, `GutterCell` from `kernel/render/gutter`
+- `editor.gutter: GutterState` → `editor.gutter: GutterRegistry`
+- `kernel/render/editor_view.rs` — gutter rendering loop iterates `editor.gutter.providers`; `GutterCtx` pre-computes `diag_lines`, `buf_path`, `is_fold_start`, `line_start_offset`
+- `kernel/input/mouse.rs` — click detection iterates providers using `GutterRegistry::provider_width`
+- `kernel/scripting/gutter_api.rs` — replaced 11 old functions with 6 new: `gutter/add-provider`, `gutter/remove-provider`, `gutter/provider-update`, `gutter/provider-list`, `gutter/set-fold-icons`, `gutter/set-line-number-format`
+- `kernel/scripting/debug_api.rs` — removed direct `ed.gutter.column_signs` manipulation; `Breakpoints` provider reads live from `ed.debug.breakpoints`
+- `kernel/event/keys.rs` — `GUTTER_SIGN_CHANGED` → `GUTTER_PROVIDER_UPDATED`
+- `kernel/event/payload.rs` — `GutterSignChangedPayload` → `GutterProviderUpdatedPayload { provider, buffer }`
+- `builtins/gutter.janet` — replaced `gutter/define-column` calls with `gutter/add-provider` calls for all 5 built-in providers
+- `builtins/plugins/vcs_gutter.janet` — rewritten to use `gutter/provider-update ":git-signs" buf cells`
+- `builtins/plugins/breakpoints.janet` — simplified: delegates to `debug/add-breakpoint`; gutter column auto-handled by `Breakpoints` provider
+- `src/tests/gutter_api_tests.rs` + `gutter_api_janet_tests.rs` deleted; replaced by `gutter_provider_tests.rs` (24 tests) + `gutter_provider_janet_tests.rs` (13 tests)
+- Old gutter sign tests removed from `ui_customization_tests.rs` and `ui_customization_janet_tests.rs`
+- `cargo test --features janet -- --test-threads=1`: 1034 passed, 0 failed
 
 ---
 

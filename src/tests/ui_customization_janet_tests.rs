@@ -107,49 +107,6 @@ fn overlay_list_returns_all_overlays() {
     });
 }
 
-// ── gutter signs ─────────────────────────────────────────────────────────
-
-#[test]
-fn gutter_sign_set_stores_sign_for_line() {
-    janet_test!(ed, {
-        let key = ed.create_buffer("test");
-        let expr = format!(r#"(gutter/sign-set ":diagnostics" {key} 3 "E" "error-face" 10)"#);
-        scripting::eval(&expr);
-        let col_key = (":diagnostics".to_string(), key);
-        let signs = ed.gutter.column_signs.get(&col_key).unwrap().get(&3).unwrap();
-        assert_eq!(signs.len(), 1);
-        assert_eq!(signs[0].text, "E");
-        assert_eq!(signs[0].priority, 10);
-    });
-}
-
-#[test]
-fn gutter_sign_clear_removes_all_signs_for_buffer() {
-    janet_test!(ed, {
-        let key = ed.create_buffer("test");
-        let set_expr = format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "W" "warning-face")"#);
-        let clr_expr = format!(r#"(gutter/sign-clear ":diagnostics" {key})"#);
-        scripting::eval(&set_expr);
-        scripting::eval(&clr_expr);
-        let col_key = (":diagnostics".to_string(), key);
-        assert!(!ed.gutter.column_signs.contains_key(&col_key));
-    });
-}
-
-#[test]
-fn gutter_sign_clear_line_removes_signs_on_one_line() {
-    janet_test!(ed, {
-        let key = ed.create_buffer("test");
-        scripting::eval(&format!(r#"(gutter/sign-set ":diagnostics" {key} 0 "E" "error-face")"#));
-        scripting::eval(&format!(r#"(gutter/sign-set ":diagnostics" {key} 1 "W" "warning-face")"#));
-        scripting::eval(&format!(r#"(gutter/sign-clear-line ":diagnostics" {key} 0)"#));
-        let col_key = (":diagnostics".to_string(), key);
-        let line_map = ed.gutter.column_signs.get(&col_key).unwrap();
-        assert!(!line_map.contains_key(&0));
-        assert!(line_map.contains_key(&1));
-    });
-}
-
 // ── buffer header line ────────────────────────────────────────────────────
 
 #[test]

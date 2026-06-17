@@ -691,51 +691,41 @@ Change the current working directory. Signals an error if inaccessible.
 
 ---
 
-## gutter/ — Named-Column Gutter
+## gutter/ — Gutter Provider Architecture (Phase 7)
 
-### `(gutter/define-column name width &opt face)` → nil
+Built-in providers registered by `builtins/gutter.janet`:
 
-Register or update a named gutter column. `width` 0 means dynamic (sized to line count).
+| Provider | Width | Data source |
+|----------|-------|-------------|
+| `:breakpoints` | 2 | `ed.debug.breakpoints` (live) |
+| `:git-signs` | 1 | `sign_cache` (populated by `gutter/provider-update`) |
+| `:diagnostics` | 1 | `buf.diagnostics` strings (pre-computed per frame) |
+| `:line-numbers` | dynamic | computed from line count |
+| `:folding` | 1 | `view.folds` (per-frame) |
 
-### `(gutter/show-column name)` → nil
+### `(gutter/add-provider name &opt provider-fn)` → nil
 
-Make the named gutter column visible.
+Register a named gutter provider. If a provider with `name` already exists it is replaced. `provider-fn` is stored for documentation purposes; data is pushed via `gutter/provider-update`. Built-in providers (`:line-numbers`, `:diagnostics`, etc.) are implemented in Rust and automatically dispatch to their respective data sources.
 
-### `(gutter/hide-column name)` → nil
+### `(gutter/remove-provider name)` → nil
 
-Hide the named gutter column.
+Remove the provider named `name`. No-op if it does not exist.
 
-### `(gutter/set-column-face name face)` → nil
+### `(gutter/provider-update name buf-id cells)` → nil
 
-Update the background face for the named column.
+Push pre-computed cells into the named provider's sign cache for `buf-id`. `cells` is an array of `{:line N :text "T" :face "F"}` tables. Replaces all existing cells for `(name, buf-id)`. Emits `gutter-provider-updated`.
 
-### `(gutter/column-list)` → `[{:name "…" :width n :visible bool :face "…"} …]`
+### `(gutter/provider-list)` → `[{:name "…" :width n} …]`
 
-Return all registered gutter columns in render order.
+Return all registered providers in render order.
 
-### `(gutter/sign-set col buf line text face &opt priority)` → nil
+### `(gutter/set-fold-icons open closed face)` → nil
 
-Register a sign in column `col` for buffer `buf` at line `line` (0-based). Emits `gutter-sign-changed`.
-
-### `(gutter/sign-clear col buf)` → nil
-
-Remove all signs in column `col` for buffer `buf`.
-
-### `(gutter/sign-clear-line col buf line)` → nil
-
-Remove signs on one line in a column.
-
-### `(gutter/signs col buf)` → `[{:line n :text "…" :face "…" :priority n} …]`
-
-Return all signs in column `col` for buffer `buf`, sorted by line.
+Set the icons drawn by the `:folding` provider. `open` and `closed` are single-character strings; `face` is the face name for styling.
 
 ### `(gutter/set-line-number-format fn-name)` → nil
 
 Set a Janet command invoked per visible line to produce the line-number string. Pass nil to restore the built-in format.
-
-### `(gutter/set-fold-icons open closed face)` → nil
-
-Set the icons drawn by the `:folding` gutter column. `open` and `closed` are single-character strings; `face` is the face name for styling.
 
 ---
 
@@ -1232,11 +1222,11 @@ Step out of the current function frame.
 
 ### `(debug/add-breakpoint file line)` → nil
 
-Add a breakpoint at line `line` (1-based) of the source file at absolute path `file`.  Updates the `:breakpoints` gutter column for any buffer open on that file.  If an active session exists, sends a DAP `setBreakpoints` request.  Emits `debug-breakpoint-changed` with `:action "add"`.
+Add a breakpoint at line `line` (1-based) of the source file at absolute path `file`.  The `:breakpoints` GutterProvider reads live from `ed.debug.breakpoints` so the gutter updates automatically.  If an active session exists, sends a DAP `setBreakpoints` request.  Emits `debug-breakpoint-changed` with `:action "add"`.
 
 ### `(debug/remove-breakpoint file line)` → nil
 
-Remove the breakpoint at `(file, line)`.  Updates the gutter and notifies the active session.  Emits `debug-breakpoint-changed` with `:action "remove"`.
+Remove the breakpoint at `(file, line)`.  The `:breakpoints` provider updates automatically.  Notifies the active session.  Emits `debug-breakpoint-changed` with `:action "remove"`.
 
 ### `(debug/evaluate expr &opt frame-id)` → nil
 

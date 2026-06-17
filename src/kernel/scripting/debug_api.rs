@@ -22,7 +22,6 @@ use super::with_editor;
 use crate::kernel::debug::dap_client::{DapClient, dap_request};
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
-use crate::kernel::state::{GutterColumn, GutterSign};
 
 type SessionId = crate::kernel::debug::types::SessionId;
 
@@ -167,26 +166,8 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
         if file.is_empty() { return conv::nil(); }
         ed.debug.add_breakpoint(file.clone(), line);
-        // Wire into gutter: find any open buffer for this file.
-        let buf_key: Option<usize> = ed.buffers.iter()
-            .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(file.as_str()))
-            .map(|(k, _)| k);
-        if let Some(key) = buf_key {
-            if !ed.gutter.columns.iter().any(|c| c.name == ":breakpoints") {
-                ed.gutter.columns.push(GutterColumn {
-                    name: ":breakpoints".to_string(),
-                    width: 2,
-                    visible: true,
-                    face: "gutter-bg".to_string(),
-                });
-            }
-            ed.gutter.column_signs
-                .entry((":breakpoints".to_string(), key))
-                .or_default()
-                .entry(line)
-                .or_default()
-                .push(GutterSign { face: "gutter-breakpoint".to_string(), text: "● ".to_string(), priority: 100 });
-        }
+        // The :breakpoints GutterProvider reads live from ed.debug.breakpoints —
+        // no gutter state manipulation needed here.
         // Notify the active debug session.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
@@ -208,15 +189,8 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
         if file.is_empty() { return conv::nil(); }
         ed.debug.remove_breakpoint(&file, line);
-        // Remove gutter sign.
-        let buf_key: Option<usize> = ed.buffers.iter()
-            .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(file.as_str()))
-            .map(|(k, _)| k);
-        if let Some(key) = buf_key {
-            if let Some(lm) = ed.gutter.column_signs.get_mut(&(":breakpoints".to_string(), key)) {
-                lm.remove(&line);
-            }
-        }
+        // The :breakpoints GutterProvider reads live from ed.debug.breakpoints —
+        // no gutter state manipulation needed here.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
             send_dap_command(sid, "setBreakpoints", &args);

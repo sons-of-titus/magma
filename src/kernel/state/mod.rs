@@ -38,7 +38,7 @@ pub use crate::kernel::project::{
     Module, Dependency, DependencyKind, BuildKind, BuildTarget, Config,
 };
 pub use io::IoState;
-pub use gutter::{GutterSign, GutterColumn, FoldIcons, GutterState};
+pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
 pub use overlay::{Overlay, LayoutSnapshot};
 
 /// The single source of truth for all editor state.
@@ -107,7 +107,7 @@ pub struct Editor {
     pub completion: CompletionState,
     pub project_manager: ProjectManager,
     pub io: IoState,
-    pub gutter: GutterState,
+    pub gutter: GutterRegistry,
     pub semantic: SemanticEngine,
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
@@ -200,7 +200,7 @@ impl Editor {
             completion: CompletionState::default(),
             project_manager: ProjectManager::default(),
             io: IoState::default(),
-            gutter: GutterState::default(),
+            gutter: GutterRegistry::default(),
             semantic: SemanticEngine::new(),
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),

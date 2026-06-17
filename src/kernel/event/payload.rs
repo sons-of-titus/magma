@@ -50,7 +50,7 @@ event_payload!(FileLoadedPayload { path, content });
 event_payload!(FileSavedPayload { path });
 event_payload!(FinderResultsPayload { buffer_id, count, pattern });
 event_payload!(GutterClickedPayload { column, line, buf });
-event_payload!(GutterSignChangedPayload { column, buffer, line });
+event_payload!(GutterProviderUpdatedPayload { provider, buffer });
 event_payload!(HelpShownPayload { buffer_id });
 event_payload!(HttpErrorPayload { id, error });
 event_payload!(HttpResponsePayload { id, status, body });

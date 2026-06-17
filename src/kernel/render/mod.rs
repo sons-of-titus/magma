@@ -8,6 +8,8 @@ pub mod view_tree;
 pub mod editor_view;
 pub mod terminal_view;
 pub mod sidebar_view;
+pub mod gutter;
+pub mod gutter_providers;
 pub(crate) mod status_and_popup;
 pub(crate) mod highlight_pass;
 pub mod gpu_atlas;

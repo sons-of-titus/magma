@@ -1,7 +1,7 @@
-# VCS diff gutter extension (Sprint 11c).
+# VCS diff gutter extension — Phase 7.
 #
 # Subscribes to `buffer-after-save` and runs `git diff --unified=0` to mark
-# added/changed/removed lines in the `:vcs` gutter column.
+# added/changed lines in the `:git-signs` gutter provider.
 
 (def *vcs-pids* @{})   # buf-key -> active process id
 
@@ -29,7 +29,8 @@
         # Kill any existing VCS diff process for this buffer.
         (when-let [old-pid (get *vcs-pids* buf)]
           (process/kill old-pid))
-        (gutter/sign-clear ":vcs" buf)
+        # Accumulate cells for this buffer.
+        (def cells @[])
         (let [pid (process/spawn "git" ["diff" "--unified=0" path])]
           (put *vcs-pids* buf pid)
           (var current-start 0)
@@ -42,11 +43,11 @@
                     (set current-start (first hunk))
                     (set current-count (get hunk 1)))
                   (when (string/has-prefix? "+" line)
-                    (gutter/sign-set ":vcs" buf (- current-start 1) "▎" "gutter-vcs-changed" 50)
-                    (gutter/show-column ":vcs"))))))
+                    (array/push cells
+                      {:line (- current-start 1) :text "▎" :face "gutter-vcs-changed"}))))))
           (event/once "process-exit"
             (fn [d]
               (when (= (get d :id) pid)
                 (put *vcs-pids* buf nil)
-                (when (empty? (gutter/signs ":vcs" buf))
-                  (gutter/hide-column ":vcs"))))))))))
+                # Push accumulated cells to the :git-signs provider.
+                (gutter/provider-update ":git-signs" buf cells)))))))))

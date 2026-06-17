@@ -1,32 +1,23 @@
-# Breakpoint gutter extension (Sprint 11c).
+# Breakpoint gutter extension — Phase 7.
 #
-# Tracks breakpoints per buffer and toggles them via gutter column clicks.
-# The `:breakpoints` column is shown automatically when the first breakpoint
-# is set and hidden when the last one is cleared.
+# The :breakpoints gutter column is now a Rust GutterProvider that reads
+# live from ed.debug.breakpoints.  This file only provides the Janet-level
+# convenience wrappers and the toggle command.
 
 (def *breakpoints* @{})   # {buf-key -> set-of-line-numbers}
-
-(defn- bp-count []
-  (var total 0)
-  (each lines *breakpoints*
-    (set total (+ total (length lines))))
-  total)
 
 (defn bp/set [buf line]
   (let [lines (get *breakpoints* buf @{})]
     (put lines line true)
     (put *breakpoints* buf lines))
-  (gutter/sign-set ":breakpoints" buf line "● " "gutter-breakpoint" 100)
-  (gutter/show-column ":breakpoints"))
+  (debug/add-breakpoint (or (buffer/path buf) "") line))
 
 (defn bp/clear [buf line]
   (when-let [lines (get *breakpoints* buf)]
     (put lines line nil)
     (when (empty? lines)
       (put *breakpoints* buf nil)))
-  (gutter/sign-clear-line ":breakpoints" buf line)
-  (when (zero? (bp-count))
-    (gutter/hide-column ":breakpoints")))
+  (debug/remove-breakpoint (or (buffer/path buf) "") line))
 
 (defn bp/toggle [buf line]
   (if (get-in *breakpoints* [buf line])

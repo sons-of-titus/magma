@@ -1,22 +1,23 @@
-# Gutter column definitions and line-number format helpers (Sprint 11c).
+# Gutter provider registrations — Phase 7.
+#
+# Built-in providers are registered in render order (left-to-right).
+# Each call to (gutter/add-provider name) adds a named provider backed by the
+# corresponding Rust GutterProvider implementation.
+#
+# Providers that rely on cached data (git-signs, breakpoints) are populated at
+# runtime by their respective subsystem scripts or via (gutter/provider-update).
 
-# Define named columns in render order (left-to-right).
-(gutter/define-column ":breakpoints"  2  "gutter-bg")
-(gutter/define-column ":vcs"          1  "gutter-bg")
-(gutter/define-column ":diagnostics"  1  "gutter-bg")
-(gutter/define-column ":line-numbers" 0  "gutter-bg")   # width 0 = dynamic
-(gutter/define-column ":folding"      1  "gutter-bg")
-
-# Hidden by default; extensions call gutter/show-column to reveal them.
-(gutter/hide-column ":breakpoints")
-(gutter/hide-column ":vcs")
-(gutter/hide-column ":folding")
-
-# Default line-number format (hybrid: absolute on cursor, relative elsewhere).
-(gutter/set-line-number-format "gutter-lnum-hybrid")
+(gutter/add-provider ":breakpoints")
+(gutter/add-provider ":git-signs")
+(gutter/add-provider ":diagnostics")
+(gutter/add-provider ":line-numbers")
+(gutter/add-provider ":folding")
 
 # Default fold icons.
 (gutter/set-fold-icons "▾" "▸" "fold-face")
+
+# Default line-number format (hybrid: absolute on cursor, relative elsewhere).
+(gutter/set-line-number-format "gutter-lnum-hybrid")
 
 # Built-in line-number format commands.
 # Each receives (abs-line cursor-line total-lines) and returns a string.

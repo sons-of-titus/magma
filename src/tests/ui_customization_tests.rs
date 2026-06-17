@@ -1,7 +1,7 @@
 //! Pure Rust tests for Sprint 11 UI customisation primitives:
-//! modeline, tab-bar flag, overlay management, and gutter signs.
+//! modeline, tab-bar flag, and overlay management.
 
-use crate::kernel::state::{Editor, GutterSign, Overlay};
+use crate::kernel::state::Overlay;
 use crate::tests::helpers;
 
 // ── modeline ─────────────────────────────────────────────────────────────────
@@ -93,42 +93,3 @@ fn overlay_move_updates_position() {
     assert_eq!(ov.y, 3);
 }
 
-// ── gutter signs ─────────────────────────────────────────────────────────────
-
-#[test]
-fn gutter_signs_empty_by_default() {
-    let ed = helpers::make_editor();
-    assert!(ed.gutter.signs.is_empty());
-}
-
-#[test]
-fn gutter_sign_can_be_set_for_buffer_line() {
-    let mut ed = helpers::make_editor();
-    let sign = GutterSign { face: "error-face".to_string(), text: "E".to_string(), priority: 10 };
-    ed.gutter.signs.entry(0).or_default().entry(5).or_default().push(sign);
-    let signs = ed.gutter.signs.get(&0).unwrap().get(&5).unwrap();
-    assert_eq!(signs.len(), 1);
-    assert_eq!(signs[0].text, "E");
-}
-
-#[test]
-fn gutter_signs_cleared_for_buffer() {
-    let mut ed = helpers::make_editor();
-    ed.gutter.signs.entry(0).or_default().entry(3).or_default().push(
-        GutterSign { face: "warning-face".to_string(), text: "W".to_string(), priority: 5 }
-    );
-    ed.gutter.signs.remove(&0);
-    assert!(!ed.gutter.signs.contains_key(&0));
-}
-
-#[test]
-fn gutter_sign_highest_priority_picked() {
-    let mut ed = helpers::make_editor();
-    let low  = GutterSign { face: "warning-face".to_string(), text: "W".to_string(), priority: 5 };
-    let high = GutterSign { face: "error-face".to_string(), text: "E".to_string(), priority: 10 };
-    let line_signs = ed.gutter.signs.entry(0).or_default().entry(0).or_default();
-    line_signs.push(low);
-    line_signs.push(high);
-    let top = ed.gutter.signs[&0][&0].iter().max_by_key(|s| s.priority).unwrap();
-    assert_eq!(top.text, "E");
-}

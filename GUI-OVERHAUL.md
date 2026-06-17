@@ -265,27 +265,33 @@ Updated `gui.rs` (`sidebar_state` field, ctrl-\ toggle, `open-file` dispatch,
 
 ---
 
-### Phase 3 — Proper Status Bar
+### Phase 3 — Proper Status Bar ✅ COMPLETE
 
 **Goal:** Replace the single-line Surface-drawn status bar with a rich
 widget-based status bar like IntelliJ's — mode indicator, git branch,
 cursor position, file encoding, file type, and pluggable widget slots.
 
-| Step | What | Risk |
-|------|------|------|
-| 3.1 | Define `StatusWidget` trait: `fn render(&self, ui: &egui::Ui, editor: &Editor)` — any subsystem can contribute a widget | Low |
-| 3.2 | Implement `ModeWidget` — colored pill showing vim mode (NORMAL/INSERT/VISUAL), same colors as current `gui_fonts::mode_color` | Low |
-| 3.3 | Implement `PositionWidget` — `Ln 3, Col 12` with line/col from cursor | Low |
-| 3.4 | Implement `GitBranchWidget` — git branch name from `*ml-branch*` or equivalent | Low |
-| 3.5 | Implement `FileTypeWidget` — buffer's major mode name (e.g. "Rust", "Janet") | Low |
-| 3.6 | Implement `EncodingWidget` — "UTF-8" (constant for now; extensible later) | Low |
-| 3.7 | Build `StatusBar` widget: bottom panel with left-aligned widgets (mode, filename) and right-aligned widgets (encoding, filetype, cursor, git) | Low |
-| 3.8 | Remove Surface-based status bar rendering from GUI path — `render_status_bar` and `render_command_completion_popup` in `frame.rs` become TUI-only | Low |
-| 3.9 | Remove modeline rendering from GUI path — Janet `draw-modeline` event handler is no longer needed for GUI | Low |
+| Step | What | Status |
+|------|------|--------|
+| 3.1 | Define `StatusWidget` trait: `fn render(&self, ui: &egui::Ui, editor: &Editor)` — any subsystem can contribute a widget | ✅ Done |
+| 3.2 | Implement `ModeWidget` — colored pill showing vim mode (NORMAL/INSERT/VISUAL), same colors as `gui_fonts::mode_color` | ✅ Done |
+| 3.3 | Implement `PositionWidget` — `Ln N, Col M` with line/col from cursor | ✅ Done |
+| 3.4 | Implement `GitBranchWidget` — git branch name from `editor.vc.last_status` | ✅ Done |
+| 3.5 | Implement `FileTypeWidget` — buffer's major mode name (e.g. "fundamental", "janet") | ✅ Done |
+| 3.6 | Implement `EncodingWidget` — "UTF-8" (constant for now; extensible later) | ✅ Done |
+| 3.7 | Build `StatusBar` widget: bottom panel with left-aligned widgets (mode, filename) and right-aligned widgets (encoding, filetype, cursor, git) | ✅ Done |
+| 3.8 | Surface-based status bar already TUI-only via `editor_pane_only` flag set in Phase 0 | ✅ Done |
+| 3.9 | Modeline rendering (`draw-modeline` / `modeline_fn`) already TUI-only — GUI loop never emits `RENDER_FRAME` event | ✅ Done |
 
-**Verification:** Status bar shows mode, file info, cursor position, git branch.
-Widgets are aligned left/right correctly.  Resizing the window repositions
-content.
+**Verification:** `cargo test --features janet` — 1238 passed, 0 failed.
+`cargo build --features janet,gui` — clean. TUI build (`--no-default-features
+--features janet`) — clean.
+
+**Files changed:** Rewrote `gui_status.rs` (`StatusWidget` trait, `ModeWidget`,
+`FilenameWidget`, `PositionWidget`, `GitBranchWidget`, `FileTypeWidget`,
+`EncodingWidget`, `StatusBar::show` with left/right layout, `STATUS_BAR_BG`
+constant, Catppuccin Mocha colours). Updated `gui.rs` (import `STATUS_BAR_BG`,
+panel `Frame::none().fill(STATUS_BAR_BG)`).
 
 ---
 

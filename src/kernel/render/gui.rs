@@ -17,7 +17,7 @@ use super::gui_fonts::apply_fonts_to_egui;
 use super::gui_layout::GuiLayout;
 use super::gui_render::present;
 use super::gui_sidebar::{ProjectTree, SidebarState};
-use super::gui_status::StatusBar;
+use super::gui_status::{StatusBar, STATUS_BAR_BG};
 use super::gui_tabs::{TabAction, TabBar};
 
 pub struct GuiApp {
@@ -143,6 +143,7 @@ impl eframe::App for GuiApp {
         // Status bar — declared before central panel
         egui::TopBottomPanel::bottom("magma_status")
             .exact_height(status_h)
+            .frame(egui::Frame::none().fill(STATUS_BAR_BG).inner_margin(egui::Margin::symmetric(6.0, 0.0)))
             .show(ctx, |ui| {
                 let ed = ea.read().unwrap_or_else(|e| e.into_inner());
                 StatusBar::show(ui, &ed);

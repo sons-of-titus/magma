@@ -60,9 +60,7 @@ pub(super) fn register(editor: &mut Editor) {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "untitled".to_string());
             let key = editor.create_buffer_from_str(&name, &content);
-            let buf_id = editor.buffers.get(key)
-                .map(|a| a.lock().unwrap().id.0)
-                .unwrap_or(key as u64);
+            let buf_id = key as u64;
             if let Some(arc) = editor.buffers.get(key) {
                 arc.lock().unwrap().path = Some(path.to_string());
             }
@@ -125,9 +123,7 @@ pub(super) fn register(editor: &mut Editor) {
             let content = files.join("\n") + "\n";
             let name = format!("*finder:{}*", pattern);
             let key = editor.create_buffer_from_str(&name, &content);
-            let buf_id = editor.buffers.get(key)
-                .map(|a| a.lock().unwrap().id.0)
-                .unwrap_or(key as u64);
+            let buf_id = key as u64;
 
             if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);

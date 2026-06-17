@@ -233,6 +233,36 @@ fn default_faces_exist_after_init() {
 }
 
 #[test]
+fn syntax_highlight_buffer_rust_produces_ranges() {
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("fn main() { let x = 1; }");
+    crate::kernel::scripting::init(&mut ed);
+    let key = crate::tests::helpers::focused_key(&ed);
+
+    // Set a path so guess-language can determine it's Rust
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().path = Some("/test/main.rs".to_string());
+    }
+
+    // Check that syntax/highlight-buffer produces a layer
+    let result = scripting::eval(&format!(
+        "(syntax/highlight-buffer {})", key
+    ));
+    assert_eq!(result, "ok", "syntax/highlight-buffer must not error");
+
+    // Check that the view has a "syntax" layer with keyword-face ranges
+    // Check that the view has a "syntax" layer with keyword-face ranges
+    let view = ed.views.get(&key).unwrap();
+    let layers = view.highlight_layers.keys().collect::<Vec<_>>();
+    assert!(layers.contains(&&"syntax".to_string()), "view must have a 'syntax' highlight layer");
+    if let Some(ranges) = view.highlight_layers.get("syntax") {
+        assert!(!ranges.is_empty(), "syntax layer must have highlight ranges for fn and let");
+        let has_keyword = ranges.iter().any(|r| r.2 == "keyword-face");
+        assert!(has_keyword, "ranges must include keyword-face for 'fn' and 'let'");
+    }
+}
+
+#[test]
 fn default_comment_face_is_dim() {
     janet_test!(ed, {
         let face = ed.faces.get("comment-face").unwrap();

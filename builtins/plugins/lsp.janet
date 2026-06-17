@@ -11,19 +11,38 @@
    :go    {:command "gopls" :args @[] :language-id "go"}
    :lua   {:command "lua-language-server" :args @[] :language-id "lua"}
    :json  {:command "vscode-json-languageserver" :args @["--stdio"] :language-id "json"}
-   :clj   {:command "clojure-lsp" :args @[] :language-id "clojure"}})
+   :clj   {:command "clojure-lsp" :args @[] :language-id "clojure"}
+   :c     {:command "clangd" :args @[] :language-id "c"}
+   :cpp   {:command "clangd" :args @[] :language-id "cpp"}
+   :rb    {:command "solargraph" :args @["stdio"] :language-id "ruby"}
+   :sh    {:command "bash-language-server" :args @["start"] :language-id "bash"}
+   :java  {:command "jdtls" :args @[] :language-id "java"}
+   :kt    {:command "kotlin-language-server" :args @[] :language-id "kotlin"}
+   :swift {:command "sourcekit-lsp" :args @[] :language-id "swift"}
+   :hs    {:command "haskell-language-server" :args @[] :language-id "haskell"}
+   :ex    {:command "elixir-ls" :args @[] :language-id "elixir"}
+   :erl   {:command "erlang_ls" :args @[] :language-id "erlang"}
+   :nim   {:command "nimlangserver" :args @[] :language-id "nim"}
+   :zig   {:command "zls" :args @[] :language-id "zig"}
+   :nix   {:command "nil" :args @[] :language-id "nix"}
+   :tf    {:command "terraform-ls" :args @["serve"] :language-id "terraform"}
+   :yaml  {:command "yaml-language-server" :args @["--stdio"] :language-id "yaml"}
+   :toml  {:command "taplo" :args @["lsp" "stdio"] :language-id "toml"}
+   :html  {:command "vscode-html-languageserver" :args @["--stdio"] :language-id "html"}
+   :css   {:command "vscode-css-languageserver" :args @["--stdio"] :language-id "css"}
+   :sql   {:command "sql-language-server" :args @["up" "--method" "stdio"] :language-id "sql"}})
 
 (defn- json-escape [s]
   (->> s (string/replace-all "\\" "\\\\") (string/replace-all "\"" "\\\"")
     (string/replace-all "\n" "\\n") (string/replace-all "\r" "\\r") (string/replace-all "\t" "\\t")))
 
-(defn- file-extension [buffer-id]
+(defn- buffer-extension [buffer-id]
   (def path (buffer/path buffer-id)) (def name (or path (buffer/name buffer-id)))
   (def parts (string/split "." name))
   (if (> (length parts) 1) (last parts) nil))
 
 (defn- language-for [buffer-id]
-  (def ext (file-extension buffer-id)) (when ext (get *lang-servers* (keyword ext))))
+  (def ext (buffer-extension buffer-id)) (when ext (get *lang-servers* (keyword ext))))
 
 (defn diagnostics [buffer-id] (buffer/diagnostics buffer-id))
 (defn- language-id-for [buffer-id] (get *buffer-languages* buffer-id))

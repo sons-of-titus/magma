@@ -1,0 +1,6 @@
+(option/set "erlang-indent-width" "4")
+(option/set "erlang-indent-style" "space")
+(option/set "erlang-comment-prefix" "% ")
+(option/set "erlang-lsp-command" "erlang_ls")
+(option/set "erlang-max-line-length" "80")
+(option/set "erlang-debug-adapter" "nil")

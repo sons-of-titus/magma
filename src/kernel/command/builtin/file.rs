@@ -2,6 +2,8 @@
 
 use crate::kernel::command::CommandResult;
 use crate::kernel::command::args::{ArgSpec, ArgType, ArgValue};
+use crate::kernel::event::keys::events;
+use crate::kernel::event::payload::{BufferChangedPayload, BufferFocusedPayload};
 use crate::kernel::state::Editor;
 
 use super::helpers::*;
@@ -282,6 +284,9 @@ fn dired_open(editor: &mut Editor, dir: std::path::PathBuf) -> CommandResult {
     if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(buf_key);
     }
+    editor.events.emit_typed(events::BUFFER_FOCUSED, BufferFocusedPayload {
+        buffer_id: buf_key.to_string(),
+    });
     editor.keymaps.push_layer("dired");
     Ok(())
 }
@@ -305,9 +310,13 @@ fn dired_open_at_cursor_helper(editor: &mut Editor) -> CommandResult {
         let fname = path.file_name().map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| name.clone());
         let key = editor.create_buffer_from_str(&fname, &content);
+        let path_str = path.to_string_lossy().into_owned();
         if let Some(arc) = editor.buffers.get(key) {
-            arc.lock().unwrap().path = Some(path.to_string_lossy().into_owned());
+            arc.lock().unwrap().path = Some(path_str.clone());
         }
+        editor.events.emit_typed(events::BUFFER_CHANGED, BufferChangedPayload {
+            buffer_id: key.to_string(),
+        });
         if let Some(win) = editor.view_tree.focused_window_mut() {
             win.buffer_id = Some(key);
         }

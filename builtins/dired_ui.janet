@@ -72,15 +72,18 @@
 # Re-colour whenever the dired buffer gains focus or is refreshed.
 (event/on "buffer-focused"
   (fn [data]
-    (let [buf (get data :buffer-id nil)]
-      (when buf
-        (when (= (buffer/name buf) "*dired*")
-          (apply-dired-highlights))))))
+    (def raw (get data :buffer-id))
+    (when raw
+      (def buf (scan-number raw))
+      (when (and buf (= (buffer/name buf) "*dired*"))
+        (apply-dired-highlights)))))
 
 # Also re-colour right after a dired refresh (the command emits buffer-after-save
 # when it rewrites the buffer, or we can hook buffer-modified).
 (event/on "buffer-after-save"
   (fn [data]
-    (let [buf (get data :buffer-id nil)]
+    (def raw (get data :buffer-id))
+    (when raw
+      (def buf (scan-number raw))
       (when (and buf (= (buffer/name buf) "*dired*"))
         (apply-dired-highlights)))))

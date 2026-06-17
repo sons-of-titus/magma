@@ -1,0 +1,6 @@
+(option/set "nim-indent-width" "2")
+(option/set "nim-indent-style" "space")
+(option/set "nim-comment-prefix" "# ")
+(option/set "nim-lsp-command" "nimlangserver")
+(option/set "nim-max-line-length" "80")
+(option/set "nim-debug-adapter" "nil")

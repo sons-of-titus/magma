@@ -156,7 +156,9 @@ pub fn init_vm() {
     load_builtin("builtins/multi_cursor.janet",    include_str!("../../../builtins/multi_cursor.janet"));
     load_builtin("builtins/major_modes.janet",     include_str!("../../../builtins/major_modes.janet"));
     load_builtin("builtins/plugin_loader.janet",   include_str!("../../../builtins/plugin_loader.janet"));
-    load_builtin("builtins/syntax.janet",          include_str!("../../../builtins/syntax.janet"));
+    load_builtin("builtins/syntax_core.janet",     include_str!("../../../builtins/syntax_core.janet"));
+    load_builtin("builtins/syntax_langs.janet",    include_str!("../../../builtins/syntax_langs.janet"));
+    load_builtin("builtins/syntax_lang_ext.janet", include_str!("../../../builtins/syntax_lang_ext.janet"));
     load_builtin("builtins/special_buffers.janet", include_str!("../../../builtins/special_buffers.janet"));
     load_builtin("builtins/help.janet",            include_str!("../../../builtins/help.janet"));
     load_builtin("builtins/plugins/lsp.janet",          include_str!("../../../builtins/plugins/lsp.janet"));

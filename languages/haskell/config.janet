@@ -1,0 +1,6 @@
+(option/set "haskell-indent-width" "2")
+(option/set "haskell-indent-style" "space")
+(option/set "haskell-comment-prefix" "-- ")
+(option/set "haskell-lsp-command" "haskell-language-server")
+(option/set "haskell-max-line-length" "80")
+(option/set "haskell-debug-adapter" "nil")

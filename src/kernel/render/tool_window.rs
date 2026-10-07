@@ -8,16 +8,9 @@
 //! vertical icon strip (sidebar edge), docked-bottom panels, and floating egui
 //! windows.
 
-use eframe::egui::{self, Color32, FontFamily, FontId, RichText};
+use eframe::egui::{self, FontFamily, FontId, RichText};
 use crate::kernel::state::Editor;
-
-// ── Catppuccin Mocha colours (shared with other gui_* modules) ───────────────
-const TOOL_BG:     Color32 = Color32::from_rgb(24,  24,  37);  // mantle
-const TOOL_FG:     Color32 = Color32::from_rgb(205, 214, 244); // text
-const TOOL_SEL:    Color32 = Color32::from_rgb(49,  50,  68);  // surface0
-const TERM_GREEN:  Color32 = Color32::from_rgb(166, 227, 161); // green
-const STRIP_ICON:  Color32 = Color32::from_rgb(108, 112, 134); // overlay0
-const STRIP_ACT:   Color32 = Color32::from_rgb(137, 180, 250); // blue
+use super::gui_theme::GuiTheme;
 
 fn mono(size: f32) -> FontId { FontId::new(size, FontFamily::Monospace) }
 fn prop(size: f32) -> FontId { FontId::new(size, FontFamily::Proportional) }
@@ -28,7 +21,7 @@ pub trait ToolWindow: Send {
     fn title(&self) -> &str;
     fn icon(&self)  -> char;
     /// Render the tool window's content into `ui`.
-    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor);
+    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme);
 }
 
 // ── Dock position ─────────────────────────────────────────────────────────────
@@ -90,14 +83,14 @@ impl ToolWindowManager {
     /// Render the narrow vertical icon strip on the left edge.
     ///
     /// Returns `Some(idx)` when a button was clicked.
-    pub fn show_sidebar_edge(&self, ui: &mut egui::Ui) -> Option<usize> {
+    pub fn show_sidebar_edge(&self, ui: &mut egui::Ui, theme: &GuiTheme) -> Option<usize> {
         let mut toggled = None;
         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(6.0);
             for (i, entry) in self.entries.iter().enumerate() {
                 let icon = entry.window.icon().to_string();
                 let active = entry.visible;
-                let color = if active { STRIP_ACT } else { STRIP_ICON };
+                let color = if active { theme.blue } else { theme.overlay0 };
                 let btn = egui::Button::new(
                     RichText::new(icon).font(mono(16.0)).color(color)
                 )
@@ -116,7 +109,7 @@ impl ToolWindowManager {
     /// Render docked-bottom tool windows as a resizable bottom panel.
     ///
     /// Returns without rendering if no bottom-docked window is visible.
-    pub fn show_docked_bottom(&mut self, ctx: &egui::Context, editor: &Editor) {
+    pub fn show_docked_bottom(&mut self, ctx: &egui::Context, editor: &Editor, theme: &GuiTheme) {
         let visible: Vec<usize> = self.entries.iter().enumerate()
             .filter(|(_, e)| e.visible && e.dock == DockPosition::Bottom)
             .map(|(i, _)| i)
@@ -126,7 +119,7 @@ impl ToolWindowManager {
         egui::TopBottomPanel::bottom("magma_tools_bottom")
             .resizable(true)
             .default_height(200.0)
-            .frame(egui::Frame::none().fill(TOOL_BG).inner_margin(egui::Margin::same(0.0)))
+            .frame(egui::Frame::none().fill(theme.mantle).inner_margin(egui::Margin::same(0.0)))
             .show(ctx, |ui| {
                 // Tab strip
                 ui.horizontal(|ui| {
@@ -134,8 +127,8 @@ impl ToolWindowManager {
                     for &idx in &visible {
                         let title = self.entries[idx].window.title();
                         let is_active = idx == self.active_bottom;
-                        let bg = if is_active { TOOL_SEL } else { TOOL_BG };
-                        let fg = if is_active { TOOL_FG } else { STRIP_ICON };
+                        let bg = if is_active { theme.surface0 } else { theme.mantle };
+                        let fg = if is_active { theme.text } else { theme.overlay0 };
                         let btn = egui::Button::new(
                             RichText::new(title).font(prop(12.0)).color(fg)
                         )
@@ -155,14 +148,14 @@ impl ToolWindowManager {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            self.entries[active_idx].window.ui(ui, editor);
+                            self.entries[active_idx].window.ui(ui, editor, theme);
                         });
                 }
             });
     }
 
     /// Render floating tool windows as independent egui Windows.
-    pub fn show_floating(&mut self, ctx: &egui::Context, editor: &Editor) {
+    pub fn show_floating(&mut self, ctx: &egui::Context, editor: &Editor, theme: &GuiTheme) {
         for entry in &mut self.entries {
             if !entry.visible || entry.dock != DockPosition::Floating { continue }
             let title = entry.window.title().to_string();
@@ -170,7 +163,7 @@ impl ToolWindowManager {
                 .resizable(true)
                 .collapsible(false)
                 .show(ctx, |ui| {
-                    entry.window.ui(ui, editor);
+                    entry.window.ui(ui, editor, theme);
                 });
         }
     }
@@ -186,9 +179,9 @@ impl TerminalToolWindow {
 
 impl ToolWindow for TerminalToolWindow {
     fn title(&self) -> &str  { "Terminal" }
-    fn icon(&self)  -> char  { '⊟' }
+    fn icon(&self)  -> char  { super::gui_theme::icons::TERMINAL.chars().next().unwrap_or('⊟') }
 
-    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor) {
+    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         // Show the first active terminal buffer, if any.
         let term_buf = editor.io.terminals.keys().copied().next();
         if let Some(buf_id) = term_buf {
@@ -199,7 +192,7 @@ impl ToolWindow for TerminalToolWindow {
                 };
                 ui.add(
                     egui::Label::new(
-                        RichText::new(text).font(mono(13.0)).color(TERM_GREEN)
+                        RichText::new(text).font(mono(13.0)).color(theme.green)
                     )
                     .wrap_mode(egui::TextWrapMode::Extend)
                 );
@@ -209,7 +202,7 @@ impl ToolWindow for TerminalToolWindow {
         ui.label(
             RichText::new("No terminal running.  Use :terminal to start one.")
                 .font(prop(13.0))
-                .color(STRIP_ICON),
+                .color(theme.overlay0),
         );
     }
 }
@@ -246,9 +239,9 @@ impl FindInFilesToolWindow {
 
 impl ToolWindow for FindInFilesToolWindow {
     fn title(&self) -> &str { "Find in Files" }
-    fn icon(&self)  -> char { '⌕' }
+    fn icon(&self)  -> char { super::gui_theme::icons::SEARCH.chars().next().unwrap_or('⌕') }
 
-    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor) {
+    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         // Search bar
         let resp = ui.add(
             egui::TextEdit::singleline(&mut self.query)
@@ -265,18 +258,18 @@ impl ToolWindow for FindInFilesToolWindow {
         // Results
         let count = self.results.len();
         if count == 0 && !self.query.is_empty() {
-            ui.label(RichText::new("No results.").font(prop(12.0)).color(STRIP_ICON));
+            ui.label(RichText::new("No results.").font(prop(12.0)).color(theme.overlay0));
             return;
         }
         if count >= 200 {
-            ui.label(RichText::new("Showing first 200 matches.").font(prop(11.0)).color(STRIP_ICON));
+            ui.label(RichText::new("Showing first 200 matches.").font(prop(11.0)).color(theme.overlay0));
         }
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for (buf_name, line_num, line_text) in &self.results {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(buf_name).font(prop(11.0)).color(STRIP_ACT));
-                    ui.label(RichText::new(format!(":{}", line_num)).font(prop(11.0)).color(STRIP_ICON));
-                    ui.label(RichText::new(line_text).font(mono(12.0)).color(TOOL_FG));
+                    ui.label(RichText::new(buf_name).font(prop(11.0)).color(theme.blue));
+                    ui.label(RichText::new(format!(":{}", line_num)).font(prop(11.0)).color(theme.overlay0));
+                    ui.label(RichText::new(line_text).font(mono(12.0)).color(theme.text));
                 });
             }
         });

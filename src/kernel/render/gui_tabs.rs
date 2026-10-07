@@ -1,23 +1,14 @@
 //! Native tab bar widget for the GUI — JetBrains-style.
 //!
-//! Each pane in the ViewTree becomes one tab.  The active tab is highlighted;
-//! inactive tabs are dimmed.  A blue dot marks modified buffers.  The close
-//! button is only shown when the tab is hovered or active.  Tabs can be
-//! drag-reordered.
+//! Each pane in the ViewTree becomes one tab.  The active tab is highlighted
+//! and its underline fades in; inactive tabs are dimmed.  A blue dot marks
+//! modified buffers.  The close button is only shown when the tab is hovered
+//! or active.  Tabs can be drag-reordered.
 
-use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Rounding, Sense, Vec2};
+use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, Rounding, Sense, Vec2};
 use crate::kernel::state::id::WindowId;
 use crate::kernel::state::Editor;
-
-// ── Catppuccin Mocha colours ──────────────────────────────────────────────────
-const ACTIVE_BG:    Color32 = Color32::from_rgb(30,  30,  46);  // base
-const INACTIVE_BG:  Color32 = Color32::from_rgb(17,  17,  27);  // crust
-const ACTIVE_FG:    Color32 = Color32::from_rgb(205, 214, 244); // text
-const INACTIVE_FG:  Color32 = Color32::from_rgb(108, 112, 134); // overlay0
-const MODIFIED_DOT: Color32 = Color32::from_rgb(137, 180, 250); // blue
-const CLOSE_FG:     Color32 = Color32::from_rgb(166, 173, 200); // subtext0
-const CLOSE_HOVER:  Color32 = Color32::from_rgb(243, 139, 168); // red
-const DROP_BORDER:  Color32 = Color32::from_rgb(137, 180, 250); // blue
+use super::gui_theme::{GuiTheme, icons};
 
 /// A single tab's display data, derived from a Pane + Buffer.
 #[derive(Clone)]
@@ -39,8 +30,8 @@ pub enum TabAction {
 impl TabAction {
     pub fn apply(self, editor: &mut Editor) {
         match self {
-            TabAction::Focus(id)           => editor.view_tree.focus(id),
-            TabAction::Close(id)           => editor.view_tree.close(id),
+            TabAction::Focus(id)            => editor.view_tree.focus(id),
+            TabAction::Close(id)            => editor.view_tree.close(id),
             TabAction::Reorder { from, to } => editor.view_tree.reorder(from, to),
         }
     }
@@ -63,8 +54,12 @@ impl TabBar {
         }).collect()
     }
 
+    fn top_rounding() -> Rounding {
+        Rounding { nw: 5.0, ne: 5.0, sw: 0.0, se: 0.0, ..Default::default() }
+    }
+
     /// Render the tab bar; return any action to apply to the editor.
-    pub fn show(ui: &mut egui::Ui, editor: &Editor) -> Option<TabAction> {
+    pub fn show(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Option<TabAction> {
         let tabs    = Self::collect_tabs(editor);
         let focused = editor.view_tree.focused_window();
         let mut action: Option<TabAction> = None;
@@ -82,7 +77,7 @@ impl TabBar {
         const FONT_SIZE: f32 = 13.0;
         const ACTIVE_LINE_H: f32 = 2.0;
 
-        let font_id  = FontId::new(FONT_SIZE, FontFamily::Proportional);
+        let font_id   = FontId::new(FONT_SIZE, FontFamily::Proportional);
         let close_fid = FontId::new(11.0, FontFamily::Proportional);
 
         ui.horizontal(|ui| {
@@ -95,7 +90,7 @@ impl TabBar {
                 let is_active = focused == Some(tab.window_id);
 
                 let label_w: f32 = ui.fonts(|f| {
-                    f.layout_no_wrap(tab.label.clone(), font_id.clone(), ACTIVE_FG)
+                    f.layout_no_wrap(tab.label.clone(), font_id.clone(), theme.text)
                         .size().x
                 });
 
@@ -110,24 +105,34 @@ impl TabBar {
                     && dragging != Some(tab.window_id);
 
                 // ── Background ──────────────────────────────────────────────
-                let bg = if is_active { ACTIVE_BG } else { INACTIVE_BG };
-                ui.painter().rect_filled(tab_rect, Rounding::ZERO, bg);
+                let bg = if is_active { theme.base } else { theme.crust };
+                ui.painter().rect_filled(tab_rect, Self::top_rounding(), bg);
 
                 if is_drag_over {
                     ui.painter().rect_stroke(
                         tab_rect,
-                        Rounding::ZERO,
-                        egui::Stroke::new(2.0, DROP_BORDER),
+                        Self::top_rounding(),
+                        egui::Stroke::new(2.0, theme.blue),
                     );
                 }
 
-                // Active-tab underline
+                // Active-tab underline — fades in over ~150 ms.
                 if is_active {
-                    let line = Rect::from_min_max(
-                        Pos2::new(tab_rect.left(),  tab_rect.bottom() - ACTIVE_LINE_H),
-                        Pos2::new(tab_rect.right(), tab_rect.bottom()),
+                    let anim = ui.ctx().animate_value_with_time(
+                        egui::Id::new("tab_active").with(tab.window_id),
+                        1.0,
+                        0.15,
                     );
-                    ui.painter().rect_filled(line, Rounding::ZERO, MODIFIED_DOT);
+                    if anim > 0.01 {
+                        let line = Rect::from_min_max(
+                            Pos2::new(tab_rect.left(),  tab_rect.bottom() - ACTIVE_LINE_H),
+                            Pos2::new(tab_rect.right(), tab_rect.bottom()),
+                        );
+                        ui.painter().rect_filled(
+                            line, Rounding::ZERO,
+                            theme.blue.gamma_multiply(anim.min(1.0)),
+                        );
+                    }
                 }
 
                 // ── Content ─────────────────────────────────────────────────
@@ -138,12 +143,12 @@ impl TabBar {
                     ui.painter().circle_filled(
                         Pos2::new(cx + DOT_R, cy),
                         DOT_R,
-                        MODIFIED_DOT,
+                        theme.blue,
                     );
                     cx += DOT_R * 2.0 + 4.0;
                 }
 
-                let fg = if is_active { ACTIVE_FG } else { INACTIVE_FG };
+                let fg = if is_active { theme.text } else { theme.overlay0 };
                 ui.painter().text(
                     Pos2::new(cx, cy),
                     egui::Align2::LEFT_CENTER,
@@ -160,11 +165,11 @@ impl TabBar {
                 let on_close = ptr.map(|p| close_rect.contains(p)).unwrap_or(false);
 
                 if (is_hovered || is_active) && tab.closable {
-                    let cc = if on_close { CLOSE_HOVER } else { CLOSE_FG };
+                    let cc = if on_close { theme.red } else { theme.subtext0 };
                     ui.painter().text(
                         close_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        "✕",
+                        icons::CLOSE,
                         close_fid.clone(),
                         cc,
                     );
@@ -217,7 +222,7 @@ impl TabBar {
                             egui::Align2::LEFT_TOP,
                             lbl,
                             FontId::new(FONT_SIZE, FontFamily::Proportional),
-                            Color32::from_rgba_unmultiplied(205, 214, 244, 160),
+                            theme.text.gamma_multiply(0.63),
                         );
                         ui.ctx().request_repaint();
                     }

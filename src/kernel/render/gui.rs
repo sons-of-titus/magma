@@ -1,26 +1,30 @@
 //! Graphical renderer using eframe / egui — native IDE layout.
+//!
+//! `GuiApp::update` composes the shell: status bar, docked tool windows,
+//! tab bar, breadcrumb bar, tool strip, project sidebar, the Surface-based
+//! editor pane, and floating dialogs/tool windows.  Input translation lives
+//! in `gui_input`, editor-pane painting in `gui_editor_pane`.
 
 use std::sync::{Arc, RwLock};
 
 use eframe::egui::{self, FontFamily, FontId};
 use tokio::sync::mpsc;
 
-use crate::kernel::input::{self, NON_INSERTABLE};
-use crate::kernel::input::event::{MouseEvent, MouseEventKind, MouseButton};
-use crate::kernel::input::mouse;
-use crate::kernel::render::frame::render_frame;
-use crate::kernel::render::gpu_atlas::{build_glyph_instances, build_rect_instances, GpuGlyphAtlas};
-use crate::kernel::render::gpu_paint_callback::MagmaPaintCallback;
-use crate::kernel::render::surface::Surface;
+use crate::kernel::input;
 use crate::kernel::runtime::{process_background_event, BackgroundEvent};
 use crate::kernel::state::Editor;
 
+use super::gui_breadcrumb::{BreadcrumbAction, BreadcrumbBar};
+use super::gui_dialog::{DialogAction, DialogManager};
+use super::gui_editor_pane::{render_editor_pane, EditorPaneAction, PanePaint};
 use super::gui_fonts::apply_fonts_to_egui;
+use super::gui_input;
 use super::gui_layout::GuiLayout;
-use super::gui_render::present;
 use super::gui_sidebar::{ProjectTree, SidebarState};
-use super::gui_status::{StatusBar, STATUS_BAR_BG};
+use super::gui_status::StatusBar;
 use super::gui_tabs::{TabAction, TabBar};
+use super::gui_theme::GuiTheme;
+use super::gpu_atlas::GpuGlyphAtlas;
 use super::tool_window::ToolWindowManager;
 
 pub struct GuiApp {
@@ -36,6 +40,11 @@ pub struct GuiApp {
     atlas_dirty:     bool,
     target_format:   Option<eframe::wgpu::TextureFormat>,
     tool_windows:    ToolWindowManager,
+    dialogs:         DialogManager,
+    /// Active chrome palette; re-resolved from the `gui-theme` option.
+    theme:           GuiTheme,
+    /// False until the palette has been pushed to egui + the editor once.
+    theme_synced:    bool,
 }
 
 impl GuiApp {
@@ -71,6 +80,9 @@ impl GuiApp {
             atlas_dirty: true,
             target_format: None,
             tool_windows: ToolWindowManager::new(),
+            dialogs: DialogManager::new(),
+            theme: GuiTheme::mocha(),
+            theme_synced: false,
         }
     }
 }
@@ -104,7 +116,7 @@ impl eframe::App for GuiApp {
             }
         }
 
-        // ── Font metrics (must precede input collection for MouseWheel unit conversion) ─
+        // ── Font metrics (must precede input collection for wheel units) ───
         self.font_size = {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
             ed.font_config.size
@@ -116,48 +128,26 @@ impl eframe::App for GuiApp {
         ));
 
         // ── Key + mouse events ──────────────────────────────────────────────
-        let mut key_events: Vec<String> = Vec::new();
-        let mut raw_mouse_events: Vec<RawMouseEvent> = Vec::new();
-        ctx.input(|i| {
-            for ev in &i.events {
-                if let Some(s) = translate_event(ev) {
-                    key_events.push(s);
-                }
-                match ev {
-                    egui::Event::PointerButton { pos, button, pressed, modifiers } => {
-                        let mb = match button {
-                            egui::PointerButton::Primary => MouseButton::Left,
-                            egui::PointerButton::Secondary => MouseButton::Right,
-                            egui::PointerButton::Middle => MouseButton::Middle,
-                            _ => MouseButton::Left,
-                        };
-                        let mods = format_modifiers(modifiers);
-                        let kind = if *pressed { MouseEventKind::Click } else { MouseEventKind::Release };
-                        raw_mouse_events.push(RawMouseEvent { px: pos.x, py: pos.y, kind, button: mb, modifiers: mods });
-                    }
-                    egui::Event::PointerMoved(pos) if i.pointer.any_down() => {
-                        raw_mouse_events.push(RawMouseEvent { px: pos.x, py: pos.y, kind: MouseEventKind::Drag, button: MouseButton::Left, modifiers: String::new() });
-                    }
-                    egui::Event::MouseWheel { unit, delta, modifiers } => {
-                        let dy = match unit {
-                            egui::MouseWheelUnit::Point => (delta.y / line_h).round() as i32,
-                            egui::MouseWheelUnit::Line => delta.y.round() as i32,
-                            egui::MouseWheelUnit::Page => delta.y.round() as i32,
-                        };
-                        if dy != 0 {
-                            let mods = format_modifiers(modifiers);
-                            raw_mouse_events.push(RawMouseEvent { px: 0.0, py: 0.0, kind: MouseEventKind::Scroll(dy), button: MouseButton::Left, modifiers: mods });
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        });
+        let (key_events, mut raw_mouse_events) = gui_input::collect(ctx, line_h);
         {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             for key in &key_events {
                 if key == "ctrl-q"  { ed.running = false; break; }
                 if key == "ctrl-\\" { self.layout.sidebar_open = !self.layout.sidebar_open; continue; }
+                if key == "ctrl-shift-l" {
+                    let next = if GuiTheme::option_is_light(&ed.options) { "mocha" } else { "latte" };
+                    ed.options.insert("gui-theme".to_string(), next.to_string());
+                    continue;
+                }
+                if let Some(kind) = DialogManager::shortcut(key) {
+                    self.dialogs.open_dialog(kind);
+                    continue;
+                }
+                // An open dialog owns the keyboard; Escape closes it.
+                if self.dialogs.is_open() {
+                    if key == "esc" { self.dialogs.close(); }
+                    continue;
+                }
                 input::dispatch_key(&mut ed, key);
             }
         }
@@ -171,53 +161,77 @@ impl eframe::App for GuiApp {
             }
         }
 
-        let bg_color = {
+        // ── Theme resolve + propagation ────────────────────────────────────
+        {
             let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
-            let (r, g, b) = ed.theme_color("gui-bg");
-            egui::Color32::from_rgb(r, g, b)
-        };
+            let next = GuiTheme::from_options(&ed.options);
+            let changed = !self.theme_synced || next.light != self.theme.light;
+            self.theme = next;
+            if changed {
+                self.theme.apply_egui(ctx);
+                let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
+                self.theme.apply_editor(&mut ed);
+                self.theme_synced = true;
+            }
+        }
 
         // ── Panel layout ──────────────────────────────────────────────────
         let ea             = Arc::clone(&self.editor);
         let sidebar_open   = self.layout.sidebar_open;
         let sidebar_width  = self.layout.sidebar_width;
+        let breadcrumb_on  = {
+            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+            ed.options.get("breadcrumb-enabled").map(|v| v.as_str()) != Some("false")
+        };
         let status_h       = line_h + 8.0;
-        let mut tab_action:   Option<TabAction> = None;
-        let mut sidebar_file: Option<String>    = None;
+        let mut tab_action:        Option<TabAction>        = None;
+        let mut sidebar_file:      Option<String>           = None;
+        let mut breadcrumb_action: Option<BreadcrumbAction> = None;
 
         // Status bar — outermost bottom panel.
         egui::TopBottomPanel::bottom("magma_status")
             .exact_height(status_h)
-            .frame(egui::Frame::none().fill(STATUS_BAR_BG).inner_margin(egui::Margin::symmetric(6.0, 0.0)))
+            .frame(egui::Frame::none().fill(self.theme.crust)
+                .inner_margin(egui::Margin::symmetric(6.0, 0.0)))
             .show(ctx, |ui| {
                 let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-                StatusBar::show(ui, &ed);
+                StatusBar::show(ui, &ed, &self.theme);
             });
 
         // Docked-bottom tool windows — inside the status bar, outside the editor.
         {
             let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-            self.tool_windows.show_docked_bottom(ctx, &ed);
+            self.tool_windows.show_docked_bottom(ctx, &ed, &self.theme);
         }
 
         // Tab bar — top panel.
         egui::TopBottomPanel::top("magma_tabs")
             .show(ctx, |ui| {
                 let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-                if let Some(a) = TabBar::show(ui, &ed) {
+                if let Some(a) = TabBar::show(ui, &ed, &self.theme) {
                     tab_action = Some(a);
                 }
             });
+
+        // Breadcrumb bar — below the tab bar, above the editor.
+        if breadcrumb_on {
+            egui::TopBottomPanel::top("magma_breadcrumb")
+                .frame(egui::Frame::none().fill(self.theme.crust))
+                .show(ctx, |ui| {
+                    let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+                    breadcrumb_action = BreadcrumbBar::show(ui, &ed, &self.theme);
+                });
+        }
 
         // Tool window icon strip — outermost left strip (28 px wide).
         let mut toggled_tool: Option<usize> = None;
         egui::SidePanel::left("magma_tool_strip")
             .exact_width(28.0)
             .resizable(false)
-            .frame(egui::Frame::none().fill(egui::Color32::from_rgb(17, 17, 27))
+            .frame(egui::Frame::none().fill(self.theme.crust)
                 .inner_margin(egui::Margin::same(0.0)))
             .show(ctx, |ui| {
-                toggled_tool = self.tool_windows.show_sidebar_edge(ui);
+                toggled_tool = self.tool_windows.show_sidebar_edge(ui, &self.theme);
             });
         if let Some(idx) = toggled_tool {
             self.tool_windows.toggle(idx);
@@ -230,26 +244,31 @@ impl eframe::App for GuiApp {
                 .resizable(true)
                 .show(ctx, |ui| {
                     let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-                    sidebar_file = ProjectTree::show(ui, &ed, &mut self.sidebar_state);
+                    sidebar_file = ProjectTree::show(ui, &ed, &mut self.sidebar_state, &self.theme);
                 });
         }
 
-        // Apply tab action before rendering the central editor pane.
+        // Apply chrome actions before rendering the central editor pane.
         if let Some(action) = tab_action.take() {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             action.apply(&mut ed);
         }
 
-        // Open file requested by sidebar double-click.
         if let Some(path) = sidebar_file {
-            use crate::kernel::command::{execute_command, args::ArgValue};
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
-            let mut args = std::collections::HashMap::new();
-            args.insert("path".to_string(), ArgValue::Path(path));
-            let _ = execute_command(&mut ed, "open-file", &args);
+            DialogAction::OpenFile(path).apply(&mut ed);
         }
 
-        // ── Central panel: surface-based editor ───────────────────────────
+        if let Some(BreadcrumbAction::RevealInSidebar { rel_dir }) = breadcrumb_action.take() {
+            self.layout.sidebar_open = true;
+            let parts: Vec<&str> = rel_dir.split('/').filter(|s| !s.is_empty()).collect();
+            for i in 1..=parts.len() {
+                self.sidebar_state.expanded_dirs.insert(parts[..i].join("/"));
+            }
+            self.sidebar_state.selected = Some(rel_dir);
+        }
+
+        // ── Central panel: surface-based editor + scrollbar/minimap ───────
         let use_gpu = self.target_format.is_some() && self.atlas_rasterized;
         let target_fmt = self.target_format;
 
@@ -261,178 +280,44 @@ impl eframe::App for GuiApp {
             None
         };
 
+        let mut pane_action: Option<EditorPaneAction> = None;
+        let paint = PanePaint {
+            editor:        &self.editor,
+            atlas:         &self.atlas,
+            use_gpu,
+            target_format: target_fmt,
+            atlas_pixels:  atlas_pixels_upload,
+            theme:         &self.theme,
+        };
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(bg_color))
+            .frame(egui::Frame::none().fill(self.theme.base))
             .show(ctx, |ui| {
-                let full = ui.available_rect_before_wrap();
-                let visible_cols = ((full.width()  / char_w).floor() as usize).max(1);
-                let visible_rows = ((full.height() / line_h).floor() as usize).max(1);
-                let mut surface = Surface::new(visible_cols as u16, visible_rows as u16);
-                {
-                    let mut ed = ea.write().unwrap_or_else(|e| e.into_inner());
-                    ed.view_tree.resize(visible_cols as u16, visible_rows as u16);
-                }
-                {
-                    let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-                    render_frame(&ed, &mut surface, true);
-                }
-
-                if use_gpu && let Some(fmt) = target_fmt {
-                    let bg = [
-                        bg_color.r() as f32 / 255.0,
-                        bg_color.g() as f32 / 255.0,
-                        bg_color.b() as f32 / 255.0,
-                        1.0,
-                    ];
-                    let glyphs = build_glyph_instances(
-                        &surface, &self.atlas, char_w, line_h,
-                        full.min.x, full.min.y, true,
-                    );
-                    let rects = build_rect_instances(
-                        &surface, char_w, line_h,
-                        full.min.x, full.min.y, bg, true,
-                    );
-                    let callback = MagmaPaintCallback {
-                        glyphs,
-                        rects,
-                        char_w,
-                        line_h,
-                        target_format: fmt,
-                        atlas_width:   self.atlas.atlas_width,
-                        atlas_height:  self.atlas.atlas_height,
-                        atlas_pixels:  atlas_pixels_upload,
-                    };
-                    ui.painter_at(full).add(callback.into_paint_callback(full));
-                } else {
-                    present(ui, &ea, &surface, full, char_w, line_h, 0);
-                }
-
-                // ── Mouse dispatch (pixel → cell coords) ──────────────
-                if !raw_mouse_events.is_empty() {
-                    let mut ed = ea.write().unwrap_or_else(|e| e.into_inner());
-                    for raw in raw_mouse_events.drain(..) {
-                        let cell_x = ((raw.px - full.min.x) / char_w).max(0.0) as u16;
-                        let cell_y = ((raw.py - full.min.y) / line_h).max(0.0) as u16;
-                        let me = MouseEvent {
-                            kind: raw.kind,
-                            x: cell_x,
-                            y: cell_y,
-                            button: raw.button,
-                            modifiers: raw.modifiers,
-                        };
-                        mouse::dispatch_mouse(&mut ed, &surface, &me);
-                    }
-                }
+                pane_action = render_editor_pane(ui, &paint, char_w, line_h, &mut raw_mouse_events);
             });
+
+        if let Some(EditorPaneAction::GotoLine(line)) = pane_action.take() {
+            let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
+            DialogAction::GotoLine(line).apply(&mut ed);
+        }
+
+        // ── Modal dialogs ─────────────────────────────────────────────────
+        {
+            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+            let actions = self.dialogs.show(ctx, &ed, &self.theme);
+            if !actions.is_empty() {
+                let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
+                for action in actions {
+                    action.apply(&mut ed);
+                }
+            }
+        }
 
         // Floating tool windows — rendered on top of everything.
         {
             let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-            self.tool_windows.show_floating(ctx, &ed);
+            self.tool_windows.show_floating(ctx, &ed, &self.theme);
         }
 
         ctx.request_repaint();
-    }
-}
-
-/// A mouse event in pixel coordinates, converted to cell coords
-/// inside the CentralPanel closure.
-struct RawMouseEvent {
-    px: f32,
-    py: f32,
-    kind: MouseEventKind,
-    button: MouseButton,
-    modifiers: String,
-}
-
-fn format_modifiers(mods: &egui::Modifiers) -> String {
-    let mut parts = Vec::new();
-    if mods.ctrl || mods.command { parts.push("ctrl"); }
-    if mods.shift { parts.push("shift"); }
-    if mods.alt { parts.push("alt"); }
-    parts.join(",")
-}
-
-fn translate_event(ev: &egui::Event) -> Option<String> {
-    match ev {
-        egui::Event::Key { key, pressed: true, modifiers, .. } => {
-            use egui::Key;
-            let ctrl  = modifiers.ctrl || modifiers.command;
-            let alt   = modifiers.alt;
-            let shift = modifiers.shift;
-
-            let special: Option<&str> = match key {
-                Key::Escape    => Some("esc"),
-                Key::Backspace => Some("backspace"),
-                Key::Enter     => Some("return"),
-                Key::Tab       => Some("tab"),
-                Key::Delete    => Some("delete"),
-                Key::ArrowLeft  => Some("left"),
-                Key::ArrowRight => Some("right"),
-                Key::ArrowUp    => Some("up"),
-                Key::ArrowDown  => Some("down"),
-                Key::Home      => Some("home"),
-                Key::End       => Some("end"),
-                Key::PageUp    => Some("page-up"),
-                Key::PageDown  => Some("page-down"),
-                Key::F1  => Some("f1"),  Key::F2  => Some("f2"),
-                Key::F3  => Some("f3"),  Key::F4  => Some("f4"),
-                Key::F5  => Some("f5"),  Key::F6  => Some("f6"),
-                Key::F7  => Some("f7"),  Key::F8  => Some("f8"),
-                Key::F9  => Some("f9"),  Key::F10 => Some("f10"),
-                Key::F11 => Some("f11"), Key::F12 => Some("f12"),
-                _ => None,
-            };
-            if let Some(s) = special { return Some(s.to_string()); }
-
-            if ctrl || alt {
-                if *key == Key::Backslash {
-                    let prefix = if ctrl { "ctrl" } else { "meta" };
-                    return Some(format!("{}-\\", prefix));
-                }
-                let ch = key_char(*key)?;
-                let prefix = if ctrl { "ctrl" } else { "meta" };
-                return Some(format!("{}-{}", prefix, ch));
-            }
-
-            if !ctrl && !alt
-                && let Some(c) = key_char(*key) {
-                    if shift && !c.is_ascii_alphabetic() { return None; }
-                    let out = if shift { c.to_uppercase().next().unwrap_or(c) } else { c };
-                    return Some(out.to_string());
-                }
-
-            None
-        }
-
-        egui::Event::Text(text) if !text.is_empty() => {
-            if text.chars().any(|c| c.is_control()) { return None; }
-            if text.chars().count() == 1 {
-                let c = text.chars().next()?;
-                if c.is_ascii_alphanumeric() { return None; }
-            }
-            if NON_INSERTABLE.contains(&text.as_str()) { return None; }
-            Some(text.clone())
-        }
-
-        _ => None,
-    }
-}
-
-fn key_char(key: egui::Key) -> Option<char> {
-    use egui::Key::*;
-    match key {
-        A => Some('a'), B => Some('b'), C => Some('c'), D => Some('d'),
-        E => Some('e'), F => Some('f'), G => Some('g'), H => Some('h'),
-        I => Some('i'), J => Some('j'), K => Some('k'), L => Some('l'),
-        M => Some('m'), N => Some('n'), O => Some('o'), P => Some('p'),
-        Q => Some('q'), R => Some('r'), S => Some('s'), T => Some('t'),
-        U => Some('u'), V => Some('v'), W => Some('w'), X => Some('x'),
-        Y => Some('y'), Z => Some('z'),
-        Num0 => Some('0'), Num1 => Some('1'), Num2 => Some('2'),
-        Num3 => Some('3'), Num4 => Some('4'), Num5 => Some('5'),
-        Num6 => Some('6'), Num7 => Some('7'), Num8 => Some('8'),
-        Num9 => Some('9'),
-        _ => None,
     }
 }

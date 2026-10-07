@@ -8,13 +8,7 @@ use eframe::egui::{self, Color32, FontFamily, FontId, RichText};
 use crate::kernel::state::Editor;
 use super::gui_fonts::mode_color;
 use super::gui_render::safe_boundary;
-
-// ── Catppuccin Mocha palette (mirrors gui_tabs.rs) ───────────────────────────
-const BAR_BG:  Color32 = Color32::from_rgb(17,  17,  27);  // crust
-const BAR_FG:  Color32 = Color32::from_rgb(205, 214, 244); // text
-const DIM_FG:  Color32 = Color32::from_rgb(108, 112, 134); // overlay0
-const GIT_FG:  Color32 = Color32::from_rgb(137, 180, 250); // blue
-const SEP_FG:  Color32 = Color32::from_rgb(49,  50,  68);  // surface0
+use super::gui_theme::{GuiTheme, icons};
 
 const FONT_SIZE: f32 = 12.0;
 
@@ -25,7 +19,7 @@ fn label_font() -> FontId { FontId::new(FONT_SIZE, FontFamily::Proportional) }
 /// A pluggable status bar slot.  Any subsystem can contribute one by
 /// implementing this trait and adding it to `StatusBar::show`.
 pub trait StatusWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor);
+    fn render(&self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme);
 }
 
 // ── Concrete widgets ──────────────────────────────────────────────────────────
@@ -34,7 +28,7 @@ pub trait StatusWidget {
 pub struct ModeWidget;
 
 impl StatusWidget for ModeWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor) {
+    fn render(&self, ui: &mut egui::Ui, editor: &Editor, _theme: &GuiTheme) {
         let mode = editor.vim_mode_name();
         let pill_color = mode_color(&mode);
         ui.label(
@@ -51,7 +45,7 @@ impl StatusWidget for ModeWidget {
 pub struct FilenameWidget;
 
 impl StatusWidget for FilenameWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor) {
+    fn render(&self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         let Some(wid)    = editor.view_tree.focused_window() else { return };
         let Some(buf_id) = editor.view_tree.buffer(wid)      else { return };
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
@@ -65,7 +59,7 @@ impl StatusWidget for FilenameWidget {
         } else {
             name
         };
-        ui.label(RichText::new(text).color(BAR_FG).font(label_font()));
+        ui.label(RichText::new(text).color(theme.text).font(label_font()));
     }
 }
 
@@ -73,7 +67,7 @@ impl StatusWidget for FilenameWidget {
 pub struct PositionWidget;
 
 impl StatusWidget for PositionWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor) {
+    fn render(&self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         let Some(wid)    = editor.view_tree.focused_window() else { return };
         let Some(buf_id) = editor.view_tree.buffer(wid)      else { return };
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
@@ -92,7 +86,7 @@ impl StatusWidget for PositionWidget {
 
         ui.label(
             RichText::new(format!("Ln {}, Col {}", row, col))
-                .color(BAR_FG)
+                .color(theme.text)
                 .font(label_font()),
         );
     }
@@ -102,28 +96,28 @@ impl StatusWidget for PositionWidget {
 pub struct GitBranchWidget;
 
 impl StatusWidget for GitBranchWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor) {
+    fn render(&self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         let Some(status) = &editor.vc.last_status else { return };
         if status.branch.is_empty() { return; }
         ui.label(
-            RichText::new(format!("\u{238b} {}", status.branch))
-                .color(GIT_FG)
+            RichText::new(format!("{} {}", icons::GIT_BRANCH, status.branch))
+                .color(theme.blue)
                 .font(label_font()),
         );
     }
 }
 
-/// Buffer's major mode name (e.g. "fundamental", "rust", "janet").
+/// Buffer's major mode name (e.g. "fundamental", "janet", "rust").
 pub struct FileTypeWidget;
 
 impl StatusWidget for FileTypeWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor) {
+    fn render(&self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         let Some(wid)    = editor.view_tree.focused_window() else { return };
         let Some(buf_id) = editor.view_tree.buffer(wid)      else { return };
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
 
         let mode = arc.lock().unwrap().major_mode.name().to_string();
-        ui.label(RichText::new(mode).color(DIM_FG).font(label_font()));
+        ui.label(RichText::new(mode).color(theme.overlay0).font(label_font()));
     }
 }
 
@@ -131,9 +125,8 @@ impl StatusWidget for FileTypeWidget {
 pub struct EncodingWidget;
 
 impl StatusWidget for EncodingWidget {
-    fn render(&self, ui: &mut egui::Ui, editor: &Editor) {
-        let _ = editor;
-        ui.label(RichText::new("UTF-8").color(DIM_FG).font(label_font()));
+    fn render(&self, ui: &mut egui::Ui, _editor: &Editor, theme: &GuiTheme) {
+        ui.label(RichText::new("UTF-8").color(theme.overlay0).font(label_font()));
     }
 }
 
@@ -146,33 +139,30 @@ impl StatusWidget for EncodingWidget {
 pub struct StatusBar;
 
 impl StatusBar {
-    pub fn show(ui: &mut egui::Ui, editor: &Editor) {
+    pub fn show(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
 
             // ── Left-aligned ──────────────────────────────────────────────
-            ModeWidget.render(ui, editor);
-            sep(ui);
-            FilenameWidget.render(ui, editor);
+            ModeWidget.render(ui, editor, theme);
+            sep(ui, theme);
+            FilenameWidget.render(ui, editor, theme);
 
             // ── Right-aligned (order is reversed due to right_to_left) ───
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                GitBranchWidget.render(ui, editor);
-                sep(ui);
-                PositionWidget.render(ui, editor);
-                sep(ui);
-                FileTypeWidget.render(ui, editor);
-                sep(ui);
-                EncodingWidget.render(ui, editor);
+                GitBranchWidget.render(ui, editor, theme);
+                sep(ui, theme);
+                PositionWidget.render(ui, editor, theme);
+                sep(ui, theme);
+                FileTypeWidget.render(ui, editor, theme);
+                sep(ui, theme);
+                EncodingWidget.render(ui, editor, theme);
             });
         });
     }
 }
 
 /// Dim vertical separator between adjacent widgets.
-fn sep(ui: &mut egui::Ui) {
-    ui.label(RichText::new("|").color(SEP_FG).font(label_font()));
+fn sep(ui: &mut egui::Ui, theme: &GuiTheme) {
+    ui.label(RichText::new("|").color(theme.surface0).font(label_font()));
 }
-
-// ── Status bar background colour (exposed to gui.rs for panel frame) ──────────
-pub const STATUS_BAR_BG: Color32 = BAR_BG;

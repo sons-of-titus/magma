@@ -5,15 +5,9 @@
 //! and double-click-to-open.  Resize is handled by egui's `SidePanel`.
 
 use std::collections::HashSet;
-use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rounding, Sense, Vec2};
+use eframe::egui::{self, FontFamily, FontId, Pos2, Rounding, Sense, Vec2};
 use crate::kernel::state::Editor;
-
-// ── Catppuccin Mocha colours ──────────────────────────────────────────────────
-const HEADER_FG: Color32 = Color32::from_rgb(108, 112, 134); // overlay0
-const DIR_FG:    Color32 = Color32::from_rgb(180, 190, 254); // lavender
-const FILE_FG:   Color32 = Color32::from_rgb(186, 194, 222); // subtext1
-const ACTIVE_FG: Color32 = Color32::from_rgb(205, 214, 244); // text
-const SEL_BG:    Color32 = Color32::from_rgb(49,  50,  68);  // surface0
+use super::gui_theme::GuiTheme;
 
 const ROW_H:     f32 = 22.0;
 const INDENT:    f32 = 14.0;
@@ -125,12 +119,14 @@ impl ProjectTree {
 
     // ── Rendering ─────────────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_arguments)]
     fn render_nodes(
         ui:           &mut egui::Ui,
         nodes:        &[FileNode],
         depth:        usize,
         state:        &mut SidebarState,
         project_root: &str,
+        theme:        &GuiTheme,
     ) -> Option<String> {
         let font_id = FontId::new(FONT_SIZE, FontFamily::Proportional);
         let mut to_open: Option<String> = None;
@@ -146,12 +142,9 @@ impl ProjectTree {
 
             // Background
             if is_sel {
-                ui.painter().rect_filled(row, Rounding::ZERO, SEL_BG);
+                ui.painter().rect_filled(row, Rounding::ZERO, theme.surface0);
             } else if resp.hovered() {
-                ui.painter().rect_filled(
-                    row, Rounding::ZERO,
-                    Color32::from_rgba_unmultiplied(49, 50, 68, 100),
-                );
+                ui.painter().rect_filled(row, Rounding::ZERO, theme.surface1);
             }
 
             let cy = row.center().y;
@@ -165,7 +158,7 @@ impl ProjectTree {
                     egui::Align2::LEFT_CENTER,
                     arrow,
                     font_id.clone(),
-                    DIR_FG,
+                    theme.lavender,
                 );
             }
             x += ARROW_W;
@@ -177,17 +170,17 @@ impl ProjectTree {
                 file_icon(&node.name)
             };
             let icon_w: f32 = ui.fonts(|f| {
-                f.layout_no_wrap(icon.to_string(), font_id.clone(), ACTIVE_FG).size().x
+                f.layout_no_wrap(icon.to_string(), font_id.clone(), theme.text).size().x
             });
             ui.painter().text(
                 Pos2::new(x, cy), egui::Align2::LEFT_CENTER,
                 icon, font_id.clone(),
-                if node.is_dir { DIR_FG } else { FILE_FG },
+                if node.is_dir { theme.lavender } else { theme.subtext1 },
             );
             x += icon_w + 4.0;
 
             // Name
-            let fg = if is_sel { ACTIVE_FG } else if node.is_dir { DIR_FG } else { FILE_FG };
+            let fg = if is_sel { theme.text } else if node.is_dir { theme.lavender } else { theme.subtext1 };
             ui.painter().text(
                 Pos2::new(x, cy), egui::Align2::LEFT_CENTER,
                 &node.name, font_id.clone(), fg,
@@ -217,9 +210,9 @@ impl ProjectTree {
 
             // Recurse
             if node.is_dir && is_exp {
-                if let Some(p) =
-                    Self::render_nodes(ui, &node.children, depth + 1, state, project_root)
-                {
+                if let Some(p) = Self::render_nodes(
+                    ui, &node.children, depth + 1, state, project_root, theme,
+                ) {
                     to_open = to_open.or(Some(p));
                 }
             }
@@ -229,7 +222,12 @@ impl ProjectTree {
 
     /// Render the project tree sidebar.  Returns the path of a file to open when
     /// the user double-clicks it, or `None` otherwise.
-    pub fn show(ui: &mut egui::Ui, editor: &Editor, state: &mut SidebarState) -> Option<String> {
+    pub fn show(
+        ui:     &mut egui::Ui,
+        editor: &Editor,
+        state:  &mut SidebarState,
+        theme:  &GuiTheme,
+    ) -> Option<String> {
         let project_name = editor.project_manager.project.name
             .as_deref()
             .unwrap_or("Project");
@@ -243,7 +241,7 @@ impl ProjectTree {
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new(project_name.to_ascii_uppercase())
-                    .color(HEADER_FG)
+                    .color(theme.overlay0)
                     .size(11.0)
                     .strong(),
             );
@@ -256,7 +254,7 @@ impl ProjectTree {
             ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("No project files indexed.")
-                    .color(HEADER_FG)
+                    .color(theme.overlay0)
                     .size(FONT_SIZE),
             );
             return None;
@@ -269,7 +267,7 @@ impl ProjectTree {
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                to_open = Self::render_nodes(ui, &tree, 0, state, &project_root);
+                to_open = Self::render_nodes(ui, &tree, 0, state, &project_root, theme);
             });
 
         to_open

@@ -1,0 +1,280 @@
+//! GUI overhaul — Phases 6–9 integration tests.
+//!
+//! Covers the pure/editor-touching halves of the new chrome: dialog actions,
+//! search, pickers, breadcrumbs, and the theme system.  egui-rendering paths
+//! are exercised manually (no headless egui in CI).
+
+#![cfg(feature = "gui")]
+
+use crate::kernel::render::gui_breadcrumb::{relative_to_project, segments, symbol_at};
+use crate::kernel::render::gui_dialog::{sorted_options, DialogAction};
+use crate::kernel::render::gui_goto_dialogs::{collect_entries, PickerEntry, PickerSource};
+use crate::kernel::render::gui_search_dialog::{query_case_insensitive, SearchDialog};
+use crate::kernel::render::gui_theme::GuiTheme;
+use crate::kernel::semantic::provider::{Symbol, SymbolKind};
+use crate::tests::helpers::{buf_text, cursor, make_editor, make_editor_with_buffer};
+
+// ── DialogAction::SetOption ───────────────────────────────────────────────────
+
+#[test]
+fn set_option_action_writes_option() {
+    let mut ed = make_editor();
+    DialogAction::SetOption { name: "minimap-enabled".into(), value: "true".into() }
+        .apply(&mut ed);
+    assert_eq!(ed.options.get("minimap-enabled").map(|s| s.as_str()), Some("true"));
+}
+
+// ── DialogAction::GotoLine ────────────────────────────────────────────────────
+
+#[test]
+fn goto_line_action_moves_cursor() {
+    let mut ed = make_editor_with_buffer("alpha\nbeta\ngamma\n");
+    assert_eq!(cursor(&ed), 0);
+    DialogAction::GotoLine(3).apply(&mut ed);
+    assert_eq!(buf_text(&ed).chars().take(cursor(&ed)).filter(|&c| c == '\n').count(), 2);
+}
+
+// ── DialogAction::ReplaceAllInFocused ────────────────────────────────────────
+
+#[test]
+fn replace_all_rewrites_every_occurrence() {
+    let mut ed = make_editor_with_buffer("foo bar foo");
+    DialogAction::ReplaceAllInFocused { find: "foo".into(), replace: "qux".into() }
+        .apply(&mut ed);
+    assert_eq!(buf_text(&ed), "qux bar qux");
+}
+
+#[test]
+fn replace_all_empty_find_is_noop() {
+    let mut ed = make_editor_with_buffer("unchanged");
+    DialogAction::ReplaceAllInFocused { find: String::new(), replace: "x".into() }
+        .apply(&mut ed);
+    assert_eq!(buf_text(&ed), "unchanged");
+}
+
+// ── DialogAction::ExecuteCommand ─────────────────────────────────────────────
+
+#[test]
+fn execute_command_action_runs_registry_command() {
+    let mut ed = make_editor_with_buffer("one\ntwo\nthree");
+    DialogAction::ExecuteCommand("goto-line".into()).apply(&mut ed);
+    // goto-line with no arg jumps to the last line → offset 8 ("two\n" skipped).
+    assert_eq!(cursor(&ed), 8);
+}
+
+// ── DialogAction::FocusBufferAndGoto ─────────────────────────────────────────
+
+#[test]
+fn focus_buffer_switches_pane_and_jumps() {
+    let mut ed = make_editor_with_buffer("one\ntwo\nthree\n");
+    let key2 = ed.create_buffer_from_str("other", "a\nb\nc\n");
+    DialogAction::FocusBufferAndGoto { buf_id: key2, line: 3 }.apply(&mut ed);
+    let focused = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
+        .unwrap();
+    assert_eq!(focused, key2);
+    let text = {
+        let buf = ed.buffers.get(key2).unwrap().lock().unwrap();
+        buf.slice(0, buf.len())
+    };
+    let off = ed.views.get(&key2).unwrap().cursor_offset();
+    assert_eq!(text[..off].matches('\n').count(), 2, "cursor should sit on line 3");
+}
+
+// ── DialogAction::OpenFile ───────────────────────────────────────────────────
+
+#[test]
+fn open_file_action_loads_disk_file() {
+    let dir  = std::env::temp_dir().join("magma_gui_overhaul_tests");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("open_me.txt");
+    std::fs::write(&path, "from disk\n").unwrap();
+    let mut ed = make_editor();
+    DialogAction::OpenFile(path.to_string_lossy().into_owned()).apply(&mut ed);
+    let opened = ed.buffers.iter()
+        .find(|(_, arc)| {
+            arc.lock().unwrap().name == "open_me.txt"
+        })
+        .map(|(k, _)| k)
+        .expect("open-file must create the buffer");
+    let text = {
+        let buf = ed.buffers.get(opened).unwrap().lock().unwrap();
+        buf.slice(0, buf.len())
+    };
+    assert_eq!(text, "from disk\n");
+}
+
+#[test]
+fn goto_symbol_action_opens_and_jumps() {
+    let dir  = std::env::temp_dir().join("magma_gui_overhaul_tests");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("symbols.txt");
+    std::fs::write(&path, "a\nb\nc\n").unwrap();
+    let full = path.to_string_lossy().into_owned();
+    let mut ed = make_editor_with_buffer("starter\n");
+    DialogAction::GotoSymbol { file: full.clone(), line: 1 }.apply(&mut ed);
+    let focused = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid))
+        .unwrap();
+    assert!(
+        ed.buffers.get(focused).unwrap().lock().unwrap().path.as_deref() == Some(full.as_str()),
+        "focused buffer should be the opened file"
+    );
+    let (text, cursor_off) = {
+        let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
+        (buf.slice(0, buf.len()), ed.views.get(&focused).unwrap().cursor_offset())
+    };
+    assert_eq!(text[..cursor_off].matches('\n').count(), 1, "cursor on line 2");
+}
+
+// ── SearchDialog ─────────────────────────────────────────────────────────────
+
+#[test]
+fn search_finds_across_buffers() {
+    let mut ed = make_editor_with_buffer("needle here\nnothing\n");
+    let _b2 = ed.create_buffer_from_str("second", "plain\nhas needle too\n");
+    let mut dlg = SearchDialog::new();
+    dlg.query = "needle".into();
+    dlg.search(&ed);
+    assert_eq!(dlg.results().len(), 2);
+    assert!(dlg.results().iter().any(|h| h.line == 2 && h.buf_name == "second"));
+}
+
+#[test]
+fn search_smart_case() {
+    let mut ed = make_editor_with_buffer("Needle\nneedle\n");
+    let mut dlg = SearchDialog::new();
+    dlg.query = "needle".into();
+    dlg.search(&ed);
+    assert_eq!(dlg.results().len(), 2, "lowercase query matches case-insensitively");
+
+    dlg.query = "Needle".into();
+    dlg.search(&ed);
+    assert_eq!(dlg.results().len(), 1, "mixed-case query is exact");
+}
+
+#[test]
+fn smart_case_predicate() {
+    assert!(query_case_insensitive("abc"));
+    assert!(!query_case_insensitive("Abc"));
+    assert!(query_case_insensitive(""));
+}
+
+// ── SettingsDialog helpers ───────────────────────────────────────────────────
+
+#[test]
+fn sorted_options_is_sorted() {
+    let mut ed = make_editor();
+    ed.options.insert("zeta".into(), "1".into());
+    ed.options.insert("alpha".into(), "2".into());
+    let opts = sorted_options(&ed);
+    let names: Vec<&str> = opts.iter().map(|(k, _)| k.as_str()).collect();
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(names, sorted);
+}
+
+// ── Picker entries ───────────────────────────────────────────────────────────
+
+#[test]
+fn picker_files_join_project_root() {
+    let mut ed = make_editor();
+    ed.project_manager.project.root =
+        Some(std::path::PathBuf::from("/tmp/proj"));
+    ed.project_manager.project.files = vec!["src/main.rs".into()];
+    let entries = collect_entries(&ed, PickerSource::Files);
+    match &entries[0] {
+        PickerEntry::File(p) => assert_eq!(p, "/tmp/proj/src/main.rs"),
+        other => panic!("expected File entry, got {other:?}"),
+    }
+}
+
+#[test]
+fn picker_symbols_come_from_index() {
+    let mut ed = make_editor();
+    ed.semantic.symbol_index.add_symbols("/a.rs", vec![
+        Symbol { name: "main".into(), kind: SymbolKind::Function,
+                 file: String::new(), line: 4, column: 0, documentation: None },
+    ]);
+    let entries = collect_entries(&ed, PickerSource::Symbols);
+    assert_eq!(entries.len(), 1);
+    match &entries[0] {
+        PickerEntry::Symbol { name, file, line } => {
+            assert_eq!(name, "main");
+            assert_eq!(file, "/a.rs");
+            assert_eq!(*line, 4);
+        }
+        other => panic!("expected Symbol entry, got {other:?}"),
+    }
+}
+
+#[test]
+fn picker_commands_list_registry() {
+    let ed = make_editor();
+    let entries = collect_entries(&ed, PickerSource::Commands);
+    assert!(entries.iter().any(|e| matches!(e, PickerEntry::Command(c) if c == "goto-line")));
+}
+
+// ── CommandRegistry::list_detailed ───────────────────────────────────────────
+
+#[test]
+fn list_detailed_flags_required_args() {
+    use crate::kernel::command::args::{ArgSpec, ArgType};
+    let mut ed = make_editor();
+    ed.commands.register_fn(
+        "gui-test-needs-arg", "desc",
+        vec![ArgSpec::new("path", ArgType::Path)],
+        |_ed, _args| Ok(()),
+    );
+    let listed = ed.commands.list_detailed();
+    let needs = listed.iter().find(|(n, _, _)| n == "gui-test-needs-arg").unwrap();
+    assert!(needs.2, "required arg without default must set needs_args");
+    let goto = listed.iter().find(|(n, _, _)| n == "goto-line").unwrap();
+    assert!(!goto.2, "goto-line has an optional arg only");
+}
+
+// ── Breadcrumbs ──────────────────────────────────────────────────────────────
+
+#[test]
+fn breadcrumb_symbol_at_picks_innermost() {
+    let mut ed = make_editor();
+    ed.semantic.symbol_index.add_symbols("test", vec![
+        Symbol { name: "outer".into(), kind: SymbolKind::Function,
+                 file: "test".into(), line: 0, column: 0, documentation: None },
+        Symbol { name: "inner".into(), kind: SymbolKind::Function,
+                 file: "test".into(), line: 5, column: 0, documentation: None },
+    ]);
+    assert_eq!(symbol_at(&ed, "test", 7), Some("inner".to_string()));
+    assert_eq!(symbol_at(&ed, "test", 2), Some("outer".to_string()));
+    assert_eq!(symbol_at(&ed, "other", 7), None);
+}
+
+#[test]
+fn breadcrumb_segments_helpers() {
+    assert_eq!(segments("a/b/c.rs"), vec!["a", "b", "c.rs"]);
+    assert_eq!(
+        relative_to_project(Some(std::path::Path::new("/r")), "/r/x/y.rs"),
+        "x/y.rs"
+    );
+}
+
+// ── Theme ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn theme_resolves_from_options() {
+    let mut opts = std::collections::HashMap::new();
+    assert!(!GuiTheme::from_options(&opts).light);
+    opts.insert("gui-theme".to_string(), "latte".to_string());
+    assert!(GuiTheme::from_options(&opts).light);
+    opts.insert("gui-theme".to_string(), "mocha".to_string());
+    assert!(!GuiTheme::from_options(&opts).light);
+}
+
+#[test]
+fn theme_applies_editor_colors() {
+    let mut ed = make_editor();
+    GuiTheme::latte().apply_editor(&mut ed);
+    assert_eq!(ed.theme_color("gui-bg"), (239, 241, 245));
+    GuiTheme::mocha().apply_editor(&mut ed);
+    assert_eq!(ed.theme_color("gui-bg"), (30, 30, 46));
+}

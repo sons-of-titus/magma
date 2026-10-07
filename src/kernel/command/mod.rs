@@ -9,8 +9,7 @@ use args::{ArgSpec, ArgValue};
 pub type CommandResult = Result<(), String>;
 
 pub(crate) struct CommandEntry {
-    #[allow(dead_code)] pub(crate) name: String,
-    #[allow(dead_code)] pub(crate) description: String,
+    pub(crate) description: String,
     pub(crate) args: Vec<ArgSpec>,
     pub(crate) handler: Arc<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
 }
@@ -40,7 +39,6 @@ impl CommandRegistry {
         handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
     ) {
         self.commands.insert(name.to_string(), CommandEntry {
-            name: name.to_string(),
             description: description.to_string(),
             args,
             handler: Arc::from(handler),
@@ -61,6 +59,21 @@ impl CommandRegistry {
 
     pub fn list(&self) -> Vec<&str> {
         self.commands.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// All commands as `(name, description, needs_args)` triples, sorted by
+    /// name.  `needs_args` is true when the command declares a required
+    /// argument without a default — callers that cannot prompt skip those.
+    pub fn list_detailed(&self) -> Vec<(String, String, bool)> {
+        let mut out: Vec<(String, String, bool)> = self.commands.iter()
+            .map(|(name, e)| (
+                name.clone(),
+                e.description.clone(),
+                e.args.iter().any(|a| a.required && a.default.is_none()),
+            ))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 
     pub fn exists(&self, name: &str) -> bool {

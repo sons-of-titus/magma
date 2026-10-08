@@ -1,9 +1,9 @@
 //! GUI input translation — egui events → Magma key strings + raw mouse events.
 //!
-//! Key strings use the same grammar as the TUI backend (`ctrl-x`, `meta-x`,
-//! `ctrl-shift-x`, plain characters, and named specials like `return` / `up`).
-//! The GUI intercepts a handful of chords (dialog shortcuts) before these
-//! strings reach the editor's keymap.
+//! Key strings use a fixed grammar (`ctrl-x`, `meta-x`, `ctrl-shift-x`, plain
+//! characters, and named specials like `return` / `up`) consumed by the
+//! editor's keymap.  The GUI intercepts a handful of chords (dialog
+//! shortcuts) before these strings reach the editor's keymap.
 
 use eframe::egui;
 use crate::kernel::input::NON_INSERTABLE;
@@ -94,6 +94,7 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
                 Key::Backspace => Some("backspace"),
                 Key::Enter     => Some("return"),
                 Key::Tab       => Some("tab"),
+                
                 Key::Delete    => Some("delete"),
                 Key::ArrowLeft  => Some("left"),
                 Key::ArrowRight => Some("right"),
@@ -111,7 +112,14 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
                 Key::F11 => Some("f11"), Key::F12 => Some("f12"),
                 _ => None,
             };
-            if let Some(s) = special { return Some(s.to_string()); }
+            if let Some(s) = special {
+                // Shift extends navigation (select-left, shift-tab); other
+                // modifiers keep the plain name so chords stay predictable.
+                if shift && !ctrl && !alt {
+                    return Some(format!("shift-{s}"));
+                }
+                return Some(s.to_string());
+            }
 
             if ctrl || alt {
                 if *key == Key::Backslash {

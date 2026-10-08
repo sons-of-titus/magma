@@ -41,9 +41,6 @@ pub mod events {
     pub const LSP_RENAME_RESULT: &str = "lsp-rename-result";
     pub const LSP_RESPONSE: &str = "lsp-response";
     pub const MAJOR_MODE_CHANGED: &str = "major-mode-changed";
-    pub const MINIBUFFER_CLOSED: &str = "minibuffer-closed";
-    pub const MINIBUFFER_INPUT_CHANGED: &str = "minibuffer-input-changed";
-    pub const MINIBUFFER_OPENED: &str = "minibuffer-opened";
     pub const MODE_CHANGED: &str = "mode-changed";
     pub const MOUSE_CLICKED: &str = "mouse-clicked";
     pub const MOUSE_DRAGGED: &str = "mouse-dragged";
@@ -53,8 +50,6 @@ pub mod events {
     pub const PROJECT_CLOSED: &str = "project-closed";
     pub const PROJECT_MEMBER_FOCUSED: &str = "project-member-focused";
     pub const PROJECT_OPENED: &str = "project-opened";
-    pub const RENDER_FRAME: &str = "render-frame";
-    pub const RENDER_TAB_BAR: &str = "render-tab-bar";
     pub const SELECTION_CHANGED: &str = "selection-changed";
     pub const SELECTION_CLEARED: &str = "selection-cleared";
     pub const TASK_RESULT: &str = "task-result";

@@ -343,7 +343,7 @@ fn vc_open_commit_buf(editor: &mut Editor) -> CommandResult {
     vc_output_buf(editor, "*vc-commit*",
         "# Enter commit message above. Run :VCcommit-save when done.\n")?;
     editor.editor_mode = crate::kernel::state::mode::EditorMode::new("insert", true);
-    editor.keymaps.pop_layer("vim");
+    editor.keymaps.pop_layer("editor");
     editor.keymaps.push_layer("insert");
     Ok(())
 }

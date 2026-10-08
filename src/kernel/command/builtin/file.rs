@@ -1,8 +1,17 @@
-//! File commands (open-file-at-cursor).
+//! File commands (open-file-at-cursor, sidebar file operations).
 
 use crate::kernel::state::Editor;
 
 use super::helpers::*;
+
+/// Open (or focus) `path` in the editor.  Shared by create-file and
+/// rename-path so the result of a sidebar operation is on screen.
+fn open_path(editor: &mut Editor, path: &str) -> Result<(), String> {
+    let mut args = std::collections::HashMap::new();
+    args.insert("path".to_string(),
+        crate::kernel::command::args::ArgValue::Path(path.to_string()));
+    crate::kernel::command::execute_command(editor, "open-file", &args)
+}
 
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
@@ -38,6 +47,81 @@ pub(super) fn register(editor: &mut Editor) {
             }
             if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
+            }
+            Ok(())
+        },
+    );
+
+    cmds.register_fn("create-file", "Create an empty file (and its parent dirs) and open it",
+        vec![crate::kernel::command::args::ArgSpec::new("path", crate::kernel::command::args::ArgType::Path)],
+        |editor, args| {
+            let path = args.get("path").and_then(|a| a.as_string())
+                .ok_or_else(|| "Path required".to_string())?;
+            if std::path::Path::new(path).exists() {
+                return Err(format!("Already exists: {path}"));
+            }
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Cannot create {}: {e}", parent.display()))?;
+            }
+            std::fs::write(path, "")
+                .map_err(|e| format!("Cannot create {path}: {e}"))?;
+            open_path(editor, path)
+        },
+    );
+
+    cmds.register_fn("rename-path", "Rename a file; open buffers follow",
+        vec![
+            crate::kernel::command::args::ArgSpec::new("from", crate::kernel::command::args::ArgType::Path),
+            crate::kernel::command::args::ArgSpec::new("to", crate::kernel::command::args::ArgType::Path),
+        ],
+        |editor, args| {
+            let from = args.get("from").and_then(|a| a.as_string())
+                .ok_or_else(|| "from required".to_string())?;
+            let to = args.get("to").and_then(|a| a.as_string())
+                .ok_or_else(|| "to required".to_string())?;
+            if std::path::Path::new(to).exists() {
+                return Err(format!("Already exists: {to}"));
+            }
+            std::fs::rename(from, to)
+                .map_err(|e| format!("Cannot rename {from}: {e}"))?;
+            // Open buffers follow the rename so they keep saving to disk.
+            for (_, arc) in editor.buffers.iter() {
+                let mut buf = arc.lock().unwrap();
+                if buf.path.as_deref() == Some(from) {
+                    buf.path = Some(to.to_string());
+                }
+            }
+            Ok(())
+        },
+    );
+
+    cmds.register_fn("delete-path", "Delete a file (or empty directory) permanently",
+        vec![crate::kernel::command::args::ArgSpec::new("path", crate::kernel::command::args::ArgType::Path)],
+        |editor, args| {
+            let path = args.get("path").and_then(|a| a.as_string())
+                .ok_or_else(|| "Path required".to_string())?;
+            let p = std::path::Path::new(path);
+            if p.is_dir() {
+                std::fs::remove_dir(p)
+                    .map_err(|_| format!("Refusing to delete non-empty directory: {path}"))?;
+            } else {
+                std::fs::remove_file(p)
+                    .map_err(|e| format!("Cannot delete {path}: {e}"))?;
+            }
+            // Close any buffer that pointed at the deleted file.
+            let doomed: Vec<usize> = editor.buffers.iter()
+                .filter(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(path))
+                .map(|(k, _)| k)
+                .collect();
+            for key in doomed {
+                for pane in editor.view_tree.panes_mut() {
+                    if pane.buffer_id == Some(key) {
+                        pane.buffer_id = None;
+                    }
+                }
+                let _ = editor.buffers.try_remove(key);
+                editor.views.remove(&key);
             }
             Ok(())
         },

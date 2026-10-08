@@ -6,27 +6,9 @@ use std::path::PathBuf;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
-
-fn projects_file_path() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    format!("{}/.local/share/magma/projects", home)
-}
-
-fn ensure_projects_dir() {
-    let path = projects_file_path();
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        std::fs::create_dir_all(parent).ok();
-    }
-}
-
-fn save_recent_projects(projects: &[String]) {
-    ensure_projects_dir();
-    let path = projects_file_path();
-    let content = projects.join("\n");
-    std::fs::write(&path, &content).ok();
-}
+use crate::kernel::event::payload::EmptyPayload;
+use crate::kernel::project;
 
 /// (project/recent) → [string ...]
 unsafe extern "C-unwind" fn c_project_recent(_argc: i32, _argv: *mut Janet) -> Janet {
@@ -42,14 +24,19 @@ unsafe extern "C-unwind" fn c_project_recent(_argc: i32, _argv: *mut Janet) -> J
 /// (project/push-recent path) → nil
 unsafe extern "C-unwind" fn c_project_push_recent(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let path = match conv::get_str(argc, argv, 0) {
-            Some(s) => s,
-            None => return conv::nil(),
-        };
-        ed.project_manager.recent_projects.retain(|p| p != &path);
-        ed.project_manager.recent_projects.insert(0, path);
-        ed.project_manager.recent_projects.truncate(50);
-        save_recent_projects(&ed.project_manager.recent_projects);
+        if let Some(path) = conv::get_str(argc, argv, 0) {
+            project::push_recent(ed, &path);
+        }
+        conv::nil()
+    })
+}
+
+/// (project/remove-recent path) → nil
+unsafe extern "C-unwind" fn c_project_remove_recent(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        if let Some(path) = conv::get_str(argc, argv, 0) {
+            project::remove_recent(ed, &path);
+        }
         conv::nil()
     })
 }
@@ -174,6 +161,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"project/push-recent".as_ptr() as *const _,
             cfun: Some(c_project_push_recent as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Add a project path to the recent list and persist".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"project/remove-recent".as_ptr() as *const _,
+            cfun: Some(c_project_remove_recent as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Remove a project path from the recent list and persist".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/path-exists?".as_ptr() as *const _,

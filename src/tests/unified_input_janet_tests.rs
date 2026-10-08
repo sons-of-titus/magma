@@ -4,7 +4,7 @@ use crate::kernel::input::dispatch_key;
 #[test]
 fn on_input_fn_starts_nil() {
     janet_test!(ed, {
-        assert_eq!(ed.on_input_fn.as_deref(), Some("vim-on-input"));
+        assert_eq!(ed.on_input_fn.as_deref(), None);
     });
 }
 
@@ -25,7 +25,7 @@ fn on_input_interceptor_consuming_key() {
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(
         r#"(defn eat-all [k] (editor/consume-input)) (editor/on-input "eat-all")"#);
-    ed.keymaps.set_layer("vim", "x", "delete-char");
+    ed.keymaps.set_layer("editor", "x", "delete-char");
     let buf_id = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
@@ -42,7 +42,7 @@ fn on_input_interceptor_passing_key() {
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(
         r#"(defn pass-all [k] nil) (editor/on-input "pass-all")"#);
-    ed.keymaps.set_layer("vim", "x", "delete-char");
+    ed.keymaps.set_layer("editor", "x", "delete-char");
     let buf_id = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.views.get_mut(&buf_id).unwrap().set_cursor(0);
@@ -70,8 +70,8 @@ fn input_consumed_flag_cleared_each_dispatch() {
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(
         r#"(defn selective [k] (when (= k "a") (editor/consume-input))) (editor/on-input "selective")"#);
-    ed.keymaps.set_layer("vim", "a", "append");
-    ed.keymaps.set_layer("vim", "x", "delete-char");
+    ed.keymaps.set_layer("editor", "a", "append");
+    ed.keymaps.set_layer("editor", "x", "delete-char");
     let buf_id = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
     ed.views.get_mut(&buf_id).unwrap().set_cursor(0);

@@ -1,293 +1,67 @@
+//! Janet runtime integration — command surface, options, and the mode
+//! substrate a community modal-editing plugin would build on.
+
 use crate::kernel::scripting;
 
-/// Helper: type a string into command mode via dispatch_key
-fn type_command(ed: &mut crate::kernel::state::Editor, s: &str) {
-    crate::kernel::command::execute_command(ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    for ch in s.chars() {
-        let mut buf = [0u8; 4];
-        let s = ch.encode_utf8(&mut buf);
-        crate::kernel::input::dispatch_key(ed, s);
-    }
-    crate::kernel::input::dispatch_key(ed, "return");
+#[test]
+fn quit_routes_through_the_guarded_command() {
+    janet_test!(ed, {
+        let r = scripting::eval("(editor/run-command \"quit\")");
+        assert_eq!(r, "ok");
+        assert!(!ed.running, "quit must end the session");
+    });
 }
 
 #[test]
-fn colon_q_via_janet_fiber() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    assert!(ed.commands.exists("command-execute"),
-        "command-execute must be registered after init");
-
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    assert!(ed.editor_mode.is_named("command"), "should be in command mode");
-
-    crate::kernel::input::dispatch_key(&mut ed, "q");
-    assert!(ed.editor_mode.minibuffer.as_ref().map(|mb| mb.input.as_str()) == Some("q"),
-        "command input should be 'q'");
-
-    crate::kernel::input::dispatch_key(&mut ed, "return");
-
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal mode after :q");
-    assert!(!ed.running, "editor should not be running after :q");
-}
-
-#[test]
-fn colon_w_via_janet_fiber() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    assert!(ed.commands.exists("command-execute"),
-        "command-execute must be registered after init");
-
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    assert!(ed.editor_mode.is_named("command"), "should be in command mode");
-
-    crate::kernel::input::dispatch_key(&mut ed, "w");
-    crate::kernel::input::dispatch_key(&mut ed, "return");
-
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal mode after :w");
-}
-
-#[test]
-fn colon_execute_unknown_does_not_crash() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    assert!(ed.commands.exists("command-execute"));
-
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    crate::kernel::input::dispatch_key(&mut ed, "f");
-    crate::kernel::input::dispatch_key(&mut ed, "o");
-    crate::kernel::input::dispatch_key(&mut ed, "o");
-    crate::kernel::input::dispatch_key(&mut ed, "return");
-
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal mode after unknown :foo");
-}
-
-#[test]
-fn colon_set_via_fiber_works() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    for ch in "set tab-width=8".chars() {
-        crate::kernel::input::dispatch_key(&mut ed, &ch.to_string());
-    }
-    crate::kernel::input::dispatch_key(&mut ed, "return");
-
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal mode after :set");
-    assert_eq!(ed.options.get("tab-width").map(|s| s.as_str()),
-        Some("8"), "tab-width should be set to 8");
-}
-
-#[test]
-fn colon_execute_direct() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    let expr = r#"(colon-execute "q")"#;
-    let _result = scripting::eval(expr);
-    assert!(!ed.running, "running should be false after :q");
-}
-
-#[test]
-fn mode_detail_keyword_lookup() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    crate::kernel::input::dispatch_key(&mut ed, "q");
-
-    let expr = r#"(= (get (editor/mode-detail) :input "") "q")"#;
-    let result = scripting::eval(expr);
-    assert_eq!(result, "ok", "keyword lookup in mode-detail table should work");
-}
-
-#[test]
-fn colon_substitute_in_buffer() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    for ch in "s/hello/goodbye/".chars() {
-        let s = ch.to_string();
-        crate::kernel::input::dispatch_key(&mut ed, &s);
-    }
-    std::fs::write("/tmp/magma_dbg.txt", "BEFORE_RETURN\n").ok();
-
-    // Use RAII guard to detect unwinding
-    struct DbgWrite;
-    impl Drop for DbgWrite {
-        fn drop(&mut self) {
-            std::fs::write("/tmp/magma_dbg_guard.txt", "guard_dropped\n").ok();
+fn quit_refusal_surfaces_as_a_janet_error() {
+    janet_test!(ed, {
+        let key = ed.create_buffer_from_str("dirty.txt", "work");
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
         }
-    }
-    let _guard = DbgWrite;
-    std::fs::write("/tmp/magma_dbg_guard.txt", "before_dispatch\n").ok();
-    crate::kernel::input::dispatch_key(&mut ed, "return");
-    std::fs::write("/tmp/magma_dbg_guard.txt", "after_dispatch\n").ok();
-    drop(_guard);
-    std::fs::write("/tmp/magma_dbg.txt", "AFTER_RETURN\n").ok();
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(0, "x");
 
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal mode after :s");
-    let focused = crate::kernel::input::focused_buffer_id(&ed);
-    let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
-    assert_eq!(buf.slice(0, buf.len()), "goodbye world hello",
-        "substitute should replace first occurrence only");
+        let r = scripting::eval("(editor/run-command \"quit\")");
+        assert_ne!(r, "ok", "quit with dirty buffers must fail");
+        assert!(ed.running, "refusal keeps the editor alive");
+    });
 }
 
 #[test]
-fn colon_substitute_global() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+fn set_mode_substrate_remains_for_community_plugins() {
+    // Modality is out of the shipped product, but the extension point a
+    // community vim plugin needs must keep working.
+    janet_test!(ed, {
+        let r = scripting::eval("(editor/set-mode \"vim-normal\" {:accepts-text false})");
+        assert_eq!(r, "ok");
+        assert_eq!(ed.editor_mode.name, "vim-normal");
+        assert!(!ed.editor_mode.accepts_text);
 
-    crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
-    for ch in "s/hello/goodbye/g".chars() {
-        let s = ch.to_string();
-        crate::kernel::input::dispatch_key(&mut ed, &s);
-    }
-    crate::kernel::input::dispatch_key(&mut ed, "return");
-
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal mode after :s with g flag");
-    let focused = crate::kernel::input::focused_buffer_id(&ed);
-    let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
-    assert_eq!(buf.slice(0, buf.len()), "goodbye world goodbye",
-        "global substitute should replace all occurrences");
+        let r = scripting::eval("(editor/set-mode \"editor\")");
+        assert_eq!(r, "ok");
+        assert!(ed.editor_mode.accepts_text, "back to the default typing mode");
+    });
 }
 
 #[test]
-fn colon_q_quit_qbang() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-    assert!(ed.running);
-
-    type_command(&mut ed, "q!");
-    assert!(!ed.running, "running should be false after :q!");
-    ed.running = true;
-
-    type_command(&mut ed, "quit");
-    assert!(!ed.running, "running should be false after :quit");
-    ed.running = true;
-
-    type_command(&mut ed, "q");
-    assert!(!ed.running, "running should be false after :q");
+fn option_set_is_the_configuration_path() {
+    janet_test!(ed, {
+        let r = scripting::eval("(option/set \"tab-width\" \"8\")");
+        assert_eq!(r, "ok");
+        assert_eq!(ed.options.get("tab-width").map(|s| s.as_str()), Some("8"));
+    });
 }
 
 #[test]
-fn colon_wq_and_x() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-    assert!(ed.running);
-
-    let focused = crate::kernel::input::focused_buffer_id(&ed);
-    ed.buffers.get(focused).unwrap().lock().unwrap().path = Some("/tmp/test_wq".to_string());
-    std::fs::write("/tmp/test_wq", "").expect("cannot create /tmp/test_wq for test");
-
-    type_command(&mut ed, "wq");
-    assert!(!ed.running, "running should be false after :wq");
-
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-    let focused = crate::kernel::input::focused_buffer_id(&ed);
-    ed.buffers.get(focused).unwrap().lock().unwrap().path = Some("/tmp/test_x".to_string());
-    std::fs::write("/tmp/test_x", "").expect("cannot create /tmp/test_x for test");
-    type_command(&mut ed, "x");
-    assert!(!ed.running, "running should be false after :x");
-}
-
-#[test]
-fn colon_write_alias() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    type_command(&mut ed, "write /tmp/test_write_alias");
-    let focused = crate::kernel::input::focused_buffer_id(&ed);
-    let buf = ed.buffers.get(focused).unwrap().lock().unwrap();
-    assert_eq!(buf.path, Some("/tmp/test_write_alias".to_string()),
-        ":write should set buffer path");
-}
-
-#[test]
-fn colon_e_edit_r_read() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    type_command(&mut ed, "e /tmp/test_edit");
-    let focused = crate::kernel::input::focused_buffer_id(&ed);
-    assert!(ed.buffers.get(focused).is_some(),
-        "buffer should still exist after :e");
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal after :e");
-}
-
-#[test]
-fn colon_shell_not_broken() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    type_command(&mut ed, "! echo test");
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal after :! command");
-
-    type_command(&mut ed, "!echo");
-    assert!(ed.editor_mode.is_named("normal"),
-        "should be normal after unknown :!echo (falls through)");
-}
-
-#[test]
-fn colon_all_verb_extractions_via_eval() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("test");
-    scripting::init(&mut ed);
-    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-
-    let tests: &[&str] = &[
-        "q", "q!", "quit", "wq", "x",
-        "w", "w /tmp/foo", "write /tmp/foo",
-        "s/old/new/", "s /old/new/",
-        "e /tmp/foo", "edit /tmp/foo",
-        "r /tmp/foo", "read /tmp/foo",
-        "! echo ok",
-        "set tab-width=8",
-    ];
-    for cmd in tests {
-        ed.running = true;
-        let expr = format!("(try (colon-execute \"{}\") ([e] nil))", cmd);
-        let result = scripting::eval(&expr);
-        assert_eq!(result, "ok", "colon-execute \"{}\" should not crash janet", cmd);
-    }
+fn janet_defined_commands_execute_but_stay_off_the_palette() {
+    janet_test!(ed, {
+        let r = scripting::eval(
+            "(command/define \"community-hello\" (fn [&] (editor/echo \"hi\")))");
+        assert_eq!(r, "ok");
+        assert!(ed.commands.exists("community-hello"));
+        assert!(ed.commands.list_rust_commands().iter()
+            .all(|(name, _, _)| name != "community-hello"),
+            "Janet-defined commands are not palette surface");
+    });
 }

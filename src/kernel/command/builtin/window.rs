@@ -102,6 +102,28 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
+    cmds.register_fn("window-wider", "Grow the focused pane's share of the split",
+        vec![],
+        |editor, _args| {
+            if let Some(win) = editor.view_tree.focused_window()
+                && let Some(w) = editor.view_tree.pane(win).map(|p| p.weight) {
+                    editor.view_tree.resize_weighted(win, w + 0.1);
+                }
+            Ok(())
+        },
+    );
+
+    cmds.register_fn("window-narrower", "Shrink the focused pane's share of the split",
+        vec![],
+        |editor, _args| {
+            if let Some(win) = editor.view_tree.focused_window()
+                && let Some(w) = editor.view_tree.pane(win).map(|p| p.weight) {
+                    editor.view_tree.resize_weighted(win, w - 0.1);
+                }
+            Ok(())
+        },
+    );
+
     cmds.register_fn("terminal-start", "Start a terminal emulator in a new buffer",
         vec![ArgSpec::optional("shell", ArgType::String, ArgValue::String("".to_string()))],
         |editor, args| {
@@ -118,8 +140,6 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_key = crate::kernel::terminal::start_terminal(editor, &cmd, &cmd_args)?;
             editor.io.terminal_mode_buf = Some(buf_key);
             editor.editor_mode = EditorMode::new("terminal", false);
-            editor.keymaps.pop_layer("vim");
-            editor.keymaps.pop_layer("insert");
             Ok(())
         },
     );
@@ -146,7 +166,7 @@ pub(super) fn register(editor: &mut Editor) {
             if crate::kernel::terminal::is_terminal(editor, buf_id) {
                 editor.io.terminal_mode_buf = Some(buf_id);
                 editor.editor_mode = EditorMode::new("terminal", false);
-                editor.keymaps.pop_layer("vim");
+                editor.keymaps.pop_layer("editor");
                 editor.keymaps.pop_layer("insert");
             }
             Ok(())
@@ -158,7 +178,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             editor.editor_mode = EditorMode::new("normal", false);
             editor.io.terminal_mode_buf = None;
-            editor.keymaps.push_layer("vim");
+            editor.keymaps.push_layer("editor");
             Ok(())
         },
     );

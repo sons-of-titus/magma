@@ -8,13 +8,13 @@ Magma is not an application with plugins. It is a live runtime environment where
 
 ```
 ┌──────────────────────────────────────────┐
-│            RENDERER (TUI/GUI)             │
+│            RENDERER (GUI)                 │
 ├──────────────────────────────────────────┤
 │            RUST CORE (Kernel)             │
 │  Buffer  Window  Events  Commands  Keys  │
 ├──────────────────────────────────────────┤
 │          JANET RUNTIME (User)             │
-│  REPL  Plugins  Config  Modes  Keymaps   │
+│  Scripting  Plugins  Config  Modes  Keys │
 └──────────────────────────────────────────┘
 ```
 
@@ -27,6 +27,12 @@ cargo build --release
 ./target/release/magma
 ```
 
+A welcome window opens; pick a folder and the main editor window follows.
+
+Open a folder from the welcome screen (or `:open <dir>`), then `ctrl-p`
+searches everything and `:` runs commands.  See
+[Getting Started](guide/getting-started.md).
+
 ## Documentation
 
 ```
@@ -34,33 +40,26 @@ docs/
 ├── README.md                          # This file
 ├── architecture/
 │   ├── overview.md                    # High-level architecture
+│   ├── gui-architecture.md            # GUI chrome and shell
 │   ├── rust-core.md                   # Rust kernel layer
-│   ├── janet-runtime.md               # Janet user layer
-│   ├── events.md                      # Event system
-│   ├── commands.md                    # Command system
-│   ├── buffers.md                     # Buffer model (rope-based)
-│   ├── keymaps.md                     # Keymap system (vim defaults)
-│   ├── plugins.md                     # Plugin system
-│   ├── repl.md                        # REPL architecture
-│   └── memory.md                      # Memory ownership rules
+│   ├── concurrency.md                 # Background runtime
+│   └── core-redesign.md               # Transaction/revision engine
 ├── api/
 │   └── janet-api.md                   # Full Janet API reference
-├── examples/
-│   ├── init.janet                     # Example configuration
-│   └── vim.janet                      # Vim keymap implementation
-└── guide/
+├── guide/
     ├── getting-started.md             # First steps
     ├── configuration.md               # Configuration guide
+    ├── options.md                     # Every option, typed
     └── plugin-development.md          # Plugin development guide
 ```
 
 ## Key Features
 
-- **Vim keymaps by default** — fully configurable, complete Vim emulation in Janet
-- **Live REPL** — evaluate Janet expressions that immediately affect editor state
-- **No restart required** — commands, keybindings, plugins change at runtime
-- **Full introspection** — all editor state is inspectable at runtime
-- **Hot reload** — reload plugins without restarting
+- **Native GUI IDE shell** — project tree, tabs, dialogs, tool windows, quickfix
+- **Non-modal editing** — text always inserts; modal editing (vim and friends) is community-extension territory, with the mode/keymap substrate built in
+- **Search everywhere** — files, symbols, and commands in one palette (`ctrl-p`)
+- **Safe by default** — guarded quit, opt-in auto-save, trash-conscious deletes
+- **Live programmability** — commands, keybindings, and behavior change at runtime
 - **Event-driven** — central event bus with hook chains
 - **Rope-based buffers** — efficient text operations (O(log n))
 - **Layered keymaps** — global → mode → buffer-local precedence

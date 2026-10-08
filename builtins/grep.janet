@@ -44,12 +44,6 @@
   (set proc-id (process/spawn (string "rg --line-number --column " pattern " " search-path) [])))
 
 # Colon verb: :grep <pattern>
-(put *colon-plugins* "grep"
-  (fn [args]
-    (def pattern (string/trim args))
-    (if (= pattern "")
-      (editor/log-message "Usage: :grep <pattern>")
-      (grep/run pattern))))
 
 # ── Recent-files picker ───────────────────────────────────────────────────────
 
@@ -71,9 +65,14 @@
     (recent-files/show)))
 
 # ctrl-r in normal mode opens the recent-files picker
-(keymap/set "ctrl-r" "recent-files" "vim")
+(keymap/set "ctrl-r" "recent-files" "editor")
 
 # Colon verb: :recent
-(put *colon-plugins* "recent"
-  (fn [_args]
-    (recent-files/show)))
+
+# --- Palette-visible command (the colon verb is deprecated) --------------
+(command/define "grep"
+  (fn [& args]
+    (def pattern (string/trim (or (first args) "")))
+    (if (= pattern "")
+      (editor/echo "Usage: grep <pattern>" "error")
+      (grep/run pattern))))

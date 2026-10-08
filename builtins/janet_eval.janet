@@ -27,15 +27,6 @@
 # ── :janet colon verb ────────────────────────────────────────────────────────
 # `:janet expr` evaluates a Janet expression and shows the result.
 
-(put *colon-plugins* "janet"
-  (fn [rest]
-    (def trimmed (string/trim rest))
-    (when (> (length trimmed) 0)
-      (def result (editor/eval trimmed))
-      (janet-output/write (string "> " trimmed "\n" result "\n"))
-      (def buf (buffer/find-or-create "*janet-output*"))
-      (when-let [win (window/current)]
-        (window/set-buffer win buf)))))
 
 # ── *janet-repl* interactive buffer ─────────────────────────────────────────
 
@@ -87,5 +78,3 @@
     (janet-repl/write "Janet REPL — press return to evaluate\n\n")
     (janet-repl/write-prompt)))
 
-(put *colon-plugins* "janet-repl"
-  (fn [_] (janet-repl/open)))

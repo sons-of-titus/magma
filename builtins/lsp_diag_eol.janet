@@ -48,12 +48,3 @@
         (apply-diag-eol buf diags)))))
 
 # Colon verb: :lsp-diag-eol on|off
-(when (and (table? *colon-plugins*) (not (nil? *colon-plugins*)))
-  (put *colon-plugins* "lsp-diag-eol"
-    (fn [args]
-      (let [sub (get args 0 "")
-            buf (buffer/current)]
-        (cond
-          (= sub "on")  (lsp-diag-eol/enable buf)
-          (= sub "off") (lsp-diag-eol/disable buf)
-          (editor/log-message "Usage: :lsp-diag-eol on|off"))))))

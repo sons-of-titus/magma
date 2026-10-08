@@ -167,5 +167,3 @@
     (mshell/append "Type shell commands or Janet expressions (starting with '(')\n\n")
     (mshell/write-prompt)))
 
-(put *colon-plugins* "mshell" (fn [_] (mshell/open)))
-(put *colon-plugins* "ms"    (fn [_] (mshell/open)))

@@ -53,7 +53,9 @@ impl UndoHistory {
             cursor: -1,
             open_group: None,
             next_group: 0,
-            saved_cursor: None,
+            // Revision 0 (the loaded content) is the saved state: a buffer
+            // freshly read from disk must not report modified.
+            saved_cursor: Some(-1),
         }
     }
 
@@ -171,7 +173,7 @@ impl UndoHistory {
         self.entries.clear();
         self.cursor = -1;
         self.open_group = None;
-        self.saved_cursor = None;
+        self.saved_cursor = Some(-1);
     }
 
     pub fn cursor_pos(&self) -> isize {

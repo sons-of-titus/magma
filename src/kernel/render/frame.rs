@@ -1,14 +1,14 @@
 //! render_frame — traverses the ViewTree and dispatches to each pane's View.
 //!
-//! Both the TUI and GUI renderers call render_frame to populate a Surface,
-//! then consume the Surface for output.
+//! The GUI editor pane calls render_frame to populate a Surface, then paints
+//! the Surface (CPU or GPU path).  Window chrome (tabs, status bar, dialogs)
+//! is native GUI and rendered outside this pipeline.
 
 use crate::kernel::state::Editor;
-use crate::kernel::render::surface::{Style, Surface};
+use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view::{Rect, RenderCtx, View};
 use crate::kernel::render::editor_view::EditorView;
 use crate::kernel::render::terminal_view::TerminalView;
-use super::status_and_popup::{render_status_bar, render_command_completion_popup};
 use super::decorations::render_overlays;
 
 /// Return the display-column width of a character, consulting the glyph-width
@@ -105,31 +105,16 @@ pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize
 
 /// Populate `surface` from editor state by traversing the ViewTree.
 ///
-/// When `editor_pane_only` is true (GUI mode), the tab bar reservation and
-/// status bar are omitted — those are rendered as native egui panels instead.
-pub fn render_frame(editor: &Editor, surface: &mut Surface, editor_pane_only: bool) {
+/// The surface contains editor pane content only — tab bar, status bar, and
+/// dialogs are native GUI widgets rendered around it.
+pub fn render_frame(editor: &Editor, surface: &mut Surface) {
     surface.clear();
-
-    // Surface-based tab bar row — TUI only.  When editor_pane_only is true
-    // (GUI mode) the tab bar is a native egui widget in GuiApp::update().
-    let tab_bar_rows: u16 = if !editor_pane_only && editor.tab_bar_enabled { 1 } else { 0 };
-
-    if !editor_pane_only && editor.tab_bar_enabled {
-        let tb_style = Style {
-            fg: editor.theme_color("status-fg"),
-            bg: editor.theme_color("status-bg"),
-            ..Default::default()
-        };
-        for x in 0..surface.width {
-            surface.set_cell(x, 0, ' ', Some(tb_style));
-        }
-    }
 
     // ── Render each pane through its view ────────────────────────────────
     for pane in editor.view_tree.panes() {
         let Some(buf_id) = pane.buffer_id else { continue };
 
-        let area = Rect::new(pane.x, pane.y + tab_bar_rows, pane.width, pane.height);
+        let area = Rect::new(pane.x, pane.y, pane.width, pane.height);
         let ctx = RenderCtx { editor, area };
 
         if crate::kernel::terminal::is_terminal(editor, buf_id) {
@@ -141,28 +126,4 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface, editor_pane_only: bo
 
     // ── Overlays (z-ordered, above all pane content) ─────────────────────
     render_overlays(editor, surface);
-
-    if editor_pane_only {
-        return;
-    }
-
-    // ── Status bar (single global bar for the focused pane) ──────────────
-    let focused = editor.view_tree.focused_window();
-    let buffer_id = focused.and_then(|wid| editor.view_tree.buffer(wid));
-    if let Some(buf_id) = buffer_id
-        && let Some(arc) = editor.buffers.get(buf_id)
-    {
-        let buf = arc.lock().unwrap();
-        let cursor_offset = editor.view_of_buffer(buf_id).map(|v| v.cursor.offset).unwrap_or(0);
-        let is_terminal_view = crate::kernel::terminal::is_terminal(editor, buf_id);
-        render_status_bar(editor, &*buf, buf_id, cursor_offset, surface, is_terminal_view);
-    }
-
-    // ── Command-mode completion popup ─────────────────────────────────────
-    if editor.editor_mode.minibuffer.is_some()
-        && editor.completion.visible
-        && !editor.completion.items.is_empty()
-    {
-        render_command_completion_popup(editor, surface);
-    }
 }

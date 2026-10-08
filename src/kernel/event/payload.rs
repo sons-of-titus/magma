@@ -72,8 +72,6 @@ event_payload!(LspProgressPayload { token, message, percentage });
 event_payload!(LspRenameResultPayload { path, edit });
 event_payload!(LspResponsePayload { path, method, result });
 event_payload!(MajorModeChangedPayload { mode, buffer_id });
-event_payload!(MinibufferClosedPayload { input, kind });
-event_payload!(MinibufferOpenedPayload { prompt, kind });
 event_payload!(ModeChangedPayload { from, to });
 event_payload!(ProcessExitPayload { id, exit_code, cmd });
 event_payload!(ProcessOutputPayload { id, line, stream });

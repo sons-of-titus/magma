@@ -71,15 +71,17 @@ impl Pane {
 /// ViewTree — manages all visible panes and their geometry.
 ///
 /// The layout engine (redistribute) derives each pane's (x, y, width, height)
-/// from fractional weights and terminal dimensions.  LayoutConstraint tags how
-/// each pane was created; the engine currently implements horizontal weight-based
-/// tiling and preserves the tag for future recursive layout passes.
+/// from fractional weights and terminal dimensions.  Panes tile along ONE
+/// axis set by the most recent split — mixed nesting is a documented
+/// non-feature until the recursive layout pass lands.
 pub struct ViewTree {
     panes: Vec<Pane>,
     focused: usize,
     next_id: u64,
     term_width: u16,
     term_height: u16,
+    /// Axis the current split group tiles along; the newest split wins.
+    layout_axis: SplitDirection,
 }
 
 impl Default for ViewTree {
@@ -97,6 +99,7 @@ impl ViewTree {
             next_id: 2,
             term_width: 80,
             term_height: 24,
+            layout_axis: SplitDirection::Horizontal,
         }
     }
 
@@ -112,17 +115,35 @@ impl ViewTree {
         }
         let total: f32 = self.panes.iter().map(|p| p.weight.max(0.01)).sum();
         let n = self.panes.len();
-        let mut x: u16 = 0;
-        for (i, pane) in self.panes.iter_mut().enumerate() {
-            let frac = pane.weight.max(0.01) / total;
-            let win_w = if i == n - 1 {
-                tw.saturating_sub(x)
-            } else {
-                ((frac * tw as f32) as u16).max(1)
-            };
-            pane.x = x; pane.y = 0;
-            pane.width = win_w; pane.height = th;
-            x += win_w;
+        match self.layout_axis {
+            SplitDirection::Vertical => {
+                let mut y: u16 = 0;
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    let frac = pane.weight.max(0.01) / total;
+                    let win_h = if i == n - 1 {
+                        th.saturating_sub(y)
+                    } else {
+                        ((frac * th as f32) as u16).max(1)
+                    };
+                    pane.x = 0; pane.y = y;
+                    pane.width = tw; pane.height = win_h;
+                    y += win_h;
+                }
+            }
+            SplitDirection::Horizontal => {
+                let mut x: u16 = 0;
+                for (i, pane) in self.panes.iter_mut().enumerate() {
+                    let frac = pane.weight.max(0.01) / total;
+                    let win_w = if i == n - 1 {
+                        tw.saturating_sub(x)
+                    } else {
+                        ((frac * tw as f32) as u16).max(1)
+                    };
+                    pane.x = x; pane.y = 0;
+                    pane.width = win_w; pane.height = th;
+                    x += win_w;
+                }
+            }
         }
     }
 
@@ -220,11 +241,13 @@ impl ViewTree {
     }
 
     pub fn split_horizontal(&mut self, _id: WindowId) -> Option<WindowId> {
+        self.layout_axis = SplitDirection::Horizontal;
         let buf_id = self.focused_window().and_then(|id| self.buffer(id));
         Some(self.add_pane(buf_id, LayoutConstraint::Split(SplitDirection::Horizontal)))
     }
 
     pub fn split_vertical(&mut self, _id: WindowId) -> Option<WindowId> {
+        self.layout_axis = SplitDirection::Vertical;
         let buf_id = self.focused_window().and_then(|id| self.buffer(id));
         Some(self.add_pane(buf_id, LayoutConstraint::Split(SplitDirection::Vertical)))
     }

@@ -1,70 +1,6 @@
 use crate::kernel::scripting;
 use crate::kernel::state::Editor;
 
-// ── modeline ─────────────────────────────────────────────────────────────
-
-#[test]
-fn set_modeline_stores_fn_name() {
-    janet_test!(ed, {
-        scripting::eval(r#"(ui/set-modeline "my-fn")"#);
-        assert_eq!(ed.modeline_fn.as_deref(), Some("my-fn"));
-    });
-}
-
-#[test]
-fn set_modeline_nil_clears_fn() {
-    janet_test!(ed, {
-        scripting::eval(r#"(ui/set-modeline "my-fn")"#);
-        scripting::eval(r#"(ui/set-modeline nil)"#);
-        assert!(ed.modeline_fn.is_none());
-    });
-}
-
-#[test]
-fn get_modeline_returns_nil_when_unset() {
-    janet_test!(ed, {
-        let result = scripting::eval(r#"(= nil (ui/modeline))"#);
-        assert!(ed.modeline_fn.is_none());
-        let _ = result;
-    });
-}
-
-#[test]
-fn get_modeline_returns_fn_name_when_set() {
-    janet_test!(ed, {
-        scripting::eval(r#"(ui/set-modeline "my-status")"#);
-        assert_eq!(ed.modeline_fn.as_deref(), Some("my-status"));
-    });
-}
-
-// ── tab bar ──────────────────────────────────────────────────────────────
-
-#[test]
-fn set_tab_bar_true_enables_flag() {
-    janet_test!(ed, {
-        scripting::eval(r#"(ui/set-tab-bar true)"#);
-        assert!(ed.tab_bar_enabled);
-    });
-}
-
-#[test]
-fn set_tab_bar_false_disables_flag() {
-    janet_test!(ed, {
-        scripting::eval(r#"(ui/set-tab-bar true)"#);
-        scripting::eval(r#"(ui/set-tab-bar false)"#);
-        assert!(!ed.tab_bar_enabled);
-    });
-}
-
-#[test]
-fn tab_bar_enabled_reflects_state() {
-    janet_test!(ed, {
-        assert!(!ed.tab_bar_enabled);
-        scripting::eval(r#"(ui/set-tab-bar true)"#);
-        assert!(ed.tab_bar_enabled);
-    });
-}
-
 // ── overlay ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -133,16 +69,28 @@ fn make_buf_local(ed: &mut Editor) -> usize {
 }
 
 #[test]
-fn editor_ready_enables_tab_bar_and_sets_defaults() {
+fn editor_ready_sets_defaults() {
     janet_test!(ed, {
         let data = std::collections::HashMap::new();
         ed.events.emit("editor-ready", data.clone());
         ed.events.drain_and_dispatch();
-        assert!(ed.tab_bar_enabled, "tab_bar_enabled should be true after editor-ready");
         assert_eq!(ed.options.get("number").map(|s| s.as_str()), Some("true"));
-        assert!(ed.faces.contains_key("ml-normal"), "ml-normal face should be defined");
-        assert!(ed.faces.contains_key("ml-insert"), "ml-insert face should be defined");
+        assert_eq!(ed.options.get("scrolloff").map(|s| s.as_str()), Some("3"));
+        assert_eq!(ed.options.get("mouse-support").map(|s| s.as_str()), Some("true"));
+        assert!(ed.faces.contains_key("fringe"), "fringe face should be defined");
+        assert!(ed.faces.contains_key("overlay-border"), "overlay-border face should be defined");
         let _ = data;
+    });
+}
+
+#[test]
+fn editor_ready_enters_standard_editor_mode() {
+    janet_test!(ed, {
+        let data = std::collections::HashMap::new();
+        ed.events.emit("editor-ready", data.clone());
+        ed.events.drain_and_dispatch();
+        assert_eq!(ed.editor_mode.name, "editor", "standard editing mode after editor-ready");
+        assert!(ed.editor_mode.accepts_text, "typing inserts text immediately");
     });
 }
 
@@ -159,10 +107,12 @@ fn editor_ready_scratch_has_content() {
 }
 
 #[test]
-fn buffer_modified_c_fn_works_on_new_buffer() {
+fn buffer_modified_c_fn_tracks_edits_from_a_clean_baseline() {
     janet_test!(ed, {
         let key = make_buf_local(&mut ed);
-        assert!(ed.buffers.get(key).unwrap().lock().unwrap().modified(), "new buffer has no save point → modified");
+        assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified(), "a fresh buffer starts at its baseline");
+        ed.buffers.get(key).unwrap().lock().unwrap().insert(0, "hello");
+        assert!(ed.buffers.get(key).unwrap().lock().unwrap().modified(), "an edit moves off the baseline");
         let result = scripting::eval(&format!("(buffer/modified? {key})"));
         assert_eq!(result, "ok");
     });

@@ -138,21 +138,3 @@
               (net/tcp-broadcast *collab-server-id* broadcast-msg))))))))
 
 # ── Colon verbs ───────────────────────────────────────────────────────────────
-
-(when (and (table? *colon-plugins*) (not (nil? (dyn '*colon-plugins*))))
-  (put *colon-plugins* "collab-start"
-    (fn [rest]
-      (def port (or (scan-number (string/trim rest)) 7891))
-      (collab/start port)))
-
-  (put *colon-plugins* "collab-connect"
-    (fn [rest]
-      (def parts (string/split " " (string/trim rest)))
-      (def host (or (get parts 0) "127.0.0.1"))
-      (def port (or (scan-number (or (get parts 1) "7891")) 7891))
-      (collab/connect host port)))
-
-  (put *colon-plugins* "collab-stop"
-    (fn [_]
-      (collab/stop-server)
-      (collab/disconnect))))

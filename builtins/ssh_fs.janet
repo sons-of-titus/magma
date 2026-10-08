@@ -63,16 +63,3 @@
     (editor/run-command "open-file" uri)))
 
 # ── Colon verbs ───────────────────────────────────────────────────────────────
-
-(when (and (table? *colon-plugins*) (not (nil? (dyn '*colon-plugins*))))
-  (put *colon-plugins* "ssh"
-    (fn [rest]
-      (def parts (string/split " " (string/trim rest)))
-      (def host (get parts 0))
-      (def path (or (get parts 1) "~"))
-      (when (and host (> (length host) 0))
-        (ssh-fs/open host path))))
-
-  (put *colon-plugins* "vfs-open"
-    (fn [rest]
-      (vfs/open (string/trim rest)))))

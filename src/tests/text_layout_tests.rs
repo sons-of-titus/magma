@@ -111,7 +111,7 @@ fn wide_glyphs_render_aligned_in_two_surface_cells() {
         win.buffer_id = Some(key);
     }
     let mut surface = Surface::new(20, 4);
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
 
     // 'a' at content col 0 (cursor may cover it); '中' at cols 1-2; 'b' at
     // col 3 — the 'b' cell proves the wide glyph consumed two columns.

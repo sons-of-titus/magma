@@ -139,10 +139,6 @@ impl Editor {
         }
         mix(self.selection.is_some() as u64);
         mix(self.editor_mode.accepts_text as u64);
-        mix(self.editor_mode.minibuffer.is_some() as u64);
-        if let Some(ref mb) = self.editor_mode.minibuffer {
-            mix(mb.input.len() as u64);
-        }
         mix(self.completion.visible as u64);
         mix(self.overlays.len() as u64);
         mix(self.events.pending_len() as u64);

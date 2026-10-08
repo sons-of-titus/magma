@@ -28,8 +28,6 @@
   (when win-id
     (window/set-buffer win-id key)))
 
-(put *colon-plugins* "messages"
-  (fn [_] (messages/open)))
 
 # ── *Warnings* helpers ────────────────────────────────────────────────────────
 
@@ -43,8 +41,6 @@
   (when win-id
     (window/set-buffer win-id key)))
 
-(put *colon-plugins* "warnings"
-  (fn [_] (warnings/open)))
 
 # Handle warning-emitted — show a one-liner in messages
 (event/on "warning-emitted"
@@ -65,13 +61,6 @@
   (buffer/insert key end (string text "\n"))
   (buffer/set-read-only key false))
 
-(put *colon-plugins* "janet-output"
-  (fn [_]
-    (def key (buffer/find-or-create "*janet-output*"))
-    (buffer/set-ephemeral key true)
-    (def win-id (get (window/current) :id))
-    (when win-id
-      (window/set-buffer win-id key))))
 
 # ── *Buffer List* ─────────────────────────────────────────────────────────────
 #
@@ -103,8 +92,7 @@
   (when win-id
     (window/set-buffer win-id key)))
 
-(put *colon-plugins* "buffers"
-  (fn [_] (buffer-list/open)))
 
-(put *colon-plugins* "ls"
-  (fn [_] (buffer-list/open)))
+# --- Palette-visible commands -------------------------------------------
+(command/define "messages" (fn [&] (messages/open)))
+(command/define "warnings" (fn [&] (warnings/open)))

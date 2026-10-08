@@ -46,12 +46,6 @@
   nil)
 
 # Colon verb: show the plugins log buffer
-(put *colon-plugins* "plugins-log"
-  (fn [_args]
-    (def buf (buffer/find-or-create "*plugins-log*"))
-    (buffer/set-ephemeral buf true)
-    (buffer/set-read-only buf true)
-    (editor/run-command "switch-to-buffer" (string (buffer/name buf)))))
 
 # ── Mark ring key bindings ────────────────────────────────────────────────────
 
@@ -97,8 +91,8 @@
           (when new-buf (buffer/set-cursor new-buf target-offset)))))))
 
 # Bind ctrl-o (jump back) and ctrl-i (jump forward) in normal mode
-(keymap/set "ctrl-o" "mark-ring-jump-back" "vim")
-(keymap/set "ctrl-i" "mark-ring-jump-forward" "vim")
+(keymap/set "ctrl-o" "mark-ring-jump-back" "editor")
+(keymap/set "ctrl-i" "mark-ring-jump-forward" "editor")
 
 # ── GPU atlas invalidation ────────────────────────────────────────────────────
 

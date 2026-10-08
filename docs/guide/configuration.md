@@ -279,27 +279,39 @@ All Magma configuration is done via Janet files. The primary entry point is `~/.
         (+ (window/cursor-row (:window-id ev)) 1)))))
 
 # ── Commands ──
-(command/define "repl-toggle"
-  (fn [& args]
-    (def repl-buf (find-repl-buffer))
-    (if repl-buf
-      (window/set-buffer (window/current) repl-buf)
-      (repl/start)))
-  {:doc "Toggle REPL buffer"})
+(command/define "duplicate-line"
+  (fn [&]
+    (def buf (buffer/current))
+    (when buf
+      (def cursor (buffer/cursor buf))
+      (def text (buffer/slice buf 0 (buffer/len buf)))
+      (def line-start (var cursor))
+      # move to line start, insert a copy of the line below
+      (when-let [nl (string/last-index-of "\n" (string/slice text 0 cursor))]
+        (set line-start (+ nl 1)))
+      (def line-end (or (string/index-of "\n" (string/slice text cursor))
+                        (- (length text) cursor)))
+      (def line (string/slice text cursor (+ cursor line-end)))
+      (buffer/insert buf (+ cursor line-end) (string "\n" line))))
+  {:doc "Duplicate the current line below the cursor"})
 ```
 
-## Environment Variables
+## Directories
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAGMA_HOME` | `~/.magma` | Magma configuration directory |
-| `MAGMA_THEME` | `dark` | Default theme |
-| `MAGMA_PLUGINS` | `~/.magma/plugins` | Plugin directory |
+There are no environment variables to configure; Magma uses fixed,
+platform-standard locations:
+
+| Directory | Purpose |
+|-----------|---------|
+| `~/.config/magma/init.janet` | User configuration (Janet code) |
+| `~/.config/magma/plugins/` | Plugin modules |
+| `~/.config/magma/themes/` | `:colorscheme` theme scripts |
+| Platform data dir + `magma/` | Runtime state: history, marks, recent projects |
 
 ## Tips
 
 1. **Use `def-`** for module-private state to avoid polluting the global namespace
 2. **Add `unload-hooks`** to plugins that use timers or file watchers
-3. **Test in the REPL** before adding to init.janet
+3. **Test expressions with `(editor/eval ...)`** or in a scratch buffer before adding to init.janet
 4. **Keep init.janet small** and move complex logic to plugins
-5. **Use `print`** for debugging — output appears in the REPL or status line
+5. **Use `(editor/echo ...)`** for debugging — it shows in the status bar and the *Messages* log

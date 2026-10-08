@@ -82,17 +82,3 @@
         (run-blame buf path)))))
 
 # Colon verb: :git-blame on|off
-(when (and (table? *colon-plugins*) (not (nil? *colon-plugins*)))
-  (put *colon-plugins* "git-blame"
-    (fn [args]
-      (let [sub  (get args 0 "")
-            buf  (buffer/current)
-            path (when buf (buffer/path buf))]
-        (cond
-          (= sub "on")
-          (do
-            (git-blame/enable buf)
-            (when path (run-blame buf path)))
-          (= sub "off")
-          (git-blame/disable buf)
-          (editor/log-message "Usage: :git-blame on|off"))))))

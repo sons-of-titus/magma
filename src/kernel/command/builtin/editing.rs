@@ -155,7 +155,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             crate::kernel::command::execute_command(editor, "delete-to-eol", &std::collections::HashMap::new())?;
-            editor.keymaps.pop_layer("vim");
+            editor.keymaps.pop_layer("editor");
             editor.editor_mode = EditorMode::new("insert", true);
             editor.keymaps.push_layer("insert");
             emit_cursor_moved(editor);

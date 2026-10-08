@@ -156,44 +156,16 @@ fn undo_command_reverts_insert() {
     assert_eq!(helpers::buf_text(&ed), "");
 }
 
-// ── Modal editing (enter/exit insert mode) ────────────────────────────
+// ── Non-modal editing ─────────────────────────────────────────────────
 
 #[test]
-fn enter_insert_mode_activates_insert_layer() {
+fn typing_inserts_without_entering_any_mode() {
     let mut ed = helpers::make_editor_with_buffer("");
-    assert!(!ed.keymaps.is_layer_active("insert"));
-    helpers::run(&mut ed, "enter-insert-mode");
-    assert!(ed.keymaps.is_layer_active("insert"));
-}
-
-#[test]
-fn exit_insert_mode_deactivates_insert_layer() {
-    let mut ed = helpers::make_editor_with_buffer("");
-    helpers::run(&mut ed, "enter-insert-mode");
-    helpers::run(&mut ed, "exit-insert-mode");
-    assert!(!ed.keymaps.is_layer_active("insert"));
-}
-
-#[test]
-fn toggle_insert_mode_multiple_times() {
-    let mut ed = helpers::make_editor_with_buffer("");
-    for _ in 0..5 {
-        helpers::run(&mut ed, "enter-insert-mode");
-        assert!(ed.keymaps.is_layer_active("insert"));
-        helpers::run(&mut ed, "exit-insert-mode");
-        assert!(!ed.keymaps.is_layer_active("insert"));
-    }
-}
-
-// ── Append ───────────────────────────────────────────────────────────
-
-#[test]
-fn append_moves_cursor_right_and_enters_insert() {
-    let mut ed = helpers::make_editor_with_buffer("hello");
-    set_cursor(&mut ed, 0);
-    helpers::run(&mut ed, "append");
-    assert_eq!(helpers::cursor(&ed), 1);
-    assert!(ed.keymaps.is_layer_active("insert"));
+    assert!(ed.editor_mode.accepts_text);
+    crate::kernel::input::dispatch_key(&mut ed, "h");
+    crate::kernel::input::dispatch_key(&mut ed, "i");
+    assert_eq!(helpers::buf_text(&ed), "hi");
+    assert!(ed.editor_mode.is_named("editor"), "still the one mode");
 }
 
 // ── Quit ─────────────────────────────────────────────────────────────

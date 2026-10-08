@@ -111,8 +111,7 @@ All access is guarded by `Arc<RwLock<Editor>>`. The lock hierarchy is:
 - Optional file watching for hot reload triggers
 
 ### Renderer
-- Trait-based rendering abstraction
-- Supports TUI (via ratatui or similar) and GUI backends
+- GUI renderer (egui/eframe) with a wgpu glyph pipeline + CPU fallback
 - Surface abstraction: 2D character grid with styling
 - No UI logic in core — only draw commands
 

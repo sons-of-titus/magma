@@ -92,3 +92,42 @@ pub fn save_marks(marks: &[PersistedMark]) {
         let _ = std::fs::write(&path, &content);
     }
 }
+
+// ── Session state ────────────────────────────────────────────────────
+
+/// Persist the editor's session state (command history + marks).
+/// Called once when the GUI exits.
+pub fn save_session(editor: &super::Editor) {
+    save_command_history(&editor.command_history);
+    let marks: Vec<PersistedMark> = editor.marks.iter()
+        .map(|(&name, &byte_offset)| PersistedMark {
+            name,
+            buffer_id: 0,
+            byte_offset,
+        })
+        .collect();
+    save_marks(&marks);
+}
+
+// ── Recent projects ──────────────────────────────────────────────────
+
+const RECENT_PROJECTS_FILE: &str = "projects";
+
+/// Load recent project paths (MRU first) from the state directory.
+pub fn load_recent_projects() -> Vec<String> {
+    let path = state_dir().join(RECENT_PROJECTS_FILE);
+    std::fs::read_to_string(&path)
+        .map(|content| {
+            content.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Save recent project paths (MRU first) to the state directory.
+pub fn save_recent_projects(projects: &[String]) {
+    let path = state_dir().join(RECENT_PROJECTS_FILE);
+    let _ = std::fs::write(&path, projects.join("\n"));
+}

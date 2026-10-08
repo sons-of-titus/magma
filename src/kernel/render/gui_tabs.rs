@@ -30,8 +30,22 @@ pub enum TabAction {
 impl TabAction {
     pub fn apply(self, editor: &mut Editor) {
         match self {
-            TabAction::Focus(id)            => editor.view_tree.focus(id),
-            TabAction::Close(id)            => editor.view_tree.close(id),
+            TabAction::Focus(id) => editor.view_tree.focus(id),
+            TabAction::Close(id) => {
+                let was_last = editor.view_tree.panes().len() <= 1;
+                editor.view_tree.close(id);
+                // A pane is never left empty: closing the last tab lands on
+                // a fresh scratch buffer instead of nowhere to type.
+                let focused_empty = editor.view_tree.focused_window()
+                    .and_then(|wid| editor.view_tree.buffer(wid))
+                    .is_none();
+                if was_last || focused_empty {
+                    let key = editor.create_buffer("*scratch*");
+                    if let Some(win) = editor.view_tree.focused_window_mut() {
+                        win.buffer_id = Some(key);
+                    }
+                }
+            }
             TabAction::Reorder { from, to } => editor.view_tree.reorder(from, to),
         }
     }

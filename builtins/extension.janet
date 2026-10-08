@@ -35,7 +35,6 @@
     (each ext exts
       (print (extension-summary ext)))))
 
-(put *colon-plugins* "ext-list" colon-ext-list)
 
 (defn colon-ext-capabilities
   "Show capabilities for a named extension: :ext-capabilities <name>"
@@ -52,4 +51,3 @@
           (each cap caps
             (print "  " cap)))))))
 
-(put *colon-plugins* "ext-capabilities" colon-ext-capabilities)

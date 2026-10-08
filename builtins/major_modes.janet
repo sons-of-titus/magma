@@ -81,9 +81,6 @@
 
 # --- Major mode colon verbs -----------------------------------------------
 
-(put *colon-plugins* "fundamental-mode" (fn [_] (editor/run-command "fundamental-mode")))
-(put *colon-plugins* "text-mode"        (fn [_] (editor/run-command "text-mode")))
-(put *colon-plugins* "prog-mode"        (fn [_] (editor/run-command "prog-mode")))
 
 # --- Auto-detect major mode on buffer-created -----------------------------
 #

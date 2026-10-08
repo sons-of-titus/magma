@@ -28,13 +28,6 @@ pub(super) fn current_col(view: &BufferView) -> usize {
     view.cursor.column
 }
 
-pub(super) fn col_at_offset(view: &BufferView, pos: usize) -> usize {
-    let buf = view.buffer.lock().unwrap();
-    let text = buf.slice(0, pos);
-    drop(buf);
-    text.chars().rev().position(|c| c == '\n').unwrap_or_else(|| text.chars().count())
-}
-
 pub(super) fn move_to_line_col(view: &mut BufferView, line: usize, col: usize) {
     let (offset, line_len) = {
         let buf = view.buffer.lock().unwrap();

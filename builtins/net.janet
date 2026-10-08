@@ -38,19 +38,3 @@
   (put *net-pending* (string id) cb))
 
 # ── :http colon verb ──────────────────────────────────────────────────────────
-
-(when (and (table? *colon-plugins*) (not (nil? (dyn '*colon-plugins*))))
-  (put *colon-plugins* "http"
-    (fn [rest]
-      (def url (string/trim rest))
-      (when (> (length url) 0)
-        (def id (net/http-get url))
-        (net/on-response id
-          (fn [resp]
-            (def buf (buffer/find-or-create "*net-output*"))
-            (buffer/set-ephemeral buf true)
-            (buffer/set-read-only buf false)
-            (buffer/insert buf (buffer/len buf)
-              (string "--- " url " [" (get resp :status "") "] ---\n"
-                      (get resp :body "") "\n"))
-            (buffer/set-read-only buf true)))))))

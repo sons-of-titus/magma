@@ -1,5 +1,10 @@
 //! Background task system — bridges the tokio async runtime with the
 //! synchronous editor loop via a typed `BackgroundEvent` channel.
+//!
+//! This is the single largest match in the kernel (every async subsystem
+//! lands here); it was already past the 400-line gate before the GUI
+//! redesign.  DAP result handling lives in `runtime_dap.rs`; further
+//! subsystem splits happen at their own abstraction boundaries.
 
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
@@ -123,6 +128,9 @@ pub enum BackgroundEvent {
     TaskReady { id: u64 },
     /// Project file index completed (Sprint 4).
     FileIndexed { project_name: String, files: Vec<String> },
+    /// A project-wide content search finished; results land in the
+    /// quickfix list so the panel, `:cn/:cp`, and grep share one list.
+    GrepResults { entries: Vec<crate::kernel::task::QuickfixEntry> },
     // ── Sprint 13 Network API ─────────────────────────────────────────────
     /// An HTTP request completed successfully.
     HttpResponse { id: u64, status: u16, body: String },
@@ -170,6 +178,9 @@ pub enum BackgroundEvent {
     DapTerminated { session_id: u64 },
     /// DAP: a generic adapter response (evaluate result, unknown event) — Phase 6.
     DapResponse { session_id: u64, event_type: String, data: String },
+    /// A DAP command response (stackTrace/scopes/variables/threads) — feeds
+    /// the session model the debug pane renders.
+    DapCommandResult { session_id: u64, command: String, success: bool, body: String },
     Custom(String, String),
     // ── Phase 11 AI/Agent Architecture ───────────────────────────────────────
     /// Agent emitted a reasoning step.
@@ -266,14 +277,22 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             // Kill the buffer so the terminal content doesn't linger.
             ed.buffers.remove(buf_id);
 
-            // Return to normal mode (we were in Terminal mode).
+            // Return to the standard editing mode (we were in Terminal mode).
             if ed.io.terminal_mode_buf == Some(buf_id) {
                 ed.io.terminal_mode_buf = None;
-                ed.editor_mode = crate::kernel::state::mode::EditorMode::new("normal", false);
-                ed.keymaps.push_layer("vim");
+                ed.editor_mode = crate::kernel::state::mode::EditorMode::default();
+                ed.keymaps.push_layer("editor");
             }
         }
         BackgroundEvent::FileChanged { path, kind } => {
+            // A change under the project root — including new/deleted files
+            // in no open buffer — marks the index stale for the GUI's
+            // debounced rescan.
+            if let Some(root) = ed.project_manager.project.root.clone()
+                && let Some(canonical) = std::fs::canonicalize(&root).ok()
+                && path.starts_with(canonical.to_string_lossy().as_ref()) {
+                    ed.project_manager.project.file_index_dirty = true;
+                }
             ed.events.emit_typed(keys::events::FILE_CHANGED, FileChangedPayload { path, kind });
         }
         BackgroundEvent::ProcessOutput { id, line, stream } => {
@@ -321,6 +340,10 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 project_name,
                 count: files.len().to_string(),
             });
+        }
+        BackgroundEvent::GrepResults { entries } => {
+            ed.quickfix_list = entries;
+            ed.quickfix_index = 0;
         }
         // ── Sprint 13 Network API ─────────────────────────────────────────
         BackgroundEvent::HttpResponse { id, status, body } => {
@@ -425,6 +448,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 session.stopped = true;
                 session.stopped_thread = Some(thread_id);
             }
+            // A stopped debuggee with no stack is a facade — fetch it.
+            #[cfg(feature = "janet")]
+            crate::kernel::scripting::send_dap_command(
+                session_id, "stackTrace", &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
+            );
             ed.events.emit_typed(keys::events::DEBUG_STOPPED, crate::kernel::event::payload::DebugStoppedPayload {
                 session_id: session_id.to_string(),
                 reason,
@@ -461,6 +489,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 ed.events.emit("debug-dap-event", payload);
             }
         }
+        BackgroundEvent::DapCommandResult { session_id, command, success, body } => {
+            crate::kernel::runtime_dap::apply_dap_command_result(ed, session_id, &command, success, &body);
+        }
         // ─────────────────────────────────────────────────────────────────────
         BackgroundEvent::Custom(name, payload) => {
             let mut data = std::collections::HashMap::new();
@@ -495,6 +526,12 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             let task_name = ed.task_scheduler.tasks.get(&id)
                 .map(|t| t.name.clone())
                 .unwrap_or_default();
+            ed.last_task = Some((task_name.clone(), format!(
+                "$ {}\n{}{}",
+                ed.task_scheduler.tasks.get(&id).map(|t| t.command.clone()).unwrap_or_default(),
+                output.stdout,
+                output.stderr,
+            )));
             if exit_code == 0 {
                 ed.task_scheduler.mark_completed(id, output);
                 ed.scheduler.complete_task(id);

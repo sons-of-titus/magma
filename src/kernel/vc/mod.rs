@@ -6,8 +6,6 @@
 //! Janet via `vc/register-backend`.
 
 pub mod backends;
-pub mod dired;
-pub mod dired_display;
 
 use std::path::{Path, PathBuf};
 

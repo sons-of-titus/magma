@@ -4,17 +4,6 @@ use std::sync::Arc;
 
 use eframe::egui;
 
-/// Map mode name to mode-indicator colour for the status bar pill.
-pub fn mode_color(mode: &str) -> egui::Color32 {
-    match mode {
-        "INSERT"  => egui::Color32::from_rgb(80,  161, 79),
-        "VISUAL"  => egui::Color32::from_rgb(180, 130, 30),
-        "REPLACE" => egui::Color32::from_rgb(210, 60,  60),
-        "COMMAND" => egui::Color32::from_rgb(140, 80,  200),
-        _         => egui::Color32::from_rgb(0,   122, 204),
-    }
-}
-
 /// Apply `FontConfig` to egui: registers loaded font bytes and rebuilds families.
 pub fn apply_fonts_to_egui(ctx: &egui::Context, font_config: &crate::kernel::state::FontConfig) {
     if font_config.loaded_fonts.is_empty() && font_config.fallback.is_empty()

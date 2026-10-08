@@ -124,7 +124,11 @@
 (event/on "lsp-response"
   (fn [ev]
     (def method (get ev :method)) (def result (get ev :result))
-    (editor/log-message (string "[lsp/" method "] " (slice result 0 200)))))
+    (editor/log-message (string "[lsp/" method "] " (slice result 0 200)))
+    # Hover and definition results answer a question the user asked —
+    # they surface as transient messages, not just the log.
+    (when (or (= method "textDocument/hover") (= method "textDocument/definition"))
+      (editor/echo (slice result 0 160)))))
 
 (event/on "buffer-created" (fn [ev] (attach-if-supported (get ev :buffer-id))))
 
@@ -186,5 +190,4 @@
     "rename" (command/run "lsp-rename")
     (editor/log-message (string "Unknown LSP command: " arg))))
 
-(put *colon-plugins* "lsp" lsp-colon)
 (print "lsp.janet loaded")

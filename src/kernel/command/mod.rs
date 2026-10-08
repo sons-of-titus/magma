@@ -12,6 +12,11 @@ pub(crate) struct CommandEntry {
     pub(crate) description: String,
     pub(crate) args: Vec<ArgSpec>,
     pub(crate) handler: Arc<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
+    /// True when the entry is a trampoline into a Janet-defined function
+    /// (`command/define` / `command/redefine`).  The palette surfaces only
+    /// Rust-native commands; Janet commands remain reachable through the
+    /// keymap, colon mode, and run-command.
+    pub(crate) janet_backed: bool,
 }
 
 pub struct CommandRegistry {
@@ -38,10 +43,34 @@ impl CommandRegistry {
         args: Vec<ArgSpec>,
         handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
     ) {
+        self.register_inner(name, description, args, handler, false);
+    }
+
+    /// Register a command that trampolines into Janet — hidden from the
+    /// command palette but executable like any other.
+    pub fn register_janet_backed(
+        &mut self,
+        name: &str,
+        description: &str,
+        args: Vec<ArgSpec>,
+        handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
+    ) {
+        self.register_inner(name, description, args, handler, true);
+    }
+
+    fn register_inner(
+        &mut self,
+        name: &str,
+        description: &str,
+        args: Vec<ArgSpec>,
+        handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
+        janet_backed: bool,
+    ) {
         self.commands.insert(name.to_string(), CommandEntry {
             description: description.to_string(),
             args,
             handler: Arc::from(handler),
+            janet_backed,
         });
     }
 
@@ -66,6 +95,21 @@ impl CommandRegistry {
     /// argument without a default — callers that cannot prompt skip those.
     pub fn list_detailed(&self) -> Vec<(String, String, bool)> {
         let mut out: Vec<(String, String, bool)> = self.commands.iter()
+            .map(|(name, e)| (
+                name.clone(),
+                e.description.clone(),
+                e.args.iter().any(|a| a.required && a.default.is_none()),
+            ))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// Rust-native commands only — the palette's surface.  Janet-defined
+    /// commands stay reachable via the keymap, colon mode, and run-command.
+    pub fn list_rust_commands(&self) -> Vec<(String, String, bool)> {
+        let mut out: Vec<(String, String, bool)> = self.commands.iter()
+            .filter(|(_, e)| !e.janet_backed)
             .map(|(name, e)| (
                 name.clone(),
                 e.description.clone(),

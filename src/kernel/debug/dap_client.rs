@@ -190,7 +190,19 @@ fn dispatch_dap_message(
                     event_type: "evaluate".to_string(),
                     data: result,
                 });
+                return;
             }
+            // Every other response feeds the session model (stackTrace,
+            // scopes, variables, threads) — dropping them is what made the
+            // debug pane read empty.
+            let body = serde_json::to_string(v.get("body").unwrap_or(&Value::Null))
+                .unwrap_or_default();
+            bg.send_event(BackgroundEvent::DapCommandResult {
+                session_id,
+                command: command.to_string(),
+                success: v["success"].as_bool().unwrap_or(false),
+                body,
+            });
         }
         _ => {}
     }

@@ -55,7 +55,8 @@ fn window_resize_weighted_redistributes_widths() {
     let mut ed = helpers::make_editor();
     ed.view_tree.resize(80, 24);
     let focused = ed.view_tree.focused_window().unwrap();
-    let new_id = ed.view_tree.split_vertical(focused).unwrap();
+    // Resize redistributes along the split axis — horizontal here.
+    let new_id = ed.view_tree.split_horizontal(focused).unwrap();
 
     let focused_id = ed.view_tree.focused_window().unwrap();
     ed.view_tree.resize_weighted(focused_id, 0.3);

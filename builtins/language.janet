@@ -89,7 +89,6 @@
     (each l langs
       (print (language-summary l)))))
 
-(put *colon-plugins* "lang-list" colon-lang-list)
 
 (defn colon-lang-load
   "Load a language's provider.janet: :lang-load <name>"
@@ -103,7 +102,6 @@
         (print "language loaded: " name)
         (print "language load failed: " name)))))
 
-(put *colon-plugins* "lang-load" colon-lang-load)
 
 (defn colon-lang-info
   "Show paths for a registered language: :lang-info <name>"
@@ -123,4 +121,3 @@
           (print "syntax-path:   " (or (get info :syntax-path)   "(none)"))
           (print "config-path:   " (or (get info :config-path)   "(none)")))))))
 
-(put *colon-plugins* "lang-info" colon-lang-info)

@@ -127,7 +127,7 @@ fn render_frame_with_no_buffer_does_not_panic() {
     use crate::kernel::render::frame::render_frame;
     let ed = helpers::make_editor();
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn render_frame_with_buffer_writes_content() {
         .unwrap_or_else(|| ed.buffers.iter().next().map(|(k, _)| k).unwrap_or(0));
     ed.view_tree.set_buffer(focused, buf_key);
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
     let row0: String = (0..80).filter_map(|x| surface.cell(x, 0)).map(|c| c.ch).collect();
     assert!(row0.contains('h') || row0.contains(' '),
         "render_frame should write buffer content to the surface");
@@ -155,5 +155,5 @@ fn multi_pane_render_frame_does_not_panic() {
     ed.view_tree.set_buffer(id, buf_key);
     ed.view_tree.split_horizontal(id);
     let mut surface = Surface::new(80, 24);
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
 }

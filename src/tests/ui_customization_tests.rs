@@ -1,51 +1,7 @@
-//! Pure Rust tests for Sprint 11 UI customisation primitives:
-//! modeline, tab-bar flag, and overlay management.
+//! Pure Rust tests for UI customisation primitives: overlay management.
 
 use crate::kernel::state::Overlay;
 use crate::tests::helpers;
-
-// ── modeline ─────────────────────────────────────────────────────────────────
-
-#[test]
-fn modeline_fn_defaults_to_none() {
-    let ed = helpers::make_editor();
-    assert!(ed.modeline_fn.is_none());
-}
-
-#[test]
-fn modeline_rendered_defaults_to_empty() {
-    let ed = helpers::make_editor();
-    assert!(ed.modeline_rendered.is_empty());
-}
-
-#[test]
-fn modeline_fn_can_be_set() {
-    let mut ed = helpers::make_editor();
-    ed.modeline_fn = Some("my-modeline".to_string());
-    assert_eq!(ed.modeline_fn.as_deref(), Some("my-modeline"));
-}
-
-#[test]
-fn modeline_rendered_is_used_in_status_bar() {
-    let mut ed = helpers::make_editor();
-    ed.modeline_rendered = "custom status text".to_string();
-    assert_eq!(ed.modeline_rendered, "custom status text");
-}
-
-// ── tab bar ──────────────────────────────────────────────────────────────────
-
-#[test]
-fn tab_bar_disabled_by_default() {
-    let ed = helpers::make_editor();
-    assert!(!ed.tab_bar_enabled);
-}
-
-#[test]
-fn tab_bar_can_be_enabled() {
-    let mut ed = helpers::make_editor();
-    ed.tab_bar_enabled = true;
-    assert!(ed.tab_bar_enabled);
-}
 
 // ── overlay ──────────────────────────────────────────────────────────────────
 
@@ -92,4 +48,3 @@ fn overlay_move_updates_position() {
     assert_eq!(ov.x, 15);
     assert_eq!(ov.y, 3);
 }
-

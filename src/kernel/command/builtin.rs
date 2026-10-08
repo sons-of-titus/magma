@@ -12,12 +12,10 @@ mod search;
 mod registers;
 mod window;
 mod file;
-mod dired_cmds;
-mod dired_file_ops;
 mod vcs;
 mod completion;
 mod misc;
-mod colon;
+mod project_cmds;
 pub(crate) mod helpers;
 
 use crate::kernel::state::Editor;
@@ -33,9 +31,8 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     registers::register(editor);
     window::register(editor);
     file::register(editor);
-    dired_cmds::register(editor);
-    dired_file_ops::register(editor);
     vcs::register(editor);
     completion::register(editor);
     misc::register(editor);
+    project_cmds::register(editor);
 }

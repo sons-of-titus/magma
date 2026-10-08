@@ -5,8 +5,6 @@ edition = "2024"
 description = "A programmable text editor – Rust kernel, Janet userland"
 
 [dependencies]
-crossterm = "0.28"
-ratatui = { version = "0.29", features = ["all-widgets"] }
 anyhow = "1.0"
 thiserror = "1.0"
 unicode-width = "0.2"
@@ -17,6 +15,7 @@ ropey = "1.6"
 eframe = { version = "0.36.2", optional = true, features = ["wgpu"] }
 bytemuck = { version = "1", optional = true }
 ab_glyph = { version = "0.2", optional = true }
+rfd = { version = "0.15", optional = true }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
 arboard = { version = "3.2", default-features = false }
 tokio = { version = "1", features = ["full"] }
@@ -69,4 +68,4 @@ harness = false
 [features]
 default = ["janet", "gui"]
 janet = ["dep:evil-janet"]
-gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph"]
+gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph", "dep:rfd"]

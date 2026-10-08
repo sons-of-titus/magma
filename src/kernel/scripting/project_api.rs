@@ -1,37 +1,11 @@
 //! Janet API — project core: root, name, files, index-files, per-project options.
 
-use std::path::PathBuf;
-
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
 use crate::kernel::project::Project;
-
-fn walk_dir(dir: &std::path::Path) -> std::io::Result<Vec<String>> {
-    let mut files = Vec::new();
-    if dir.is_dir() {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                if name.starts_with('.') || name == "node_modules" || name == "target" {
-                    continue;
-                }
-                if let Ok(mut sub) = walk_dir(&path) {
-                    files.append(&mut sub);
-                }
-            } else if path.is_file()
-                && let Some(s) = path.to_str() {
-                    files.push(s.to_string());
-                }
-        }
-    }
-    Ok(files)
-}
 
 /// (project/root) → string or nil
 unsafe extern "C-unwind" fn c_project_root(_argc: i32, _argv: *mut Janet) -> Janet {
@@ -44,8 +18,8 @@ unsafe extern "C-unwind" fn c_project_root(_argc: i32, _argv: *mut Janet) -> Jan
 /// (project/set-root path) → nil
 unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let path_str = match conv::get_str(argc, argv, 0) {
-            Some(s) => s,
+        match conv::get_str(argc, argv, 0) {
+            Some(path) => crate::kernel::project::open_root(ed, &path),
             None => {
                 let was_active = ed.project_manager.project.root.is_some();
                 ed.project_manager.project = Project::default();
@@ -53,21 +27,8 @@ unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> J
                 if was_active {
                     ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
                 }
-                return conv::nil();
             }
-        };
-        let path = PathBuf::from(&path_str);
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path_str.clone());
-        ed.project_manager.project.root = Some(path.clone());
-        ed.project_manager.project.name = Some(name.clone());
-        ed.project_manager.project.files = Vec::new();
-        ed.project_manager.project.file_index_dirty = true;
-        ed.project_manager.current_project = Some(name.clone());
-        ed.project_manager.projects.insert(name.clone(), ed.project_manager.project.clone());
-        ed.events.emit_typed(keys::events::PROJECT_OPENED, ProjectOpenedPayload { root: path_str, name });
+        }
         conv::nil()
     })
 }
@@ -111,27 +72,7 @@ unsafe extern "C-unwind" fn c_project_files(_argc: i32, _argv: *mut Janet) -> Ja
 /// (project/index-files) → nil
 unsafe extern "C-unwind" fn c_project_index_files(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let root = match &ed.project_manager.project.root {
-            Some(r) => r.clone(),
-            None => return conv::nil(),
-        };
-        let name = ed.project_manager.project.name.clone().unwrap_or_default();
-        let bg = match ed.background.as_ref() {
-            Some(bg) => bg.clone(),
-            None => return conv::nil(),
-        };
-        let sender = bg.sender.clone();
-        ed.project_manager.project.file_index_dirty = false;
-        bg.spawn_blocking(move || {
-            let mut files = Vec::new();
-            if let Ok(entries) = walk_dir(&root) {
-                files = entries;
-            }
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::FileIndexed {
-                project_name: name,
-                files,
-            });
-        });
+        crate::kernel::project::spawn_file_index(ed);
         conv::nil()
     })
 }

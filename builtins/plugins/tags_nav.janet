@@ -96,18 +96,10 @@
 (command/define "tag-pop"         (fn [&] (tags/pop)))
 (command/define "tag-generate"    (fn [&] (tags/generate)))
 
-(keymap/set "ctrl-]" "tag-jump-cursor" "vim")
-(keymap/set "ctrl-t" "tag-pop" "vim")
+(keymap/set "ctrl-]" "tag-jump-cursor" "editor")
+(keymap/set "ctrl-t" "tag-pop" "editor")
 
 # ── Colon plugin registration ─────────────────────────────────────────────────
 
-(put *colon-plugins* "tag"
-  (fn [rest]
-    (def name (string/trim rest))
-    (if (> (length name) 0)
-      (tags/jump name)
-      (print ":tag requires a tag name"))))
-
-(put *colon-plugins* "ctags" (fn [_] (tags/generate)))
 
 (print "tags loaded")

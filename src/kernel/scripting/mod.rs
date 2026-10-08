@@ -31,14 +31,6 @@ thread_local! {
     ///   pointer.  The outer function frame is opaque to the compiler across the
     ///   generic closure boundary, so no aliasing UB arises in practice.
     pub(crate) static EDITOR_PTR: Cell<Option<*mut Editor>> = const { Cell::new(None) };
-
-    /// Per-thread pointer to the current render Surface.
-    ///
-    /// Set by `set_surface_ptr` in the TUI/GUI loop immediately before the
-    /// `render-frame` event is dispatched.  Cleared by `clear_surface_ptr`
-    /// after the dispatch returns.  Janet C functions that write to the surface
-    /// (e.g. `editor/surface-set-cell`) use `with_surface` to access it.
-    pub(crate) static SURFACE_PTR: Cell<Option<*mut crate::kernel::render::surface::Surface>> = const { Cell::new(None) };
 }
 // ── Janet argument conversion helpers ─────────────────────────────────────
 
@@ -196,20 +188,6 @@ pub fn clear_editor_scope() {
 #[cfg(not(feature = "janet"))]
 pub fn clear_editor_scope() {}
 
-/// Point the thread-local surface pointer at `surface` for the duration of a
-/// `render-frame` event dispatch.  The pointer is valid until `clear_surface_ptr`
-/// is called — the caller must ensure the surface outlives the dispatch.
-#[cfg(feature = "janet")]
-pub fn set_surface_ptr(surface: *mut crate::kernel::render::surface::Surface) {
-    SURFACE_PTR.with(|cell| cell.set(Some(surface)));
-}
-
-/// Clear the thread-local surface pointer after a `render-frame` dispatch.
-#[cfg(feature = "janet")]
-pub fn clear_surface_ptr() {
-    SURFACE_PTR.with(|cell| cell.set(None));
-}
-
 #[cfg(feature = "janet")]
 mod keymap_api;
 #[cfg(feature = "janet")]
@@ -283,8 +261,6 @@ mod net_http_api;
 #[cfg(feature = "janet")]
 mod net_tcp_api;
 #[cfg(feature = "janet")]
-mod minibuffer_api;
-#[cfg(feature = "janet")]
 mod selection_api;
 #[cfg(feature = "janet")]
 mod register_api;
@@ -300,6 +276,8 @@ mod clipboard_api;
 mod task_api;
 #[cfg(feature = "janet")]
 mod debug_api;
+#[cfg(feature = "janet")]
+pub(crate) use debug_api::send_dap_command;
 #[cfg(feature = "janet")]
 mod scheduler_api;
 #[cfg(feature = "janet")]

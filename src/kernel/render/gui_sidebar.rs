@@ -1,12 +1,14 @@
 //! Project file-tree sidebar widget for the GUI — JetBrains-style.
 //!
-//! Builds a `FileNode` tree from the flat `project_manager.project.files` list,
-//! renders it with collapse/expand arrows, file-type icons, selection highlight,
-//! and double-click-to-open.  Resize is handled by egui's `SidePanel`.
+//! Builds a `FileNode` tree from the flat `project_manager.project.files` list.
+//! One activation convention: single-click opens files, single-click toggles
+//! directories.  Rows carry a right-click context menu (open, copy path,
+//! rename, delete); new/rename collect their name in an inline text row.
+//! Returns `SidebarAction`s for the shell to apply.
 
-use std::collections::HashSet;
-use eframe::egui::{self, FontFamily, FontId, Pos2, CornerRadius, Sense, Vec2};
+use eframe::egui::{self, FontFamily, FontId, Pos2, CornerRadius, RichText, Sense, Vec2};
 use crate::kernel::state::Editor;
+use super::gui_sidebar_state::{PendingOp, SidebarAction, SidebarState};
 use super::gui_theme::GuiTheme;
 
 const ROW_H:     f32 = 22.0;
@@ -43,23 +45,6 @@ struct FileNode {
     path:     String,
     is_dir:   bool,
     children: Vec<FileNode>,
-}
-
-// ── Sidebar state (persisted across frames in GuiApp) ─────────────────────────
-
-/// Interaction state for the project tree sidebar.
-pub struct SidebarState {
-    pub expanded_dirs: HashSet<String>,
-    pub selected:      Option<String>,
-}
-
-impl Default for SidebarState {
-    fn default() -> Self {
-        Self {
-            expanded_dirs: HashSet::new(),
-            selected:      None,
-        }
-    }
 }
 
 // ── Widget ────────────────────────────────────────────────────────────────────
@@ -134,9 +119,9 @@ impl ProjectTree {
         state:        &mut SidebarState,
         project_root: &str,
         theme:        &GuiTheme,
-    ) -> Option<String> {
+    ) -> Vec<SidebarAction> {
         let font_id = FontId::new(FONT_SIZE, FontFamily::Proportional);
-        let mut to_open: Option<String> = None;
+        let mut actions = Vec::new();
 
         for node in nodes {
             let indent    = depth as f32 * INDENT + 4.0;
@@ -193,7 +178,14 @@ impl ProjectTree {
                 &node.name, font_id.clone(), fg,
             );
 
-            // Click: select + toggle dir
+            let full_path = if project_root.is_empty() {
+                node.path.clone()
+            } else {
+                format!("{}/{}", project_root.trim_end_matches('/'), node.path)
+            };
+
+            // One activation convention: single click opens files and
+            // toggles directories.
             if resp.clicked() {
                 state.selected = Some(node.path.clone());
                 if node.is_dir {
@@ -202,39 +194,69 @@ impl ProjectTree {
                     } else {
                         state.expanded_dirs.insert(node.path.clone());
                     }
+                } else {
+                    actions.push(SidebarAction::Open(full_path.clone()));
                 }
             }
 
-            // Double-click: open file
-            if resp.double_clicked() && !node.is_dir && to_open.is_none() {
-                let full = if project_root.is_empty() {
-                    node.path.clone()
-                } else {
-                    format!("{}/{}", project_root.trim_end_matches('/'), node.path)
-                };
-                to_open = Some(full);
-            }
+            // Context menu — the discoverability surface for file operations.
+            resp.context_menu(|ui| {
+                state.selected = Some(node.path.clone());
+                if !node.is_dir && ui.button("Open").clicked() {
+                    actions.push(SidebarAction::Open(full_path.clone()));
+                    ui.close();
+                }
+                if ui.button("Copy Path").clicked() {
+                    actions.push(SidebarAction::CopyPath(full_path.clone()));
+                    ui.close();
+                }
+                if ui.button("New File…").clicked() {
+                    let dir = if node.is_dir {
+                        node.path.clone()
+                    } else {
+                        node.path.rsplit_once('/').map(|(d, _)| d.to_string())
+                            .unwrap_or_default()
+                    };
+                    state.pending = Some(PendingOp::NewFile { dir });
+                    ui.close();
+                }
+                if ui.button("Rename…").clicked() {
+                    state.pending = Some(PendingOp::Rename { full_path: full_path.clone() });
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button("Delete").clicked() {
+                    state.confirm_delete = Some(full_path.clone());
+                    ui.close();
+                }
+                if state.confirm_delete.as_deref() == Some(full_path.as_str())
+                    && ui.button(
+                        RichText::new("Really delete?").color(theme.red)
+                    ).clicked() {
+                    actions.push(SidebarAction::Delete(full_path.clone()));
+                    state.confirm_delete = None;
+                    ui.close();
+                }
+            });
 
             // Recurse
             if node.is_dir && is_exp {
-                if let Some(p) = Self::render_nodes(
+                actions.extend(Self::render_nodes(
                     ui, &node.children, depth + 1, state, project_root, theme,
-                ) {
-                    to_open = to_open.or(Some(p));
-                }
+                ));
             }
         }
-        to_open
+        actions
     }
 
-    /// Render the project tree sidebar.  Returns the path of a file to open when
-    /// the user double-clicks it, or `None` otherwise.
+    /// Render the project tree sidebar.  Returns the user's requested
+    /// actions for the shell to apply.
     pub fn show(
         ui:     &mut egui::Ui,
         editor: &Editor,
         state:  &mut SidebarState,
         theme:  &GuiTheme,
-    ) -> Option<String> {
+    ) -> Vec<SidebarAction> {
         let project_name = editor.project_manager.project.name
             .as_deref()
             .unwrap_or("Project");
@@ -259,24 +281,80 @@ impl ProjectTree {
         let files = &editor.project_manager.project.files;
         if files.is_empty() {
             ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new("No project files indexed.")
-                    .color(theme.overlay0)
-                    .size(FONT_SIZE),
-            );
-            return None;
+            if editor.project_manager.project.root.is_none() {
+                ui.label(
+                    egui::RichText::new("No project open.")
+                        .color(theme.overlay0)
+                        .size(FONT_SIZE),
+                );
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new("Run :open <directory>, or pick one on the welcome screen")
+                        .color(theme.overlay0)
+                        .size(11.0),
+                );
+            } else {
+                ui.label(
+                    egui::RichText::new("Indexing project…")
+                        .color(theme.overlay0)
+                        .size(FONT_SIZE),
+                );
+            }
+            return Vec::new();
         }
 
         let tree = Self::build_tree(files);
-        let mut to_open: Option<String> = None;
+        let mut actions: Vec<SidebarAction> = Vec::new();
 
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                to_open = Self::render_nodes(ui, &tree, 0, state, &project_root, theme);
+                actions = Self::render_nodes(ui, &tree, 0, state, &project_root, theme);
             });
 
-        to_open
+        // Inline new/rename input row.
+        if state.pending.is_some() {
+            ui.separator();
+            let hint = state.pending.as_ref().map(|o| o.hint()).unwrap_or_default();
+            ui.label(
+                egui::RichText::new(hint)
+                    .color(theme.overlay0)
+                    .size(11.0),
+            );
+            let mut name = state.pending_name.clone();
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut name)
+                    .font(FontId::new(FONT_SIZE, FontFamily::Monospace))
+                    .desired_width(f32::INFINITY),
+            );
+            resp.request_focus();
+            let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let esc = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape));
+            let op = state.pending.take();
+            if esc {
+                state.pending_name.clear();
+            } else if enter && !name.is_empty() {
+                match op {
+                    Some(PendingOp::NewFile { dir }) => {
+                        actions.push(SidebarAction::CreateFile { dir, name });
+                    }
+                    Some(PendingOp::Rename { full_path }) => {
+                        let to = match full_path.rsplit_once('/') {
+                            Some((d, _)) => format!("{d}/{name}"),
+                            None => name,
+                        };
+                        actions.push(SidebarAction::Rename { from: full_path, to });
+                    }
+                    None => {}
+                }
+                state.pending_name.clear();
+            } else {
+                state.pending = op;
+                state.pending_name = name;
+            }
+        }
+
+        actions
     }
 }

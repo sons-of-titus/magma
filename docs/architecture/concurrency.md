@@ -105,7 +105,7 @@ Key files: `src/lsp/mod.rs`, new `src/lsp/json_rpc.rs`, `src/lsp/client.rs`
 | Janet VM (`evil-janet`) | Global C state, longjmp signals, raw pointer bridge |
 | `input.rs` dispatch | Vim state machine is inherently ordered |
 | `EventBus` dispatch | Sequential hook chains (Before→Transform→After) |
-| Rendering (TUI + GUI) | Terminal/GPU APIs are not thread-safe |
+| Rendering (GPU + egui chrome) | GPU/graphics APIs are not thread-safe |
 
 ## Key Integration Points (already present)
 

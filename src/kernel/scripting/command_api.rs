@@ -71,7 +71,7 @@ fn store_janet_command(name: &str, fn_val: Janet) {
 
 fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &str) {
     let lookup_name = name.to_string();
-    ed.commands.register_fn(name, "Janet-defined command", vec![], move |ed, _args| {
+    ed.commands.register_janet_backed(name, "Janet-defined command", vec![], Box::new(move |ed, _args| {
         // The registry hands us a live exclusive borrow; the Janet call runs
         // inside its scope (docs/core-redesign.md §11).
         crate::kernel::scripting::scoped_editor(ed, || {
@@ -95,7 +95,7 @@ fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &
             }
             Ok(())
         })
-    });
+    }));
 }
 
 /// (command/define name fn &opt metadata) — register a Janet function as a command

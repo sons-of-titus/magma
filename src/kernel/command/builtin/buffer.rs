@@ -45,6 +45,41 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
+    cmds.register_fn("save-all", "Save all modified buffers to disk",
+        vec![],
+        |editor, _args| {
+            let dirty: Vec<(usize, String, String, u64)> = editor.buffers.iter()
+                .filter_map(|(key, arc)| {
+                    let buf = arc.lock().unwrap();
+                    if !buf.modified() { return None; }
+                    let path = buf.path.clone()?;
+                    Some((key, path, buf.slice(0, buf.len()), buf.revision()))
+                })
+                .collect();
+            let mut failures: Vec<String> = Vec::new();
+            for (key, path, content, saved_rev) in dirty {
+                editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
+                    path: path.clone(),
+                    buffer_id: key.to_string(),
+                });
+                match editor.fs.write(&path, &content) {
+                    Ok(()) => {
+                        if let Some(arc) = editor.buffers.get_mut(key) {
+                            arc.lock().unwrap().mark_saved_at(saved_rev);
+                        }
+                        editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
+                            path: path.clone(),
+                            buffer_id: key.to_string(),
+                        });
+                    }
+                    Err(e) => failures.push(format!("{path}: {e}")),
+                }
+            }
+            if failures.is_empty() { Ok(()) }
+            else { Err(format!("Save failed: {}", failures.join("; "))) }
+        },
+    );
+
     cmds.register_fn("open-file", "Open a file into a buffer",
         vec![
             ArgSpec::new("path", ArgType::Path),
@@ -53,8 +88,25 @@ pub(super) fn register(editor: &mut Editor) {
             let path = args.get("path")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "Path required".to_string())?;
+            // Opening an already-open path focuses it — never fork a duplicate.
+            if let Some((key, _)) = editor.buffers.iter().find(|(_, arc)| {
+                arc.lock().unwrap().path.as_deref() == Some(path)
+            }) {
+                let pane = editor.view_tree.panes().iter()
+                    .find(|p| p.buffer_id == Some(key))
+                    .map(|p| p.id);
+                match pane {
+                    Some(id) => editor.view_tree.focus(id),
+                    None => {
+                        if let Some(win) = editor.view_tree.focused_window_mut() {
+                            win.buffer_id = Some(key);
+                        }
+                    }
+                }
+                return Ok(());
+            }
             let content = editor.fs.read(path)
-                .map_err(|e| format!("Read failed: {}", e))?;
+                .map_err(|e| format!("Read failed: {path}: {e}"))?;
             let name = std::path::Path::new(path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())

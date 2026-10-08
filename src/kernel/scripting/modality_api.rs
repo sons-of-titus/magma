@@ -18,10 +18,14 @@ unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Ja
             if janet_checktype(val, JanetType_JANET_BOOLEAN) != 0 {
                 janet_unwrap_boolean(val) != 0
             } else {
+                // No explicit setting: preserve the current typing behavior.
                 ed.editor_mode.accepts_text
             }
+        } else if name == "editor" {
+            // The shipped editing mode always accepts text.
+            true
         } else {
-            name == "insert" || name == "replace"
+            ed.editor_mode.accepts_text
         };
         ed.editor_mode.name = name.clone();
         ed.editor_mode.accepts_text = accepts_text;

@@ -300,10 +300,12 @@ fn highlight_follows_rust_path_typing() {
             buf.delete(0, len);
             buf.insert(0, "fn one() {}");
         }
-        scripting::eval("(syntax/highlight-buffer 1)");
+        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
         ed.events.drain_and_dispatch();
 
         // Type " two" at the end through the editor's own input path.
+        let end = ed.buffers.get(key).unwrap().lock().unwrap().len();
+        ed.views.get_mut(&key).unwrap().set_cursor(end);
         crate::kernel::input::dispatch_key(&mut ed, " ");
         crate::kernel::input::dispatch_key(&mut ed, "t");
         ed.events.drain_and_dispatch();

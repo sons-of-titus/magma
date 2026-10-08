@@ -152,10 +152,11 @@ fn non_sticky_marks_stay_left_of_insertions() {
 #[test]
 fn modified_is_revision_based() {
     let (mut ed, key) = editor_with("content");
-    assert!(ed.buffers.get(key).unwrap().lock().unwrap().modified(),
-        "never saved → modified");
+    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified(),
+        "loaded content is the saved baseline");
 
     ed.buffers.get(key).unwrap().lock().unwrap().mark_saved();
+    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
     assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
 
     let view = ed.views.get_mut(&key).unwrap();

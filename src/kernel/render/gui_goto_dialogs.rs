@@ -17,6 +17,9 @@ pub enum PickerSource {
     Files,
     Symbols,
     Commands,
+    /// One finder: files + symbols + commands ranked together
+    /// (JetBrains "search everywhere").
+    Everywhere,
 }
 
 /// One activatable row, independent of how it renders.
@@ -25,8 +28,7 @@ pub enum PickerEntry {
     /// Absolute path to open.
     File(String),
     Symbol { name: String, file: String, line: usize },
-    /// Command name to execute.
-    Command(String),
+    Command { name: String, description: String, needs_args: bool },
 }
 
 impl PickerEntry {
@@ -34,7 +36,7 @@ impl PickerEntry {
         match self {
             PickerEntry::File(p)     => p.clone(),
             PickerEntry::Symbol { name, file, line } => format!("{}  ·  {}:{}", name, file, line),
-            PickerEntry::Command(c)  => c.clone(),
+            PickerEntry::Command { name, .. }  => name.clone(),
         }
     }
 }
@@ -74,10 +76,22 @@ pub fn collect_entries(editor: &Editor, source: PickerSource) -> Vec<PickerEntry
                 .collect()
         }
         PickerSource::Commands => {
-            editor.commands.list_detailed().into_iter()
-                .filter(|(_, _, needs_args)| !needs_args)
-                .map(|(name, _, _)| PickerEntry::Command(name))
+            // The palette is a Rust-native surface; Janet-defined commands
+            // stay reachable through the keymap and colon mode.
+            editor.commands.list_rust_commands().into_iter()
+                .map(|(name, description, needs_args)| {
+                    PickerEntry::Command { name, description, needs_args }
+                })
                 .collect()
+        }
+        PickerSource::Everywhere => {
+            let files = collect_entries(editor, PickerSource::Files);
+            let symbols = collect_entries(editor, PickerSource::Symbols);
+            let commands = collect_entries(editor, PickerSource::Commands);
+            let mut all = files;
+            all.extend(symbols);
+            all.extend(commands);
+            all
         }
     }
 }
@@ -103,7 +117,7 @@ impl PickerDialog {
         actions.push(match entry.clone() {
             PickerEntry::File(path)                 => DialogAction::OpenFile(path),
             PickerEntry::Symbol { file, line, .. }  => DialogAction::GotoSymbol { file, line },
-            PickerEntry::Command(name)              => DialogAction::ExecuteCommand(name),
+            PickerEntry::Command { name, .. }       => DialogAction::ExecuteCommand(name),
         });
     }
 
@@ -117,9 +131,10 @@ impl PickerDialog {
         actions: &mut Vec<DialogAction>,
     ) -> bool {
         let hint = match source {
-            PickerSource::Files    => "File name…",
-            PickerSource::Symbols  => "Symbol name…",
-            PickerSource::Commands => "Command name…",
+            PickerSource::Files      => "File name…",
+            PickerSource::Symbols    => "Symbol name…",
+            PickerSource::Commands   => "Command name…",
+            PickerSource::Everywhere => "Search everywhere — files, symbols, commands…",
         };
         let resp = ui.add(
             egui::TextEdit::singleline(&mut self.query)
@@ -160,7 +175,14 @@ impl PickerDialog {
                     file.rsplit('/').next().unwrap_or(file),
                     line + 1,
                 )).font(mono.clone()),
-                PickerEntry::Command(c) => RichText::new(c).font(mono.clone()),
+                PickerEntry::Command { name, description, needs_args } => {
+                    let mut text = name.clone();
+                    if *needs_args { text.push_str("  …"); }
+                    if !description.is_empty() {
+                        text.push_str(&format!("  —  {}", description));
+                    }
+                    RichText::new(text).font(mono.clone())
+                }
             };
             let label = label.color(if is_sel { Color32::WHITE } else { theme.subtext1 });
             if ui.selectable_label(is_sel, label).clicked() {

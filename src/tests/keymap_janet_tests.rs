@@ -60,15 +60,15 @@ fn set_with_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval(r#"(keymap/set "h" "cursor-left" "vim")"#);
+    let r = scripting::eval(r#"(keymap/set "h" "cursor-left" "editor")"#);
     assert_eq!(r, "ok");
 
     // Not active yet → should not resolve
-    assert!(!ed.keymaps.is_layer_active("vim"));
+    assert!(!ed.keymaps.is_layer_active("editor"));
     assert_eq!(ed.keymaps.resolve("h"), None);
 
     // Activate the layer
-    ed.keymaps.push_layer("vim");
+    ed.keymaps.push_layer("editor");
     assert_eq!(ed.keymaps.resolve("h"), Some("cursor-left".into()));
 }
 
@@ -102,11 +102,11 @@ fn unset_with_layer() {
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    ed.keymaps.set_layer("vim", "h", "cursor-left");
-    ed.keymaps.push_layer("vim");
+    ed.keymaps.set_layer("editor", "h", "cursor-left");
+    ed.keymaps.push_layer("editor");
     assert_eq!(ed.keymaps.resolve("h"), Some("cursor-left".into()));
 
-    let r = scripting::eval(r#"(keymap/unset "h" "vim")"#);
+    let r = scripting::eval(r#"(keymap/unset "h" "editor")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("h"), None);
 }
@@ -172,8 +172,8 @@ fn describe_with_layer() {
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    ed.keymaps.set_layer("vim", "h", "cursor-left");
-    ed.keymaps.push_layer("vim");
+    ed.keymaps.set_layer("editor", "h", "cursor-left");
+    ed.keymaps.push_layer("editor");
 
     let r = scripting::eval(r#"(keymap/describe "h")"#);
     assert_eq!(r, "ok");
@@ -189,7 +189,7 @@ fn list_all_layers() {
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-q", "quit");
-    ed.keymaps.set_layer("vim", "h", "cursor-left");
+    ed.keymaps.set_layer("editor", "h", "cursor-left");
 
     let r = scripting::eval(r#"(keymap/list)"#);
     assert_eq!(r, "ok", "keymap/list without args must not error");
@@ -201,10 +201,10 @@ fn list_specific_layer() {
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    ed.keymaps.set_layer("vim", "h", "cursor-left");
-    ed.keymaps.set_layer("vim", "j", "cursor-down");
+    ed.keymaps.set_layer("editor", "h", "cursor-left");
+    ed.keymaps.set_layer("editor", "j", "cursor-down");
 
-    let r = scripting::eval(r#"(keymap/list "vim")"#);
+    let r = scripting::eval(r#"(keymap/list "editor")"#);
     assert_eq!(r, "ok", "keymap/list with layer must not error");
 }
 
@@ -238,10 +238,10 @@ fn push_activates_layer() {
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    assert!(!ed.keymaps.is_layer_active("vim"));
-    let r = scripting::eval(r#"(keymap/push-layer "vim")"#);
+    assert!(!ed.keymaps.is_layer_active("editor"));
+    let r = scripting::eval(r#"(keymap/push-layer "editor")"#);
     assert_eq!(r, "ok");
-    assert!(ed.keymaps.is_layer_active("vim"));
+    assert!(ed.keymaps.is_layer_active("editor"));
 }
 
 #[test]
@@ -250,10 +250,10 @@ fn push_is_idempotent_via_janet() {
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    scripting::eval(r#"(keymap/push-layer "vim")"#);
-    scripting::eval(r#"(keymap/push-layer "vim")"#);
+    scripting::eval(r#"(keymap/push-layer "editor")"#);
+    scripting::eval(r#"(keymap/push-layer "editor")"#);
     // Only one active entry
-    assert_eq!(ed.keymaps.active_layers(), vec!["global".to_string(), "vim".to_string()]);
+    assert_eq!(ed.keymaps.active_layers(), vec!["global".to_string(), "editor".to_string()]);
 }
 
 #[test]
@@ -287,12 +287,12 @@ fn list_layers_returns_global_and_active() {
     let mut ed = make_clean_editor();
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    ed.keymaps.push_layer("vim");
+    ed.keymaps.push_layer("editor");
     ed.keymaps.push_layer("insert");
 
     let r = scripting::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok", "keymap/list-layers must not error");
-    assert_eq!(ed.keymaps.active_layers(), vec!["global", "vim", "insert"]);
+    assert_eq!(ed.keymaps.active_layers(), vec!["global", "editor", "insert"]);
 }
 
 #[test]
@@ -315,19 +315,19 @@ fn layer_priority_via_janet() {
 
     // Set global + layer bindings via Janet
     scripting::eval(r#"(keymap/set "ctrl-q" "global-quit")"#);
-    scripting::eval(r#"(keymap/set "h" "cursor-left" "vim")"#);
-    scripting::eval(r#"(keymap/set "ctrl-q" "vim-quit" "vim")"#);
+    scripting::eval(r#"(keymap/set "h" "cursor-left" "editor")"#);
+    scripting::eval(r#"(keymap/set "ctrl-q" "vim-quit" "editor")"#);
 
     // No layers active → global resolves
     assert_eq!(ed.keymaps.resolve("ctrl-q"), Some("global-quit".into()));
 
     // Push vim layer
-    scripting::eval(r#"(keymap/push-layer "vim")"#);
+    scripting::eval(r#"(keymap/push-layer "editor")"#);
     assert_eq!(ed.keymaps.resolve("h"),       Some("cursor-left".into()));
     assert_eq!(ed.keymaps.resolve("ctrl-q"),  Some("vim-quit".into()));
 
     // Unset layer binding via Janet
-    scripting::eval(r#"(keymap/unset "ctrl-q" "vim")"#);
+    scripting::eval(r#"(keymap/unset "ctrl-q" "editor")"#);
     assert_eq!(ed.keymaps.resolve("ctrl-q"),  Some("global-quit".into()));
 }
 
@@ -342,11 +342,11 @@ fn full_lifecycle_via_janet() {
     assert_eq!(ed.keymaps.resolve("ctrl-s"), Some("save".into()));
 
     // Set layer binding
-    scripting::eval(r#"(keymap/set "i" "enter-insert-mode" "vim")"#);
+    scripting::eval(r#"(keymap/set "i" "enter-insert-mode" "editor")"#);
     assert_eq!(ed.keymaps.resolve("i"), None); // vim not active yet
 
     // Activate vim
-    scripting::eval(r#"(keymap/push-layer "vim")"#);
+    scripting::eval(r#"(keymap/push-layer "editor")"#);
     assert_eq!(ed.keymaps.resolve("i"), Some("enter-insert-mode".into()));
 
     // Set insert layer with esc
@@ -365,7 +365,7 @@ fn full_lifecycle_via_janet() {
     // List layers
     let r = scripting::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok");
-    assert_eq!(ed.keymaps.active_layers(), vec!["global", "vim"]);
+    assert_eq!(ed.keymaps.active_layers(), vec!["global", "editor"]);
 }
 
 #[test]

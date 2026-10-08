@@ -69,25 +69,3 @@
 
 # ── Layout colon verbs ────────────────────────────────────────────────────────
 
-(put *colon-plugins* "layout"
-  (fn [rest]
-    (let [parts (string/split " " (string/trim rest))
-          sub   (get parts 0 "")
-          name  (string/trim (get parts 1 ""))]
-      (cond
-        (= sub "save")
-          (do
-            (editor/save-layout name)
-            (editor/log-message (string "Layout saved: " name)))
-        (= sub "restore")
-          (do
-            (editor/restore-layout name)
-            (editor/log-message (string "Layout restored: " name)))
-        (= sub "list")
-          (let [ls (editor/layout-list)]
-            (editor/log-message
-              (if (= (length ls) 0)
-                "No saved layouts."
-                (string "Layouts: " (string/join ls ", ")))))
-        (editor/log-message
-          "Usage: :layout save <name> | :layout restore <name> | :layout list")))))

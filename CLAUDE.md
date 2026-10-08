@@ -12,7 +12,7 @@ See [AGENTS.md](AGENTS.md) for sprint completion gates (tests, docs, file-size l
 # Build with all features (default — includes janet + gui)
 cargo build
 
-# Build without GUI (TUI only)
+# Build without GUI (headless / server mode only)
 cargo build --no-default-features --features janet
 
 # Run tests (must always pass before closing any sprint)
@@ -100,7 +100,7 @@ let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner()
 
 ### Rendering
 
-Two renderers: `TuiRenderer` (`src/render/tui.rs`, crossterm) and `GuiApp` (`src/render/gui.rs`, egui).  Both call `render_frame` from `src/render/frame.rs` which writes to a `Surface` (2-D `Vec<Cell>`).  The TUI renderer then diffs the surface against the terminal.
+One renderer: `GuiApp` (`src/render/gui.rs`, egui/eframe).  The editor pane calls `render_frame` from `src/render/frame.rs`, which writes buffer content to a `Surface` (2-D `Vec<Cell>`); the surface is painted by the wgpu GPU glyph pipeline or the CPU fallback.  All other chrome (tabs, sidebar, status bar, dialogs) is native egui and never touches the surface.  Magma is a GUI application; there is no terminal UI.
 
 ### Test layout (`src/tests.rs`)
 

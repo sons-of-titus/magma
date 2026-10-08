@@ -43,7 +43,6 @@
       (def total  (get item :total 0))
       (print "[" id "] " name " — " status " (" done "/" total ")"))))
 
-(put *colon-plugins* "sched-list" colon-sched-list)
 
 (defn colon-sched-cancel
   "Cancel a work item by id: :sched-cancel <id>"
@@ -55,4 +54,3 @@
       (scheduler/cancel id)
       (print "Cancelled work item " id))))
 
-(put *colon-plugins* "sched-cancel" colon-sched-cancel)

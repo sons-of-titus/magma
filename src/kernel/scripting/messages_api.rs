@@ -50,6 +50,32 @@ unsafe extern "C-unwind" fn c_editor_log_message(argc: i32, argv: *mut Janet) ->
     })
 }
 
+/// (editor/echo text) or (editor/echo text kind)
+///
+/// kind is "info" (default) or "error".  Shows a transient status-bar
+/// message and appends the line to the *Messages* log.
+unsafe extern "C-unwind" fn c_editor_echo(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let text = conv::get_str(argc, argv, 0).unwrap_or_default().to_string();
+        let kind = if conv::get_str(argc, argv, 1).as_deref() == Some("error") {
+            crate::kernel::state::MessageKind::Error
+        } else {
+            crate::kernel::state::MessageKind::Info
+        };
+        ed.show_message(kind, text.clone());
+        let key = get_or_create_special(ed, "*Messages*");
+        if let Some(arc) = ed.buffers.get_mut(key) {
+            let mut buf = arc.lock().unwrap();
+            buf.read_only = false;
+            let end = buf.len();
+            buf.insert(end, &format!("{text}\n"));
+            buf.read_only = true;
+            buf.ephemeral = true;
+        }
+        conv::nil()
+    })
+}
+
 /// (editor/warn text)
 unsafe extern "C-unwind" fn c_editor_warn(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -106,6 +132,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"editor/log-message".as_ptr() as *const _,
             cfun: Some(c_editor_log_message as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Append a line to the *Messages* buffer".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"editor/echo".as_ptr() as *const _,
+            cfun: Some(c_editor_echo as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Show a transient status message (optional second argument: \"error\") and log it to *Messages*".as_ptr() as *const _,
         },
         JanetReg {
             name: c"editor/warn".as_ptr() as *const _,

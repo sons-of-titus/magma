@@ -118,7 +118,6 @@ pub fn init_vm() {
         regs.extend(super::fs_api::register());
         regs.extend(super::net_http_api::register());
         regs.extend(super::net_tcp_api::register());
-        regs.extend(super::minibuffer_api::register());
         regs.extend(super::selection_api::register());
         regs.extend(super::register_api::register());
         regs.extend(super::option_api::register());
@@ -143,15 +142,11 @@ pub fn init_vm() {
         janet_cfuns(env, c"".as_ptr() as *const _, all_regs.as_ptr());
     }
 
-    load_builtin("builtins/vim.janet",             include_str!("../../../builtins/vim.janet"));
-    load_builtin("builtins/vim_keybindings.janet", include_str!("../../../builtins/vim_keybindings.janet"));
+    load_builtin("builtins/editor_keybindings.janet", include_str!("../../../builtins/editor_keybindings.janet"));
     load_builtin("builtins/init.janet",            include_str!("../../../builtins/init.janet"));
     load_builtin("builtins/magma_utils.janet",     include_str!("../../../builtins/magma_utils.janet"));
     load_builtin("builtins/scroll_commands.janet", include_str!("../../../builtins/scroll_commands.janet"));
     load_builtin("builtins/indent_commands.janet", include_str!("../../../builtins/indent_commands.janet"));
-    load_builtin("builtins/colon_mode.janet",      include_str!("../../../builtins/colon_mode.janet"));
-    load_builtin("builtins/colon_dired.janet",     include_str!("../../../builtins/colon_dired.janet"));
-    load_builtin("builtins/completion_mode.janet", include_str!("../../../builtins/completion_mode.janet"));
     load_builtin("builtins/multi_cursor.janet",    include_str!("../../../builtins/multi_cursor.janet"));
     load_builtin("builtins/major_modes.janet",     include_str!("../../../builtins/major_modes.janet"));
     load_builtin("builtins/plugin_loader.janet",   include_str!("../../../builtins/plugin_loader.janet"));
@@ -165,16 +160,13 @@ pub fn init_vm() {
     load_builtin("builtins/plugins/tags_nav.janet",     include_str!("../../../builtins/plugins/tags_nav.janet"));
     load_builtin("builtins/project.janet",         include_str!("../../../builtins/project.janet"));
     load_builtin("builtins/treesitter.janet",      include_str!("../../../builtins/treesitter.janet"));
+    load_builtin("builtins/symbols.janet",         include_str!("../../../builtins/symbols.janet"));
     load_builtin("builtins/window.janet",          include_str!("../../../builtins/window.janet"));
     load_builtin("builtins/ecosystem.janet",       include_str!("../../../builtins/ecosystem.janet"));
     load_builtin("builtins/which_key.janet",       include_str!("../../../builtins/which_key.janet"));
     load_builtin("builtins/grep.janet",            include_str!("../../../builtins/grep.janet"));
     load_builtin("builtins/fonts.janet",           include_str!("../../../builtins/fonts.janet"));
-    load_builtin("builtins/modeline.janet",        include_str!("../../../builtins/modeline.janet"));
-    load_builtin("builtins/tab_bar.janet",         include_str!("../../../builtins/tab_bar.janet"));
-    load_builtin("builtins/scroll_policy.janet",   include_str!("../../../builtins/scroll_policy.janet"));
     load_builtin("builtins/ui.janet",              include_str!("../../../builtins/ui.janet"));
-    load_builtin("builtins/dired_ui.janet",        include_str!("../../../builtins/dired_ui.janet"));
     load_builtin("builtins/lsp_inlay.janet",       include_str!("../../../builtins/lsp_inlay.janet"));
     load_builtin("builtins/git_blame.janet",       include_str!("../../../builtins/git_blame.janet"));
     load_builtin("builtins/lsp_diag_eol.janet",   include_str!("../../../builtins/lsp_diag_eol.janet"));

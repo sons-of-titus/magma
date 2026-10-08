@@ -1,33 +1,33 @@
-//! Generic editor mode model — `EditorMode`, `Minibuffer`, `Selection`.
+//! Generic editor mode model — `EditorMode`, `Selection`.
 //!
-//! Rust never branches on mode names; all mode vocabulary is owned by Janet.
+//! Magma ships non-modal: the default mode accepts text and editing happens
+//! through chord-bound commands.  The struct is extension substrate — a
+//! community modal-editing plugin may rename the mode and manage keymap
+//! layers, but nothing in the core enters a mode.
 
-/// Search direction — used by vim search builtin commands.
+/// Search direction — used by the search commands.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SearchDirection {
     Forward,
     Backward,
 }
 
-/// The complete, editing-paradigm-agnostic description of the current editor mode.
+/// The current editor context.
 ///
-/// Rust never branches on `name`.  The vim plugin sets `name = "normal"`,
-/// `"insert"`, `"visual"`, etc., but these strings have no special meaning in
-/// the Rust core — they are opaque labels owned entirely by Janet.
+/// `name` is opaque to the core: the shipped value is `"editor"`, and a
+/// focused terminal buffer sets `"terminal"`.  A community plugin may
+/// introduce other names, but no core code path branches on them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorMode {
     /// Opaque mode name chosen by the active editing plugin.
     pub name: String,
     /// When `true`, unbound keys are inserted as text instead of being dropped.
     pub accepts_text: bool,
-    /// Active minibuffer, if any.  When `Some`, unbound keys feed `input`
-    /// rather than the buffer; Rust draws prompt+input at the bottom of the screen.
-    pub minibuffer: Option<Minibuffer>,
 }
 
 impl EditorMode {
     pub fn new(name: impl Into<String>, accepts_text: bool) -> Self {
-        Self { name: name.into(), accepts_text, minibuffer: None }
+        Self { name: name.into(), accepts_text }
     }
 
     /// True when the mode name equals `name` (case-sensitive).
@@ -35,14 +35,8 @@ impl EditorMode {
 }
 
 impl Default for EditorMode {
-    fn default() -> Self { Self::new("normal", false) }
-}
-
-/// A prompt+input widget displayed at the bottom of the screen.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Minibuffer {
-    pub prompt: String,
-    pub input:  String,
+    /// The one shipped editing mode: text input always on.
+    fn default() -> Self { Self::new("editor", true) }
 }
 
 /// A generic visual selection.

@@ -18,6 +18,8 @@ pub struct FileWatcher {
     _watcher: RecommendedWatcher,
     /// Set of watched paths (canonicalized).
     watched: Arc<Mutex<HashSet<String>>>,
+    /// Project roots watched recursively (canonicalized, no trailing slash).
+    project_roots: Arc<Mutex<HashSet<String>>>,
 }
 
 impl FileWatcher {
@@ -25,6 +27,8 @@ impl FileWatcher {
     pub fn new(sender: mpsc::UnboundedSender<BackgroundEvent>) -> Result<Self, String> {
         let watched: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
         let watched_clone = watched.clone();
+        let project_roots: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let roots_clone = project_roots.clone();
 
         let watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
@@ -41,7 +45,14 @@ impl FileWatcher {
                     // Only emit if at least one path is being watched
                     let should_emit = {
                         let w = watched_clone.lock().unwrap();
-                        paths.iter().any(|p| w.contains(p))
+                        if paths.iter().any(|p| w.contains(p)) {
+                            true
+                        } else {
+                            let roots = roots_clone.lock().unwrap();
+                            paths.iter().any(|p| {
+                                roots.iter().any(|r| p.starts_with(r.as_str()))
+                            })
+                        }
                     };
 
                     if should_emit {
@@ -74,7 +85,25 @@ impl FileWatcher {
         Ok(FileWatcher {
             _watcher: watcher,
             watched,
+            project_roots,
         })
+    }
+
+    /// Watch a project root recursively: any create/modify/remove underneath
+    /// is reported, so the file index can be marked dirty and rescanned.
+    pub fn watch_project(&mut self, root: &str) {
+        let canonical = std::fs::canonicalize(root)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| root.to_string());
+        {
+            let mut roots = self.project_roots.lock().unwrap();
+            if !roots.insert(canonical.clone()) {
+                return;
+            }
+        }
+        if let Err(e) = self._watcher.watch(std::path::Path::new(&canonical), RecursiveMode::Recursive) {
+            debug!("FileWatcher: failed to watch project {canonical:?}: {e}");
+        }
     }
 
     /// Start watching a file path. Only watches canonical paths to avoid duplicates.

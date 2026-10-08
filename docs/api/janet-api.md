@@ -242,7 +242,7 @@ Return the current mode name: `"NORMAL"`, `"INSERT"`, `"VISUAL"`, etc.
 
 ### `(editor/mode-detail)` → table
 
-Return a table with mode details: `:name`, `:anchor` (visual modes), `:input` / `:direction` (command/search modes).
+Return a table with mode details: `:name`, and `:anchor`/`:selection-kind` when a selection is active.
 
 ### `(editor/mode-name)` → string
 
@@ -299,10 +299,6 @@ Return the name of the currently registered input interceptor, or nil.
 ### `(editor/consume-input)` → nil
 
 Signal that the current key event is consumed. Must be called from within an `editor/on-input` handler.
-
-### `(editor/command-input)` → string or nil
-
-Return the current command-mode input string, or nil if not in command mode.
 
 ### `(editor/fs-read path)` → string
 
@@ -367,6 +363,12 @@ Evaluate the Janet expression `expr` and return the printed result. Errors are r
 ### `(editor/log-message text)` → nil
 
 Append `text` to `*Messages*`. Emits `buffer-message-appended`.
+
+### `(editor/echo text)` → nil
+
+### `(editor/echo text kind)` → nil
+
+Show a transient status-bar message and append it to `*Messages*`. `kind` is `"info"` (default) or `"error"`.
 
 ### `(editor/warn text)` → nil
 
@@ -479,34 +481,6 @@ Return the most recent mark ring entry without removing it, or nil.
 ### `(mark-ring/len)` → integer
 
 Return the number of entries in the mark ring.
-
----
-
-## minibuffer/ — Minibuffer
-
-### `(minibuffer/open prompt &opt kind)` → nil
-
-Open the minibuffer with `prompt`. `kind` is stored in `plugin-state["minibuffer.kind"]` for handlers. Emits `minibuffer-opened`.
-
-### `(minibuffer/input)` → string or nil
-
-Return the current minibuffer input string, or nil.
-
-### `(minibuffer/set-input text)` → nil
-
-Replace the minibuffer input. Emits `minibuffer-input-changed`.
-
-### `(minibuffer/close)` → nil
-
-Close the minibuffer. Emits `minibuffer-closed`.
-
-### `(minibuffer/prompt)` → string or nil
-
-Return the current minibuffer prompt, or nil.
-
-### `(minibuffer/set-command-input text)` → nil
-
-Overwrite the command-mode minibuffer input string.
 
 ---
 

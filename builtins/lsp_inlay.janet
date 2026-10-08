@@ -44,12 +44,3 @@
         (buffer/decor-clear-layer buf "lsp-inlay")))))
 
 # Colon verb: :lsp-inlay on|off
-(when (and (table? *colon-plugins*) (not (nil? *colon-plugins*)))
-  (put *colon-plugins* "lsp-inlay"
-    (fn [args]
-      (let [sub (get args 0 "")
-            buf (buffer/current)]
-        (cond
-          (= sub "on")  (lsp-inlay/enable buf)
-          (= sub "off") (lsp-inlay/disable buf)
-          (editor/log-message "Usage: :lsp-inlay on|off"))))))

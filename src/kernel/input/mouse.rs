@@ -60,10 +60,9 @@ fn dispatch_click(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
 
     let buf_id = match pane.buffer_id { Some(id) => id, None => return };
 
-    // Check if the click is in the tab-bar / header row area.
-    let tab_bar_rows: u16 = if ed.tab_bar_enabled { 1 } else { 0 };
+    // Header row (e.g. buffer/terminal header) above the text area.
     let header_rows: u16 = gutter_header_rows(ed, buf_id);
-    let row_offset = pane.y + tab_bar_rows + header_rows;
+    let row_offset = pane.y + header_rows;
     if event.y < row_offset {
         // Click in tab bar or header — ignore for now.
         return;
@@ -99,9 +98,8 @@ fn dispatch_gutter_click(
 ) {
     if ed.gutter.providers.is_empty() { return; }
 
-    let tab_bar_rows: u16 = if ed.tab_bar_enabled { 1 } else { 0 };
     let header_rows: u16 = gutter_header_rows(ed, buf_id);
-    let row_offset = pane.y + tab_bar_rows + header_rows;
+    let row_offset = pane.y + header_rows;
 
     let total_lines = ed.buffers.get(buf_id)
         .map(|a| a.lock().unwrap().line_count())
@@ -123,7 +121,7 @@ fn dispatch_gutter_click(
     if click_y < row_offset { return; }
     let vis_row = (click_y - row_offset) as usize;
     let visible_lines = (pane.height as usize)
-        .saturating_sub((tab_bar_rows + header_rows) as usize);
+        .saturating_sub(header_rows as usize);
     let scroll_state = compute_scroll_state(ed, buf_id, visible_lines);
     let abs_line = scroll_state.scroll_top + vis_row;
 
@@ -179,9 +177,8 @@ pub(crate) fn resolve_click_to_offset(
     click_x: u16,
     click_y: u16,
 ) -> Option<usize> {
-    let tab_bar_rows: u16 = if ed.tab_bar_enabled { 1 } else { 0 };
     let header_rows: u16 = gutter_header_rows(ed, buf_id);
-    let row_offset = pane.y + tab_bar_rows + header_rows;
+    let row_offset = pane.y + header_rows;
     if click_y < row_offset { return None; }
     let vis_row = (click_y - row_offset) as usize;
 
@@ -194,7 +191,7 @@ pub(crate) fn resolve_click_to_offset(
     let click_col = (click_x - content_x) as usize;
 
     let visible_lines = (pane.height as usize)
-        .saturating_sub((tab_bar_rows + header_rows) as usize);
+        .saturating_sub(header_rows as usize);
 
     // Compute scroll state BEFORE taking the buffer lock, to avoid deadlock.
     let scroll_state = compute_scroll_state(ed, buf_id, visible_lines);

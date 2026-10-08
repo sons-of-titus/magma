@@ -9,7 +9,18 @@
     (project/set-root (string/trim path))
     (print "Project root set to: " path)))
 
-(put *colon-plugins* "project" colon-project)
+
+# :open <dir> — the same flow as the GUI's Open Folder (guarded command:
+# sets root, pushes recent, indexes async).
+(defn colon-open
+  [rest]
+  (def path (string/trim (or rest "")))
+  (if (> (length path) 0)
+    (try
+      (editor/run-command "open-project" path)
+      ([err] (editor/echo err "error")))
+    (editor/echo "Usage: :open <directory>" "error")))
+
 
 (defn colon-project-list
   [_]
@@ -18,13 +29,11 @@
   (each p projs
     (print "  " (get p :name "?") " → " (get p :root "?"))))
 
-(put *colon-plugins* "project-list" colon-project-list)
 
 (defn colon-projects
   [_]
   (colon-project-list nil))
 
-(put *colon-plugins* "projects" colon-projects)
 
 # --- Auto-detect project root from buffer path ---
 # When a file is opened, walk up the directory tree looking for
@@ -98,7 +107,6 @@
           (print "Detected project: " (project/name) " at " root))
         (print "No project root found from " p)))))
 
-(put *colon-plugins* "detect" colon-detect)
 
 # --- Workspace detection ---
 # Check for common monorepo workspace markers and populate members.

@@ -39,7 +39,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             crate::kernel::command::execute_command(editor, "delete-line", &std::collections::HashMap::new())?;
-            editor.keymaps.pop_layer("vim");
+            editor.keymaps.pop_layer("editor");
             editor.editor_mode = EditorMode::new("insert", true);
             editor.keymaps.push_layer("insert");
             emit_cursor_moved(editor);
@@ -194,7 +194,7 @@ pub(super) fn register(editor: &mut Editor) {
     // vim-macro-toggle: used by the char-capture callback for "q".
     // If not recording, starts recording into the char/register arg.
     // If already recording, stops.
-    cmds.register_fn("vim-macro-toggle", "Toggle macro recording (char-capture callback for q)",
+    cmds.register_fn("macro-toggle", "Toggle macro recording (char-capture callback for q)",
         vec![
             ArgSpec::new("char", ArgType::String),
         ],

@@ -17,26 +17,26 @@ fn content_start_x(ed: &Editor, buf_id: usize, pane_x: u16) -> u16 {
 
 #[test]
 fn mouse_event_drag_variant() {
-    let ev = InputEvent::Mouse(MouseEvent {
+    let ev = MouseEvent {
         kind: MouseEventKind::Drag,
         x: 10,
         y: 20,
         button: MouseButton::Left,
         modifiers: String::new(),
-    });
+    };
     let s = format!("{:?}", ev);
     assert!(s.contains("Drag"));
 }
 
 #[test]
 fn mouse_event_modifiers_roundtrip() {
-    let ev = InputEvent::Mouse(MouseEvent {
+    let ev = MouseEvent {
         kind: MouseEventKind::Click,
         x: 5,
         y: 5,
         button: MouseButton::Right,
         modifiers: "shift,ctrl".to_string(),
-    });
+    };
     let s = format!("{:?}", ev);
     assert!(s.contains("shift"));
 }

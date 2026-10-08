@@ -24,6 +24,7 @@ pub mod util;
 pub mod input;
 pub mod server;
 pub mod runtime;
+mod runtime_dap;
 
 #[cfg(feature = "janet")]
 pub use scripting::JanetRuntime;

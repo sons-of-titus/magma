@@ -107,11 +107,11 @@ fn bench_render(doc_bytes: usize) {
     let ed = editor_with(&text);
     let mut surface = Surface::new(120, 40);
     // Warm-up (lazily built state, caches).
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
     let mut stats = Stats::new();
     for _ in 0..60 {
         let t0 = Instant::now();
-        render_frame(&ed, &mut surface, false);
+        render_frame(&ed, &mut surface);
         stats.push(t0.elapsed().as_nanos() as u64);
     }
     stats.report(&format!("render_frame 40 rows @ {doc_bytes:>9} B"));

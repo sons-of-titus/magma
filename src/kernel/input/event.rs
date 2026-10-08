@@ -1,21 +1,7 @@
-//! Input event types shared between all renderer backends.
-//!
-//! `InputEvent` is the canonical wire format between adapters (TUI/GUI) and
-//! `input::dispatch`.
+//! Input event types produced by the GUI adapter and consumed by
+//! `input::mouse`.
 
-/// A normalised input event produced by any renderer backend.
-#[derive(Debug, Clone)]
-pub enum InputEvent {
-    /// A key press or repeat, canonically serialised as a string
-    /// (e.g. `"ctrl-a"`, `"esc"`, `"a"`, `"shift-tab"`).
-    Key(String),
-    /// Terminal / window resize.
-    Resize(u16, u16),
-    /// A mouse event at terminal column / row coordinates.
-    Mouse(MouseEvent),
-}
-
-/// A mouse event produced by a renderer backend.
+/// A mouse event in cell coordinates, produced by a renderer backend.
 #[derive(Debug, Clone)]
 pub struct MouseEvent {
     pub kind: MouseEventKind,

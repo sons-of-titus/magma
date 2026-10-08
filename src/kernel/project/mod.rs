@@ -204,3 +204,96 @@ impl ProjectManager {
         }
     }
 }
+
+// ── Opening projects ──────────────────────────────────────────────────────────
+
+/// Set `path` as the active project root, register it, emit `project-opened`,
+/// and record it in the recent-projects list.  Emits `project-closed` first
+/// when a project was already active.  Call `dispatch_events_scoped` after to
+/// run Janet handlers (workspace detection, …).
+pub fn open_root(editor: &mut crate::kernel::state::Editor, path: &str) {
+    use crate::kernel::event::keys;
+
+    let was_active = editor.project_manager.project.root.is_some();
+    if was_active {
+        editor.events.emit_typed(keys::events::PROJECT_CLOSED, crate::kernel::event::payload::EmptyPayload);
+    }
+
+    let pb = PathBuf::from(path);
+    let name = pb.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string());
+    editor.project_manager.project = Project {
+        root: Some(pb),
+        name: Some(name.clone()),
+        file_index_dirty: true,
+        ..Project::default()
+    };
+    editor.project_manager.current_project = Some(name.clone());
+    editor.project_manager.projects.insert(name.clone(), editor.project_manager.project.clone());
+
+    push_recent(editor, path);
+    editor.events.emit_typed(
+        keys::events::PROJECT_OPENED,
+        crate::kernel::event::payload::ProjectOpenedPayload { root: path.to_string(), name },
+    );
+}
+
+/// Move `path` to the front of the recent list (deduped, capped at 50)
+/// and persist it.
+pub fn push_recent(editor: &mut crate::kernel::state::Editor, path: &str) {
+    editor.project_manager.recent_projects.retain(|p| p != path);
+    editor.project_manager.recent_projects.insert(0, path.to_string());
+    editor.project_manager.recent_projects.truncate(50);
+    crate::kernel::state::persist::save_recent_projects(&editor.project_manager.recent_projects);
+}
+
+/// Remove `path` from the recent list and persist.
+pub fn remove_recent(editor: &mut crate::kernel::state::Editor, path: &str) {
+    editor.project_manager.recent_projects.retain(|p| p != path);
+    crate::kernel::state::persist::save_recent_projects(&editor.project_manager.recent_projects);
+}
+
+/// Recursively list files under `dir`, skipping VCS/build/dependency dirs.
+fn walk_dir(dir: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let mut files = Vec::new();
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if name.starts_with('.') || name == "node_modules" || name == "target" {
+                    continue;
+                }
+                if let Ok(mut sub) = walk_dir(&path) {
+                    files.append(&mut sub);
+                }
+            } else if path.is_file()
+                && let Some(s) = path.to_str() {
+                    files.push(s.to_string());
+                }
+        }
+    }
+    Ok(files)
+}
+
+/// Enqueue an async walk of the active project's files.  Results arrive as
+/// `BackgroundEvent::FileIndexed`; the dirty flag clears at enqueue time so
+/// a slow walk never queues duplicates.
+pub fn spawn_file_index(ed: &mut crate::kernel::state::Editor) -> bool {
+    let Some(root) = ed.project_manager.project.root.clone() else { return false };
+    let Some(bg) = ed.background.clone() else { return false };
+    let name = ed.project_manager.project.name.clone().unwrap_or_default();
+    let sender = bg.sender.clone();
+    ed.project_manager.project.file_index_dirty = false;
+    bg.spawn_blocking(move || {
+        let files = walk_dir(&root).unwrap_or_default();
+        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::FileIndexed {
+            project_name: name,
+            files,
+        });
+    });
+    true
+}

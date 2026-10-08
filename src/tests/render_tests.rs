@@ -227,7 +227,7 @@ mod render_damage {
         let ed = editor_with(&text);
 
         let mut surface = Surface::new(40, 8);
-        render_frame(&ed, &mut surface, false);
+        render_frame(&ed, &mut surface);
 
         // Status bar is the last row; editor area rows 0..7 minus it.
         let mut rendered = Vec::new();
@@ -265,7 +265,7 @@ mod render_damage {
             view.set_cursor(target);
         }
         let mut surface = Surface::new(40, 8);
-        render_frame(&ed, &mut surface, false);
+        render_frame(&ed, &mut surface);
         let mut rendered = String::new();
         for y in 0..8 {
             for x in 0..40 {
@@ -341,7 +341,7 @@ fn cursor_respects_blink_flag() {
     let mut surface = Surface::new(20, 4);
 
     ed.cursor_visible = true;
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
     let with_cursor: String = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
         .filter_map(|(x, y)| surface.cell(x, y).map(|c| (x, y, c.ch)))
         .find(|(_, _, ch)| *ch == '█' || *ch == '▔' || *ch == '▏')
@@ -350,7 +350,7 @@ fn cursor_respects_blink_flag() {
     assert!(!with_cursor.is_empty(), "cursor drawn when visible");
 
     ed.cursor_visible = false;
-    render_frame(&ed, &mut surface, false);
+    render_frame(&ed, &mut surface);
     let without: Vec<char> = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
         .filter_map(|(x, y)| surface.cell(x, y).map(|c| c.ch))
         .collect();

@@ -82,7 +82,7 @@ fn window_resize_sets_fractional_weight() {
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.view_tree.resize(80, 24);
-    let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
+    let new_id = ed.view_tree.split_horizontal(ed.view_tree.focused_window().unwrap()).unwrap();
     let focused_id = ed.view_tree.focused_window().unwrap();
 
     let result = scripting::eval(

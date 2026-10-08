@@ -211,7 +211,7 @@ fn gate_rendering_never_copies_the_document() {
     let doc: String = (0..50_000).map(|i| format!("line-{i}\n")).collect();
     let (ed, _key) = editor_with(&doc);
     let mut surface = Surface::new(40, 8);
-    crate::kernel::render::frame::render_frame(&ed, &mut surface, false);
+    crate::kernel::render::frame::render_frame(&ed, &mut surface);
     let mut seen = String::new();
     for y in 0..7 {
         for x in 0..40 {

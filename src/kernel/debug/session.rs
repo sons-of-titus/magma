@@ -49,6 +49,11 @@ impl DebugSession {
         self.threads = threads;
     }
 
+    /// Update the visible variables from a DAP `variables` response.
+    pub fn set_variables(&mut self, variables: Vec<Variable>) {
+        self.variables = variables;
+    }
+
     /// Return the frame with the given id, if known.
     pub fn frame(&self, id: FrameId) -> Option<&StackFrame> {
         self.frames.iter().find(|f| f.id == id)

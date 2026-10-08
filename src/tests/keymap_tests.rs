@@ -68,20 +68,20 @@ fn unset_nonexistent_key_is_safe() {
 #[test]
 fn push_layer_creates_layer_if_absent() {
     let mut km = make_km();
-    km.push_layer("vim");
+    km.push_layer("editor");
     // layer exists and is active, even without any bindings
-    assert!(km.is_layer_active("vim"));
+    assert!(km.is_layer_active("editor"));
 }
 
 #[test]
 fn push_layer_is_idempotent() {
     let mut km = make_km();
-    km.push_layer("vim");
-    km.push_layer("vim"); // second push is a no-op
+    km.push_layer("editor");
+    km.push_layer("editor"); // second push is a no-op
     // Idempotent means one pop is enough to deactivate
-    assert!(km.is_layer_active("vim"));
-    km.pop_layer("vim");
-    assert!(!km.is_layer_active("vim"));
+    assert!(km.is_layer_active("editor"));
+    km.pop_layer("editor");
+    assert!(!km.is_layer_active("editor"));
 }
 
 #[test]
@@ -123,17 +123,17 @@ fn many_layers_can_be_active_simultaneously() {
 fn active_layer_overrides_global() {
     let mut km = make_km();
     km.set("h", "global-cmd");
-    km.set_layer("vim", "h", "cursor-left");
-    km.push_layer("vim");
+    km.set_layer("editor", "h", "cursor-left");
+    km.push_layer("editor");
     assert_eq!(km.resolve("h"), Some("cursor-left".into()));
 }
 
 #[test]
 fn later_pushed_layer_has_higher_priority() {
     let mut km = make_km();
-    km.set_layer("vim",    "h", "cursor-left");
+    km.set_layer("editor",    "h", "cursor-left");
     km.set_layer("insert", "h", "insert-h");
-    km.push_layer("vim");
+    km.push_layer("editor");
     km.push_layer("insert");
     assert_eq!(km.resolve("h"), Some("insert-h".into()));
 }
@@ -141,9 +141,9 @@ fn later_pushed_layer_has_higher_priority() {
 #[test]
 fn later_pushed_layer_does_not_override_unbound_keys() {
     let mut km = make_km();
-    km.set_layer("vim",    "h", "cursor-left");
+    km.set_layer("editor",    "h", "cursor-left");
     km.set_layer("insert", "j", "insert-j");
-    km.push_layer("vim");
+    km.push_layer("editor");
     km.push_layer("insert");
     assert_eq!(km.resolve("h"), Some("cursor-left".into()));
     assert_eq!(km.resolve("j"), Some("insert-j".into()));
@@ -152,7 +152,7 @@ fn later_pushed_layer_does_not_override_unbound_keys() {
 #[test]
 fn inactive_layer_not_consulted() {
     let mut km = make_km();
-    km.set_layer("vim", "h", "cursor-left");
+    km.set_layer("editor", "h", "cursor-left");
     assert_eq!(km.resolve("h"), None);
 }
 
@@ -160,8 +160,8 @@ fn inactive_layer_not_consulted() {
 fn global_key_resolves_when_no_layer_binds_it() {
     let mut km = make_km();
     km.set("ctrl-q", "quit");
-    km.set_layer("vim", "h", "cursor-left");
-    km.push_layer("vim");
+    km.set_layer("editor", "h", "cursor-left");
+    km.push_layer("editor");
     assert_eq!(km.resolve("ctrl-q"), Some("quit".into()));
 }
 
@@ -274,20 +274,20 @@ fn unset_layer_on_nonexistent_layer_is_safe() {
 #[test]
 fn set_layer_overwrites_previous_at_same_layer() {
     let mut km = make_km();
-    km.set_layer("vim", "h", "cursor-left");
-    km.set_layer("vim", "h", "cursor-left-alt");
-    km.push_layer("vim");
+    km.set_layer("editor", "h", "cursor-left");
+    km.set_layer("editor", "h", "cursor-left-alt");
+    km.push_layer("editor");
     assert_eq!(km.resolve("h"), Some("cursor-left-alt".into()));
 }
 
 #[test]
 fn unset_layer_removes_from_named_layer() {
     let mut km = make_km();
-    km.set_layer("vim", "h", "cursor-left");
-    km.push_layer("vim");
+    km.set_layer("editor", "h", "cursor-left");
+    km.push_layer("editor");
     assert_eq!(km.resolve("h"), Some("cursor-left".into()));
 
-    km.unset_layer("vim", "h");
+    km.unset_layer("editor", "h");
     assert_eq!(km.resolve("h"), None);
 }
 
@@ -296,8 +296,8 @@ fn unset_layer_removes_from_named_layer() {
 #[test]
 fn buffer_local_overrides_layer() {
     let mut km = make_km();
-    km.set_layer("vim", "h", "cursor-left");
-    km.push_layer("vim");
+    km.set_layer("editor", "h", "cursor-left");
+    km.push_layer("editor");
     km.set_buffer_local(42, "h", "buffer-specific");
 
     assert_eq!(km.resolve_for_buffer("h", Some(42)), Some("buffer-specific".into()));
@@ -342,10 +342,10 @@ fn buffer_local_without_global_fallback() {
 fn normal_mode_hjkl_resolve() {
     let mut km = make_km();
     for (k, v) in [("h","cursor-left"),("j","cursor-down"),("k","cursor-up"),("l","cursor-right")] {
-        km.set_layer("vim", k, v);
+        km.set_layer("editor", k, v);
     }
-    km.set_layer("vim", "i", "enter-insert-mode");
-    km.push_layer("vim");
+    km.set_layer("editor", "i", "enter-insert-mode");
+    km.push_layer("editor");
 
     assert_eq!(km.resolve("h"), Some("cursor-left".into()));
     assert_eq!(km.resolve("i"), Some("enter-insert-mode".into()));
@@ -355,10 +355,10 @@ fn normal_mode_hjkl_resolve() {
 #[test]
 fn insert_mode_esc_exits() {
     let mut km = make_km();
-    km.set_layer("vim",    "h",   "cursor-left");
-    km.set_layer("vim",    "i",   "enter-insert-mode");
+    km.set_layer("editor",    "h",   "cursor-left");
+    km.set_layer("editor",    "i",   "enter-insert-mode");
     km.set_layer("insert", "esc", "exit-insert-mode");
-    km.push_layer("vim");
+    km.push_layer("editor");
 
     km.push_layer("insert");
     assert!(km.is_layer_active("insert"));
@@ -375,9 +375,9 @@ fn insert_mode_esc_exits() {
 #[test]
 fn multiple_toggle_cycles_work() {
     let mut km = make_km();
-    km.set_layer("vim",    "i",   "enter-insert-mode");
+    km.set_layer("editor",    "i",   "enter-insert-mode");
     km.set_layer("insert", "esc", "exit-insert-mode");
-    km.push_layer("vim");
+    km.push_layer("editor");
 
     for _ in 0..5 {
         km.push_layer("insert");
@@ -392,9 +392,9 @@ fn multiple_toggle_cycles_work() {
 #[test]
 fn list_layer_returns_bindings() {
     let mut km = make_km();
-    km.set_layer("vim", "h", "cursor-left");
-    km.set_layer("vim", "j", "cursor-down");
-    let bindings = km.list_layer("vim");
+    km.set_layer("editor", "h", "cursor-left");
+    km.set_layer("editor", "j", "cursor-down");
+    let bindings = km.list_layer("editor");
     assert_eq!(bindings.len(), 2);
     assert!(bindings.contains(&("h".into(), "cursor-left".into())));
     assert!(bindings.contains(&("j".into(), "cursor-down".into())));
@@ -422,17 +422,17 @@ fn list_layer_global_returns_all_global_bindings() {
 fn list_all_includes_all_layers_and_global() {
     let mut km = make_km();
     km.set("ctrl-q", "quit");
-    km.set_layer("vim",    "h", "cursor-left");
+    km.set_layer("editor",    "h", "cursor-left");
     km.set_layer("insert", "esc", "exit-insert-mode");
 
     let all = km.list_all();
     // global is always present, plus any layers that have bindings
     assert!(all.contains_key("global"));
-    assert!(all.contains_key("vim"));
+    assert!(all.contains_key("editor"));
     assert!(all.contains_key("insert"));
 
     assert_eq!(all.get("global").unwrap().len(), 1);
-    assert_eq!(all.get("vim").unwrap().len(),    1);
+    assert_eq!(all.get("editor").unwrap().len(),    1);
     assert_eq!(all.get("insert").unwrap().len(), 1);
 
     // Layers registered but without bindings do not appear in list_all
@@ -452,10 +452,10 @@ fn list_all_returns_empty_global_when_no_bindings() {
 #[test]
 fn active_layers_includes_global_first() {
     let mut km = make_km();
-    km.push_layer("vim");
+    km.push_layer("editor");
     km.push_layer("insert");
     let active = km.active_layers();
-    assert_eq!(active, vec!["global", "vim", "insert"]);
+    assert_eq!(active, vec!["global", "editor", "insert"]);
 }
 
 #[test]
@@ -492,9 +492,9 @@ fn full_resolution_chain_global_layer_buffer() {
     km.set("ctrl-s", "global-save");
     km.set("ctrl-q", "global-quit");
 
-    // Layer "vim": h → cursor-left, ctrl-s → vim-save
-    km.set_layer("vim", "h", "cursor-left");
-    km.set_layer("vim", "ctrl-s", "vim-save");
+    // Layer "editor": h → cursor-left, ctrl-s → vim-save
+    km.set_layer("editor", "h", "cursor-left");
+    km.set_layer("editor", "ctrl-s", "vim-save");
 
     // Layer "insert": esc → exit-insert-mode
     km.set_layer("insert", "esc", "exit-insert-mode");
@@ -508,7 +508,7 @@ fn full_resolution_chain_global_layer_buffer() {
     assert_eq!(km.resolve_for_buffer("ctrl-s", Some(42)), Some("buf-42-save".into()));
 
     // Push vim: vim overrides global for h, ctrl-s; global for ctrl-q
-    km.push_layer("vim");
+    km.push_layer("editor");
     assert_eq!(km.resolve("h"),       Some("cursor-left".into()));
     assert_eq!(km.resolve("ctrl-s"),  Some("vim-save".into()));
     assert_eq!(km.resolve("ctrl-q"),  Some("global-quit".into()));
@@ -523,7 +523,7 @@ fn full_resolution_chain_global_layer_buffer() {
 
     // Pop insert and vim: back to global
     km.pop_layer("insert");
-    km.pop_layer("vim");
+    km.pop_layer("editor");
     assert_eq!(km.resolve("ctrl-s"),  Some("global-save".into()));
     assert_eq!(km.resolve("h"),       None);
 }

@@ -47,7 +47,7 @@ fn alloc_seq(handle: &DapHandle) -> i64 {
     s
 }
 
-fn send_dap_command(session_id: SessionId, command: &str, arguments: &str) {
+pub(crate) fn send_dap_command(session_id: SessionId, command: &str, arguments: &str) {
     let (stdin_arc, bg, body) = {
         let mut guard = DAP_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
         let h = match guard.get_mut(&session_id) {

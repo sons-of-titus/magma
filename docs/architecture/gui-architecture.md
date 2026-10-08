@@ -1,7 +1,7 @@
 # GUI Architecture — Chrome vs Editor Pane
 
-The GUI backend is a native IDE shell (egui) wrapped around the same
-`Surface`-based editor core the TUI uses. The split is deliberate:
+The GUI is a native IDE shell (egui) wrapped around a `Surface`-based editor
+core. The split is deliberate:
 
 - **The editor pane** — buffer text, gutter, cursor, folds, syntax colours —
   renders through the character-cell `Surface`, painted either by the wgpu
@@ -10,11 +10,8 @@ The GUI backend is a native IDE shell (egui) wrapped around the same
   tool windows, dialogs — is native egui chrome. It never touches the
   `Surface`.
 
-All GUI code is `#[cfg(feature = "gui")]`. The TUI build
-(`cargo build --no-default-features --features janet`) contains none of it,
-and the TUI's observable behaviour is unchanged: `render_frame()` draws the
-full-screen `Surface` (tab bar row, status bar, popups) exactly as before
-when called with `editor_pane_only = false`.
+All GUI code is `#[cfg(feature = "gui")]`. Without the feature the binary
+still builds for headless use (`--server`); interactive use requires it.
 
 ## Frame composition
 
@@ -22,7 +19,7 @@ when called with `editor_pane_only = false`.
 declared outside-in, so the first panel declared is the outermost:
 
 ```
-TopBottomPanel::bottom("magma_status")       ← StatusBar (mode pill, git, position)
+TopBottomPanel::bottom("magma_status")       ← StatusBar (file, messages, git, position)
 TopBottomPanel::bottom("magma_tools_bottom") ← docked ToolWindows (terminal, find)
 TopBottomPanel::top("magma_tabs")            ← TabBar (drag-reorder, close, modified)
 TopBottomPanel::top("magma_breadcrumb")      ← BreadcrumbBar (path › symbol)
@@ -36,20 +33,26 @@ Window(layer)                                ← modal dialogs, floating tool wi
 
 | Module | Responsibility |
 |--------|----------------|
-| `gui.rs` | `GuiApp` — shell composition, action application, key routing |
+| `gui.rs` | `GuiApp` — shell composition and the frame pipeline |
+| `gui_shell.rs` | Welcome flow, project watching, folder picker, key pre-dispatch, theme/GPU sync, action application |
 | `gui_input.rs` | egui events → Magma key strings + raw mouse events |
 | `gui_editor_pane.rs` | Central pane: Surface build, GPU/CPU paint, scrollbar, mouse dispatch |
-| `gui_tabs.rs` | Tab bar (close, modified dot, drag-reorder, animated underline) |
-| `gui_sidebar.rs` | Project file tree (collapse, icons, double-click open) |
-| `gui_status.rs` | Status bar + `StatusWidget` trait |
+| `gui_welcome.rs` | Welcome screen (open folder, recents, key hints) |
+| `gui_tabs.rs` | Tab bar (close → scratch, modified dot, drag-reorder, animated underline) |
+| `gui_sidebar.rs` + `gui_sidebar_state.rs` | Project file tree: single-click open, context menu (new/rename/delete/copy path), inline input row |
+| `gui_status.rs` | Status bar, transient messages, clickable git branch |
 | `gui_breadcrumb.rs` | Path segments + innermost symbol tail; reveal-in-sidebar |
 | `gui_minimap.rs` | Code-overview strip (sampled lines, syntax colours, viewport rect) |
-| `gui_dialog.rs` | `DialogManager`, `DialogAction`, Settings dialog |
-| `gui_search_dialog.rs` | In-buffer search + replace-all |
-| `gui_goto_dialogs.rs` | Goto-file / goto-symbol / command-palette pickers |
+| `gui_dialog.rs` | `DialogManager`, `DialogAction`, quit confirmation |
+| `gui_settings_dialog.rs` | Typed settings dialog over the option registry |
+| `gui_search_dialog.rs` | In-buffer search, Enter/Shift-Enter hit walking, replace-all |
+| `gui_goto_dialogs.rs` | Pickers: search-everywhere, goto-file, goto-symbol |
 | `gui_fuzzy.rs` | Pure subsequence matcher with ranking |
 | `gui_theme.rs` | `GuiTheme` palette (Mocha/Latte), egui visuals, editor colour map |
-| `tool_window.rs` | `ToolWindow` trait + manager, terminal & find-in-files windows |
+| `tool_window.rs` | `ToolWindow` trait + manager, terminal (with input row) |
+| `gui_find_tool.rs` | Find-in-files (ripgrep on the project) + shared quickfix rows |
+| `gui_output_tool.rs` | Task output + problems panel |
+| `gui_debug_tool.rs` | DAP session view: threads, call stack (clickable), variables |
 | `gui_layout.rs` | Panel visibility/size state |
 
 ## Widget contract
@@ -65,19 +68,26 @@ and mutation centralized in `gui.rs`.
 ```
 egui events
   → gui_input::collect()          key strings ("ctrl-p", "return", …) + pixel mouse events
-  → gui.rs key loop:
-        ctrl-q            quit
+  → gui_shell::dispatch_shell_key (the ONLY keymap pre-emption; skipped while
+                                   a terminal buffer owns the focus):
+        ctrl-q            quit guard (dialog when dirty — see Behaviour notes)
         ctrl-\            toggle sidebar
         ctrl-shift-l      toggle theme (gui-theme option)
-        DialogManager::shortcut(key)  ctrl-p / ctrl-shift-f / ctrl-o / ctrl-shift-o / ctrl-comma
+        ctrl-p            search everywhere (files + symbols + commands)
+        ctrl-shift-n      go to file
+        ctrl-shift-f      search open buffers
+        ctrl-shift-o      go to symbol
+        ctrl-comma        settings
         dialog open?      Escape closes; every other key is consumed by the dialog
-        otherwise         input::dispatch_key (keymap + Janet handlers, same as TUI)
+        otherwise         input::dispatch_key (keymap + Janet handlers)
+  → the window close button routes through the same quit guard
   → gui_editor_pane             pixel → cell coords, editor rect only
 ```
 
 Modifier encoding includes shift (`ctrl-shift-f` ≠ `ctrl-f`), so chords are
 distinguishable. Special keys (arrows, F-keys, Enter) keep their plain names
-regardless of modifiers, matching the TUI's grammar.
+regardless of modifiers.  `keymap_guard_tests.rs` fails the build if a
+keymap layer ever binds a GUI-reserved chord.
 
 ## Editor pane strip
 
@@ -103,24 +113,42 @@ shell pushes the palette in two directions:
 All chrome widgets take `&GuiTheme`; there are no per-widget colour
 constants.
 
-## Dialogs and colon-mode
+## Dialogs
 
-Dialogs are an alternative UX, not a replacement: colon-mode (`:`) and the
-Janet minibuffer are untouched and remain the scripting interface. When a
-dialog is open it owns the keyboard; the shell's key loop stops dispatching
-to the editor so typing reaches the dialog's text fields only.
+Dialogs are command surfaces, not a separate brain: when a dialog is open it
+owns the keyboard; the shell's key loop stops dispatching to the editor so
+typing reaches the dialog's text fields only.  Janet-defined commands are
+deliberately hidden from the palette — it lists the Rust-native registry
+(`list_rust_commands`); Janet commands remain reachable via the keymap and
+`editor/run-command`.
 
 Dialog actions map onto existing commands — `open-file`, `goto-line`, the
-command registry — so anything Janet registers (`ed.commands` fallback in
-`execute_command`) is reachable from the palette for free.
+command registry — so anything Rust registers is reachable from the palette
+for free.
 
-## Behaviour preservation checklist (Phase 10)
+## Behaviour notes
 
-- `render_frame(&ed, &mut surface, false)` output is byte-identical to
-  pre-overhaul (TUI path; `tab_bar_rows`/status bar logic untouched).
-- Janet modeline, tab-bar hooks, and all event handlers fire only in TUI
-  mode; the GUI loop never emits `RENDER_FRAME`.
-- `cargo build --no-default-features --features janet` compiles with zero
-  GUI code.
+- **Two-window model**: the primary window is the welcome surface; opening
+  a project opens the editor shell in its own viewport
+  (`show_viewport_immediate`) and hides welcome.  Quitting the editor or
+  closing its window (both guarded by `quit`) returns to welcome; closing
+  welcome exits the app.
+- The shipped editor is **non-modal**: buffers always accept text, `esc`
+  only clears the selection, and there is no command line — the palette is
+  the command surface.  `editor/set-mode` and keymap layers remain as the
+  substrate a community modal-editing plugin builds on.
+- Quitting (ctrl-q, window close) is guarded by `quit`: with modified
+  writable buffers it refuses (naming them), and the GUI offers an Unsaved
+  Changes dialog (save all / discard / cancel).  `force-quit` is the
+  explicit override.  Read-only
+  buffers (shell/grep output) never block.
+- The 30-second background auto-saver is opt-in: it runs only while the
+  `auto-save` option is `true` (default off).
+- `render_frame(&ed, &mut surface)` draws editor-pane content only — the
+  surface has no tab-bar or status-bar rows; chrome is native egui.
+- Janet modeline and tab-bar surface hooks are not emitted from the GUI
+  loop; the GUI's status bar and tab bar are native widgets.
+- `cargo build --no-default-features --features janet` compiles headless
+  (server mode) with zero GUI code.
 - `cargo test --features janet` runs the full suite including the
   `gui_overhaul` feature-area tests.

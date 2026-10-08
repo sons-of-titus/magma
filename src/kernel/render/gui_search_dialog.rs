@@ -29,13 +29,16 @@ pub struct SearchDialog {
     pub replace:   String,
     pub(crate) results:    Vec<SearchHit>,
     pub(crate) last_query: String,
+    /// Index of the hit Enter will visit next (Enter = next, Shift-Enter =
+    /// previous — vim's n/N without stealing keys from the text field).
+    pub(crate) selected: usize,
 }
 
 const SEARCH_CAP: usize = 200;
 
 impl SearchDialog {
     pub fn new() -> Self {
-        Self { query: String::new(), replace: String::new(), results: Vec::new(), last_query: String::new() }
+        Self { query: String::new(), replace: String::new(), results: Vec::new(), last_query: String::new(), selected: 0 }
     }
 
     /// Scan open buffers for `query`, capped at `SEARCH_CAP` hits.
@@ -100,18 +103,26 @@ impl SearchDialog {
         });
         ui.separator();
 
+        if self.selected >= self.results.len() { self.selected = 0; }
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .max_height(280.0)
             .show(ui, |ui| {
-                for hit in &self.results {
+                for (i, hit) in self.results.iter().enumerate() {
                     let is_focused = {
                         editor.view_tree.focused_window()
                             .and_then(|wid| editor.view_tree.buffer(wid)) == Some(hit.buf_id)
                     };
                     let label = format!("{}:{}  {}", hit.buf_name, hit.line, hit.text);
-                    let color = if is_focused { Color32::WHITE } else { Color32::GRAY };
-                    if ui.selectable_label(false, RichText::new(label).color(color)).clicked() {
+                    let color = if i == self.selected {
+                        Color32::WHITE
+                    } else if is_focused {
+                        Color32::LIGHT_GRAY
+                    } else {
+                        Color32::GRAY
+                    };
+                    if ui.selectable_label(i == self.selected, RichText::new(label).color(color)).clicked() {
+                        self.selected = i;
                         actions.push(DialogAction::FocusBufferAndGoto {
                             buf_id: hit.buf_id,
                             line:   hit.line,
@@ -120,15 +131,23 @@ impl SearchDialog {
                 }
             });
 
-        // Enter jumps to the first hit.
-        if query_resp.lost_focus()
-            && ui.input(|i| i.key_pressed(egui::Key::Enter))
-            && let Some(first) = self.results.first()
-        {
+        // Enter visits the selected hit and pre-selects the next one, so
+        // repeated Enters walk the matches; Shift-Enter walks backwards.
+        let enter = query_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let shift_enter = query_resp.lost_focus()
+            && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.shift);
+        if (enter || shift_enter) && !self.results.is_empty() {
+            if shift_enter {
+                self.selected = (self.selected + self.results.len() - 1) % self.results.len();
+            }
+            let hit = &self.results[self.selected];
             actions.push(DialogAction::FocusBufferAndGoto {
-                buf_id: first.buf_id,
-                line:   first.line,
+                buf_id: hit.buf_id,
+                line:   hit.line,
             });
+            if enter {
+                self.selected = (self.selected + 1) % self.results.len();
+            }
             query_resp.request_focus();
         }
         false

@@ -7,7 +7,8 @@
 #![cfg(feature = "gui")]
 
 use crate::kernel::render::gui_breadcrumb::{relative_to_project, segments, symbol_at};
-use crate::kernel::render::gui_dialog::{sorted_options, DialogAction};
+use crate::kernel::render::gui_dialog::DialogAction;
+use crate::kernel::render::gui_settings_dialog::sorted_options;
 use crate::kernel::render::gui_goto_dialogs::{collect_entries, PickerEntry, PickerSource};
 use crate::kernel::render::gui_search_dialog::{query_case_insensitive, SearchDialog};
 use crate::kernel::render::gui_theme::GuiTheme;
@@ -212,7 +213,22 @@ fn picker_symbols_come_from_index() {
 fn picker_commands_list_registry() {
     let ed = make_editor();
     let entries = collect_entries(&ed, PickerSource::Commands);
-    assert!(entries.iter().any(|e| matches!(e, PickerEntry::Command(c) if c == "goto-line")));
+    assert!(entries.iter().any(|e| matches!(e, PickerEntry::Command { name, .. } if name == "goto-line")));
+}
+
+#[test]
+fn picker_hides_janet_backed_commands() {
+    let mut ed = make_editor();
+    // A Janet-backed trampoline (as command/define registers) must not
+    // surface in the palette, while Rust-native commands stay listed.
+    ed.commands.register_janet_backed("internal-plumb", "Janet-defined command", vec![],
+        Box::new(|_ed, _args| Ok(())));
+    let entries = collect_entries(&ed, PickerSource::Commands);
+    assert!(entries.iter().all(|e| matches!(e,
+        PickerEntry::Command { name, .. } if name != "internal-plumb")),
+        "Janet-backed commands must not appear in the palette");
+    assert!(entries.iter().any(|e| matches!(e,
+        PickerEntry::Command { name, .. } if name == "goto-line")));
 }
 
 // ── CommandRegistry::list_detailed ───────────────────────────────────────────

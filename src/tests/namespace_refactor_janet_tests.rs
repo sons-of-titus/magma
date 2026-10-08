@@ -1,27 +1,5 @@
 use crate::kernel::scripting;
 
-// ── minibuffer/ ───────────────────────────────────────────────────────────
-
-#[test]
-fn minibuffer_open_and_close() {
-    janet_test!(ed, {
-        scripting::eval(r#"(minibuffer/open ">" "test")"#);
-        assert!(ed.editor_mode.minibuffer.is_some());
-        assert_eq!(ed.editor_mode.minibuffer.as_ref().unwrap().prompt, ">");
-        scripting::eval("(minibuffer/close)");
-        assert!(ed.editor_mode.minibuffer.is_none());
-    });
-}
-
-#[test]
-fn minibuffer_set_input_updates_state() {
-    janet_test!(ed, {
-        scripting::eval(r#"(minibuffer/open "/")"#);
-        scripting::eval(r#"(minibuffer/set-input "pattern")"#);
-        assert_eq!(ed.editor_mode.minibuffer.as_ref().unwrap().input, "pattern");
-    });
-}
-
 // ── selection/ ───────────────────────────────────────────────────────────
 
 #[test]
@@ -183,18 +161,10 @@ fn module_path_add_and_list() {
 // ── ui/ ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn ui_set_tab_bar_and_read() {
+fn ui_load_theme_missing_file_signals_error() {
     janet_test!(ed, {
-        scripting::eval("(ui/set-tab-bar true)");
-        assert!(ed.tab_bar_enabled);
-    });
-}
-
-#[test]
-fn ui_set_modeline_stores_fn_name() {
-    janet_test!(ed, {
-        scripting::eval(r#"(ui/set-modeline "my-fn")"#);
-        assert_eq!(ed.modeline_fn.as_deref(), Some("my-fn"));
+        let r = scripting::eval(r#"(ui/load-theme "/nonexistent-magma-theme.janet")"#);
+        assert!(r.contains("error") || r.contains("No such file"), "missing theme signals: {r}");
     });
 }
 

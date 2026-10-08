@@ -1,6 +1,6 @@
 # Magma built-in initialization
-# vim.janet is loaded before this file, so all vim keybindings and the
-# editor/on-input interceptor are already active.
+# editor_keybindings.janet is loaded before this file, so the standard
+# editor keybindings are already active.
 
 (print "Magma initializing...")
 
@@ -11,11 +11,8 @@
 #   builtins/magma_utils.janet         (defines magma/trim, magma-api-version, etc.)
 #   builtins/scroll_commands.janet
 #   builtins/indent_commands.janet     (uses magma/trim defined above)
-#   builtins/colon_mode.janet          (defines *colon-plugins*)
-#   builtins/colon_dired.janet         (dired colon verbs, uses colon/define)
-#   builtins/completion_mode.janet     (needs *colon-plugins*)
 #   builtins/multi_cursor.janet
-#   builtins/major_modes.janet         (needs *colon-plugins*)
+#   builtins/major_modes.janet         (language major-mode detection)
 #   builtins/plugin_loader.janet       (defines `require`)
 
 # --- Default faces (Sprint 6) ---------------------------------------------
@@ -90,40 +87,5 @@
 (face/define "warning-face"
   {:fg (catppuccin-mocha :peach) :bg (catppuccin-mocha :base)
    :bold false :italic false :underline false :strikethrough false :dim false})
-
-# --- Dired-specific faces (Sprint 12) ------------------------------------
-# Used by dired_ui.janet for the directory browser.
-
-(face/define "dired-directory-face"
-  {:fg (catppuccin-mocha :blue) :bg (catppuccin-mocha :base)
-   :bold false :italic false :underline false :strikethrough false :dim false})
-
-(face/define "dired-symlink-face"
-  {:fg (catppuccin-mocha :sky) :bg (catppuccin-mocha :base)
-   :bold false :italic false :underline false :strikethrough false :dim false})
-
-(face/define "dired-executable-face"
-  {:fg (catppuccin-mocha :green) :bg (catppuccin-mocha :base)
-   :bold false :italic false :underline false :strikethrough false :dim false})
-
-(face/define "dired-marked-face"
-  {:fg (catppuccin-mocha :red) :bg (catppuccin-mocha :base)
-   :bold true :italic false :underline false :strikethrough false :dim false})
-
-(face/define "dired-header-face"
-  {:fg (catppuccin-mocha :mauve) :bg (catppuccin-mocha :base)
-   :bold true :italic false :underline false :strikethrough false :dim false})
-
-(face/define "dired-path-face"
-  {:fg (catppuccin-mocha :mauve) :bg (catppuccin-mocha :base)
-   :bold false :italic true :underline false :strikethrough false :dim false})
-
-(face/define "dired-flagged-face"
-  {:fg (catppuccin-mocha :maroon) :bg (catppuccin-mocha :base)
-   :bold false :italic true :underline false :strikethrough false :dim false})
-
-(face/define "dired-filter-face"
-  {:fg (catppuccin-mocha :yellow) :bg (catppuccin-mocha :base)
-   :bold false :italic true :underline false :strikethrough false :dim false})
 
 (print "Magma ready")

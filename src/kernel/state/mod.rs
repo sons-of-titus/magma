@@ -5,6 +5,7 @@ pub mod views;
 pub mod mode;
 pub mod persist;
 pub mod font;
+pub mod options;
 pub mod snippet;
 pub mod cursor;
 pub mod visual;
@@ -31,10 +32,9 @@ use crate::kernel::semantic::{SemanticEngine, LanguageRegistry};
 use crate::kernel::task::TaskScheduler;
 use crate::kernel::scheduler::WorkScheduler;
 
-pub use mode::{EditorMode, Minibuffer, Selection, SearchDirection};
+pub use mode::{EditorMode, Selection, SearchDirection};
 pub use font::{ContextFont, FontConfig};
 pub use cursor::{ExtraCursor, MultiCursorState};
-pub use visual::BlockVisualState;
 pub use completion::CompletionState;
 pub use snippet::SnippetState;
 pub use crate::kernel::project::{
@@ -72,6 +72,22 @@ impl Default for MouseState {
     }
 }
 
+/// Severity of a transient status-bar message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageKind {
+    Info,
+    Error,
+}
+
+/// One transient status-bar message.  The GUI renders it for a few seconds
+/// and then drops it; `*Messages*` is the durable log.
+#[derive(Debug, Clone)]
+pub struct StatusMessage {
+    pub kind: MessageKind,
+    pub text: String,
+    pub at: std::time::Instant,
+}
+
 /// The single source of truth for all editor state.
 /// All access is guarded by `Arc<RwLock<Editor>>`.
 pub struct Editor {
@@ -106,7 +122,6 @@ pub struct Editor {
     pub insert_pending_register: bool,
     pub clipboard: Clipboard,
     pub alternate_buffer: Option<usize>,
-    pub last_visual: Option<(usize, usize, bool)>,
     pub background: Option<BackgroundHandle>,
     pub options: std::collections::HashMap<String, String>,
     pub change_list: Vec<usize>,
@@ -114,13 +129,12 @@ pub struct Editor {
     pub theme: std::collections::HashMap<String, (u8, u8, u8)>,
     pub quickfix_list: Vec<crate::kernel::task::QuickfixEntry>,
     pub quickfix_index: usize,
-    pub dired: crate::kernel::vc::dired::DiredState,
     pub vc: crate::kernel::vc::VcState,
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
     pub cursor_shape: String,
-    /// Cursor blink phase, owned by the GUI's heartbeat (§9.4).  The TUI
-    /// never toggles it; the cursor renders while true.
+    /// Cursor blink phase, owned by the GUI's heartbeat (§9.4); the cursor
+    /// renders while true.
     pub cursor_visible: bool,
     /// Incremental tree-sitter parse trees, keyed by buffer slab
     /// (docs/core-redesign.md §7.2).  Each state records the document
@@ -132,20 +146,20 @@ pub struct Editor {
     pub module_paths: Vec<String>,
     pub font_changed: bool,
     pub font_config: FontConfig,
-    pub modeline_fn: Option<String>,
-    pub modeline_rendered: String,
     pub overlays: Vec<Overlay>,
     pub next_overlay_id: usize,
-    pub tab_bar_enabled: bool,
     pub last_layout: LayoutSnapshot,
     pub mouse_state: MouseState,
     pub on_input_fn: Option<String>,
     pub input_consumed: bool,
+    pub status_message: Option<StatusMessage>,
+    /// Snapshot of the most recently finished task: (name, combined output).
+    /// The output panel renders this; `quickfix_list` carries the errors.
+    pub last_task: Option<(String, String)>,
 
     // ── Sub-structs ─────────────────────────────────────────────────
     pub snippet: SnippetState,
     pub multi_cursor: MultiCursorState,
-    pub block_visual: BlockVisualState,
     pub completion: CompletionState,
     pub project_manager: ProjectManager,
     pub io: IoState,
@@ -208,7 +222,6 @@ impl Editor {
             insert_pending_register: false,
             clipboard: Clipboard::new(),
             alternate_buffer: None,
-            last_visual: None,
             background: None,
             options: std::collections::HashMap::new(),
             change_list: Vec::new(),
@@ -216,7 +229,6 @@ impl Editor {
             theme,
             quickfix_list: Vec::new(),
             quickfix_index: 0,
-            dired: crate::kernel::vc::dired::DiredState::new(),
             vc: crate::kernel::vc::VcState::new(),
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),
@@ -228,15 +240,14 @@ impl Editor {
             mark_ring: Vec::new(),
             font_changed: false,
             font_config: FontConfig::default(),
-            modeline_fn: None,
-            modeline_rendered: String::new(),
             overlays: Vec::new(),
             next_overlay_id: 1,
-            tab_bar_enabled: false,
             last_layout: LayoutSnapshot::default(),
             mouse_state: MouseState::default(),
             on_input_fn: None,
             input_consumed: false,
+            status_message: None,
+            last_task: None,
             module_paths: {
                 let home = std::env::var("HOME").unwrap_or_default();
                 if home.is_empty() { vec![] }
@@ -245,7 +256,6 @@ impl Editor {
             runtime: None,
             snippet: SnippetState::default(),
             multi_cursor: MultiCursorState::default(),
-            block_visual: BlockVisualState::default(),
             completion: CompletionState::default(),
             project_manager: ProjectManager::default(),
             io: IoState::default(),
@@ -308,7 +318,7 @@ impl Editor {
         })
     }
 
-    pub fn vim_mode_name(&self) -> String {
+    pub fn mode_name(&self) -> String {
         self.editor_mode.name.to_ascii_uppercase()
     }
 
@@ -347,6 +357,28 @@ impl Editor {
 
     pub fn resolve_face_style(&self, face: &str) -> Option<crate::kernel::render::surface::Style> {
         self.faces.get(face).copied()
+    }
+
+    /// Names of buffers quit must protect: modified and writable.  Read-only
+    /// buffers hold generated content (shell/grep output), not user work.
+    pub fn dirty_buffer_names(&self) -> Vec<String> {
+        self.buffers.iter()
+            .filter_map(|(_, arc)| {
+                let buf = arc.lock().unwrap();
+                (buf.modified() && !buf.read_only).then(|| buf.name.clone())
+            })
+            .collect()
+    }
+
+    /// Surface a transient status message.  This is the single sink for
+    /// user-facing feedback — command failures land here instead of being
+    /// discarded.
+    pub fn show_message(&mut self, kind: MessageKind, text: impl Into<String>) {
+        self.status_message = Some(StatusMessage {
+            kind,
+            text: text.into(),
+            at: std::time::Instant::now(),
+        });
     }
 }
 

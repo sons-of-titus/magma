@@ -36,32 +36,6 @@ unsafe fn janet_string_array(v: Janet) -> Vec<String> {
     out
 }
 
-/// (editor/command-input) → string or nil
-/// Return the text currently typed in `:` command mode, or nil when not in command mode.
-unsafe extern "C-unwind" fn c_editor_command_input(_argc: i32, _argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        match &ed.editor_mode.minibuffer {
-            Some(mb) if ed.editor_mode.name == "command" => conv::string(&mb.input),
-            _ => conv::nil(),
-        }
-    })
-}
-
-/// (editor/set-command-input text) → nil
-/// Replace the command-mode input buffer with `text`.  No-op outside command mode.
-unsafe extern "C-unwind" fn c_editor_set_command_input(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        if let Some(text) = unsafe { conv::get_str(argc, argv, 0) } {
-            if let Some(ref mut mb) = ed.editor_mode.minibuffer {
-                if ed.editor_mode.name == "command" {
-                    mb.input = text;
-                }
-            }
-        }
-        conv::nil()
-    })
-}
-
 /// (editor/set-completions items &opt idx) → nil
 /// Populate the completion popup with `items` (array of strings) and select index `idx`.
 /// Shows the popup immediately; dismissed automatically when the user types a character.
@@ -90,16 +64,6 @@ unsafe extern "C-unwind" fn c_editor_clear_completions(_argc: i32, _argv: *mut J
 
 pub fn register() -> Vec<JanetReg> {
     vec![
-        JanetReg {
-            name: c"editor/command-input".as_ptr() as *const _,
-            cfun: Some(c_editor_command_input as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return the current command-mode input string, or nil".as_ptr() as *const _,
-        },
-        JanetReg {
-            name: c"editor/set-command-input".as_ptr() as *const _,
-            cfun: Some(c_editor_set_command_input as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Replace the command-mode input with a new string".as_ptr() as *const _,
-        },
         JanetReg {
             name: c"editor/set-completions".as_ptr() as *const _,
             cfun: Some(c_editor_set_completions as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),

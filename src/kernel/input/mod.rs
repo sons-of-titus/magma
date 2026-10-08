@@ -1,10 +1,6 @@
 //! Key-dispatch state machine and mode-aware text-input handler.
-//!
-//! Submodules provide the shared input-event types and key-normalisation
-//! helpers that both the TUI and GUI adapters must use.
 
 pub mod event;
-pub mod keys;
 pub mod mouse;
 
 /// Forward a key to the shell process running in a terminal buffer.
@@ -109,22 +105,12 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
         }
     }
 
-    // ── Minibuffer dispatch ─────────────────────────────────────────
-    // Insertable keys go directly into the minibuffer.
-    // Non-insertable keys (return, tab, esc, etc.) fall through to keymap lookup.
-    if ed.editor_mode.minibuffer.is_some() {
-        if is_insertable(key) {
-            handle_text_input(ed, key);
-            ed.dispatch_events_scoped();
-            return;
-        }
-        // Fall through to keymap lookup for non-insertable keys.
-    }
-
     // ── Keymap lookup → command, else text if accepts_text ─────────
     let buf_id = focused_buffer_id(ed);
     if let Some(cmd) = ed.keymaps.resolve_for_buffer(key, Some(buf_id as u64)) {
-        let _ = crate::kernel::command::execute_command(ed, &cmd, &std::collections::HashMap::new());
+        if let Err(e) = crate::kernel::command::execute_command(ed, &cmd, &std::collections::HashMap::new()) {
+            ed.show_message(crate::kernel::state::MessageKind::Error, e);
+        }
     } else if ed.editor_mode.accepts_text {
         handle_text_input(ed, key);
     }
@@ -156,21 +142,11 @@ pub fn is_insertable(s: &str) -> bool {
     !NON_INSERTABLE.contains(&s)
 }
 
-/// Insert typed text into the focused buffer or minibuffer.
+/// Insert typed text into the focused buffer.
 ///
 /// This is called when no keymap binding matched and `accepts_text` is true.
 pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
     if !is_insertable(key) {
-        return;
-    }
-
-    // Minibuffer: append to input string.
-    if let Some(ref mut mb) = ed.editor_mode.minibuffer {
-        if ed.completion.visible {
-            ed.completion.visible = false;
-            ed.completion.items.clear();
-        }
-        mb.input.push_str(key);
         return;
     }
 

@@ -325,3 +325,37 @@ mod render_damage {
     }
 }
 
+
+#[test]
+fn cursor_respects_blink_flag() {
+    use crate::kernel::command::builtin;
+    use crate::kernel::render::frame::render_frame;
+    use crate::kernel::state::Editor;
+    use crate::kernel::storage::disk::DiskFileSystem;
+    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
+    builtin::register_builtin_commands(&mut ed);
+    let key = ed.create_buffer_from_str("blink", "abc");
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    let mut surface = Surface::new(20, 4);
+
+    ed.cursor_visible = true;
+    render_frame(&ed, &mut surface, false);
+    let with_cursor: String = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
+        .filter_map(|(x, y)| surface.cell(x, y).map(|c| (x, y, c.ch)))
+        .find(|(_, _, ch)| *ch == '█' || *ch == '▔' || *ch == '▏')
+        .map(|(_, _, ch)| ch.to_string())
+        .unwrap_or_default();
+    assert!(!with_cursor.is_empty(), "cursor drawn when visible");
+
+    ed.cursor_visible = false;
+    render_frame(&ed, &mut surface, false);
+    let without: Vec<char> = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
+        .filter_map(|(x, y)| surface.cell(x, y).map(|c| c.ch))
+        .collect();
+    assert!(
+        !without.iter().any(|ch| *ch == '█' || *ch == '▔' || *ch == '▏'),
+        "no cursor glyphs while blink phase is off"
+    );
+}

@@ -48,6 +48,10 @@ pub struct GuiApp {
     /// Render signature of the last painted frame; when unchanged there is
     /// nothing new to paint and no repaint is scheduled (§9.4).
     last_render_signature: u64,
+    /// Cursor blink phase, flipped by the heartbeat while text input is
+    /// accepted (§9.4: repaint driven by cursor blinking).
+    blink_visible: bool,
+    last_blink: std::time::Instant,
 }
 
 impl GuiApp {
@@ -61,6 +65,15 @@ impl GuiApp {
     }
 
     fn init(editor: Arc<RwLock<Editor>>, bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>) -> Self {
+        // Install the bundled JetBrains Mono when no font was loaded from
+        // config — the GPU atlas and egui chrome both depend on it.
+        {
+            let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
+            if ed.font_config.loaded_fonts.is_empty() {
+                ed.font_config.bootstrap_bundled();
+                ed.font_changed = true;
+            }
+        }
         let (font_size, font_bytes) = {
             let ed = editor.read().unwrap_or_else(|e| e.into_inner());
             (ed.font_config.size, ed.font_config.loaded_fonts.values().next().cloned())
@@ -87,6 +100,8 @@ impl GuiApp {
             theme: GuiTheme::mocha(),
             theme_synced: false,
             last_render_signature: 0,
+            blink_visible: true,
+            last_blink: std::time::Instant::now(),
         }
     }
 }
@@ -325,17 +340,44 @@ impl eframe::App for GuiApp {
             self.tool_windows.show_floating(&ctx, &ed, &self.theme);
         }
 
-        // Repaint only when something paintable changed.  OS input events
-        // wake egui on their own; a static editor must not continuously
-        // rebuild itself (docs/core-redesign.md §9.4).
-        let signature = {
-            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-            let terminal_active = ed.io.terminal_mode_buf.is_some();
-            (ed.render_signature(), terminal_active)
+        // ── Repaint scheduling (§9.4) ──────────────────────────────────────
+        // Input events wake egui natively; this tail handles everything
+        // else.  A 400 ms heartbeat is the pump deadline for background
+        // events (LSP, tasks, autosave) and the cursor-blink tick — one
+        // cheap frame per interval, not a continuous rebuild.  An input-
+        // or change-driven frame additionally repaints immediately.
+        const BLINK_PERIOD: std::time::Duration = std::time::Duration::from_millis(400);
+        let (signature, blink_due) = {
+            let mut ed = ea.write().unwrap_or_else(|e| e.into_inner());
+            if ed.editor_mode.accepts_text && self.last_blink.elapsed() >= BLINK_PERIOD {
+                self.blink_visible = !self.blink_visible;
+                self.last_blink = std::time::Instant::now();
+            } else if !ed.editor_mode.accepts_text {
+                self.blink_visible = true;
+            }
+            ed.cursor_visible = self.blink_visible;
+            (ed.render_signature(), self.last_blink.elapsed() >= BLINK_PERIOD)
         };
-        if signature.0 != self.last_render_signature || signature.1 {
-            self.last_render_signature = signature.0;
+        let repaint_now = signature != self.last_render_signature
+            || blink_due
+            || self.atlas_dirty;
+        self.last_render_signature = signature;
+        if repaint_now {
             ctx.request_repaint();
         }
+        ctx.request_repaint_after(BLINK_PERIOD);
+
+        // ── Window title follows the focused buffer ────────────────────────
+        let title = {
+            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+            match ed.focused_buffer_key() {
+                0 => "Magma".to_string(),
+                key => match ed.buffers.get(key).map(|a| a.lock().unwrap().name.clone()) {
+                    Some(name) => format!("{name} — Magma"),
+                    None => "Magma".to_string(),
+                },
+            }
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
     }
 }

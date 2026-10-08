@@ -18,6 +18,27 @@ pub struct FontConfig {
     pub loaded_fonts: std::collections::HashMap<String, Vec<u8>>,
 }
 
+impl FontConfig {
+    /// Install the bundled JetBrains Mono when no font has been loaded
+    /// (user config or Janet) so the GUI never falls back to egui's
+    /// generic fonts.  Sets `changed` on the caller's behalf is NOT done
+    /// here — the caller flips `font_changed` so the renderers pick it up.
+    pub fn bootstrap_bundled(&mut self) {
+        if !self.loaded_fonts.is_empty() {
+            return;
+        }
+        self.loaded_fonts.insert(
+            "magma-mono".to_string(),
+            include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf").to_vec(),
+        );
+        self.loaded_fonts.insert(
+            "magma-mono-bold".to_string(),
+            include_bytes!("../../../assets/fonts/JetBrainsMono-Bold.ttf").to_vec(),
+        );
+        self.family = "magma-mono".to_string();
+    }
+}
+
 impl Default for FontConfig {
     fn default() -> Self {
         FontConfig {

@@ -102,3 +102,42 @@ fn font_changed_flag_starts_false() {
     let ed = helpers::make_editor();
     assert!(!ed.font_changed);
 }
+
+// ── Bundled font bootstrap (GUI presentability) ─────────────────────────
+
+#[test]
+fn bundled_font_bootstrap_installs_jetbrains_mono() {
+    let mut fc = crate::kernel::state::FontConfig::default();
+    assert!(fc.loaded_fonts.is_empty(), "default config ships no fonts");
+
+    fc.bootstrap_bundled();
+    assert_eq!(fc.loaded_fonts.len(), 2, "regular + bold bundled");
+    assert_eq!(fc.family, "magma-mono");
+    let regular = fc.loaded_fonts.get("magma-mono").unwrap();
+    assert!(regular.len() > 100_000, "real TTF bytes, got {}", regular.len());
+
+    // Idempotent: an existing user font choice is never overwritten.
+    fc.loaded_fonts.insert("user-font".to_string(), vec![1, 2, 3]);
+    fc.family = "user-font".to_string();
+    fc.bootstrap_bundled();
+    assert_eq!(fc.family, "user-font");
+    assert_eq!(fc.loaded_fonts.get("user-font").unwrap(), &vec![1, 2, 3]);
+}
+
+#[test]
+fn bundled_font_parses_and_rasterizes_with_extended_charset() {
+    let bytes = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let mut atlas = crate::kernel::render::gpu_atlas::GpuGlyphAtlas::new();
+    atlas.rasterize(bytes, 15.0);
+    assert!(atlas.needs_rebuild());
+    // ASCII, Latin-1, box drawing, and arrows must all be real glyphs now.
+    for ch in ['A', 'é', '│', '┌', '╔', '→'] {
+        assert!(atlas.contains(ch), "atlas must contain {ch:?}");
+    }
+    assert!(atlas.atlas_width > 0 && atlas.atlas_height > 0);
+    let px = atlas.generate_atlas_pixels();
+    assert_eq!(
+        px.len(),
+        (atlas.atlas_width * atlas.atlas_height * 4) as usize
+    );
+}

@@ -231,7 +231,7 @@ impl View for EditorView {
             scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset);
 
         // ── Cursor + multi-cursor + completion popup (focused pane only) ──
-        if is_focused {
+        if is_focused && editor.cursor_visible {
             if cursor_vis_row < visible_lines
                 && cursor_col < area.width.saturating_sub(gutter_width as u16) as usize
             {

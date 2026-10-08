@@ -119,6 +119,9 @@ pub struct Editor {
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
     pub cursor_shape: String,
+    /// Cursor blink phase, owned by the GUI's heartbeat (§9.4).  The TUI
+    /// never toggles it; the cursor renders while true.
+    pub cursor_visible: bool,
     /// Incremental tree-sitter parse trees, keyed by buffer slab
     /// (docs/core-redesign.md §7.2).  Each state records the document
     /// revision its tree was parsed at.
@@ -218,6 +221,7 @@ impl Editor {
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),
             cursor_shape: "block".to_string(),
+            cursor_visible: true,
             ts_trees: std::collections::HashMap::new(),
             ts_languages: std::collections::HashMap::new(),
             saved_layouts: std::collections::HashMap::new(),

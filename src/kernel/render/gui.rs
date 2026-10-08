@@ -291,7 +291,12 @@ impl eframe::App for GuiApp {
         }
 
         // ── Central panel: surface-based editor + scrollbar/minimap ───────
-        let use_gpu = self.target_format.is_some() && self.atlas_rasterized;
+        // The buffer is CPU-rendered through egui's text rasterizer by
+        // default (crisper, handles any glyph); the batched GPU quad path
+        // is available via MAGMA_GPU_RENDER=1.
+        let use_gpu = self.target_format.is_some()
+            && self.atlas_rasterized
+            && std::env::var_os("MAGMA_GPU_RENDER").is_some();
         let target_fmt = self.target_format;
 
         // Drain the dirty flag exactly once per frame.

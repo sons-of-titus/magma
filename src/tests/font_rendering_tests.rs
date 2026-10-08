@@ -140,4 +140,48 @@ fn bundled_font_parses_and_rasterizes_with_extended_charset() {
         px.len(),
         (atlas.atlas_width * atlas.atlas_height * 4) as usize
     );
+    // The first cell must be solid white (rect sampling depends on it).
+    let checksum: u64 = px.iter().map(|&b| b as u64).sum();
+    eprintln!("CHECKSUM {}x{} = {}", atlas.atlas_width, atlas.atlas_height, checksum);
+    let white_cell: u64 = (16 * 24 * 4 * 255) as u64;
+    assert!(checksum > white_cell, "atlas must contain at least the white cell");
+}
+
+
+
+
+
+
+#[test]
+fn rasterizer_draws_all_glyphs_not_one_cell() {
+    // Regression: ab_glyph's OutlineGlyph::draw yields bounding-box-relative
+    // u32 coordinates; treating them as absolute piled every glyph onto atlas
+    // cell 0, leaving the atlas (and the whole GPU text path) blank.  The
+    // fix composes bounds().min with the draw coordinates.
+    let bytes = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let chars: Vec<char> = crate::kernel::render::gpu_atlas::ATLAS_CHARS.chars().collect();
+    let px = crate::kernel::render::gpu_rasterizer::rasterize_font_atlas(bytes, 15.0, &chars, 16, 24, 16);
+
+    // The reserved solid-white first cell is intact.
+    assert_eq!(&px[0..4], &[255, 255, 255, 255]);
+
+    // Glyph coverage spans far more than one cell (~60+ texels per glyph).
+    let nonzero_texels = px.chunks(4).filter(|t| t[3] != 0).count();
+    assert!(
+        nonzero_texels > chars.len() * 20,
+        "expected glyph coverage across the atlas, got {nonzero_texels} texels for {} chars",
+        chars.len()
+    );
+
+    // A late-alphabet cell has content (proves glyphs land in their own cells).
+    let z_pos = chars.iter().position(|&c| c == 'z').unwrap();
+    let (cx, cy) = ((z_pos as u32) % 16, (z_pos as u32) / 16);
+    let cell: Vec<u8> = (0..24u32)
+        .flat_map(|y| (0..16u32).map(move |x| (x, y)))
+        .flat_map(|(x, y)| {
+            let i = (((cy * 24 + y) * 256 + (cx * 16 + x)) * 4) as usize;
+            px[i + 3..i + 4].to_vec()
+        })
+        .collect();
+    assert!(cell.iter().any(|&a| a != 0), "'z' cell must contain glyph coverage");
 }

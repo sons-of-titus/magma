@@ -57,10 +57,18 @@ pub fn rasterize_font_atlas(
         );
         let Some(outlined) = font.outline_glyph(glyph) else { continue };
 
-        // draw() gives absolute pixel coords (screen-space origin is the atlas).
+        // ab_glyph's draw() yields u32 coordinates relative to the outline's
+        // bounding box; `bounds()` carries the absolute placement (including
+        // the glyph position), so the atlas pixel is their sum.
+        let bounds = outlined.px_bounds();
+        let min_x = bounds.min.x as i64;
+        let min_y = bounds.min.y as i64;
         outlined.draw(|px, py, cov| {
-            if cov < 0.004 || px >= width || py >= height { return }
-            let idx = ((py * width + px) * 4) as usize;
+            if cov < 0.004 { return }
+            let x = min_x + px as i64;
+            let y = min_y + py as i64;
+            if x < 0 || y < 0 || x >= width as i64 || y >= height as i64 { return }
+            let idx = ((y * width as i64 + x) * 4) as usize;
             // White glyph with coverage alpha; colour is applied by the shader.
             pixels[idx]     = 255;
             pixels[idx + 1] = 255;

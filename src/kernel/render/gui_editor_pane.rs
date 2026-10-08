@@ -73,6 +73,15 @@ pub fn render_editor_pane(
     {
         let mut ed = paint.editor.write().unwrap_or_else(|e| e.into_inner());
         ed.view_tree.resize(visible_cols as u16, visible_rows as u16);
+        // The layout reserves a row (TUI status bar); the surface must match
+        // the painted extent so no unpainted cells reach the screen.
+        let extent_w = ed.view_tree.panes().iter()
+            .map(|p| p.x + p.width).max().unwrap_or(visible_cols as u16);
+        let extent_h = ed.view_tree.panes().iter()
+            .map(|p| p.y + p.height).max().unwrap_or(visible_rows as u16);
+        if extent_w as usize != visible_cols || extent_h as usize != visible_rows {
+            surface = Surface::new(extent_w, extent_h);
+        }
     }
     {
         let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());

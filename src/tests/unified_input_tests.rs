@@ -3,7 +3,7 @@
 
 use crate::kernel::input::keys::{shift_char, apply_modifiers};
 use crate::kernel::input::event::{InputEvent, MouseEvent, MouseEventKind, MouseButton};
-use crate::kernel::state::{Editor, LayoutSnapshot};
+use crate::kernel::state::LayoutSnapshot;
 use crate::tests::helpers;
 
 // ── shift_char ────────────────────────────────────────────────────────────

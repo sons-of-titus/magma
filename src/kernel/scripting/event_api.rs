@@ -41,10 +41,7 @@ unsafe fn call_janet_fn_with_arg(fn_val: Janet, arg: Janet) { unsafe {
         return;
     }
     let mut out: Janet = std::mem::zeroed();
-    let sig = janet_continue(fiber, janet_wrap_nil(), &mut out);
-    if sig != JanetSignal_JANET_SIGNAL_OK {
-        debug!("EV: janet handler signal={}", sig);
-    }
+    janet_continue(fiber, janet_wrap_nil(), &mut out);
 }}
 
 /// Build a Janet table from a `HashMap<String, String>`.
@@ -70,15 +67,12 @@ unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
         }
         let fn_val = *argv.add(1);
         let fn_idx = register_handler(fn_val);
-        let ev_name = name.clone();
         let sub_id = ed.events.on(&name, move |data: &HashMap<String, String>| {
             if let Ok(handlers) = JANET_HANDLERS.lock()
                 && let Some(Some(JanetSend(fn_ref))) = handlers.get(fn_idx) {
                     let tbl = data_to_table(data);
                     let arg = janet_wrap_table(tbl);
-                    debug!("EV: calling handler for event '{}'", ev_name);
                     call_janet_fn_with_arg(*fn_ref, arg);
-                    debug!("EV: handler returned for event '{}'", ev_name);
                 }
             None
         });

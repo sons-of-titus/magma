@@ -196,3 +196,132 @@ fn new_atlas_gpu_path_disabled_by_default() {
     let instances = build_glyph_instances(&surface, &atlas, 8.0, 16.0, 0.0, 0.0, false);
     assert!(instances.is_empty());
 }
+
+// ── Phase 9: viewport rendering without full-document copies ───────────────
+
+mod render_damage {
+    use crate::kernel::command::builtin;
+    use crate::kernel::render::frame::{render_frame, scroll_state_for_buffer, scroll_state_from_lines};
+    use crate::kernel::render::surface::Surface;
+    use crate::kernel::state::Editor;
+    use crate::kernel::storage::disk::DiskFileSystem;
+
+    fn editor_with(content: &str) -> Editor {
+        let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
+        builtin::register_builtin_commands(&mut ed);
+        let key = ed.create_buffer_from_str("big", content);
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
+        }
+        ed
+    }
+
+    #[test]
+    fn large_document_viewport_render_only_shows_visible_rows() {
+        // 2000 lines; the viewport is 5 rows.  Render must show exactly the
+        // scrolled-to window, derived without copying the document.
+        let mut text = String::new();
+        for i in 0..2000 {
+            text.push_str(&format!("line-{i}\n"));
+        }
+        let ed = editor_with(&text);
+
+        let mut surface = Surface::new(40, 8);
+        render_frame(&ed, &mut surface, false);
+
+        // Status bar is the last row; editor area rows 0..7 minus it.
+        let mut rendered = Vec::new();
+        for y in 0..8 {
+            let mut row = String::new();
+            for x in 0..40 {
+                if let Some(cell) = surface.cell(x, y) {
+                    row.push(cell.ch);
+                }
+            }
+            rendered.push(row);
+        }
+        let visible_text: Vec<&str> = rendered.iter().map(|s| s.as_str()).collect();
+        assert!(
+            visible_text.iter().any(|r| r.contains("ine-0")),
+            "top of document visible initially: {visible_text:?}"
+        );
+        assert!(
+            !visible_text.iter().any(|r| r.contains("line-1999")),
+            "far content must not leak into the viewport"
+        );
+    }
+
+    #[test]
+    fn cursor_at_bottom_scrolls_window() {
+        let mut text = String::new();
+        for i in 0..500 {
+            text.push_str(&format!("row{i}\n"));
+        }
+        let mut ed = editor_with(&text);
+        let key = crate::tests::helpers::focused_key(&ed);
+        {
+            let view = ed.views.get_mut(&key).unwrap();
+            let target = text.rfind("row400").unwrap_or(0);
+            view.set_cursor(target);
+        }
+        let mut surface = Surface::new(40, 8);
+        render_frame(&ed, &mut surface, false);
+        let mut rendered = String::new();
+        for y in 0..8 {
+            for x in 0..40 {
+                if let Some(cell) = surface.cell(x, y) {
+                    rendered.push(cell.ch);
+                }
+            }
+            rendered.push('\n');
+        }
+        assert!(rendered.contains("ow400"), "cursor line must be visible: {rendered}");
+    }
+
+    #[test]
+    fn render_signature_stable_when_static_changes_when_edited() {
+        let mut ed = editor_with("hello");
+        let s1 = ed.render_signature();
+        let s2 = ed.render_signature();
+        assert_eq!(s1, s2, "static editor has a stable signature");
+
+        let key = crate::tests::helpers::focused_key(&ed);
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(5, "!");
+        let s3 = ed.render_signature();
+        assert_ne!(s1, s3, "an edit must change the signature");
+
+        // Cursor movement alone also changes it (view state is painted).
+        let view = ed.views.get_mut(&key).unwrap();
+        view.set_cursor(3);
+        let s4 = ed.render_signature();
+        assert_ne!(s3, s4, "cursor movement must change the signature");
+    }
+
+    #[test]
+    fn scroll_state_math_matches_scrolloff_contract() {
+        // 20-line doc, 5 visible rows, scrolloff 2, cursor on line 10.
+        let st = scroll_state_from_lines(10, 0, 20, 5, 2);
+        assert!(st.cursor_vis_row <= 5, "cursor stays inside the window");
+        assert!(st.scroll_top <= 10);
+
+        // Cursor at the very top: no scroll.
+        let st = scroll_state_from_lines(0, 0, 20, 5, 2);
+        assert_eq!(st.scroll_top, 0);
+        assert_eq!(st.cursor_vis_row, 0);
+
+        // Consistency of the composed helper with the pure one.
+        let ed = editor_with("a\nb\nc\nd\ne\nf\ng\n");
+        let key = crate::tests::helpers::focused_key(&ed);
+        let arc = ed.buffers.get(key).unwrap().clone();
+        let buf = arc.lock().unwrap();
+        let st1 = {
+            let cursor = ed.views.get(&key).unwrap().cursor_offset();
+            scroll_state_for_buffer(&buf, cursor, 3, 0, &Default::default())
+        };
+        let st2 = scroll_state_from_lines(0, 0, buf.line_count(), 3, 0);
+        assert_eq!(st1.scroll_top, st2.scroll_top);
+        assert_eq!(st1.cursor_vis_row, st2.cursor_vis_row);
+    }
+}
+

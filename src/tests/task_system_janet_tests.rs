@@ -179,6 +179,7 @@ fn task_run_succeeds_with_background() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(r#"(task/define "echo-test" "echo hello")"#);
     let r = scripting::eval(r#"(task/run "echo-test")"#);
@@ -194,6 +195,7 @@ fn task_run_unknown_name_errors() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(r#"(task/run "nonexistent-task")"#);
     assert_ne!(r, "ok", "task/run with unknown name must signal error");

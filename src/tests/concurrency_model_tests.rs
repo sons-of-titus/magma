@@ -1,7 +1,7 @@
 //! Pure-Rust tests for Phase 9 — Concurrency Model.
 
 use crate::kernel::scheduler::{
-    CancellationToken, WorkId, WorkProgress, WorkScheduler, WorkStatus,
+    CancellationToken, WorkId, WorkScheduler, WorkStatus,
 };
 use crate::kernel::state::Editor;
 use crate::kernel::storage::disk::DiskFileSystem;

@@ -232,7 +232,7 @@ fn handle_get_buffer(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
             let path = buf.path.clone();
             let size = buf.len();
             drop(buf);
-            let cursor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             let result = serde_json::json!({
                 "content": content,
                 "name": name,
@@ -259,11 +259,11 @@ fn handle_insert(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
 
     let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
     if ed.buffers.contains(buf_id) {
-        let pos = offset.unwrap_or_else(|| ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0));
-        if let Some(view) = ed.views.get_mut(&buf_id) {
+        let pos = offset.unwrap_or_else(|| ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0));
+        if let Some(view) = ed.view_of_buffer_mut(buf_id) {
             view.insert(pos, &text);
         }
-        let cursor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+        let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
         let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
         Response::ok(serde_json::json!({"cursor": cursor, "size": size}), req.id)
     } else {
@@ -287,10 +287,10 @@ fn handle_delete(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
 
     let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
     if ed.buffers.contains(buf_id) {
-        if let Some(view) = ed.views.get_mut(&buf_id) {
+        if let Some(view) = ed.view_of_buffer_mut(buf_id) {
             view.delete(start, end);
         }
-        let cursor = ed.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+        let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
         let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
         Response::ok(serde_json::json!({"cursor": cursor, "size": size}), req.id)
     } else {
@@ -336,10 +336,12 @@ fn handle_eval(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
     };
 
     let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    let result = match ed.runtime.as_mut() {
-        Some(rt) => rt.eval(&code),
+    let mut rt = ed.runtime.take();
+    let result = match &mut rt {
+        Some(rt) => rt.eval(&mut ed, &code),
         None => "Scripting runtime not available".to_string(),
     };
+    ed.runtime = rt;
     Response::ok(serde_json::json!({"result": result}), req.id)
 }
 

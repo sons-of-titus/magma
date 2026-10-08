@@ -10,6 +10,7 @@ macro_rules! jt {
             let _lock = acquire_janet_lock();
             let mut ed = crate::tests::helpers::make_editor();
             scripting::init(&mut ed);
+            let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
             let result = scripting::eval_result($code).unwrap_or_else(|e| e);
             assert_eq!(result, $expected, "Janet: {}", $code);
         }

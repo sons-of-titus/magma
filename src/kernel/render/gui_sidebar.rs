@@ -5,7 +5,7 @@
 //! and double-click-to-open.  Resize is handled by egui's `SidePanel`.
 
 use std::collections::HashSet;
-use eframe::egui::{self, FontFamily, FontId, Pos2, Rounding, Sense, Vec2};
+use eframe::egui::{self, FontFamily, FontId, Pos2, CornerRadius, Sense, Vec2};
 use crate::kernel::state::Editor;
 use super::gui_theme::GuiTheme;
 
@@ -14,17 +14,24 @@ const INDENT:    f32 = 14.0;
 const FONT_SIZE: f32 = 13.0;
 const ARROW_W:   f32 = 14.0;
 
-fn file_icon(name: &str) -> &'static str {
+/// Collapse/expand arrows — must be covered by egui's default fonts
+/// (enforced by `every_theme_icon_glyph_is_covered_by_egui_default_fonts`).
+pub(crate) const ARROW_OPEN:   &str = "⏷";
+pub(crate) const ARROW_CLOSED: &str = "⏵";
+pub(crate) const DIR_OPEN:     &str = "○";
+pub(crate) const DIR_CLOSED:   &str = "☐";
+
+pub(crate) fn file_icon(name: &str) -> &'static str {
     match name.rsplit('.').next().unwrap_or("") {
-        "rs"         => "🦀",
-        "janet"      => "🟢",
-        "py"         => "🐍",
-        "toml"       => "⚙",
-        "md"         => "📝",
-        "json"       => "📋",
-        "yaml" | "yml" => "⚡",
+        "rs"         => "⚙",
+        "janet"      => "•",
+        "py"         => "λ",
+        "toml"       => "☰",
+        "md"         => "§",
+        "json"       => "∑",
+        "yaml" | "yml" => "☰",
         "sh"         => "$_",
-        "lock"       => "🔒",
+        "lock"       => "⊗",
         _            => "·",
     }
 }
@@ -142,9 +149,9 @@ impl ProjectTree {
 
             // Background
             if is_sel {
-                ui.painter().rect_filled(row, Rounding::ZERO, theme.surface0);
+                ui.painter().rect_filled(row, CornerRadius::ZERO, theme.surface0);
             } else if resp.hovered() {
-                ui.painter().rect_filled(row, Rounding::ZERO, theme.surface1);
+                ui.painter().rect_filled(row, CornerRadius::ZERO, theme.surface1);
             }
 
             let cy = row.center().y;
@@ -152,7 +159,7 @@ impl ProjectTree {
 
             // Collapse/expand arrow for directories
             if node.is_dir {
-                let arrow = if is_exp { "▾" } else { "▸" };
+                let arrow = if is_exp { ARROW_OPEN } else { ARROW_CLOSED };
                 ui.painter().text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
@@ -165,11 +172,11 @@ impl ProjectTree {
 
             // Icon
             let icon = if node.is_dir {
-                if is_exp { "📂" } else { "📁" }
+                if is_exp { DIR_OPEN } else { DIR_CLOSED }
             } else {
                 file_icon(&node.name)
             };
-            let icon_w: f32 = ui.fonts(|f| {
+            let icon_w: f32 = ui.fonts_mut(|f| {
                 f.layout_no_wrap(icon.to_string(), font_id.clone(), theme.text).size().x
             });
             ui.painter().text(

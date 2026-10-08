@@ -1,7 +1,6 @@
 //! Pure-Rust tests for the Janet Eval and MShell primitives (Sprint 12).
 //! Only tests that do not require the Janet VM to be initialised.
 
-use crate::kernel::state::Editor;
 use crate::kernel::command::execute_command;
 use crate::tests::helpers;
 

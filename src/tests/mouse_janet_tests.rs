@@ -19,6 +19,7 @@ fn text_click_moves_cursor() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("hello world\nsecond line");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let buf_id = helpers::focused_key(&ed);
     let pane = ed.view_tree.panes()[0].clone();
@@ -49,6 +50,7 @@ fn mouse_option_gates_processing() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("abcdefghij");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let buf_id = helpers::focused_key(&ed);
     let cursor_before = ed.views.get(&buf_id).map(|v| v.cursor.offset).unwrap_or(999);
@@ -79,8 +81,9 @@ fn gutter_click_emits_event() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line A\nline B\nline C");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
-    let buf_id = helpers::focused_key(&ed);
+    let _buf_id = helpers::focused_key(&ed);
     let pane = ed.view_tree.panes()[0].clone();
 
     // Enable mouse support.

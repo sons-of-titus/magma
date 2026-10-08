@@ -189,7 +189,7 @@ unsafe extern "C-unwind" fn c_lsp_hover(argc: i32, argv: *mut Janet) -> Janet {
         };
         let buf_id = input::focused_buffer_id(ed);
         let uri = focused_buffer_uri(ed);
-        let (line, character) = if let Some(view) = ed.views.get(&buf_id) {
+        let (line, character) = if let Some(view) = ed.view_of_buffer(buf_id) {
             let pos = view.cursor_offset();
             let text = view.buffer.lock().unwrap().slice(0, pos);
             let line = text.chars().filter(|&c| c == '\n').count();
@@ -217,7 +217,7 @@ unsafe extern "C-unwind" fn c_lsp_code_actions(argc: i32, argv: *mut Janet) -> J
         };
         let uri = focused_buffer_uri(ed);
         let buf_id = input::focused_buffer_id(ed);
-        let (line, character) = if let Some(view) = ed.views.get(&buf_id) {
+        let (line, character) = if let Some(view) = ed.view_of_buffer(buf_id) {
             let pos = view.cursor_offset();
             let text = view.buffer.lock().unwrap().slice(0, pos);
             let line = text.chars().filter(|&c| c == '\n').count();
@@ -245,7 +245,7 @@ unsafe extern "C-unwind" fn c_lsp_completion(argc: i32, argv: *mut Janet) -> Jan
         };
         let uri = focused_buffer_uri(ed);
         let buf_id = input::focused_buffer_id(ed);
-        let (line, character) = if let Some(view) = ed.views.get(&buf_id) {
+        let (line, character) = if let Some(view) = ed.view_of_buffer(buf_id) {
             let pos = view.cursor_offset();
             let text = view.buffer.lock().unwrap().slice(0, pos);
             let line = text.chars().filter(|&c| c == '\n').count();
@@ -277,7 +277,7 @@ unsafe extern "C-unwind" fn c_lsp_rename(argc: i32, argv: *mut Janet) -> Janet {
         };
         let uri = focused_buffer_uri(ed);
         let buf_id = input::focused_buffer_id(ed);
-        let (line, character) = if let Some(view) = ed.views.get(&buf_id) {
+        let (line, character) = if let Some(view) = ed.view_of_buffer(buf_id) {
             let pos = view.cursor_offset();
             let text = view.buffer.lock().unwrap().slice(0, pos);
             let line = text.chars().filter(|&c| c == '\n').count();

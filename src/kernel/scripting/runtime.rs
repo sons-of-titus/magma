@@ -15,46 +15,48 @@ impl JanetRuntime {
 }
 
 impl ScriptRuntime for JanetRuntime {
-    fn init(&mut self, editor: *mut crate::kernel::state::Editor) {
-        super::EDITOR_PTR.with(|cell| cell.set(Some(editor)));
-        super::loader::init_vm();
+    fn init(&mut self, editor: &mut crate::kernel::state::Editor) {
+        super::scoped_editor(editor, || super::loader::init_vm());
     }
 
-    fn eval(&mut self, expr: &str) -> String {
-        super::eval(expr)
+    fn eval(&mut self, editor: &mut crate::kernel::state::Editor, expr: &str) -> String {
+        super::scoped_editor(editor, || super::eval(expr))
     }
 
-    fn eval_result(&mut self, expr: &str) -> Result<String, String> {
-        super::eval_result(expr)
+    fn eval_result(
+        &mut self,
+        editor: &mut crate::kernel::state::Editor,
+        expr: &str,
+    ) -> Result<String, String> {
+        super::scoped_editor(editor, || super::eval_result(expr))
     }
 
-    fn load_file(&mut self, path: &str) -> Result<(), String> {
-        let content = std::fs::read_to_string(path).map_err(|e| format!("{e}"))?;
-        super::loader::eval_string(path, &content)
+    fn load_file(
+        &mut self,
+        editor: &mut crate::kernel::state::Editor,
+        path: &str,
+    ) -> Result<(), String> {
+        super::scoped_editor(editor, || super::load_file(path))
     }
 
     fn call_command(
         &mut self,
+        editor: &mut crate::kernel::state::Editor,
         name: &str,
         args: &HashMap<String, ArgValue>,
     ) -> CommandResult {
-        let ed_ptr = super::EDITOR_PTR.with(|cell| cell.get())
-            .expect("EDITOR_PTR not set — call init first");
-        let ed = unsafe { &mut *ed_ptr };
-        super::call_janet_command(ed, name, args)
+        super::scoped_editor(editor, || super::call_janet_command_scoped(name, args))
     }
 
-    fn execute_stored_task(&mut self, task_id: u64) {
-        let ed_ptr = super::EDITOR_PTR.with(|cell| cell.get())
-            .expect("EDITOR_PTR not set");
-        let ed = unsafe { &mut *ed_ptr };
-        super::execute_stored_task(ed, task_id);
+    fn execute_stored_task(&mut self, editor: &mut crate::kernel::state::Editor, task_id: u64) {
+        super::scoped_editor(editor, || super::execute_stored_task_scoped(task_id));
     }
 
-    fn execute_task_complete_callback(&mut self, task_id: u64) {
-        let ed_ptr = super::EDITOR_PTR.with(|cell| cell.get())
-            .expect("EDITOR_PTR not set");
-        let ed = unsafe { &mut *ed_ptr };
-        super::execute_task_complete_callback(ed, task_id);
+    fn execute_task_complete_callback(
+        &mut self,
+        editor: &mut crate::kernel::state::Editor,
+        task_id: u64,
+    ) {
+        super::scoped_editor(editor, || super::execute_task_complete_callback_scoped(task_id));
     }
 }

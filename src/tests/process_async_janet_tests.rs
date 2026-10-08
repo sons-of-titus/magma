@@ -20,6 +20,8 @@ fn process_spawn_requires_command() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval("(process/spawn)");
     assert_ne!(r, "ok", "process/spawn without args must signal an error");
@@ -30,6 +32,8 @@ fn process_spawn_errors_on_bad_command() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(
         r#"(try (process/spawn "nonexistent_command_xyz_12345") ([e] "caught"))"#,
@@ -43,6 +47,8 @@ fn process_spawn_adds_to_process_table() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let before = ed.io.processes.len();
     let r = scripting::eval(
@@ -60,6 +66,8 @@ fn process_spawn_records_cmd_and_running() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(
         r#"(try (process/spawn "echo hello-world") ([e] nil))"#,
@@ -81,6 +89,8 @@ fn process_list_returns_empty_array_by_default() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval("(= 0 (length (process/list)))");
     assert_eq!(r, "ok",
@@ -92,6 +102,8 @@ fn process_list_returns_spawned_processes() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(
         r#"(try (process/spawn "echo list-test") ([e] nil))"#,
@@ -109,6 +121,8 @@ fn process_stdin_noops_for_missing_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(
         r#"(process/stdin 99999 "test input")"#,
@@ -124,6 +138,8 @@ fn process_kill_noops_for_missing_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(r#"(process/kill 99999)"#);
     assert_eq!(r, "ok",
@@ -137,6 +153,8 @@ fn task_spawn_requires_function() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval("(task/spawn)");
     assert_ne!(r, "ok",
@@ -148,6 +166,8 @@ fn task_spawn_returns_integer_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(
         r#"(def tid (task/spawn (fn [] "hi"))) (not= nil tid)"#,
@@ -161,6 +181,8 @@ fn task_spawn_adds_to_task_table() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let before = ed.io.tasks.len();
     scripting::eval(
@@ -176,6 +198,8 @@ fn task_spawn_marks_task_running() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(
         r#"(task/spawn (fn [] "running-test"))"#,
@@ -194,6 +218,8 @@ fn task_cancel_noops_for_missing_id() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(r#"(task/cancel 99999)"#);
     assert_eq!(r, "ok",
@@ -205,6 +231,8 @@ fn task_cancel_removes_task() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(
         r#"(def tid (task/spawn (fn [] "cancel-test")))"#,
@@ -230,6 +258,8 @@ fn editor_shell_is_deprecated_but_still_works() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = setup_background_editor();
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(
         r#"(editor/shell "echo deprecation-test")"#,

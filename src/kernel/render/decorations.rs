@@ -9,7 +9,7 @@ use crate::kernel::render::surface::{Style, Surface};
 /// Compute the width of the widest `LinePrefix` decoration across all layers
 /// for the given buffer view.  Returns 0 when no prefix decorations exist.
 pub fn prefix_margin_width(editor: &Editor, buf_id: usize) -> usize {
-    let view = match editor.views.get(&buf_id) {
+    let view = match editor.view_of_buffer(buf_id) {
         Some(v) => v,
         None => return 0,
     };
@@ -36,7 +36,7 @@ pub fn render_decorations(
     content_x: u16,
     row_offset: u16,
 ) {
-    let view = match editor.views.get(&buf_id) {
+    let view = match editor.view_of_buffer(buf_id) {
         Some(v) => v,
         None => return,
     };
@@ -118,11 +118,10 @@ pub fn render_overlays(editor: &Editor, surface: &mut Surface) {
         if let Some(buf_id) = ov.buffer_id {
             if let Some(arc) = editor.buffers.get(buf_id) {
                 let buf = arc.lock().unwrap();
-                let text = buf.slice(0, buf.len());
-                let lines: Vec<&str> = text.split('\n').collect();
+                // Only the rows the overlay can show are extracted.
                 let max_rows = ov.height as usize;
                 let max_cols = ov.width as usize;
-                for (row, line) in lines.iter().enumerate().take(max_rows) {
+                for (row, line) in (0..max_rows).filter_map(|r| buf.line(r)) .enumerate() {
                     let sy = ov.y + row as u16;
                     if sy >= surface.height { break; }
                     for (col, ch) in line.chars().enumerate().take(max_cols) {

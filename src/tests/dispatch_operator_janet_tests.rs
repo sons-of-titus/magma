@@ -1,4 +1,3 @@
-use crate::kernel::scripting;
 use crate::kernel::input::{dispatch_key, focused_buffer_id};
 
 #[test]
@@ -7,6 +6,7 @@ fn check_command_registered() {
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     assert!(!ed.commands.exists("vim-enter-command"));
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     assert!(ed.commands.exists("vim-enter-command"),
         "vim-enter-command should be registered after scripting::init");
 }
@@ -16,6 +16,7 @@ fn init_then_resolve_colon() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let buf_id = focused_buffer_id(&ed);
     let cmd = ed.keymaps.resolve_for_buffer(":", Some(buf_id as u64));
     eprintln!("Resolved ':' -> {:?}", cmd);
@@ -27,6 +28,7 @@ fn init_then_press_colon() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     assert!(ed.commands.exists("vim-enter-command"));
 

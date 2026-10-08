@@ -101,7 +101,7 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
             let flags = if parts.len() > 2 { parts[2].clone() } else { String::new() };
             let global = flags.contains('g');
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.views.get_mut(&buf_id) {
+            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
                 let result = if global {
                     text.replace(&pattern, &replacement)
@@ -143,7 +143,7 @@ pub(super) fn execute_colon_command(editor: &mut Editor, cmd: &str) -> CommandRe
             if rest.is_empty() { return Err(":r requires a file path".to_string()); }
             let content = editor.fs.read(rest).map_err(|e| e.to_string())?;
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.views.get_mut(&buf_id) {
+            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor_offset();
                 view.insert(pos, &content);
             }

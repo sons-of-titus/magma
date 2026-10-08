@@ -10,10 +10,6 @@ use crate::kernel::scripting;
 fn make_clean_editor() -> Box<Editor> {
     let mut ed = Box::new(Editor::new(Box::new(DiskFileSystem::new())));
     builtin::register_builtin_commands(&mut ed);
-    // init() must be called while ed is already heap-allocated so that
-    // EDITOR_PTR (set inside init) stays valid after this function returns
-    // the Box to the caller.  A stack-allocated Editor would make the
-    // pointer dangle after the return-value move.
     scripting::init(&mut ed);
     ed.keymaps = KeymapManager::new();
     ed
@@ -25,6 +21,7 @@ fn make_clean_editor() -> Box<Editor> {
 fn set_global_binding() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/set "ctrl-s" "save-buffer")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("ctrl-s"), Some("save-buffer".into()));
@@ -34,6 +31,7 @@ fn set_global_binding() {
 fn set_multiple_global_bindings() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(r#"(keymap/set "h" "cursor-left")"#);
     scripting::eval(r#"(keymap/set "j" "cursor-down")"#);
@@ -48,6 +46,7 @@ fn set_multiple_global_bindings() {
 fn set_overwrites_previous_global_binding() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(r#"(keymap/set "ctrl-s" "save")"#);
     scripting::eval(r#"(keymap/set "ctrl-s" "write")"#);
@@ -60,6 +59,7 @@ fn set_overwrites_previous_global_binding() {
 fn set_with_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/set "h" "cursor-left" "vim")"#);
     assert_eq!(r, "ok");
 
@@ -76,6 +76,7 @@ fn set_with_layer() {
 fn set_with_global_layer_is_global() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/set "ctrl-q" "quit" "global")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.resolve("ctrl-q"), Some("quit".into()));
@@ -87,6 +88,7 @@ fn set_with_global_layer_is_global() {
 fn unset_global() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-q", "quit");
     let r = scripting::eval(r#"(keymap/unset "ctrl-q")"#);
@@ -98,6 +100,7 @@ fn unset_global() {
 fn unset_with_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set_layer("vim", "h", "cursor-left");
     ed.keymaps.push_layer("vim");
@@ -112,6 +115,7 @@ fn unset_with_layer() {
 fn unset_with_global_layer_is_global() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-q", "quit");
     let r = scripting::eval(r#"(keymap/unset "ctrl-q" "global")"#);
@@ -123,6 +127,7 @@ fn unset_with_global_layer_is_global() {
 fn unset_nonexistent_key_is_safe() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/unset "never-set")"#);
     assert_eq!(r, "ok");
 }
@@ -131,6 +136,7 @@ fn unset_nonexistent_key_is_safe() {
 fn unset_nonexistent_layer_is_safe() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/unset "h" "nonexistent-layer")"#);
     assert_eq!(r, "ok");
 }
@@ -141,6 +147,7 @@ fn unset_nonexistent_layer_is_safe() {
 fn describe_bound_key() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-s", "save-buffer");
 
@@ -153,6 +160,7 @@ fn describe_bound_key() {
 fn describe_unbound_key() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/describe "nonexistent-key")"#);
     assert_eq!(r, "ok", "keymap/describe must not error for an unbound key");
     assert_eq!(ed.keymaps.describe("nonexistent-key"), None);
@@ -162,6 +170,7 @@ fn describe_unbound_key() {
 fn describe_with_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set_layer("vim", "h", "cursor-left");
     ed.keymaps.push_layer("vim");
@@ -177,6 +186,7 @@ fn describe_with_layer() {
 fn list_all_layers() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-q", "quit");
     ed.keymaps.set_layer("vim", "h", "cursor-left");
@@ -189,6 +199,7 @@ fn list_all_layers() {
 fn list_specific_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set_layer("vim", "h", "cursor-left");
     ed.keymaps.set_layer("vim", "j", "cursor-down");
@@ -201,6 +212,7 @@ fn list_specific_layer() {
 fn list_global_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-s", "save");
     ed.keymaps.set("ctrl-q", "quit");
@@ -213,6 +225,7 @@ fn list_global_layer() {
 fn list_nonexistent_layer_returns_empty() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/list "nobody-home")"#);
     assert_eq!(r, "ok", "keymap/list for nonexistent layer must not error");
 }
@@ -223,6 +236,7 @@ fn list_nonexistent_layer_returns_empty() {
 fn push_activates_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     assert!(!ed.keymaps.is_layer_active("vim"));
     let r = scripting::eval(r#"(keymap/push-layer "vim")"#);
@@ -234,6 +248,7 @@ fn push_activates_layer() {
 fn push_is_idempotent_via_janet() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval(r#"(keymap/push-layer "vim")"#);
     scripting::eval(r#"(keymap/push-layer "vim")"#);
@@ -245,6 +260,7 @@ fn push_is_idempotent_via_janet() {
 fn pop_deactivates_layer() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.push_layer("insert");
     assert!(ed.keymaps.is_layer_active("insert"));
@@ -258,6 +274,7 @@ fn pop_deactivates_layer() {
 fn pop_inactive_layer_is_safe_via_janet() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/pop-layer "never-pushed")"#);
     assert_eq!(r, "ok");
 }
@@ -268,6 +285,7 @@ fn pop_inactive_layer_is_safe_via_janet() {
 fn list_layers_returns_global_and_active() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.push_layer("vim");
     ed.keymaps.push_layer("insert");
@@ -281,6 +299,7 @@ fn list_layers_returns_global_and_active() {
 fn list_layers_only_global_when_none_active() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.keymaps.active_layers(), vec!["global"]);
@@ -292,6 +311,7 @@ fn list_layers_only_global_when_none_active() {
 fn layer_priority_via_janet() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     // Set global + layer bindings via Janet
     scripting::eval(r#"(keymap/set "ctrl-q" "global-quit")"#);
@@ -315,6 +335,7 @@ fn layer_priority_via_janet() {
 fn full_lifecycle_via_janet() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     // Set global binding
     scripting::eval(r#"(keymap/set "ctrl-s" "save")"#);
@@ -351,6 +372,7 @@ fn full_lifecycle_via_janet() {
 fn keymap_list_after_modifications() {
     let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.keymaps.set("ctrl-q", "quit");
     ed.keymaps.set_layer("test-layer", "a", "cmd-a");

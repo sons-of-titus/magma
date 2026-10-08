@@ -97,14 +97,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut ed = editor.write().unwrap();
         let mut rt = magma::kernel::scripting::JanetRuntime::new();
-        rt.init(&mut *ed as *mut _);
+        rt.init(&mut ed);
         ed.runtime = Some(Box::new(rt));
     }
 
     {
         let mut ed = editor.write().unwrap();
         ed.events.emit_typed(keys::events::EDITOR_READY, EmptyPayload);
-        ed.events.drain_and_dispatch();
+        ed.dispatch_events_scoped();
     }
 
     if server_mode {
@@ -200,7 +200,7 @@ async fn auto_save_loop(editor: Arc<RwLock<Editor>>, bg: BackgroundHandle) {
     loop {
         interval.tick().await;
 
-        let dirty: Vec<(usize, String, String)> = {
+        let dirty: Vec<(usize, String, String, u64)> = {
             let ed = match editor.read() {
                 Ok(g) => g,
                 Err(_) => continue,
@@ -209,25 +209,22 @@ async fn auto_save_loop(editor: Arc<RwLock<Editor>>, bg: BackgroundHandle) {
                 .filter(|(_, arc)| arc.lock().unwrap().modified())
                 .filter_map(|(key, arc)| {
                     let buf = arc.lock().unwrap();
-                    buf.path.clone().map(|p| (key, p, buf.slice(0, buf.len())))
+                    buf.path.clone().map(|p| (key, p, buf.slice(0, buf.len()), buf.revision()))
                 })
                 .collect()
         };
 
-        for (key, path, content) in dirty {
+        for (key, path, content, saved_rev) in dirty {
             let editor = editor.clone();
             bg.spawn_blocking(move || {
-                let result = (|| -> Result<(), String> {
-                    if let Some(parent) = std::path::Path::new(&path).parent() {
-                        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                    }
-                    std::fs::write(&path, &content).map_err(|e| e.to_string())?;
-                    Ok(())
-                })();
+                let result = magma::kernel::storage::disk::atomic_write(&path, &content);
                 if result.is_ok()
                     && let Ok(mut ed) = editor.write()
-                        && let Some(arc) = ed.buffers.get_mut(key) {
-                            arc.lock().unwrap().mark_saved();
+                    && let Some(arc) = ed.buffers.get_mut(key) {
+                            // Only the revision actually written becomes
+                            // clean; edits made after the snapshot keep the
+                            // buffer modified (docs/core-redesign.md §5.1).
+                            arc.lock().unwrap().mark_saved_at(saved_rev);
                         }
             });
         }
@@ -257,7 +254,8 @@ fn run_gui(
             Ok(Box::new(GuiApp::new_with_bg(editor, bg_receiver)))
         }),
     )
-    .map_err(|e| format!("GUI error: {e}").into())
+    .map_err(|e| -> Box<dyn std::error::Error> { format!("GUI error: {e}").into() })?;
+    Ok(())
 }
 
 #[cfg(not(feature = "gui"))]
@@ -335,13 +333,15 @@ fn run_tui(
             if ed.tab_bar_enabled {
                 ed.events.emit_typed(keys::events::RENDER_TAB_BAR, EmptyPayload);
             }
-            ed.events.drain_and_dispatch();
+            ed.dispatch_events_scoped();
 
             if let Some(ref fn_name) = ed.modeline_fn.clone() {
                 let expr = format!("({fn_name})");
-                let result = ed.runtime.as_mut()
-                    .map(|rt| rt.eval(&expr))
+                let mut rt = ed.runtime.take();
+                let result = rt.as_mut()
+                    .map(|rt| rt.eval(&mut ed, &expr))
                     .unwrap_or_default();
+                ed.runtime = rt;
                 ed.modeline_rendered = result;
             } else {
                 ed.modeline_rendered.clear();

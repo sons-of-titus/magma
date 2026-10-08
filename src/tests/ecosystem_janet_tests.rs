@@ -7,6 +7,7 @@ fn module_path_returns_array() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval("(array? (module/path))");
     assert_eq!(r, "ok");
 }
@@ -16,6 +17,7 @@ fn module_path_add_appends_path() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let before = ed.module_paths.len();
     let r = scripting::eval(r#"(module/path-add "/tmp/test-plugins")"#);
     assert_eq!(r, "ok");
@@ -28,6 +30,7 @@ fn module_path_add_is_idempotent() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(module/path-add "/tmp/dedup")"#);
     let after_first = ed.module_paths.len();
     scripting::eval(r#"(module/path-add "/tmp/dedup")"#);
@@ -41,6 +44,7 @@ fn keymap_list_layer_returns_array() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval("(array? (keymap/list-layer \"vim\"))");
     assert_eq!(r, "ok");
 }
@@ -50,6 +54,7 @@ fn keymap_list_layer_contains_set_binding() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(keymap/set "ctrl-x" "save-buffer" "testlayer")"#);
     let r = scripting::eval(
         r#"(def bs (keymap/list-layer "testlayer")) (def found (find (fn [p] (= (p 0) "ctrl-x")) bs)) (not (nil? found))"#);
@@ -63,6 +68,7 @@ fn keymap_list_layer_empty_for_unknown_layer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval("(= 0 (length (keymap/list-layer \"nonexistent-layer\")))");
     assert_eq!(r, "ok");
 }
@@ -74,6 +80,7 @@ fn quickfix_set_replaces_list() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(
         r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "err"}])"#);
     assert_eq!(r, "ok");
@@ -88,6 +95,7 @@ fn quickfix_set_clears_with_empty_array() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(
         r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "e"}])"#);
     assert_eq!(ed.quickfix_list.len(), 1);
@@ -100,6 +108,7 @@ fn quickfix_get_returns_all_entries() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(
         r#"(quickfix/set [
              {:filename "x.rs" :line 2 :col 3 :message "warning"}
@@ -118,6 +127,7 @@ fn mark_ring_push_adds_entry() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(mark-ring/push "src/main.rs" 42)"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.mark_ring.len(), 1);
@@ -130,6 +140,7 @@ fn mark_ring_len_reflects_pushes() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(mark-ring/push "a.rs" 0)"#);
     scripting::eval(r#"(mark-ring/push "b.rs" 10)"#);
     let r = scripting::eval("(= 2 (mark-ring/len))");
@@ -142,6 +153,7 @@ fn mark_ring_pop_returns_last_pushed() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(mark-ring/push "a.rs" 0)"#);
     scripting::eval(r#"(mark-ring/push "b.rs" 99)"#);
     let r = scripting::eval(
@@ -156,6 +168,7 @@ fn mark_ring_pop_returns_nil_when_empty() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval("(nil? (mark-ring/pop))");
     assert_eq!(r, "ok");
 }
@@ -165,6 +178,7 @@ fn mark_ring_peek_does_not_remove() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(mark-ring/push "z.rs" 7)"#);
     scripting::eval(r#"(mark-ring/peek)"#);
     assert_eq!(ed.mark_ring.len(), 1);
@@ -178,6 +192,7 @@ fn magma_require_loads_module_once() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello\n");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(magma-require "nonexistent-plugin-xyz")"#);
     assert_eq!(r, "ok");
 }

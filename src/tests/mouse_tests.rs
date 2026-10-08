@@ -118,7 +118,7 @@ fn drag_sets_selection() {
     }
 }
 
-fn click_at(ed: &mut Editor, buf_id: usize, pane: &crate::kernel::render::view_tree::Pane, press_x: u16, row: u16) {
+fn click_at(ed: &mut Editor, _buf_id: usize, pane: &crate::kernel::render::view_tree::Pane, press_x: u16, row: u16) {
     ed.mouse_state = MouseState {
         pressed: true,
         button: MouseButton::Left,

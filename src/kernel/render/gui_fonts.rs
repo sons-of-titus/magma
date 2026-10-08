@@ -1,5 +1,7 @@
 //! Font/theme helpers for the egui GUI backend.
 
+use std::sync::Arc;
+
 use eframe::egui;
 
 /// Map mode name to mode-indicator colour for the status bar pill.
@@ -24,7 +26,7 @@ pub fn apply_fonts_to_egui(ctx: &egui::Context, font_config: &crate::kernel::sta
     for (alias, bytes) in &font_config.loaded_fonts {
         font_defs
             .font_data
-            .insert(alias.clone(), egui::FontData::from_owned(bytes.clone()));
+            .insert(alias.clone(), Arc::new(egui::FontData::from_owned(bytes.clone())));
     }
     let mut mono = Vec::new();
     if font_config.family != "Monospace" && font_config.family != "Proportional" {

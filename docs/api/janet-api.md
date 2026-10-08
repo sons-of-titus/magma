@@ -33,6 +33,29 @@ Return the substring `[start, end)` of buffer `slab` as a string.
 
 ### `(buffer/len slab)` → integer
 
+Return the length of buffer `slab` in bytes.
+
+### `(buffer/revision slab)` → integer
+
+Return the buffer's current revision: a count of committed transactions
+that is incremented exactly once per change, including undo and redo.
+
+### `(buffer/changes-since slab rev)` → array
+
+Return the transactions committed after revision `rev` as an array of
+tables `{:before n :after n :edit [...]}`, where each edit carries
+`:start`, `:old-end` and `:new-end` byte offsets in that transaction's
+pre-image.  The canonical change feed for consumers.
+
+### `(buffer/line-of slab offset)` → integer
+
+Return the zero-based index of the line containing byte offset `offset`.
+
+### `(buffer/lsp-position slab offset)` → array
+
+Return `[line column]` for byte offset `offset`, with `column` counted in
+UTF-16 code units as the language-server protocol requires.
+
 Return the total byte length of the buffer.
 
 ### `(buffer/name slab)` → string
@@ -1073,6 +1096,13 @@ Associate a tree-sitter language with a buffer.
 ### `(ts/has-tree? buf-id)` → bool
 
 Return true if a tree-sitter language has been set on the buffer.
+
+### `(ts/highlight buf-id query-src)` → array
+
+Incrementally reparse the buffer from its cached tree — applying the edits
+since the tree's revision — and run `query-src`, returning capture triples
+`[start-byte end-byte scope]`.  Falls back to a full parse when no usable
+tree is cached.
 
 ### `(ts/parse buf-id)` → bool
 

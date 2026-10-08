@@ -6,6 +6,33 @@ use super::{FileSystem, AsyncFileSystem, FsError};
 #[derive(Debug, Clone)]
 pub struct DiskFileSystem;
 
+/// Atomic durability path (docs/core-redesign.md §5.2): write a sibling
+/// temp file, fsync it, rename over the target, then fsync the directory
+/// where the platform allows.  A crash mid-write can never leave a torn
+/// file at `path`.
+pub fn atomic_write(path: &str, content: &str) -> Result<(), FsError> {
+    use std::io::Write;
+
+    let target = Path::new(path);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = format!("{}.magma-tmp-{}", path, std::process::id());
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, target)?;
+    #[cfg(unix)]
+    if let Some(parent) = target.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    Ok(())
+}
+
 impl Default for DiskFileSystem {
     fn default() -> Self {
         Self::new()
@@ -24,10 +51,7 @@ impl FileSystem for DiskFileSystem {
     }
 
     fn write(&self, path: &str, content: &str) -> Result<(), FsError> {
-        if let Some(parent) = Path::new(path).parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        Ok(std::fs::write(path, content)?)
+        atomic_write(path, content)
     }
 
     fn exists(&self, path: &str) -> bool {

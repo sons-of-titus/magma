@@ -1,9 +1,17 @@
 //! BufferView — per-window view state over a shared Buffer.
+//!
+//! Cursor movement after edits is anchor transformation, never ad-hoc span
+//! arithmetic (docs/core-redesign.md §2.3/§3.3): the typing cursor behaves
+//! as an `Affinity::After` anchor.  Position re-derivation uses the line
+//! index — no prefix copies, no char scans.
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use super::{Buffer, Decoration, Position};
+use super::anchor::{Affinity, Anchor};
+use super::transaction::EditTransaction;
 
+#[derive(Clone)]
 pub struct BufferView {
     /// Shared backing buffer content (multiple views can reference the same buffer).
     pub buffer: Arc<Mutex<Buffer>>,
@@ -33,102 +41,108 @@ impl BufferView {
     pub fn cursor_offset(&self) -> usize { self.cursor.offset }
 
     pub fn set_cursor(&mut self, offset: usize) {
-        let buf = self.buffer.lock().unwrap();
-        let offset = offset.min(buf.len());
-        let text = buf.rope.slice(0, offset).to_string();
-        drop(buf);
-        self.cursor = Position::from_offset(&text, offset);
+        let pos = {
+            let buf = self.buffer.lock().unwrap();
+            buf.position_of(offset)
+        };
+        self.cursor = pos;
     }
 
-    // ── Content mutations (delegate to Buffer AND update cursor) ──
+    /// Move the cursor through a committed transaction as a right-sticky
+    /// anchor: it follows text inserted at it and collapses over deletions.
+    fn cursor_through(&mut self, txn: &EditTransaction) {
+        let anchor = txn.transform_anchor(Anchor {
+            offset: self.cursor.offset,
+            affinity: Affinity::After,
+        });
+        self.set_cursor(anchor.offset);
+    }
+
+    // ── Content mutations (delegate to Buffer, cursor transforms) ──
 
     pub fn insert(&mut self, offset: usize, text: &str) {
         let cursor_before = self.cursor.offset;
-        {
+        let txn = {
             let mut buf = self.buffer.lock().unwrap();
             if buf.read_only { return; }
-            buf.insert(offset, text);
-        }
-        let new_offset = if offset <= cursor_before {
-            cursor_before + text.len()
-        } else {
-            cursor_before
+            buf.insert_with_cursor(offset, text, cursor_before)
         };
-        self.recompute_cursor_at(new_offset);
+        if let Some(txn) = txn {
+            self.cursor_through(&txn);
+        }
+    }
+
+    /// Insert at several positions in one transaction (multi-cursor).
+    /// Returns the transaction so callers can transform extra cursors.
+    pub fn insert_many(&mut self, edits: &[(usize, &str)]) -> Option<EditTransaction> {
+        let cursor_before = self.cursor.offset;
+        let txn = {
+            let mut buf = self.buffer.lock().unwrap();
+            if buf.read_only { return None; }
+            buf.insert_many(edits, cursor_before)
+        };
+        if let Some(txn) = &txn {
+            self.cursor_through(txn);
+        }
+        txn
     }
 
     pub fn delete(&mut self, start: usize, end: usize) {
         let cursor_before = self.cursor.offset;
-        {
+        let txn = {
             let mut buf = self.buffer.lock().unwrap();
-            buf.delete(start, end);
-        }
-        let new_offset = if cursor_before > start {
-            if cursor_before <= end { start } else { cursor_before - (end - start) }
-        } else {
-            cursor_before
+            buf.delete_with_cursor(start, end, cursor_before)
         };
-        self.recompute_cursor_at(new_offset);
+        if let Some(txn) = txn {
+            self.cursor_through(&txn);
+        }
     }
 
     pub fn replace(&mut self, start: usize, end: usize, text: &str) {
         let cursor_before = self.cursor.offset;
-        {
+        let txn = {
             let mut buf = self.buffer.lock().unwrap();
-            buf.replace(start, end, text);
-        }
-        let deleted = end - start;
-        let new_offset = if cursor_before >= start {
-            if cursor_before <= end {
-                start + text.len()
-            } else {
-                cursor_before - deleted + text.len()
-            }
-        } else {
-            cursor_before
+            buf.replace_with_cursor(start, end, text, cursor_before)
         };
-        self.recompute_cursor_at(new_offset);
+        if let Some(txn) = txn {
+            self.cursor_through(&txn);
+        }
     }
 
     pub fn undo(&mut self) -> bool {
-        let ok = self.buffer.lock().unwrap().undo();
-        if ok {
-            let buf = self.buffer.lock().unwrap();
-            let offset = self.cursor.offset.min(buf.len());
-            let text = buf.rope.slice(0, offset).to_string();
-            drop(buf);
-            self.cursor = Position::from_offset(&text, offset);
+        let restored = {
+            let mut buf = self.buffer.lock().unwrap();
+            buf.undo()
+        };
+        match restored {
+            Some(offset) => {
+                self.set_cursor(offset);
+                true
+            }
+            None => false,
         }
-        ok
     }
 
     pub fn redo(&mut self) -> bool {
-        let ok = self.buffer.lock().unwrap().redo();
-        if ok {
-            let buf = self.buffer.lock().unwrap();
-            let offset = self.cursor.offset.min(buf.len());
-            let text = buf.rope.slice(0, offset).to_string();
-            drop(buf);
-            self.cursor = Position::from_offset(&text, offset);
+        let restored = {
+            let mut buf = self.buffer.lock().unwrap();
+            buf.redo()
+        };
+        match restored {
+            Some(offset) => {
+                self.set_cursor(offset);
+                true
+            }
+            None => false,
         }
-        ok
     }
 
     pub fn open_undo_session(&mut self) {
-        let cursor_offset = self.cursor.offset;
-        self.buffer.lock().unwrap().open_undo_session_at(cursor_offset);
+        self.buffer.lock().unwrap().open_undo_session_at(self.cursor.offset);
     }
 
     pub fn close_undo_session(&mut self) {
         self.buffer.lock().unwrap().close_undo_session();
-    }
-
-    fn recompute_cursor_at(&mut self, offset: usize) {
-        let buf = self.buffer.lock().unwrap();
-        let offset = offset.min(buf.len());
-        let text = buf.rope.slice(0, offset).to_string();
-        drop(buf);
-        self.cursor = Position::from_offset(&text, offset);
     }
 
     // ── Folds ──

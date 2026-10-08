@@ -7,7 +7,6 @@
 
 use eframe::egui::{self, FontFamily, FontId, Sense};
 use crate::kernel::state::Editor;
-use super::gui_render::safe_boundary;
 use super::gui_theme::{GuiTheme, icons};
 
 const BAR_H:     f32 = 22.0;
@@ -61,15 +60,13 @@ impl BreadcrumbBar {
 
         let (path, cursor_offset) = {
             let buf = arc.lock().unwrap();
-            let cursor = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             (buf.name.clone(), cursor)
         };
 
         let cursor_line = {
             let buf = arc.lock().unwrap();
-            let text = buf.slice(0, buf.len());
-            let safe = safe_boundary(&text, cursor_offset);
-            text[..safe].matches('\n').count()
+            buf.position_of(cursor_offset).line
         };
 
         let root = editor.project_manager.project.root.as_deref();
@@ -103,7 +100,7 @@ impl BreadcrumbBar {
                     let r = resp.rect;
                     ui.painter().rect_filled(
                         r.expand2(egui::vec2(3.0, 1.0)),
-                        egui::Rounding::same(4.0),
+                        egui::CornerRadius::same(4),
                         theme.surface1,
                     );
                     // Re-paint the label above the hover fill.

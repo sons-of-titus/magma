@@ -129,7 +129,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
                     .sum();
                 (target, char_offset)
             };
-            if let Some(view) = editor.views.get_mut(&key) {
+            if let Some(view) = editor.view_of_buffer_mut(key) {
                 view.set_cursor(target + char_offset);
             }
         }

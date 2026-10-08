@@ -7,6 +7,7 @@ fn ts_set_language_stores_on_buffer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let result = scripting::eval(
@@ -37,6 +38,7 @@ fn ts_parse_without_grammar_returns_false() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("fn main() {}");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let _ = scripting::eval(

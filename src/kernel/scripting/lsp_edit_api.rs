@@ -60,7 +60,7 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
                 .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(&path))
                 .map(|(k, _)| k);
             if let Some(key) = key {
-                if let Some(view) = ed.views.get_mut(&key) {
+                if let Some(view) = ed.view_of_buffer_mut(key) {
                     let buf_len = view.buffer.lock().unwrap().len();
                     for (start, end, new_text) in &edits {
                         let start = *start;

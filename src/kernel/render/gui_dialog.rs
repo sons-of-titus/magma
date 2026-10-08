@@ -131,7 +131,7 @@ fn replace_all_in_focused(ed: &mut Editor, find: &str, replace: &str) {
     }
     let len = buf.len();
     drop(buf);
-    if let Some(view) = ed.views.get_mut(&buf_id) {
+    if let Some(view) = ed.view_of_buffer_mut(buf_id) {
         view.set_cursor(view.cursor_offset().min(len));
     }
 }

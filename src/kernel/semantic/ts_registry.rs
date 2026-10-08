@@ -78,28 +78,101 @@ pub fn run_query(
         parser.set_language(language).ok()?;
         let text_bytes = text.as_bytes();
         let tree = parser.parse(text_bytes, None)?;
-        let query = tree_sitter::Query::new(language, query_src).ok()?;
-        let root = tree.root_node();
-        let mut cursor = tree_sitter::QueryCursor::new();
-        let capture_names: Vec<String> =
-            query.capture_names().iter().map(|s| s.to_string()).collect();
-        let mut query_caps = cursor.captures(&query, root, text_bytes);
-        let mut result = Vec::new();
-        while let Some((m, _)) = query_caps.next() {
-            for cap in m.captures {
-                let start = cap.node.start_byte();
-                let end   = cap.node.end_byte();
-                if start >= end { continue; }
-                let name_idx = cap.index as usize;
-                let scope = if name_idx < capture_names.len() {
-                    capture_names[name_idx].clone()
-                } else {
-                    "unknown".to_string()
-                };
-                result.push((start, end, scope));
-            }
+        query_tree(language, &tree, text_bytes, query_src)
+    })
+}
+
+fn query_tree(
+    language: &tree_sitter::Language,
+    tree: &tree_sitter::Tree,
+    text_bytes: &[u8],
+    query_src: &str,
+) -> Option<Vec<(usize, usize, String)>> {
+    let query = tree_sitter::Query::new(language, query_src).ok()?;
+    let root = tree.root_node();
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let capture_names: Vec<String> =
+        query.capture_names().iter().map(|s| s.to_string()).collect();
+    let mut query_caps = cursor.captures(&query, root, text_bytes);
+    let mut result = Vec::new();
+    while let Some((m, _)) = query_caps.next() {
+        for cap in m.captures {
+            let start = cap.node.start_byte();
+            let end   = cap.node.end_byte();
+            if start >= end { continue; }
+            let name_idx = cap.index as usize;
+            let scope = if name_idx < capture_names.len() {
+                capture_names[name_idx].clone()
+            } else {
+                "unknown".to_string()
+            };
+            result.push((start, end, scope));
         }
-        Some(result)
+    }
+    Some(result)
+}
+
+/// Incremental parse state cached per buffer.
+#[derive(Clone)]
+pub struct TsTreeState {
+    pub tree: tree_sitter::Tree,
+    /// Document revision the tree was parsed at.
+    pub revision: u64,
+}
+
+/// Incrementally reparse: apply `edits` to `old_tree`, then reparse only
+/// the changed regions against the rope (chunked — no whole-document copy)
+/// and run the query on the updated tree (docs/core-redesign.md §7.2).
+/// `query_text` must be the buffer's current full text (queries with
+/// predicates need contiguous bytes).
+pub fn highlight_incremental(
+    lang_name: &str,
+    rope: &crate::kernel::text_engine::rope::Rope,
+    query_text: &str,
+    query_src: &str,
+    edits: &[tree_sitter::InputEdit],
+    old: Option<TsTreeState>,
+) -> Option<(Vec<(usize, usize, String)>, TsTreeState)> {
+    with_language_map(|map| {
+        let language = map.get(lang_name)?.clone();
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&language).ok()?;
+
+        let old_tree = old.map(|mut state| {
+            for e in edits {
+                state.tree.edit(e);
+            }
+            state.tree
+        });
+
+        let mut chunks: ropey::iter::Chunks<'_> = rope.chunks();
+        let mut cur: &str = "";
+        let mut cur_pos: usize = 0;
+        let tree = parser.parse_with(
+            &mut |offset: usize, _| -> &[u8] {
+                while offset >= cur_pos + cur.len() {
+                    match chunks.next() {
+                        Some(c) => {
+                            cur_pos += cur.len();
+                            cur = c;
+                        }
+                        None => break,
+                    }
+                }
+                let rel = offset.saturating_sub(cur_pos).min(cur.len());
+                let mut b = rel;
+                while b > 0 && !cur.is_char_boundary(b) {
+                    b -= 1;
+                }
+                cur[b..].as_bytes()
+            },
+            old_tree.as_ref(),
+        )
+        .or(old_tree)?;
+
+        let ranges = query_tree(&language, &tree, query_text.as_bytes(), query_src)?;
+        // Caller stamps the buffer revision the tree was parsed at.
+        Some((ranges, TsTreeState { tree, revision: 0 }))
     })
 }
 

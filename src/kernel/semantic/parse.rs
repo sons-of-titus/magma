@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_parse_progress() {
         let body = r#"{"jsonrpc":"2.0","method":"$/progress","params":{"token":"build","value":{"kind":"begin","message":"Building...","percentage":0}}}"#;
-        let (token, msg, pct) = parse_progress(body).unwrap();
+        let (token, msg, _pct) = parse_progress(body).unwrap();
         assert_eq!(token, "build");
         assert_eq!(msg, "Building...");
     }

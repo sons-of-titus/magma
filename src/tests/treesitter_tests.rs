@@ -13,9 +13,10 @@ fn ts_trees_and_languages_stored_on_editor() {
     let key = focused_key(&ed);
 
     ed.ts_languages.insert(key, "rust".to_string());
-    ed.ts_trees.insert(key, vec![1, 2, 3]);
 
-    assert!(ed.ts_trees.contains_key(&key));
+    // The tree cache only holds real parse trees; without a grammar loaded
+    // there is nothing cached yet (docs/core-redesign.md §7.2).
+    assert!(!ed.ts_trees.contains_key(&key));
     assert_eq!(ed.ts_languages.get(&key).unwrap(), "rust");
 }
 

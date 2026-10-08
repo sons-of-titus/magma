@@ -8,6 +8,7 @@ fn window_list_returns_one_window_initially() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let result = scripting::eval("(length (window/list))");
     assert_eq!(result, "ok");
@@ -19,6 +20,7 @@ fn window_list_returns_all_windows_after_split() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap());
     let result = scripting::eval("(length (window/list))");
@@ -33,6 +35,7 @@ fn window_focus_changes_focused_window_via_janet() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
     let initial_focused = ed.view_tree.focused_window();
@@ -50,6 +53,7 @@ fn window_focus_emits_window_focused_event() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
 
@@ -75,6 +79,7 @@ fn window_resize_sets_fractional_weight() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.view_tree.resize(80, 24);
     let new_id = ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap()).unwrap();
@@ -97,6 +102,7 @@ fn window_set_scroll_top_pins_offset() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let wid = ed.view_tree.focused_window().unwrap();
     let result = scripting::eval(
@@ -114,6 +120,7 @@ fn window_scroll_top_returns_pinned_value() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let wid = ed.view_tree.focused_window().unwrap();
     // Pin scroll top to 5
@@ -135,6 +142,7 @@ fn window_unpin_scroll_clears_pin() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let wid = ed.view_tree.focused_window().unwrap();
     scripting::eval(&format!("(window/set-scroll-top {} 7)", wid.0));
@@ -154,6 +162,7 @@ fn editor_save_layout_stores_snapshot() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let result = scripting::eval("(editor/save-layout \"my-layout\")");
     assert_eq!(result, "ok");
@@ -165,6 +174,7 @@ fn editor_restore_layout_restores_window_count() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     // Save single-window layout
     scripting::eval("(editor/save-layout \"single\")");
@@ -184,6 +194,7 @@ fn editor_restore_layout_no_op_when_name_unknown() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.view_tree.split_vertical(ed.view_tree.focused_window().unwrap());
     let count_before = ed.view_tree.len();
@@ -201,6 +212,7 @@ fn editor_layout_list_returns_saved_names() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval("(editor/save-layout \"alpha\")");
     scripting::eval("(editor/save-layout \"beta\")");
@@ -222,6 +234,7 @@ fn window_current_returns_focused_window_table() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let result = scripting::eval("(get (window/current) :id)");
     assert_eq!(result, "ok");

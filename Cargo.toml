@@ -14,7 +14,7 @@ unicode-segmentation = "1.12"
 smallstr = "0.3"
 slab = "0.4"
 ropey = "1.6"
-eframe = { version = "0.29", optional = true, features = ["wgpu"] }
+eframe = { version = "0.36.2", optional = true, features = ["wgpu"] }
 bytemuck = { version = "1", optional = true }
 ab_glyph = { version = "0.2", optional = true }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
@@ -60,6 +60,10 @@ harness = false
 
 [[bench]]
 name = "undo_ops"
+harness = false
+
+[[bench]]
+name = "editor_workloads"
 harness = false
 
 [features]

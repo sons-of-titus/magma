@@ -119,6 +119,91 @@
     (set pos (+ pos 1)))
   ranges)
 
+# --- Dirty-range highlighting (docs/core-redesign.md §7.1) ----------------
+#
+# A buffer-changed event carries the transaction: revision-before/after and
+# "start:old-end:new-end" edit spans.  When the cached layer matches the
+# event's before-revision, only the affected line region is re-scanned and
+# the cached ranges are spliced (drop intersecting, shift following) instead
+# of re-deriving the whole buffer.
+
+(def *hl-cache* @{})
+
+(defn- parse-edits
+  [s]
+  (def out @[])
+  (when (or (nil? s) (empty? s)) (break out))
+  (each part (string/split "," s)
+    (def f (string/split ":" part))
+    (when (= 3 (length f))
+      (def st (scan-number (f 0)))
+      (def oe (scan-number (f 1)))
+      (def ne (scan-number (f 2)))
+      (when (and st oe ne) (array/push out [st oe ne]))))
+  out)
+
+(defn- run-passes
+  [text kw-table comment-marker]
+  (var ranges @[])
+  (set ranges (highlight-keywords text kw-table ranges))
+  (when comment-marker
+    (set ranges (highlight-comments text comment-marker ranges)))
+  (set ranges (highlight-strings text ranges))
+  (set ranges (highlight-numbers text ranges))
+  ranges)
+
+(defn- full-highlight
+  [buf-id kw-table comment-marker]
+  (def text (buffer/slice buf-id 0 (buffer/len buf-id)))
+  # Canonical order: sorted by start offset, same as the dirty splice —
+  # layers are deterministic regardless of how they were produced.
+  (def ranges (sort (array/concat @[] (run-passes text kw-table comment-marker))
+                    (fn [a b] (< (a 0) (b 0)))))
+  (buffer/set-highlights-layer buf-id "syntax" ranges)
+  (put *hl-cache* [buf-id "syntax"]
+       @{:rev (buffer/revision buf-id) :ranges ranges}))
+
+(defn- line-start-of
+  [buf-id offset]
+  (def line (buffer/line-of buf-id offset))
+  (or (buffer/line-start-offset buf-id line) 0))
+
+(defn- line-end-of
+  [buf-id offset]
+  (def line (buffer/line-of buf-id offset))
+  (def next-start (buffer/line-start-offset buf-id (+ line 1)))
+  (if next-start
+    (- next-start 1)
+    (buffer/len buf-id)))
+
+(defn- dirty-highlight
+  [buf-id kw-table comment-marker rev-after edits]
+  (var s nil)
+  (var max-new-end 0)
+  (var delta 0)
+  (each [st oe ne] edits
+    (when (or (nil? s) (< st s)) (set s st))
+    (when (> ne max-new-end) (set max-new-end ne))
+    (+= delta (- ne oe)))
+  (set s (line-start-of buf-id s))
+  (def e (line-end-of buf-id max-new-end))
+  (def old-e (- e delta))
+  (def cache (get *hl-cache* [buf-id "syntax"]))
+  (def kept @[])
+  (each [rs re face] (cache :ranges)
+    (cond
+      (<= re s) (array/push kept [rs re face])
+      (>= rs old-e) (array/push kept [(+ rs delta) (+ re delta) face])))
+  (def text (buffer/slice buf-id s e))
+  (def fresh (run-passes text kw-table comment-marker))
+  # Pass ranges are immutable tuples; rebuild them offset by the region start.
+  (def offset-fresh @[])
+  (each r fresh
+    (array/push offset-fresh @[(+ (r 0) s) (+ (r 1) s) (r 2)]))
+  (def ranges (sort (array/concat @[] kept offset-fresh) (fn [a b] (< (a 0) (b 0)))))
+  (buffer/set-highlights-layer buf-id "syntax" ranges)
+  (put *hl-cache* [buf-id "syntax"] @{:rev rev-after :ranges ranges}))
+
 # --- API ----------------------------------------------------------------
 
 (defn syntax/highlight-buffer
@@ -128,16 +213,7 @@
   (def lang (get *extension-language* ext))
   (def kw-table (when lang (get *syntax-rules* lang)))
   (if (and lang kw-table)
-    (do
-      (def text (buffer/slice buf-id 0 (buffer/len buf-id)))
-      (var ranges @[])
-      (set ranges (highlight-keywords text kw-table ranges))
-      (def comment-marker (get *comment-markers* lang))
-      (when comment-marker
-        (set ranges (highlight-comments text comment-marker ranges)))
-      (set ranges (highlight-strings text ranges))
-      (set ranges (highlight-numbers text ranges))
-      (buffer/set-highlights-layer buf-id "syntax" ranges))))
+    (full-highlight buf-id kw-table (get *comment-markers* lang))))
 
 (command/define "syntax-highlight"
   (fn [& args]
@@ -148,7 +224,22 @@
   (def raw (get data :buffer-id))
   (when raw
     (def buf-id (scan-number raw))
-    (when buf-id (syntax/highlight-buffer buf-id))))
+    (when buf-id
+      (def path (buffer/path buf-id))
+      (def ext (file-extension path))
+      (def lang (get *extension-language* ext))
+      (def kw-table (when lang (get *syntax-rules* lang)))
+      (when (and lang kw-table)
+        (def rev-before (scan-number (get data :revision-before)))
+        (def rev-after (scan-number (get data :revision-after)))
+        (def edits (parse-edits (get data :edits)))
+        (def cache (get *hl-cache* [buf-id "syntax"]))
+        (def take-dirty (and rev-before rev-after cache
+                             (= (cache :rev) rev-before)
+                             (not (empty? edits))))
+        (if take-dirty
+          (dirty-highlight buf-id kw-table (get *comment-markers* lang) rev-after edits)
+          (full-highlight buf-id kw-table (get *comment-markers* lang)))))))
 
 (event/on "buffer-changed" highlight-on-event)
 (event/on "buffer-created" highlight-on-event)

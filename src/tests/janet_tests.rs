@@ -16,6 +16,7 @@ fn colon_q_via_janet_fiber() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     assert!(ed.commands.exists("command-execute"),
         "command-execute must be registered after init");
@@ -39,6 +40,7 @@ fn colon_w_via_janet_fiber() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     assert!(ed.commands.exists("command-execute"),
         "command-execute must be registered after init");
@@ -58,6 +60,7 @@ fn colon_execute_unknown_does_not_crash() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     assert!(ed.commands.exists("command-execute"));
 
@@ -76,6 +79,7 @@ fn colon_set_via_fiber_works() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in "set tab-width=8".chars() {
@@ -94,6 +98,7 @@ fn colon_execute_direct() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let expr = r#"(colon-execute "q")"#;
     let _result = scripting::eval(expr);
@@ -105,6 +110,7 @@ fn mode_detail_keyword_lookup() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     crate::kernel::input::dispatch_key(&mut ed, "q");
@@ -119,6 +125,7 @@ fn colon_substitute_in_buffer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in "s/hello/goodbye/".chars() {
@@ -154,6 +161,7 @@ fn colon_substitute_global() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     crate::kernel::command::execute_command(&mut ed, "enter-command-mode", &std::collections::HashMap::new()).unwrap();
     for ch in "s/hello/goodbye/g".chars() {
@@ -175,6 +183,7 @@ fn colon_q_quit_qbang() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     assert!(ed.running);
 
     type_command(&mut ed, "q!");
@@ -194,6 +203,7 @@ fn colon_wq_and_x() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     assert!(ed.running);
 
     let focused = crate::kernel::input::focused_buffer_id(&ed);
@@ -205,6 +215,7 @@ fn colon_wq_and_x() {
 
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let focused = crate::kernel::input::focused_buffer_id(&ed);
     ed.buffers.get(focused).unwrap().lock().unwrap().path = Some("/tmp/test_x".to_string());
     std::fs::write("/tmp/test_x", "").expect("cannot create /tmp/test_x for test");
@@ -217,6 +228,7 @@ fn colon_write_alias() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     type_command(&mut ed, "write /tmp/test_write_alias");
     let focused = crate::kernel::input::focused_buffer_id(&ed);
@@ -230,6 +242,7 @@ fn colon_e_edit_r_read() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     type_command(&mut ed, "e /tmp/test_edit");
     let focused = crate::kernel::input::focused_buffer_id(&ed);
@@ -244,6 +257,7 @@ fn colon_shell_not_broken() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     type_command(&mut ed, "! echo test");
     assert!(ed.editor_mode.is_named("normal"),
@@ -259,6 +273,7 @@ fn colon_all_verb_extractions_via_eval() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("test");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let tests: &[&str] = &[
         "q", "q!", "quit", "wq", "x",

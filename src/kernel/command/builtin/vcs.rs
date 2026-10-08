@@ -177,7 +177,7 @@ fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
 /// Return the 0-indexed line the VC buffer cursor is on.
 fn vc_cursor_line(editor: &Editor) -> usize {
     let Some(key) = editor.vc.buf_key else { return 0 };
-    let cursor = editor.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
+    let cursor = editor.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
     let Some(arc) = editor.buffers.get(key) else { return 0 };
     let buf = arc.lock().unwrap();
     buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
@@ -188,7 +188,7 @@ fn vc_write_buf(editor: &mut Editor, text: &str) -> CommandResult {
     let Some(key) = editor.vc.buf_key else { return Ok(()); };
     if !editor.buffers.contains(key) { return Ok(()); }
     let saved_line = {
-        let cursor = editor.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
+        let cursor = editor.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
         let buf = editor.buffers.get(key).unwrap().lock().unwrap();
         buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
     };
@@ -201,7 +201,7 @@ fn vc_write_buf(editor: &mut Editor, text: &str) -> CommandResult {
     }
     let offset = editor.buffers.get(key).unwrap().lock().unwrap().line_start_offset(saved_line);
     if let Some(off) = offset {
-        if let Some(view) = editor.views.get_mut(&key) {
+        if let Some(view) = editor.view_of_buffer_mut(key) {
             view.set_cursor(off);
         }
     }
@@ -240,7 +240,7 @@ fn vc_open(editor: &mut Editor) -> CommandResult {
     let header_offset = editor.buffers.get(buf_key).unwrap().lock().unwrap()
         .line_start_offset(crate::kernel::vc::VC_HEADER_LINES);
     if let Some(off) = header_offset {
-        if let Some(view) = editor.views.get_mut(&buf_key) {
+        if let Some(view) = editor.view_of_buffer_mut(buf_key) {
             view.set_cursor(off);
         }
     }
@@ -329,7 +329,7 @@ fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
         if len > 0 { buf.delete(0, len); }
         buf.insert(0, text);
     }
-    if let Some(view) = editor.views.get_mut(&key) {
+    if let Some(view) = editor.view_of_buffer_mut(key) {
         view.set_cursor(0);
     }
     if let Some(win) = editor.view_tree.focused_window_mut() {

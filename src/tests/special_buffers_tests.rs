@@ -1,4 +1,3 @@
-use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 #[test]
@@ -23,7 +22,7 @@ fn buffer_ephemeral_defaults_to_false() {
 
 #[test]
 fn buffer_read_only_can_be_set() {
-    let mut ed = helpers::make_editor();
+    let ed = helpers::make_editor();
     let key = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap();
@@ -34,7 +33,7 @@ fn buffer_read_only_can_be_set() {
 
 #[test]
 fn buffer_ephemeral_can_be_set() {
-    let mut ed = helpers::make_editor();
+    let ed = helpers::make_editor();
     let key = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap();
@@ -47,7 +46,7 @@ fn buffer_ephemeral_can_be_set() {
 fn read_only_buffer_insert_is_a_rust_level_bypass() {
     // Rust-level insert bypasses the read_only flag (only the Janet C fn
     // checks it).  This test documents that invariant.
-    let mut ed = helpers::make_editor();
+    let ed = helpers::make_editor();
     let key = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap();

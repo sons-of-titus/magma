@@ -10,6 +10,7 @@ macro_rules! jt {
             let _lock = acquire_janet_lock();
             let mut ed = crate::tests::helpers::make_editor();
             scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
             let result = scripting::eval_result($code).unwrap_or_else(|e| e);
             assert_eq!(result, $expected, "Janet: {}", $code);
         }
@@ -54,6 +55,8 @@ fn scheduler_submit_returns_positive_id() {
     ed.background = Some(BackgroundHandle::new(rt, tx));
 
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let result = scripting::eval_result(r#"(> (scheduler/submit "test-work" "true") 0)"#)
         .unwrap_or_default();
     assert_eq!(result, "true");
@@ -71,6 +74,8 @@ fn scheduler_submit_appears_in_list() {
     ed.background = Some(BackgroundHandle::new(rt, tx));
 
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let result = scripting::eval_result(
         r#"(do (scheduler/submit "my-work" "echo hello") (> (length (scheduler/list)) 0))"#
     ).unwrap_or_default();
@@ -91,6 +96,8 @@ fn submitted_work_status_is_running_or_completed() {
     ed.background = Some(BackgroundHandle::new(rt, tx));
 
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let result = scripting::eval_result(
         r#"(do
              (def id (scheduler/submit "quick-work" "true"))
@@ -114,15 +121,17 @@ fn progress_table_has_done_and_total_keys() {
     ed.background = Some(BackgroundHandle::new(rt, tx));
 
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     // Register a task manually via Rust to get a deterministic work-id
     let work_id = ed.scheduler.register_task(100, "check-work");
     ed.scheduler.update_progress(work_id, 3, 10);
 
-    // Re-init EDITOR_PTR (it was set during init)
-    crate::kernel::scripting::set_editor_ptr(&mut ed as *mut _);
-
+    // The eval runs inside the scoped bridge (docs/core-redesign.md §11).
     let code = format!("(do (def p (scheduler/progress {})) (and (= (get p :done) 3) (= (get p :total) 10)))", work_id);
-    let result = scripting::eval_result(&code).unwrap_or_default();
+    let result = crate::kernel::scripting::scoped_editor(&mut ed, || {
+        scripting::eval_result(&code).unwrap_or_default()
+    });
     assert_eq!(result, "true");
 }
 
@@ -133,15 +142,17 @@ fn cancel_changes_status_to_cancelled() {
     let _lock = acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor();
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let work_id = ed.scheduler.register_task(200, "cancel-me");
-    crate::kernel::scripting::set_editor_ptr(&mut ed as *mut _);
-
     let code = format!(
         r#"(do (scheduler/cancel {}) (= (scheduler/status {}) :cancelled))"#,
         work_id, work_id
     );
-    let result = scripting::eval_result(&code).unwrap_or_default();
+    let result = crate::kernel::scripting::scoped_editor(&mut ed, || {
+        scripting::eval_result(&code).unwrap_or_default()
+    });
     assert_eq!(result, "true");
 }
 
@@ -152,11 +163,12 @@ fn list_item_has_expected_keys() {
     let _lock = acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor();
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.scheduler.register_task(300, "list-test");
-    crate::kernel::scripting::set_editor_ptr(&mut ed as *mut _);
 
-    let result = scripting::eval_result(
+    let result = crate::kernel::scripting::scoped_editor(&mut ed, || scripting::eval_result(
         r#"(do
              (def items (scheduler/list))
              (def item  (get items 0))
@@ -165,7 +177,7 @@ fn list_item_has_expected_keys() {
                   (has-key? item :status)
                   (has-key? item :done)
                   (has-key? item :total)))"#
-    ).unwrap_or_default();
+    ).unwrap_or_default());
     assert_eq!(result, "true");
 }
 
@@ -174,15 +186,18 @@ fn list_item_name_matches_registered_name() {
     let _lock = acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor();
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     ed.scheduler.register_task(400, "my-named-work");
-    crate::kernel::scripting::set_editor_ptr(&mut ed as *mut _);
 
-    let result = scripting::eval_result(
-        r#"(do
-             (def items (scheduler/list))
-             (def item  (get items 0))
-             (= (get item :name) "my-named-work"))"#
-    ).unwrap_or_default();
+    let result = crate::kernel::scripting::scoped_editor(&mut ed, || {
+        scripting::eval_result(
+            r#"(do
+                 (def items (scheduler/list))
+                 (def item  (get items 0))
+                 (= (get item :name) "my-named-work"))"#
+        ).unwrap_or_default()
+    });
     assert_eq!(result, "true");
 }

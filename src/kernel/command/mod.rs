@@ -100,13 +100,17 @@ pub fn execute_command(
         let entry = editor.commands.get_entry(name);
 
         // Fall through to the script runtime when no Rust command matches.
+        // The runtime is taken out so the editor borrow can move into it.
         let entry = match entry {
             Some(e) => e,
             None => {
-                if let Some(ref mut rt) = editor.runtime {
-                    return rt.call_command(name, args);
-                }
-                return Err(format!("Command not found: {name}"));
+                let mut rt = editor.runtime.take();
+                let result = match &mut rt {
+                    Some(rt) => rt.call_command(editor, name, args),
+                    None => Err(format!("Command not found: {name}")),
+                };
+                editor.runtime = rt;
+                return result;
             }
         };
 
@@ -131,7 +135,7 @@ pub fn execute_command(
             .and_then(|wid| editor.view_tree.buffer(wid))
             .unwrap_or(0);
         if editor.buffers.contains(buf_id) {
-            let pos = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let pos = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             editor.change_list.push(pos);
             editor.change_list_idx = editor.change_list.len();
         }

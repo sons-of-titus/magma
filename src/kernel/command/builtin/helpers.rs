@@ -13,7 +13,7 @@ pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
 
 pub(super) fn emit_cursor_moved(editor: &mut Editor) {
     let buf_id = get_current_buffer_id(editor);
-    let cursor = editor.views.get(&buf_id).map(|v| v.cursor.offset.to_string());
+    let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor.offset.to_string());
     editor.events.emit_typed(keys::events::CURSOR_MOVED, CursorMovedPayload {
         buffer_id: buf_id.to_string(),
         cursor: cursor.unwrap_or_default(),
@@ -49,7 +49,7 @@ pub(super) fn move_to_line_col(view: &mut BufferView, line: usize, col: usize) {
 
 pub(super) fn move_cursor(editor: &mut Editor, delta: isize) {
     let buf_id = get_current_buffer_id(editor);
-    if let Some(view) = editor.views.get_mut(&buf_id) {
+    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
         let pos = view.cursor.offset;
         let new_pos = {
             let buf = view.buffer.lock().unwrap();

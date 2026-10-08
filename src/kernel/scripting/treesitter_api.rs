@@ -98,10 +98,84 @@ unsafe extern "C-unwind" fn c_ts_set_language(argc: i32, argv: *mut Janet) -> Ja
         };
         if ed.buffers.contains(buf_id) {
             ed.ts_languages.insert(buf_id, lang);
+            ed.ts_trees.remove(&buf_id);
         }
         conv::nil()
     })
 }
+
+/// Incremental highlight: reuse the cached parse tree, apply the edits
+/// since its revision, reparse only the changed regions, and run the query.
+/// Falls back to a full parse when there is no usable cached tree.
+///
+/// (ts/highlight buf-id query-string) → [[start end scope] ...] or nil
+unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet {
+    use crate::kernel::semantic::ts_registry;
+
+    fn point_of(buf: &crate::kernel::text_engine::Buffer, offset: usize) -> tree_sitter::Point {
+        let (row, col) = buf.line_col_bytes(offset);
+        tree_sitter::Point::new(row, col)
+    }
+
+    with_editor(|ed| unsafe {
+        let buf_id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let Some(query_str) = conv::get_str(argc, argv, 1) else {
+            return conv::nil();
+        };
+        let Some(lang_name) = ed.ts_languages.get(&buf_id).cloned() else {
+            return conv::nil();
+        };
+        let Some(arc) = ed.buffers.get(buf_id) else {
+            return conv::nil();
+        };
+
+        let buf = arc.lock().unwrap();
+        let current_rev = buf.revision();
+        let cached = ed.ts_trees.get(&buf_id).filter(|s| s.revision <= current_rev).cloned();
+        let edits: Vec<tree_sitter::InputEdit> = match &cached {
+            Some(state) => {
+                let mut out = Vec::new();
+                for (_before, _after, spans) in buf.changes_since(state.revision) {
+                    for &(start, old_end, new_end) in spans.iter().rev() {
+                        out.push(tree_sitter::InputEdit {
+                            start_byte: start,
+                            old_end_byte: old_end,
+                            new_end_byte: new_end,
+                            start_position: point_of(&buf, start),
+                            old_end_position: point_of(&buf, old_end.min(buf.len())),
+                            new_end_position: point_of(&buf, new_end.min(buf.len())),
+                        });
+                    }
+                }
+                out
+            }
+            None => Vec::new(),
+        };
+        let query_text = buf.slice(0, buf.len());
+        let (result, mut state) =
+            match ts_registry::highlight_incremental(&lang_name, buf.rope_handle(), &query_text, &query_str, &edits, cached) {
+                Some(r) => r,
+                None => {
+                    drop(buf);
+                    return conv::nil();
+                }
+            };
+        drop(buf);
+        state.revision = current_rev;
+        ed.ts_trees.insert(buf_id, state);
+
+        let result_arr = janet_array(result.len().clamp(1, 4096) as i32);
+        for (start, end, scope) in &result {
+            let arr = janet_array(3);
+            janet_array_push(arr, conv::integer(*start as i32));
+            janet_array_push(arr, conv::integer(*end as i32));
+            janet_array_push(arr, conv::string(scope));
+            janet_array_push(result_arr, janet_wrap_array(arr));
+        }
+        janet_wrap_array(result_arr)
+    })
+}
+
 
 /// Check if a buffer has a tree-sitter language set.
 /// (ts/has-tree? buf-id) → bool
@@ -133,6 +207,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"ts/set-language".as_ptr() as *const _,
             cfun: Some(c_ts_set_language as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Set the tree-sitter language for a buffer".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"ts/highlight".as_ptr() as *const _,
+            cfun: Some(c_ts_highlight as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Incrementally parse and query a buffer".as_ptr() as *const _,
         },
         JanetReg {
             name: c"ts/has-tree?".as_ptr() as *const _,

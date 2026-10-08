@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::kernel::state::{Editor, ProjectMember, Workspace};
+use crate::kernel::state::{ProjectMember, Workspace};
 use crate::kernel::project::Project;
 use crate::tests::helpers;
 

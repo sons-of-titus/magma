@@ -41,17 +41,9 @@ pub(super) fn render_status_bar(
     surface: &mut Surface,
     is_terminal_view: bool,
 ) {
-    let text = buf.slice(0, buf.len());
-    let cursor_line = text[..cursor_offset.min(text.len())]
-        .chars()
-        .filter(|&c| c == '\n')
-        .count();
-    let cursor_col = {
-        let safe = cursor_offset.min(text.len());
-        let before = &text[..safe];
-        let last_line = before.rfind('\n').map(|p| &before[p + 1..]).unwrap_or(before);
-        unicode_width::UnicodeWidthStr::width(last_line)
-    };
+    let pos = buf.position_of(cursor_offset);
+    let cursor_line = pos.line;
+    let cursor_col = pos.column;
     let total_lines = buf.line_count();
 
     let status = if let Some(ref mb) = editor.editor_mode.minibuffer {

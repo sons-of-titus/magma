@@ -106,9 +106,9 @@ impl GpuRenderResources {
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label:                Some("magma_pip_layout"),
-            bind_group_layouts:   &[&screen_bgl, &atlas_bgl],
-            push_constant_ranges: &[],
+            label:              Some("magma_pip_layout"),
+            bind_group_layouts: &[Some(&screen_bgl), Some(&atlas_bgl)],
+            immediate_size:     0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -116,9 +116,9 @@ impl GpuRenderResources {
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module:              &shader,
-                entry_point:         "vs",
+                entry_point:         Some("vs"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: VERTEX_STRIDE,
                     step_mode:    wgpu::VertexStepMode::Vertex,
                     attributes:   &wgpu::vertex_attr_array![
@@ -126,11 +126,11 @@ impl GpuRenderResources {
                         1 => Float32x2,
                         2 => Float32x4,
                     ],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module:              &shader,
-                entry_point:         "fs",
+                entry_point:         Some("fs"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format:     target_format,
@@ -138,11 +138,11 @@ impl GpuRenderResources {
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
-            primitive:     wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample:   wgpu::MultisampleState::default(),
-            multiview:     None,
-            cache:         None,
+            primitive:      wgpu::PrimitiveState::default(),
+            depth_stencil:  None,
+            multisample:    wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache:          None,
         });
 
         let atlas_bind = make_atlas_bind(device, queue, &atlas_bgl, atlas_width, atlas_height, atlas_pixels);
@@ -227,7 +227,7 @@ fn make_atlas_bind(
     queue.write_texture(
         tex.as_image_copy(),
         pixels,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(width * 4),
             rows_per_image: None,

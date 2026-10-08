@@ -5,7 +5,7 @@
 //! modified buffers.  The close button is only shown when the tab is hovered
 //! or active.  Tabs can be drag-reordered.
 
-use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, Rounding, Sense, Vec2};
+use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, CornerRadius, Sense, Vec2};
 use crate::kernel::state::id::WindowId;
 use crate::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
@@ -54,8 +54,8 @@ impl TabBar {
         }).collect()
     }
 
-    fn top_rounding() -> Rounding {
-        Rounding { nw: 5.0, ne: 5.0, sw: 0.0, se: 0.0, ..Default::default() }
+    fn top_rounding() -> CornerRadius {
+        CornerRadius { nw: 5, ne: 5, sw: 0, se: 0 }
     }
 
     /// Render the tab bar; return any action to apply to the editor.
@@ -89,7 +89,7 @@ impl TabBar {
             for tab in &tabs {
                 let is_active = focused == Some(tab.window_id);
 
-                let label_w: f32 = ui.fonts(|f| {
+                let label_w: f32 = ui.fonts_mut(|f| {
                     f.layout_no_wrap(tab.label.clone(), font_id.clone(), theme.text)
                         .size().x
                 });
@@ -113,6 +113,7 @@ impl TabBar {
                         tab_rect,
                         Self::top_rounding(),
                         egui::Stroke::new(2.0, theme.blue),
+                        egui::StrokeKind::Inside,
                     );
                 }
 
@@ -129,7 +130,7 @@ impl TabBar {
                             Pos2::new(tab_rect.right(), tab_rect.bottom()),
                         );
                         ui.painter().rect_filled(
-                            line, Rounding::ZERO,
+                            line, CornerRadius::ZERO,
                             theme.blue.gamma_multiply(anim.min(1.0)),
                         );
                     }

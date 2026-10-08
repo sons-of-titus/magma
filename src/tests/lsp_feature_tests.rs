@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use crate::kernel::semantic::parse;
-use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 // ── parse.rs unit tests ──────────────────────────────────────────────────
@@ -69,7 +68,7 @@ fn test_parse_definition_single() {
 #[test]
 fn test_parse_definition_array() {
     let body = r#"{"jsonrpc":"2.0","id":1,"result":[{"uri":"file:///a.rs","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]}"#;
-    let (uri, sl, sc, el, _ec) = parse::parse_definition(body).unwrap();
+    let (uri, sl, _sc, _el, _ec) = parse::parse_definition(body).unwrap();
     assert_eq!(uri, "/a.rs");
     assert_eq!(sl, 0);
 }

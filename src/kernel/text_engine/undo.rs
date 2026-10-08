@@ -1,148 +1,60 @@
-//! Undo/Redo tree for buffer operations.
-//! Adjacent edits within a time window are merged into groups.
+//! Transaction-based undo history (docs/core-redesign.md §4).
+//!
+//! One undo step = one *group* of transactions.  Groups are created
+//! explicitly: an insert session (`open_undo_session_at`) groups everything
+//! typed until the session closes; every other transaction is its own
+//! group.  There is no wall-clock merge window.
+//!
+//! Branching policy (§4.4): a new edit after an undo discards the redo
+//! branch — the deliberate, documented choice (vim/Emacs behavior), not an
+//! accident of storage.  A persistent undo tree can replace this structure
+//! later without changing call sites.
 
-use crate::kernel::state::id::MarkId;
+use std::collections::VecDeque;
 
-const MERGE_WINDOW_MS: u64 = 200;
+use super::transaction::{EditTransaction, TransactionOrigin};
+
+const MAX_ENTRIES: usize = 10_000;
 
 #[derive(Debug, Clone)]
-pub enum UndoOp {
-    Insert { offset: usize, text: String },
-    Delete { offset: usize, text: String },
-}
-
-#[derive(Debug, Clone)]
-struct UndoGroup {
-    ops: Vec<UndoOp>,
-    timestamp: std::time::Instant,
-    #[allow(dead_code)]
-    merge_id: u64,
-    mark_states: Vec<(MarkId, usize)>,
-    /// When true, all subsequent `record` calls merge into this group
-    /// regardless of the time window. Used for insert sessions.
-    open: bool,
+pub struct UndoEntry {
+    pub txn: EditTransaction,
+    group: u64,
+    /// Cursor offset before the transaction was applied.
+    pub cursor_before: usize,
+    /// Cursor offset after the transaction was applied.
+    pub cursor_after: usize,
 }
 
 #[derive(Debug)]
-pub struct UndoTree {
-    groups: Vec<UndoGroup>,
+pub struct UndoHistory {
+    entries: VecDeque<UndoEntry>,
+    /// Index of the newest applied entry; -1 = none.
     cursor: isize,
-    saved_at: Option<usize>,
-    merge_counter: u64,
-    max_groups: usize,
+    open_group: Option<u64>,
+    next_group: u64,
+    /// Undo-cursor position at the last save; `None` = never saved.
+    /// Modified ⟺ the undo cursor has moved off the saved position —
+    /// undoing back to the saved text is clean (vim semantics), while a
+    /// stale async save can never mark newer edits clean (§5).
+    saved_cursor: Option<isize>,
 }
 
-impl UndoTree {
-    pub fn new(max_groups: usize) -> Self {
-        UndoTree {
-            groups: Vec::with_capacity(max_groups),
+impl Default for UndoHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl UndoHistory {
+    pub fn new() -> Self {
+        UndoHistory {
+            entries: VecDeque::new(),
             cursor: -1,
-            saved_at: None,
-            merge_counter: 0,
-            max_groups,
+            open_group: None,
+            next_group: 0,
+            saved_cursor: None,
         }
-    }
-
-    /// Open a new insert session — all subsequent operations merge
-    /// into this group until `close_session()` is called.
-    pub fn open_session(&mut self, op: UndoOp, mark_states: Vec<(MarkId, usize)>) {
-        // Truncate any redo history beyond cursor
-        let keep_len = (self.cursor + 1) as usize;
-        self.groups.truncate(keep_len);
-
-        // If the last group is still open, close it first
-        if let Some(last) = self.groups.last_mut() {
-            last.open = false;
-        }
-
-        self.merge_counter += 1;
-        let now = std::time::Instant::now();
-        self.groups.push(UndoGroup {
-            ops: vec![op],
-            timestamp: now,
-            merge_id: self.merge_counter,
-            mark_states,
-            open: true,
-        });
-
-        if self.groups.len() > self.max_groups {
-            self.groups.remove(0);
-            if self.cursor >= 0 {
-                self.cursor -= 1;
-            }
-            if let Some(saved) = self.saved_at {
-                if saved > 0 {
-                    self.saved_at = Some(saved - 1);
-                } else {
-                    self.saved_at = None;
-                }
-            }
-        }
-
-        self.cursor = self.groups.len() as isize - 1;
-    }
-
-    /// Close the current open group so future edits start a new step.
-    pub fn close_session(&mut self) {
-        if let Some(last) = self.groups.last_mut() {
-            last.open = false;
-        }
-    }
-
-    pub fn record(&mut self, op: UndoOp, mark_states: Vec<(MarkId, usize)>) {
-        // Remove any redo history beyond cursor
-        let keep_len = (self.cursor + 1) as usize;
-        self.groups.truncate(keep_len);
-
-        // If the last group is open, always merge into it
-        if let Some(last) = self.groups.last_mut()
-            && last.open {
-                last.ops.push(op);
-                last.timestamp = std::time::Instant::now();
-                last.mark_states = mark_states;
-                return;
-            }
-
-        // Try to merge with the last group based on time window
-        let now = std::time::Instant::now();
-        let should_merge = self.groups.last().is_some_and(|last| {
-            last.ops.len() < 100
-                && (now.duration_since(last.timestamp).as_millis() as u64) < MERGE_WINDOW_MS
-        });
-
-        if should_merge
-            && let Some(last) = self.groups.last_mut() {
-                last.ops.push(op);
-                last.timestamp = now;
-                last.mark_states = mark_states;
-                return;
-            }
-
-        self.merge_counter += 1;
-        self.groups.push(UndoGroup {
-            ops: vec![op],
-            timestamp: now,
-            merge_id: self.merge_counter,
-            mark_states,
-            open: false,
-        });
-
-        // Enforce max groups
-        if self.groups.len() > self.max_groups {
-            self.groups.remove(0);
-            if self.cursor >= 0 {
-                self.cursor -= 1;
-            }
-            if let Some(saved) = self.saved_at {
-                if saved > 0 {
-                    self.saved_at = Some(saved - 1);
-                } else {
-                    self.saved_at = None;
-                }
-            }
-        }
-
-        self.cursor = self.groups.len() as isize - 1;
     }
 
     pub fn can_undo(&self) -> bool {
@@ -150,58 +62,147 @@ impl UndoTree {
     }
 
     pub fn can_redo(&self) -> bool {
-        self.cursor + 1 < self.groups.len() as isize
+        self.cursor + 1 < self.entries.len() as isize
     }
 
-    pub fn undo(&mut self) -> Option<&[UndoOp]> {
-        if !self.can_undo() {
+    /// Begin an explicit group: all transactions recorded until
+    /// `close_group` form one undo step.
+    pub fn open_group(&mut self) {
+        if self.open_group.is_none() {
+            self.next_group += 1;
+            self.open_group = Some(self.next_group);
+        }
+    }
+
+    pub fn close_group(&mut self) {
+        self.open_group = None;
+    }
+
+    pub fn in_open_group(&self) -> bool {
+        self.open_group.is_some()
+    }
+
+    /// Record a committed transaction.  Undo/redo-origin transactions are
+    /// re-derivations of existing history and are not recorded.
+    pub fn record(&mut self, txn: EditTransaction, cursor_before: usize, cursor_after: usize) {
+        if matches!(txn.origin, TransactionOrigin::Undo | TransactionOrigin::Redo) {
+            return;
+        }
+        let keep = (self.cursor + 1) as usize;
+        if keep < self.entries.len() {
+            self.entries.truncate(keep);
+        }
+        let group = match self.open_group {
+            Some(g) => g,
+            None => {
+                self.next_group += 1;
+                self.next_group
+            }
+        };
+        self.entries.push_back(UndoEntry {
+            txn,
+            group,
+            cursor_before,
+            cursor_after,
+        });
+        if self.entries.len() > MAX_ENTRIES {
+            self.entries.pop_front();
+            // The oldest entry is gone; the saved position shifts with it.
+            // If the saved entry itself was evicted, that state is no longer
+            // undo-reachable and can never compare clean again.
+            self.saved_cursor = match self.saved_cursor {
+                Some(s) if s > 0 => Some(s - 1),
+                Some(_) => None,
+                None => None,
+            };
+        }
+        self.cursor = self.entries.len() as isize - 1;
+    }
+
+    /// The transaction range of the next undo step, plus the cursor offset
+    /// to restore (the position where the group began).  Does not mutate.
+    pub fn undo_step(&self) -> Option<(usize, usize, usize)> {
+        let end = self.cursor;
+        if end < 0 {
             return None;
         }
-        let group = &self.groups[self.cursor as usize];
-        self.cursor -= 1;
-        Some(&group.ops)
+        let group = self.entries[end as usize].group;
+        let mut start = end;
+        while start > 0 && self.entries[(start - 1) as usize].group == group {
+            start -= 1;
+        }
+        let restore = self.entries[start as usize].cursor_before;
+        Some((start as usize, end as usize, restore))
     }
 
-    pub fn redo(&mut self) -> Option<&[UndoOp]> {
-        if !self.can_redo() {
+    /// The transaction range of the next redo step, plus the cursor offset
+    /// to restore (the position where the group ended).  Does not mutate.
+    pub fn redo_step(&self) -> Option<(usize, usize, usize)> {
+        let start = self.cursor + 1;
+        if start as usize >= self.entries.len() {
             return None;
         }
-        self.cursor += 1;
-        let group = &self.groups[self.cursor as usize];
-        Some(&group.ops)
-    }
-
-    pub fn undo_mark_states(&self) -> Option<&[(MarkId, usize)]> {
-        if !self.can_undo() {
-            return None;
+        let group = self.entries[start as usize].group;
+        let mut end = start;
+        while end + 1 < self.entries.len() as isize
+            && self.entries[(end + 1) as usize].group == group
+        {
+            end += 1;
         }
-        Some(&self.groups[self.cursor as usize].mark_states)
+        let restore = self.entries[end as usize].cursor_after;
+        Some((start as usize, end as usize, restore))
     }
 
-    pub fn redo_mark_states(&self) -> Option<&[(MarkId, usize)]> {
-        if !self.can_redo() {
-            return None;
-        }
-        Some(&self.groups[(self.cursor + 1) as usize].mark_states)
+    pub fn entry(&self, idx: usize) -> &UndoEntry {
+        &self.entries[idx]
     }
 
-    pub fn mark_saved(&mut self) {
-        if self.cursor >= 0 {
-            self.saved_at = Some(self.cursor as usize);
-        } else {
-            self.saved_at = None;
-        }
+    /// Complete an undo: cursor moves in front of the undone range.
+    pub fn finish_undo(&mut self, start: usize) {
+        self.cursor = start as isize - 1;
     }
 
-    pub fn is_modified_since_save(&self) -> bool {
-        self.saved_at.is_none_or(|saved| {
-            self.cursor < 0 || saved != self.cursor as usize
-        })
+    /// Complete a redo: cursor moves onto the redone range.
+    pub fn finish_redo(&mut self, end: usize) {
+        self.cursor = end as isize;
     }
 
     pub fn clear(&mut self) {
-        self.groups.clear();
+        self.entries.clear();
         self.cursor = -1;
-        self.saved_at = None;
+        self.open_group = None;
+        self.saved_cursor = None;
+    }
+
+    pub fn cursor_pos(&self) -> isize {
+        self.cursor
+    }
+
+    pub fn mark_saved_at_cursor(&mut self, cursor: isize) {
+        self.saved_cursor = Some(cursor);
+    }
+
+    /// Undo-cursor position of the entry whose post-revision is `rev`.
+    /// Revision 0 is the initial content (position -1).
+    pub fn cursor_for_revision(&self, rev: u64) -> Option<isize> {
+        if rev == 0 {
+            return Some(-1);
+        }
+        self.entries
+            .iter()
+            .position(|e| e.txn.revision_after.0 == rev)
+            .map(|i| i as isize)
+    }
+
+    pub fn is_modified(&self) -> bool {
+        self.saved_cursor != Some(self.cursor)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }

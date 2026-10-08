@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::kernel::state::id::WindowId;
 use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{View, ViewKind, RenderCtx};
-use crate::kernel::render::frame::{cell_width, compute_scroll_state_raw, int_option};
+use crate::kernel::render::frame::{cell_width, int_option, scroll_state_for_buffer};
 use crate::kernel::render::decorations::{prefix_margin_width, render_decorations};
 use crate::kernel::render::highlight_pass::apply_highlights;
 use crate::kernel::render::status_and_popup::render_insert_completion_popup;
@@ -29,7 +29,7 @@ impl View for EditorView {
             None => return,
         };
         let buf = arc.lock().unwrap();
-        let view = editor.views.get(&buf_id);
+        let view = editor.view_of_buffer(buf_id);
         let cursor_offset = view.map(|v| v.cursor.offset).unwrap_or(0);
 
         let header_rows: u16 = if buf.header_line.is_some() { 1 } else { 0 };
@@ -58,12 +58,11 @@ impl View for EditorView {
         let gutter_width = prefix_cols + editor.gutter.total_width(total_lines);
         let content_x = area.x + gutter_width as u16;
 
-        let text = buf.slice(0, buf.len());
         let scrolloff = int_option(editor, "scrolloff", 0);
 
         let is_focused = editor.view_tree.focused_window() == Some(self.pane_id);
-        let st = compute_scroll_state_raw(
-            &text, total_lines, cursor_offset,
+        let st = scroll_state_for_buffer(
+            &buf, cursor_offset,
             visible_lines, scrolloff, &editor.font_config.glyph_widths,
         );
         let scroll_top = editor.view_tree.window(self.pane_id)
@@ -104,24 +103,51 @@ impl View for EditorView {
         let folds = view.map(|v| &v.folds).unwrap_or(&empty_folds);
         let fold_map: HashMap<usize, usize> =
             folds.iter().map(|(s, e)| (*s, *e)).collect();
+
+        // Visible rows extracted once: (line_start, line_end_incl_newline, text).
+        // No whole-document copy is made to render a viewport (§9.1).
+        struct Row {
+            start: usize,
+            end: usize,
+            text: String,
+            fold: bool,
+        }
+        let mut rows: Vec<Row> = Vec::new();
+        {
+            let mut abs_line = scroll_top;
+            while abs_line < total_lines && rows.len() < visible_lines {
+                let line_start = buf.line_start_offset(abs_line).unwrap_or(buf.len());
+                let line_end = buf.line_start_offset(abs_line + 1).unwrap_or(buf.len());
+                let is_fold_start = fold_map.contains_key(&line_start);
+                if is_fold_start {
+                    let fold_end = fold_map[&line_start];
+                    let folded = buf.position_of(fold_end).line.saturating_sub(abs_line).max(1);
+                    rows.push(Row {
+                        start: line_start,
+                        end: line_end,
+                        text: format!("--- {} lines folded ---", folded),
+                        fold: true,
+                    });
+                    abs_line += folded;
+                } else {
+                    rows.push(Row {
+                        start: line_start,
+                        end: line_end,
+                        text: buf.slice(line_start, line_end),
+                        fold: false,
+                    });
+                    abs_line += 1;
+                }
+            }
+        }
+
         let mut display_row = 0usize;
         let mut abs_line = scroll_top;
-        while abs_line < total_lines && display_row < visible_lines {
-            let line_start = buf.line_start_offset(abs_line).unwrap_or(text.len());
-            let line_end   = buf.line_start_offset(abs_line + 1).unwrap_or(text.len());
-            let mut line_text = &text[line_start..line_end];
+        for row in &rows {
+            let line_start = row.start;
+            let line_text = row.text.as_str();
             let surf_row = row_offset + display_row as u16;
-
-            let is_fold_start = fold_map.contains_key(&line_start);
-            let fold_str;
-            if is_fold_start {
-                let fold_end = fold_map[&line_start];
-                fold_str = format!("--- {} lines folded ---",
-                    text[line_start..fold_end].chars().filter(|&c| c == '\n').count());
-                line_text = &fold_str;
-                abs_line += text[line_start..fold_end]
-                    .chars().filter(|&c| c == '\n').count().max(1);
-            }
+            let is_fold_start = row.fold;
 
             // ── Render gutter providers ───────────────────────────────────
             if !editor.gutter.providers.is_empty() {
@@ -151,16 +177,38 @@ impl View for EditorView {
                 }
             }
 
+            // Grapheme clusters fill their cell width (CJK = 2 cells,
+            // combining marks = 0), so wide glyphs align (§10).
             let max_col = area.width.saturating_sub(gutter_width as u16) as usize;
-            for (i, ch) in line_text.chars().enumerate().take(max_col) {
-                surface.set_cell(content_x + i as u16, surf_row, ch, None);
+            let tab_w = int_option(editor, "tab-width", 4);
+            {
+                let mut col = 0usize;
+                for g in crate::kernel::text_engine::text_layout::grapheme_iter(line_text) {
+                    let w = crate::kernel::text_engine::text_layout::grapheme_cell_width(
+                        g, tab_w, col, &editor.font_config.glyph_widths,
+                    );
+                    if col >= max_col { break; }
+                    let lead = g.chars().next().unwrap_or(' ');
+                    surface.set_cell(content_x + col as u16, surf_row, lead, None);
+                    // Zero-width trailing marks stay on the lead cell; wide
+                    // glyphs blank their second cell so highlights look right.
+                    for k in 1..w {
+                        if col + k < max_col {
+                            surface.set_cell(content_x + (col + k) as u16, surf_row, ' ', None);
+                        }
+                    }
+                    col += w;
+                }
             }
             display_row += 1;
             if !is_fold_start { abs_line += 1; }
+            let _ = abs_line;
         }
 
         // ── Pass 2: highlights + visual selection ─────────────────────────
-        apply_highlights(editor, &*buf, view, surface, &text, scroll_top, max_visible,
+        let row_refs: Vec<(usize, usize, &str)> =
+            rows.iter().map(|r| (r.start, r.end, r.text.as_str())).collect();
+        apply_highlights(editor, view, surface, &row_refs, scroll_top, max_visible,
                          content_x, row_offset, cursor_offset);
 
         // ── Column ruler ──────────────────────────────────────────────────
@@ -198,17 +246,17 @@ impl View for EditorView {
 
             if editor.multi_cursor.active {
                 for ec in &editor.multi_cursor.extra_cursors {
-                    let ec_off = ec.pos.min(text.len());
-                    let ec_line = text[..ec_off].chars()
-                        .filter(|&c| c == '\n').count()
+                    let ec_off = ec.pos.min(buf.len());
+                    let ec_line = buf.position_of(ec_off).line
                         .min(total_lines.saturating_sub(1));
                     let ec_vis = ec_line.saturating_sub(scroll_top);
                     if ec_vis < visible_lines {
-                        let ec_before = &text[..ec_off];
-                        let ec_last = ec_before.rfind('\n')
-                            .map(|p| &ec_before[p + 1..]).unwrap_or(ec_before);
-                        let ec_col: usize = ec_last.chars()
-                            .map(|c| cell_width(c, &editor.font_config.glyph_widths)).sum();
+                        let ec_line_start = buf.line_start_offset(ec_line).unwrap_or(0);
+                        let ec_col: usize = buf
+                            .slice(ec_line_start, ec_off)
+                            .chars()
+                            .map(|c| cell_width(c, &editor.font_config.glyph_widths))
+                            .sum();
                         if ec_col < area.width.saturating_sub(gutter_width as u16) as usize {
                             surface.set_cell(content_x + ec_col as u16,
                                 row_offset + ec_vis as u16, '▌', None);

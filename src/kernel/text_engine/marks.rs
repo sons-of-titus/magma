@@ -1,13 +1,33 @@
-//! Marks are persistent cursor positions that survive edits.
-//! Sticky marks follow insertions at their position.
+//! Marks are persistent buffer positions that survive edits.
+//!
+//! Marks are anchors (docs/core-redesign.md §0.4/§A.2): they transform
+//! through each committed transaction.  Sticky marks follow insertions at
+//! their position (`Affinity::After`); non-sticky marks stay left
+//! (`Affinity::Before`).  There is no eager adjustment and no snapshot
+//! restoration — undo/redo transform marks like any other transaction.
 
 use crate::kernel::state::id::MarkId;
+use super::anchor::{Affinity, Anchor};
+use super::transaction::EditTransaction;
 
 #[derive(Debug, Clone)]
 pub struct Mark {
     pub id: MarkId,
-    pub pos: usize,
-    pub sticky: bool,
+    anchor: Anchor,
+}
+
+impl Mark {
+    pub fn pos(&self) -> usize {
+        self.anchor.offset
+    }
+
+    pub fn sticky(&self) -> bool {
+        matches!(self.affinity(), Affinity::After)
+    }
+
+    fn affinity(&self) -> Affinity {
+        self.anchor.affinity
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -33,16 +53,18 @@ impl MarkSet {
     pub fn create(&mut self, pos: usize, sticky: bool) -> MarkId {
         let id = MarkId(self.next_id);
         self.next_id += 1;
-        self.marks.push(Mark { id, pos, sticky });
+        self.marks.push(Mark {
+            id,
+            anchor: Anchor {
+                offset: pos,
+                affinity: if sticky { Affinity::After } else { Affinity::Before },
+            },
+        });
         id
     }
 
     pub fn get(&self, id: MarkId) -> Option<&Mark> {
         self.marks.iter().find(|m| m.id == id)
-    }
-
-    pub fn get_mut(&mut self, id: MarkId) -> Option<&mut Mark> {
-        self.marks.iter_mut().find(|m| m.id == id)
     }
 
     pub fn delete(&mut self, id: MarkId) -> bool {
@@ -51,38 +73,19 @@ impl MarkSet {
         self.marks.len() < len_before
     }
 
-    pub fn all_positions(&self) -> Vec<(MarkId, usize)> {
-        self.marks.iter().map(|m| (m.id, m.pos)).collect()
+    pub fn len(&self) -> usize {
+        self.marks.len()
     }
 
-    pub fn restore_positions(&mut self, states: &[(MarkId, usize)]) {
-        for &(id, pos) in states {
-            if let Some(mark) = self.get_mut(id) {
-                mark.pos = pos;
-            }
-        }
+    pub fn is_empty(&self) -> bool {
+        self.marks.is_empty()
     }
 
-    /// Adjust all mark positions after an insertion
-    pub fn adjust_for_insert(&mut self, offset: usize, len: usize) {
+    /// The one mark-movement path: transform every mark through a committed
+    /// transaction.  No other span arithmetic exists for marks.
+    pub fn apply_transaction(&mut self, txn: &EditTransaction) {
         for mark in &mut self.marks {
-            if (mark.sticky && mark.pos >= offset) || (!mark.sticky && mark.pos > offset) {
-                mark.pos += len;
-            }
-        }
-    }
-
-    /// Adjust all mark positions after a deletion
-    pub fn adjust_for_delete(&mut self, start: usize, end: usize) {
-        let deleted = end - start;
-        for mark in &mut self.marks {
-            if mark.pos > start {
-                mark.pos = if mark.pos <= end {
-                    start
-                } else {
-                    mark.pos - deleted
-                };
-            }
+            mark.anchor = txn.transform_anchor(mark.anchor);
         }
     }
 }

@@ -151,3 +151,36 @@ fn lsp_response_event_has_subscribers() {
         assert!(count > 0, "lsp-response should be subscribed in lsp.janet");
     });
 }
+
+// ── Canonical positions for LSP (docs/core-redesign.md §8) ──────────────
+
+#[test]
+fn lsp_position_counts_utf16_code_units() {
+    janet_test!(ed, {
+        let key = crate::tests::helpers::focused_key(&ed);
+        // "a😀b\nxé…": 😀 is 4 UTF-8 bytes but 2 UTF-16 units; é is 2 bytes/1 unit; … 3 bytes/1 unit.
+        if let Some(arc) = ed.buffers.get(key) {
+            let mut buf = arc.lock().unwrap();
+            let len = buf.len();
+            buf.delete(0, len);
+            buf.insert(0, "a\u{1F600}b\nx\u{00E9}\u{2026}");
+        }
+        // Offsets: a=0, 😀=1..5, b=5, \n=6, x=7, é=8..10, …=10..13.
+        // UTF-16 columns: after 'a'=1, after 😀=3, after 'ab'=4; é is 1 unit, … is 1 unit.
+        let checks = [
+            ("(= ((buffer/lsp-position K 0) 0) 0)", "line of BOF"),
+            ("(= ((buffer/lsp-position K 5) 1) 3)", "col after emoji = 3 utf16 units"),
+            ("(= ((buffer/lsp-position K 7) 0) 1)", "line of x = 1"),
+            ("(= ((buffer/lsp-position K 8) 1) 1)", "col of é = 1"),
+            ("(= ((buffer/lsp-position K 13) 1) 3)", "col at EOF: x+é+… = 3 units"),
+        ];
+        for (expr, why) in checks {
+            let e = expr.replace('K', &key.to_string());
+            assert_eq!(
+                scripting::eval(&format!("(assert {e} \"{why}\") {e}")),
+                "ok",
+                "{why}"
+            );
+        }
+    });
+}

@@ -18,7 +18,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             let arc = editor.buffers.get(buf_id)
                 .ok_or_else(|| "No current buffer".to_string())?;
-            let (path, content) = {
+            let (path, content, saved_rev) = {
                 let buf = arc.lock().unwrap();
                 let path = args.get("path").and_then(|a| a.as_string())
                     .filter(|p| !p.is_empty())
@@ -26,7 +26,7 @@ pub(super) fn register(editor: &mut Editor) {
                     .or_else(|| buf.path.clone())
                     .ok_or_else(|| "No path specified".to_string())?;
                 let content = buf.slice(0, buf.len());
-                (path, content)
+                (path, content, buf.revision())
             };
             editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
                 path: path.clone(),
@@ -35,7 +35,7 @@ pub(super) fn register(editor: &mut Editor) {
             editor.fs.write(&path, &content)
                 .map_err(|e| format!("Save failed: {}", e))?;
             if let Some(arc) = editor.buffers.get(buf_id) {
-                arc.lock().unwrap().mark_saved();
+                arc.lock().unwrap().mark_saved_at(saved_rev);
             }
             editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
                 path,
@@ -159,6 +159,7 @@ pub(super) fn register(editor: &mut Editor) {
             });
             editor.buffers.remove(key);
             editor.views.remove(&key);
+            editor.drop_window_views_of_buffer(key);
             let focused_shows_closed = editor.view_tree.focused_window()
                 .and_then(|wid| editor.view_tree.buffer(wid))
                 == Some(key);

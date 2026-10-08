@@ -27,7 +27,7 @@ impl ContextProvider for EditorContextProvider {
             .unwrap_or_default();
 
         let (cursor_line, cursor_col) = focused_buf_id
-            .and_then(|id| ed.views.get(&id))
+            .and_then(|id| ed.view_of_buffer(id))
             .map(|v| (v.cursor.line, v.cursor.column))
             .unwrap_or((0, 0));
 

@@ -33,7 +33,15 @@ macro_rules! event_payload {
 event_payload!(empty);
 event_payload!(BufferAfterSavePayload { path, buffer_id });
 event_payload!(BufferBeforeSavePayload { path, buffer_id });
-event_payload!(BufferChangedPayload { buffer_id });
+// `edits` is a comma-separated list of "start:old_end:new_end" spans in
+// the pre-transaction coordinate frame (new_end counts from start in the
+// post frame).
+event_payload!(BufferChangedPayload {
+    buffer_id,
+    revision_before,
+    revision_after,
+    edits,
+});
 event_payload!(BufferClosedPayload { buffer_id });
 event_payload!(BufferCreatedPayload { buffer_id, name, path });
 event_payload!(BufferFocusedPayload { buffer_id });

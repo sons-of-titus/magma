@@ -109,18 +109,18 @@ impl ToolWindowManager {
     /// Render docked-bottom tool windows as a resizable bottom panel.
     ///
     /// Returns without rendering if no bottom-docked window is visible.
-    pub fn show_docked_bottom(&mut self, ctx: &egui::Context, editor: &Editor, theme: &GuiTheme) {
+    pub fn show_docked_bottom(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) {
         let visible: Vec<usize> = self.entries.iter().enumerate()
             .filter(|(_, e)| e.visible && e.dock == DockPosition::Bottom)
             .map(|(i, _)| i)
             .collect();
         if visible.is_empty() { return }
 
-        egui::TopBottomPanel::bottom("magma_tools_bottom")
+        egui::containers::Panel::bottom("magma_tools_bottom")
             .resizable(true)
-            .default_height(200.0)
-            .frame(egui::Frame::none().fill(theme.mantle).inner_margin(egui::Margin::same(0.0)))
-            .show(ctx, |ui| {
+            .default_size(200.0)
+            .frame(egui::Frame::NONE.fill(theme.mantle).inner_margin(egui::Margin::same(0)))
+            .show(ui, |ui| {
                 // Tab strip
                 ui.horizontal(|ui| {
                     ui.add_space(4.0);
@@ -133,7 +133,7 @@ impl ToolWindowManager {
                             RichText::new(title).font(prop(12.0)).color(fg)
                         )
                         .fill(bg)
-                        .rounding(egui::Rounding::ZERO);
+                        .corner_radius(egui::CornerRadius::ZERO);
                         if ui.add(btn).clicked() {
                             self.active_bottom = idx;
                         }

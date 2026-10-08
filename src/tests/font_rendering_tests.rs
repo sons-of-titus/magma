@@ -1,5 +1,5 @@
 use crate::kernel::render::frame::cell_width;
-use crate::kernel::state::{Editor, FontConfig};
+use crate::kernel::state::FontConfig;
 use crate::tests::helpers;
 
 #[test]

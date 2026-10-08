@@ -3,14 +3,7 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
-
-fn emit_buffer_changed(ed: &mut crate::kernel::state::Editor, key: usize) {
-    ed.events.emit_typed(keys::events::BUFFER_CHANGED, BufferChangedPayload {
-        buffer_id: key.to_string(),
-    });
-}
 
 unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -19,15 +12,15 @@ unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Jane
         let text = conv::get_str(argc, argv, 2).unwrap_or_default();
         debug!("BI: buffer/insert buf={}, pos={}, text_len={}", key, pos, text.len());
         if ed.buffers.get(key).map(|a| a.lock().unwrap().read_only).unwrap_or(false) {
-            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, BufferReadOnlyPayload {
+            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, crate::kernel::event::payload::BufferReadOnlyPayload {
                 buffer_id: key.to_string(),
             });
             return conv::nil();
         }
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.insert(pos, &text);
         }
-        emit_buffer_changed(&mut *ed, key);
+        ed.publish_buffer_changes();
         conv::nil()
     })
 }
@@ -39,15 +32,15 @@ unsafe extern "C-unwind" fn c_buffer_delete(argc: i32, argv: *mut Janet) -> Jane
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
         debug!("BD: buffer/delete buf={}, start={}, end={}", key, start, end);
         if ed.buffers.get(key).map(|a| a.lock().unwrap().read_only).unwrap_or(false) {
-            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, BufferReadOnlyPayload {
+            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, crate::kernel::event::payload::BufferReadOnlyPayload {
                 buffer_id: key.to_string(),
             });
             return conv::nil();
         }
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.delete(start, end);
         }
-        emit_buffer_changed(&mut *ed, key);
+        ed.publish_buffer_changes();
         conv::nil()
     })
 }
@@ -75,7 +68,7 @@ unsafe extern "C-unwind" fn c_buffer_len(argc: i32, argv: *mut Janet) -> Janet {
 unsafe extern "C-unwind" fn c_buffer_cursor(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        match ed.views.get(&key) {
+        match ed.view_of_buffer(key) {
             Some(view) => conv::integer(view.cursor_offset() as i32),
             None => conv::nil(),
         }
@@ -86,7 +79,7 @@ unsafe extern "C-unwind" fn c_buffer_set_cursor(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let pos = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.set_cursor(pos);
         }
         conv::nil()
@@ -96,7 +89,7 @@ unsafe extern "C-unwind" fn c_buffer_set_cursor(argc: i32, argv: *mut Janet) -> 
 unsafe extern "C-unwind" fn c_buffer_undo(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let ok = ed.views.get_mut(&key).map(|v| v.undo()).unwrap_or(false);
+        let ok = ed.view_of_buffer_mut(key).map(|v| v.undo()).unwrap_or(false);
         conv::boolean(ok)
     })
 }
@@ -104,7 +97,7 @@ unsafe extern "C-unwind" fn c_buffer_undo(argc: i32, argv: *mut Janet) -> Janet 
 unsafe extern "C-unwind" fn c_buffer_redo(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let ok = ed.views.get_mut(&key).map(|v| v.redo()).unwrap_or(false);
+        let ok = ed.view_of_buffer_mut(key).map(|v| v.redo()).unwrap_or(false);
         conv::boolean(ok)
     })
 }

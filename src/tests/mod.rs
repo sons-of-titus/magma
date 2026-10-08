@@ -4,6 +4,9 @@ macro_rules! janet_test { ($ed:ident, $body:block) => {{
     let _lock = $crate::tests::helpers::acquire_janet_lock();
     let mut $ed = $crate::tests::helpers::make_editor();
     $crate::kernel::scripting::init(&mut $ed);
+    // Every Janet C call in the body resolves the editor through the
+    // scoped bridge (docs/core-redesign.md §11) — no stashed pointers.
+    let _editor_scope = $crate::kernel::scripting::EditorScope::new(&mut $ed);
     $body
 }}; }
 
@@ -24,6 +27,13 @@ mod insertable_tests;
 mod terminal_tests;
 mod vc_backend_tests;
 mod janet_eval_tests;
+mod anchor_tests;
+mod transaction_tests;
+mod line_index_tests;
+mod document_property_tests;
+mod transaction_core_tests;
+mod text_layout_tests;
+mod correctness_gates_tests;
 
 test_pairs!(
     extension_foundation, special_buffers, process_async, project_api,

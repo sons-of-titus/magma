@@ -45,6 +45,9 @@ pub struct GuiApp {
     theme:           GuiTheme,
     /// False until the palette has been pushed to egui + the editor once.
     theme_synced:    bool,
+    /// Render signature of the last painted frame; when unchanged there is
+    /// nothing new to paint and no repaint is scheduled (§9.4).
+    last_render_signature: u64,
 }
 
 impl GuiApp {
@@ -83,12 +86,14 @@ impl GuiApp {
             dialogs: DialogManager::new(),
             theme: GuiTheme::mocha(),
             theme_synced: false,
+            last_render_signature: 0,
         }
     }
 }
 
 impl eframe::App for GuiApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         // ── Background events ──────────────────────────────────────────────
         while let Ok(event) = self.bg_receiver.try_recv() {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
@@ -107,7 +112,7 @@ impl eframe::App for GuiApp {
                 (changed, ed.font_config.clone())
             };
             if needs_rebuild {
-                apply_fonts_to_egui(ctx, &font_config);
+                apply_fonts_to_egui(&ctx, &font_config);
                 if let Some(bytes) = font_config.loaded_fonts.values().next() {
                     self.atlas.rasterize(bytes, self.font_size);
                     self.atlas_rasterized = true;
@@ -122,13 +127,13 @@ impl eframe::App for GuiApp {
             ed.font_config.size
         };
         let font_id = FontId::new(self.font_size, FontFamily::Monospace);
-        let (char_w, line_h) = ctx.fonts(|f| (
+        let (char_w, line_h) = ctx.fonts_mut(|f| (
             f.glyph_width(&font_id, 'M'),
             f.row_height(&font_id),
         ));
 
         // ── Key + mouse events ──────────────────────────────────────────────
-        let (key_events, mut raw_mouse_events) = gui_input::collect(ctx, line_h);
+        let (key_events, mut raw_mouse_events) = gui_input::collect(&ctx, line_h);
         {
             let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
             for key in &key_events {
@@ -163,12 +168,14 @@ impl eframe::App for GuiApp {
 
         // ── Theme resolve + propagation ────────────────────────────────────
         {
-            let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
-            let next = GuiTheme::from_options(&ed.options);
+            let next = {
+                let ed = self.editor.read().unwrap_or_else(|e| e.into_inner());
+                GuiTheme::from_options(&ed.options)
+            };
             let changed = !self.theme_synced || next.light != self.theme.light;
             self.theme = next;
             if changed {
-                self.theme.apply_egui(ctx);
+                self.theme.apply_egui(&ctx);
                 let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
                 self.theme.apply_editor(&mut ed);
                 self.theme_synced = true;
@@ -189,11 +196,11 @@ impl eframe::App for GuiApp {
         let mut breadcrumb_action: Option<BreadcrumbAction> = None;
 
         // Status bar — outermost bottom panel.
-        egui::TopBottomPanel::bottom("magma_status")
-            .exact_height(status_h)
-            .frame(egui::Frame::none().fill(self.theme.crust)
-                .inner_margin(egui::Margin::symmetric(6.0, 0.0)))
-            .show(ctx, |ui| {
+        egui::containers::Panel::bottom("magma_status")
+            .exact_size(status_h)
+            .frame(egui::Frame::NONE.fill(self.theme.crust)
+                .inner_margin(egui::Margin::symmetric(6, 0)))
+            .show(ui, |ui| {
                 let ed = ea.read().unwrap_or_else(|e| e.into_inner());
                 StatusBar::show(ui, &ed, &self.theme);
             });
@@ -201,12 +208,12 @@ impl eframe::App for GuiApp {
         // Docked-bottom tool windows — inside the status bar, outside the editor.
         {
             let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-            self.tool_windows.show_docked_bottom(ctx, &ed, &self.theme);
+            self.tool_windows.show_docked_bottom(ui, &ed, &self.theme);
         }
 
         // Tab bar — top panel.
-        egui::TopBottomPanel::top("magma_tabs")
-            .show(ctx, |ui| {
+        egui::containers::Panel::top("magma_tabs")
+            .show(ui, |ui| {
                 let ed = ea.read().unwrap_or_else(|e| e.into_inner());
                 if let Some(a) = TabBar::show(ui, &ed, &self.theme) {
                     tab_action = Some(a);
@@ -215,9 +222,9 @@ impl eframe::App for GuiApp {
 
         // Breadcrumb bar — below the tab bar, above the editor.
         if breadcrumb_on {
-            egui::TopBottomPanel::top("magma_breadcrumb")
-                .frame(egui::Frame::none().fill(self.theme.crust))
-                .show(ctx, |ui| {
+            egui::containers::Panel::top("magma_breadcrumb")
+                .frame(egui::Frame::NONE.fill(self.theme.crust))
+                .show(ui, |ui| {
                     let ed = ea.read().unwrap_or_else(|e| e.into_inner());
                     breadcrumb_action = BreadcrumbBar::show(ui, &ed, &self.theme);
                 });
@@ -225,12 +232,12 @@ impl eframe::App for GuiApp {
 
         // Tool window icon strip — outermost left strip (28 px wide).
         let mut toggled_tool: Option<usize> = None;
-        egui::SidePanel::left("magma_tool_strip")
-            .exact_width(28.0)
+        egui::containers::Panel::left("magma_tool_strip")
+            .exact_size(28.0)
             .resizable(false)
-            .frame(egui::Frame::none().fill(self.theme.crust)
-                .inner_margin(egui::Margin::same(0.0)))
-            .show(ctx, |ui| {
+            .frame(egui::Frame::NONE.fill(self.theme.crust)
+                .inner_margin(egui::Margin::same(0)))
+            .show(ui, |ui| {
                 toggled_tool = self.tool_windows.show_sidebar_edge(ui, &self.theme);
             });
         if let Some(idx) = toggled_tool {
@@ -239,10 +246,10 @@ impl eframe::App for GuiApp {
 
         // Project tree sidebar.
         if sidebar_open {
-            egui::SidePanel::left("magma_sidebar")
-                .default_width(sidebar_width)
+            egui::containers::Panel::left("magma_sidebar")
+                .default_size(sidebar_width)
                 .resizable(true)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     let ed = ea.read().unwrap_or_else(|e| e.into_inner());
                     sidebar_file = ProjectTree::show(ui, &ed, &mut self.sidebar_state, &self.theme);
                 });
@@ -289,9 +296,9 @@ impl eframe::App for GuiApp {
             atlas_pixels:  atlas_pixels_upload,
             theme:         &self.theme,
         };
-        egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(self.theme.base))
-            .show(ctx, |ui| {
+        egui::containers::CentralPanel::no_frame()
+            .frame(egui::Frame::NONE.fill(self.theme.base))
+            .show(ui, |ui| {
                 pane_action = render_editor_pane(ui, &paint, char_w, line_h, &mut raw_mouse_events);
             });
 
@@ -303,7 +310,7 @@ impl eframe::App for GuiApp {
         // ── Modal dialogs ─────────────────────────────────────────────────
         {
             let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-            let actions = self.dialogs.show(ctx, &ed, &self.theme);
+            let actions = self.dialogs.show(&ctx, &ed, &self.theme);
             if !actions.is_empty() {
                 let mut ed = self.editor.write().unwrap_or_else(|e| e.into_inner());
                 for action in actions {
@@ -315,9 +322,20 @@ impl eframe::App for GuiApp {
         // Floating tool windows — rendered on top of everything.
         {
             let ed = ea.read().unwrap_or_else(|e| e.into_inner());
-            self.tool_windows.show_floating(ctx, &ed, &self.theme);
+            self.tool_windows.show_floating(&ctx, &ed, &self.theme);
         }
 
-        ctx.request_repaint();
+        // Repaint only when something paintable changed.  OS input events
+        // wake egui on their own; a static editor must not continuously
+        // rebuild itself (docs/core-redesign.md §9.4).
+        let signature = {
+            let ed = ea.read().unwrap_or_else(|e| e.into_inner());
+            let terminal_active = ed.io.terminal_mode_buf.is_some();
+            (ed.render_signature(), terminal_active)
+        };
+        if signature.0 != self.last_render_signature || signature.1 {
+            self.last_render_signature = signature.0;
+            ctx.request_repaint();
+        }
     }
 }

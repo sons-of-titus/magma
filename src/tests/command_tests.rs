@@ -5,11 +5,6 @@ fn set_cursor(ed: &mut crate::kernel::state::Editor, offset: usize) {
     ed.views.get_mut(&key).unwrap().set_cursor(offset);
 }
 
-fn buf_insert(ed: &mut crate::kernel::state::Editor, offset: usize, text: &str) {
-    let key = helpers::focused_key(ed);
-    ed.views.get_mut(&key).unwrap().insert(offset, text);
-}
-
 // ── Cursor movement ───────────────────────────────────────────────────
 
 #[test]

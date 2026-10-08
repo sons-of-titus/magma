@@ -142,7 +142,7 @@ fn discover_nonexistent_dir_is_noop() {
 
 #[test]
 fn discover_empty_dir_registers_nothing() {
-    use std::io::Write as _;
+    
     let tmp = std::env::temp_dir().join(format!("magma_le_empty_{}", std::process::id()));
     std::fs::create_dir_all(&tmp).ok();
     let mut r = LanguageRegistry::new();

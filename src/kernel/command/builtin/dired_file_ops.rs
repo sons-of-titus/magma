@@ -231,13 +231,13 @@ fn dired_copy_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 
 fn dired_cursor_line(editor: &Editor) -> usize {
     let Some(key) = editor.dired.buf_key else { return 0 };
-    editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0)
+    editor.view_of_buffer(key).map(|v| v.cursor.line).unwrap_or(0)
 }
 
 fn dired_redraw_helper(editor: &mut Editor) -> CommandResult {
     let text = editor.dired.reload()?;
     let Some(key) = editor.dired.buf_key else { return Ok(()); };
-    let saved_line = editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0);
+    let saved_line = editor.view_of_buffer(key).map(|v| v.cursor.line).unwrap_or(0);
     if let Some(arc) = editor.buffers.get(key) {
         let mut buf = arc.lock().unwrap();
         let len = buf.len();
@@ -246,7 +246,7 @@ fn dired_redraw_helper(editor: &mut Editor) -> CommandResult {
         let new_off = buf.line_start_offset(saved_line.min(buf.line_count().saturating_sub(1)));
         drop(buf);
         if let Some(off) = new_off {
-            if let Some(view) = editor.views.get_mut(&key) {
+            if let Some(view) = editor.view_of_buffer_mut(key) {
                 view.set_cursor(off);
             }
         }

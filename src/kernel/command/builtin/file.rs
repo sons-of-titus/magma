@@ -12,7 +12,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             let path = {
-                let view = editor.views.get(&buf_id)
+                let view = editor.view_of_buffer(buf_id)
                     .ok_or_else(|| "No buffer".to_string())?;
                 let line_num = current_line(view);
                 let buf = view.buffer.lock().unwrap();

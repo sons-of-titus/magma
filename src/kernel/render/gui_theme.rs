@@ -11,16 +11,21 @@ use eframe::egui::{self, Color32};
 use crate::kernel::state::Editor;
 
 /// Shared icon glyphs — one consistent set across chrome widgets.
+///
+/// Every codepoint must be covered by egui's default font fallback chain
+/// (Ubuntu-Light → NotoEmoji → emoji-icon-font); an uncovered glyph renders
+/// as epaint's replacement tofu square.  Enforced by
+/// `every_theme_icon_glyph_is_covered_by_egui_default_fonts`.
 pub mod icons {
     pub const TERMINAL: &str = "⊟";
-    pub const SEARCH:   &str = "⌕";
-    pub const FILE:     &str = "🗎";
+    pub const SEARCH:   &str = "⌖";
+    pub const FILE:     &str = "⛶";
     pub const SYMBOL:   &str = "ƒ";
     pub const COMMAND:  &str = "⌘";
     pub const SETTINGS: &str = "⚙";
-    pub const CLOSE:    &str = "✕";
+    pub const CLOSE:    &str = "×";
     pub const SEPARATOR: &str = "›";
-    pub const GIT_BRANCH: &str = "\u{238b}";
+    pub const GIT_BRANCH: &str = "⚒";
 }
 
 #[derive(Debug, Clone)]
@@ -109,32 +114,32 @@ impl GuiTheme {
         vis.selection.bg_fill = self.blue;
         vis.selection.stroke = egui::Stroke::new(1.0, self.text);
 
-        let r = egui::Rounding::same(6.0);
+        let r = egui::CornerRadius::same(6);
         vis.widgets.noninteractive.bg_fill        = self.base;
         vis.widgets.noninteractive.bg_stroke      = egui::Stroke::new(1.0, self.surface0);
         vis.widgets.noninteractive.fg_stroke      = egui::Stroke::new(1.0, self.subtext0);
-        vis.widgets.noninteractive.rounding       = r;
+        vis.widgets.noninteractive.corner_radius  = r;
         vis.widgets.inactive.bg_fill              = self.surface0;
         vis.widgets.inactive.bg_stroke            = egui::Stroke::new(1.0, self.surface0);
         vis.widgets.inactive.fg_stroke            = egui::Stroke::new(1.0, self.text);
-        vis.widgets.inactive.rounding             = r;
+        vis.widgets.inactive.corner_radius        = r;
         vis.widgets.hovered.bg_fill               = self.surface1;
         vis.widgets.hovered.bg_stroke             = egui::Stroke::new(1.0, self.blue);
         vis.widgets.hovered.fg_stroke             = egui::Stroke::new(1.0, self.text);
-        vis.widgets.hovered.rounding              = r;
+        vis.widgets.hovered.corner_radius         = r;
         vis.widgets.active.bg_fill                = self.surface1;
         vis.widgets.active.bg_stroke              = egui::Stroke::new(1.0, self.blue);
         vis.widgets.active.fg_stroke              = egui::Stroke::new(1.0, self.text);
-        vis.widgets.active.rounding               = r;
+        vis.widgets.active.corner_radius          = r;
         vis.widgets.open.bg_fill                  = self.surface0;
-        vis.widgets.open.rounding                 = r;
+        vis.widgets.open.corner_radius            = r;
 
-        vis.window_rounding = egui::Rounding::same(8.0);
+        vis.window_corner_radius = egui::CornerRadius::same(8);
         vis.window_stroke   = egui::Stroke::new(1.0, self.surface0);
         vis.window_shadow    = egui::Shadow {
-            offset: egui::vec2(0.0, 4.0),
-            blur:   14.0,
-            spread: 2.0,
+            offset: [0, 4],
+            blur:   14,
+            spread: 2,
             color:  if self.light {
                 Color32::from_black_alpha(60)
             } else {
@@ -143,10 +148,12 @@ impl GuiTheme {
         };
         vis.popup_shadow = vis.window_shadow;
 
-        let mut style = (*ctx.style()).clone();
+        let theme = if self.light { egui::Theme::Light } else { egui::Theme::Dark };
+        let mut style = (*ctx.style_of(theme)).clone();
         style.visuals = vis;
         style.spacing.item_spacing = egui::vec2(6.0, 4.0);
-        ctx.set_style(style);
+        ctx.set_style_of(theme, style);
+        ctx.set_theme(theme);
     }
 
     /// Push the palette into the editor colour map so the Surface-based

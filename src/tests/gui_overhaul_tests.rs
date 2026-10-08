@@ -142,7 +142,7 @@ fn search_finds_across_buffers() {
 
 #[test]
 fn search_smart_case() {
-    let mut ed = make_editor_with_buffer("Needle\nneedle\n");
+    let ed = make_editor_with_buffer("Needle\nneedle\n");
     let mut dlg = SearchDialog::new();
     dlg.query = "needle".into();
     dlg.search(&ed);
@@ -277,4 +277,73 @@ fn theme_applies_editor_colors() {
     assert_eq!(ed.theme_color("gui-bg"), (239, 241, 245));
     GuiTheme::mocha().apply_editor(&mut ed);
     assert_eq!(ed.theme_color("gui-bg"), (30, 30, 46));
+}
+
+// ── Icon glyph coverage ──────────────────────────────────────────────────────
+
+#[test]
+fn every_theme_icon_glyph_is_covered_by_egui_default_fonts() {
+    use crate::kernel::render::gui_theme::icons;
+    use eframe::egui::epaint::text::{FontDefinitions, FontId, Fonts, TextOptions};
+
+    let mut fonts = Fonts::new(
+        TextOptions { max_texture_side: 4096, ..Default::default() },
+        FontDefinitions::default(),
+    );
+    let all = [
+        ("TERMINAL",  icons::TERMINAL),
+        ("SEARCH",    icons::SEARCH),
+        ("FILE",      icons::FILE),
+        ("SYMBOL",    icons::SYMBOL),
+        ("COMMAND",   icons::COMMAND),
+        ("SETTINGS",  icons::SETTINGS),
+        ("CLOSE",     icons::CLOSE),
+        ("SEPARATOR", icons::SEPARATOR),
+        ("GIT_BRANCH", icons::GIT_BRANCH),
+    ];
+    for (name, icon) in all {
+        for ch in icon.chars() {
+            assert!(
+                fonts.has_glyph(&FontId::proportional(13.0), ch),
+                "icons::{name} contains {ch:?} (U+{:04X}), which is missing from every \
+                 font in egui's default Proportional family and renders as tofu (◻)",
+                ch as u32,
+            );
+        }
+    }
+}
+
+#[test]
+fn every_sidebar_glyph_is_covered_by_egui_default_fonts() {
+    use crate::kernel::render::gui_sidebar::{file_icon, ARROW_CLOSED, ARROW_OPEN,
+                                             DIR_CLOSED, DIR_OPEN};
+    use eframe::egui::epaint::text::{FontDefinitions, FontId, Fonts, TextOptions};
+
+    let mut fonts = Fonts::new(
+        TextOptions { max_texture_side: 4096, ..Default::default() },
+        FontDefinitions::default(),
+    );
+    let tree_glyphs = [
+        ("ARROW_OPEN", ARROW_OPEN),
+        ("ARROW_CLOSED", ARROW_CLOSED),
+        ("DIR_OPEN", DIR_OPEN),
+        ("DIR_CLOSED", DIR_CLOSED),
+    ];
+    let extensions = ["main.rs", "init.janet", "app.py", "Cargo.toml", "README.md",
+                      "data.json", "conf.yaml", "conf.yml", "run.sh", "Cargo.lock",
+                      "LICENSE"];
+    let mut glyphs: Vec<(&str, &str)> = tree_glyphs.to_vec();
+    for ext in extensions {
+        glyphs.push((ext, file_icon(ext)));
+    }
+    for (source, glyph) in glyphs {
+        for ch in glyph.chars() {
+            assert!(
+                fonts.has_glyph(&FontId::proportional(13.0), ch),
+                "sidebar glyph for {source} is {ch:?} (U+{:04X}), which is missing from \
+                 every font in egui's default Proportional family and renders as tofu (◻)",
+                ch as u32,
+            );
+        }
+    }
 }

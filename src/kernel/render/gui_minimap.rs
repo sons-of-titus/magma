@@ -6,7 +6,7 @@
 //! from the buffer's syntax highlight layer.  A stroked rectangle marks the
 //! current viewport.  Clicking (or dragging) the minimap jumps to that line.
 
-use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, CornerRadius, Sense, Vec2};
 use crate::kernel::state::Editor;
 use super::gui_theme::GuiTheme;
 
@@ -62,38 +62,29 @@ impl Minimap {
         let resp = ui.allocate_rect(rect, Sense::click_and_drag());
         let _ = resp;
 
-        ui.painter().rect_filled(rect, Rounding::ZERO, theme.crust);
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, theme.crust);
 
         let max_rows = ((rect.height() / MIN_ROW_H).floor() as usize).max(1);
         let step     = minimap_step(total, max_rows);
         let row_h    = (rect.height() / total as f32).clamp(MIN_ROW_H, MAX_ROW_H);
 
-        let text = buf.slice(0, buf.len());
         let hl = collect_highlights(editor, buf_id);
 
         let base_fg = theme.subtext0;
-        let mut line_start = 0usize;
+        // Only sampled lines are extracted — a viewport-scaled summary must
+        // not copy the whole document every frame (§9.1).
         let mut line_idx = 0usize;
-        for (row, ch) in text.char_indices() {
-            if ch != '\n' { continue; }
+        while line_idx < total {
             if line_idx % step == 0 {
+                let span = buf.line_span(line_idx).unwrap_or(0..0);
                 Self::draw_line(
-                    ui, &text[line_start..row], line_start,
+                    ui, &buf.slice(span.start, span.end), span.start,
                     &hl, editor, base_fg,
                     rect.left(), rect.top() + (line_idx / step) as f32 * row_h, row_h,
                 );
             }
             line_idx += 1;
-            line_start = row + 1;
         }
-        if line_start < text.len() && line_idx % step == 0 && line_idx < total {
-            Self::draw_line(
-                ui, &text[line_start..], line_start,
-                &hl, editor, base_fg,
-                rect.left(), rect.top() + (line_idx / step) as f32 * row_h, row_h,
-            );
-        }
-
         Self::viewport_rect(ui, rect, theme, row_h, step, scroll_top, visible_rows);
 
         // ── Click / drag → jump ──────────────────────────────────────────
@@ -120,8 +111,9 @@ impl Minimap {
                 Pos2::new(rect.left() + 1.0, vp_top),
                 Vec2::new(STRIP_W - 2.0, vp_rows.min(rect.height())),
             ),
-            Rounding::same(2.0),
+            CornerRadius::same(2),
             egui::Stroke::new(1.0, theme.overlay0),
+            egui::StrokeKind::Inside,
         );
     }
 
@@ -178,7 +170,7 @@ impl Minimap {
                         ),
                         Vec2::new(run_w.max(MIN_BAR_PX), h),
                     ),
-                    Rounding::same(1.0),
+                    CornerRadius::same(1),
                     *color,
                 );
             }
@@ -189,7 +181,7 @@ impl Minimap {
 
 fn collect_highlights(editor: &Editor, buf_id: usize) -> Vec<(usize, usize, String)> {
     let mut out = Vec::new();
-    if let Some(v) = editor.views.get(&buf_id) {
+    if let Some(v) = editor.view_of_buffer(buf_id) {
         for (s, e, f) in &v.highlights { out.push((*s, *e, f.clone())); }
         for layer in v.highlight_layers.values() {
             for (s, e, f) in layer { out.push((*s, *e, f.clone())); }

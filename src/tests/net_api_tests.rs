@@ -1,6 +1,5 @@
 //! Pure-Rust tests for the Sprint 13 network API state (no Janet VM needed).
 
-use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 // ── net_connections ───────────────────────────────────────────────────────────

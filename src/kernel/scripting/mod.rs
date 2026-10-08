@@ -129,10 +129,14 @@ pub(crate) mod conv {
     }
 }
 
-/// Access the current thread's Editor from within a Janet C function callback.
+/// The FFI soundness invariant (docs/core-redesign.md §11): a Janet C
+/// function may only touch the editor inside a `scoped_editor` window — a
+/// span where the caller's exclusive `&mut Editor` borrow is live and no
+/// other Rust-side `&mut` is used.  The pointer is never kept across the
+/// scope: a guard that has been dropped cannot be aliased from Janet.
 ///
-/// Re-entrant-safe: if a Janet function calls back into Rust, the inner call
-/// creates a new `&mut` from the same raw pointer.
+/// Access the current thread's Editor from within a Janet C function
+/// callback.  Signals a clean Janet error outside any scope.
 #[cfg(feature = "janet")]
 pub(crate) fn with_editor<F: FnOnce(&mut crate::kernel::state::Editor) -> evil_janet::Janet>(
     f: F,
@@ -143,14 +147,54 @@ pub(crate) fn with_editor<F: FnOnce(&mut crate::kernel::state::Editor) -> evil_j
     })
 }
 
-/// Update the thread-local editor pointer.
-///
-/// Called from command closures when the editor address may have changed
-/// (e.g. the RwLock guard was dropped and re-acquired).
+/// Run `f` with the editor pointer installed from a live `&mut` borrow.
+/// Nesting restores the previous pointer on exit.  Within `f`, all editor
+/// access from Janet goes through `with_editor`; Rust code must not use
+/// its own borrow for the editor while Janet is running.  `f` must not
+/// capture the editor — use `EditorScope` where it needs to.
 #[cfg(feature = "janet")]
-pub(crate) fn set_editor_ptr(editor: *mut Editor) {
-    EDITOR_PTR.with(|cell| cell.set(Some(editor)));
+pub fn scoped_editor<R>(editor: &mut Editor, f: impl FnOnce() -> R) -> R {
+    let _scope = EditorScope::new(editor);
+    f()
 }
+
+/// Installs the editor pointer on creation and restores the previous value
+/// on drop.  Nesting composes: the inner scope's drop reinstates the outer
+/// pointer.
+#[cfg(feature = "janet")]
+pub struct EditorScope {
+    prev: Option<*mut Editor>,
+}
+
+#[cfg(feature = "janet")]
+impl EditorScope {
+    pub fn new(editor: &mut Editor) -> Self {
+        let prev = EDITOR_PTR.with(|cell| cell.replace(Some(editor as *mut Editor)));
+        EditorScope { prev }
+    }
+}
+
+#[cfg(feature = "janet")]
+impl Drop for EditorScope {
+    fn drop(&mut self) {
+        EDITOR_PTR.with(|cell| cell.set(self.prev));
+    }
+}
+
+#[cfg(not(feature = "janet"))]
+pub fn scoped_editor<R>(editor: &mut Editor, f: impl FnOnce() -> R) -> R {
+    let _ = editor;
+    f()
+}
+
+/// Drop any editor pointer left installed by a scope (test teardown).
+#[cfg(feature = "janet")]
+pub fn clear_editor_scope() {
+    EDITOR_PTR.with(|cell| cell.set(None));
+}
+
+#[cfg(not(feature = "janet"))]
+pub fn clear_editor_scope() {}
 
 /// Point the thread-local surface pointer at `surface` for the duration of a
 /// `render-frame` event dispatch.  The pointer is valid until `clear_surface_ptr`
@@ -266,11 +310,6 @@ mod agent_api;
 mod language_api;
 
 #[cfg(feature = "janet")]
-pub(crate) use process_api::execute_stored_task;
-#[cfg(feature = "janet")]
-pub(crate) use task_api::execute_task_complete_callback;
-
-#[cfg(feature = "janet")]
 mod loader;
 
 #[cfg(feature = "janet")]
@@ -336,9 +375,17 @@ pub fn eval_result(expr: &str) -> Result<String, String> {
 pub fn call_janet_command(
     editor: &mut Editor,
     name: &str,
+    args: &std::collections::HashMap<String, crate::kernel::command::args::ArgValue>,
+) -> crate::kernel::command::CommandResult {
+    scoped_editor(editor, || call_janet_command_scoped(name, args))
+}
+
+/// Body of `call_janet_command`; requires an active `scoped_editor` window.
+#[cfg(feature = "janet")]
+pub fn call_janet_command_scoped(
+    name: &str,
     _args: &std::collections::HashMap<String, crate::kernel::command::args::ArgValue>,
 ) -> crate::kernel::command::CommandResult {
-    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
     unsafe {
         let env = janet_core_env(std::ptr::null_mut());
         let mut root: Janet = std::mem::zeroed();
@@ -366,23 +413,42 @@ pub fn call_janet_command(
 
 /// Load a Janet file from disk.
 ///
-/// The caller must ensure `EDITOR_PTR` is set so that the background handle
-/// (if any) can be accessed through the editor.
+/// Requires an active `scoped_editor` window; the background handle is read
+/// through `with_editor`.
 #[cfg(feature = "janet")]
 pub fn load_file(path: &str) -> Result<(), String> {
-    let path_owned = path.to_string();
-    let content = match EDITOR_PTR.with(|cell| cell.get()) {
-        Some(ptr) => {
-            let ed = unsafe { &*ptr };
-            match &ed.background {
-                Some(bg) => bg.block_on(move || std::fs::read_to_string(path_owned))
-                    .map_err(|e| format!("{e}"))?,
-                None => std::fs::read_to_string(path).map_err(|e| format!("{e}"))?,
-            }
-        }
-        None => std::fs::read_to_string(path).map_err(|e| format!("{e}"))?,
-    };
+    let mut content: Option<Result<String, String>> = None;
+    with_editor(|ed| {
+        let via_bg = ed.background.as_ref().map(|bg| {
+            let p = path.to_string();
+            bg.block_on(move || std::fs::read_to_string(p))
+                .map_err(|e| format!("{e}"))
+        });
+        content = Some(via_bg.unwrap_or_else(|| {
+            std::fs::read_to_string(path).map_err(|e| format!("{e}"))
+        }));
+        conv::nil()
+    });
+    let content = content.unwrap_or_else(|| std::fs::read_to_string(path).map_err(|e| format!("{e}")))?;
     loader::eval_string(path, &content)
+}
+
+/// Run a stored background task's function inside the current scope.
+#[cfg(feature = "janet")]
+pub fn execute_stored_task_scoped(task_id: u64) {
+    with_editor(|ed| {
+        crate::kernel::scripting::process_api::execute_stored_task(ed, task_id);
+        conv::nil()
+    });
+}
+
+/// Run a task-completion callback inside the current scope.
+#[cfg(feature = "janet")]
+pub fn execute_task_complete_callback_scoped(task_id: u64) {
+    with_editor(|ed| {
+        crate::kernel::scripting::task_api::execute_task_complete_callback(ed, task_id);
+        conv::nil()
+    });
 }
 
 // ── Stubs (janet feature disabled) ──────────────────────────────────────────
@@ -410,11 +476,16 @@ use crate::kernel::command::args::ArgValue;
 use crate::kernel::command::CommandResult;
 
 pub trait ScriptRuntime: Send + Sync {
-    fn init(&mut self, editor: *mut crate::kernel::state::Editor);
-    fn eval(&mut self, expr: &str) -> String;
-    fn eval_result(&mut self, expr: &str) -> Result<String, String>;
-    fn load_file(&mut self, path: &str) -> Result<(), String>;
-    fn call_command(&mut self, name: &str, args: &HashMap<String, ArgValue>) -> CommandResult;
-    fn execute_stored_task(&mut self, _task_id: u64) {}
-    fn execute_task_complete_callback(&mut self, _task_id: u64) {}
+    fn init(&mut self, editor: &mut Editor);
+    fn eval(&mut self, editor: &mut Editor, expr: &str) -> String;
+    fn eval_result(&mut self, editor: &mut Editor, expr: &str) -> Result<String, String>;
+    fn load_file(&mut self, editor: &mut Editor, path: &str) -> Result<(), String>;
+    fn call_command(
+        &mut self,
+        editor: &mut Editor,
+        name: &str,
+        args: &HashMap<String, ArgValue>,
+    ) -> CommandResult;
+    fn execute_stored_task(&mut self, _editor: &mut Editor, _task_id: u64) {}
+    fn execute_task_complete_callback(&mut self, _editor: &mut Editor, _task_id: u64) {}
 }

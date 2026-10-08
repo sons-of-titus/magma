@@ -50,7 +50,7 @@ pub fn collect(ctx: &egui::Context, line_h: f32) -> (Vec<String>, Vec<RawMouseEv
                         modifiers: String::new(),
                     });
                 }
-                egui::Event::MouseWheel { unit, delta, modifiers } => {
+                egui::Event::MouseWheel { unit, delta, modifiers, .. } => {
                     let dy = match unit {
                         egui::MouseWheelUnit::Point => (delta.y / line_h).round() as i32,
                         egui::MouseWheelUnit::Line  => delta.y.round() as i32,

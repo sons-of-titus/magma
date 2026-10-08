@@ -1,0 +1,168 @@
+//! Kernel document — rope + revision + change history behind one mutation
+//! gateway.
+//!
+//! Phase 1 (docs/core-redesign.md): the kernel is exercised only by tests;
+//! `Buffer` still runs the old path until Phase 2 integration.  The gateway
+//! contract is already final: every mutation is a `commit`, validation
+//! happens before any rope mutation, and one commit is exactly one revision
+//! transition.
+
+use super::line_index::LineIndex;
+use super::revision::Revision;
+use super::rope::Rope;
+use super::transaction::{
+    CommittedEdit, EditTransaction, TransactionBuilder, TransactionError,
+};
+
+#[derive(Debug)]
+pub struct Document {
+    rope: Rope,
+    revision: Revision,
+    /// Full committed history, ascending.  Bounded only by document lifetime;
+    /// Phase 2's ChangeHistory owns retention policy.
+    history: Vec<EditTransaction>,
+}
+
+impl Document {
+    pub fn new() -> Self {
+        Document {
+            rope: Rope::new(),
+            revision: Revision::first(),
+            history: Vec::new(),
+        }
+    }
+
+    pub fn from_string(content: &str) -> Self {
+        Document {
+            rope: Rope::from_string(content),
+            ..Document::new()
+        }
+    }
+
+    pub fn revision(&self) -> Revision {
+        self.revision
+    }
+
+    pub fn len(&self) -> usize {
+        self.rope.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rope.is_empty()
+    }
+
+    /// Whole-document text.  Tests and non-hot-path consumers only; the
+    /// render path must never need this (Phase 9).
+    pub fn text(&self) -> String {
+        self.rope.slice(0, self.rope.len()).into_owned()
+    }
+
+    /// Snap an offset down to the nearest char boundary, clamped to len.
+    /// The forgiving boundary of the public buffer API.
+    pub fn snap_offset(&self, offset: usize) -> usize {
+        self.rope.floor_boundary(offset)
+    }
+
+    pub fn chars_between(&self, start: usize, end: usize) -> usize {
+        self.rope.chars_between(start, end)
+    }
+
+    pub fn rope_text(&self, start: usize, end: usize) -> String {
+        self.rope.slice(start, end).into_owned()
+    }
+
+    pub fn char_at(&self, offset: usize) -> Option<char> {
+        self.rope.char_at(offset)
+    }
+
+    pub fn rope_handle(&self) -> &Rope {
+        &self.rope
+    }
+
+    pub fn line_index(&self) -> LineIndex<'_> {
+        LineIndex::new(&self.rope)
+    }
+
+    /// Transactions committed strictly after `seen`.  The canonical change
+    /// feed for every consumer (Phase 6).
+    pub fn changes_since(&self, seen: Revision) -> &[EditTransaction] {
+        let pos = self
+            .history
+            .partition_point(|t| t.revision_before < seen);
+        &self.history[pos..]
+    }
+
+    pub fn history(&self) -> &[EditTransaction] {
+        &self.history
+    }
+
+    /// The one mutation path.  `Ok(None)` means the builder held no
+    /// surviving edits: nothing was applied and the revision did not move.
+    pub fn commit(
+        &mut self,
+        builder: TransactionBuilder,
+    ) -> Result<Option<EditTransaction>, TransactionError> {
+        let origin = builder.origin();
+        let edits = builder.normalize()?;
+        if edits.is_empty() {
+            return Ok(None);
+        }
+
+        let len = self.rope.len();
+        for edit in &edits {
+            if edit.range.end > len {
+                return Err(TransactionError::OutOfBounds {
+                    range: edit.range.clone(),
+                    len,
+                });
+            }
+            if !self.rope.is_char_boundary(edit.range.start)
+                || !self.rope.is_char_boundary(edit.range.end)
+            {
+                return Err(TransactionError::NotCharBoundary {
+                    offset: if self.rope.is_char_boundary(edit.range.start) {
+                        edit.range.end
+                    } else {
+                        edit.range.start
+                    },
+                });
+            }
+        }
+
+        // Read old text for every edit first, then mutate back-to-front so
+        // pre-transaction coordinates stay valid for every applied edit.
+        let committed: Vec<CommittedEdit> = edits
+            .iter()
+            .map(|edit| CommittedEdit {
+                edit: edit.clone(),
+                old_text: self.rope.slice(edit.range.start, edit.range.end).into_owned(),
+            })
+            .collect();
+
+        for edit in edits.iter().rev() {
+            if edit.range.start < edit.range.end {
+                self.rope.delete(edit.range.start, edit.range.end);
+            }
+            if !edit.inserted_text.is_empty() {
+                self.rope.insert(edit.range.start, &edit.inserted_text);
+            }
+        }
+
+        let revision_before = self.revision;
+        self.revision = revision_before.next();
+        let txn = EditTransaction {
+            revision_before,
+            revision_after: self.revision,
+            edits: committed,
+            origin,
+        };
+        self.history.push(txn.clone());
+        Ok(Some(txn))
+    }
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Document::new()
+    }
+}

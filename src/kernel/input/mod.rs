@@ -89,7 +89,7 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
     // ── Terminal forwarding ─────────────────────────────────────────
     if let Some(buf_id) = ed.io.terminal_mode_buf {
         forward_to_terminal(ed, buf_id, key);
-        ed.events.drain_and_dispatch();
+        ed.dispatch_events_scoped();
         return;
     }
 
@@ -97,11 +97,14 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
     if let Some(ref fn_name) = ed.on_input_fn.clone() {
         ed.input_consumed = false;
         let expr = format!("({} {:?})", fn_name, key);
-        if let Some(ref mut rt) = ed.runtime {
-            rt.eval(&expr);
+        let mut rt = ed.runtime.take();
+        if let Some(rt) = &mut rt {
+            rt.eval(ed, &expr);
         }
+        ed.runtime = rt;
         if ed.input_consumed {
-            ed.events.drain_and_dispatch();
+            ed.publish_buffer_changes();
+            ed.dispatch_events_scoped();
             return;
         }
     }
@@ -112,7 +115,7 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
     if ed.editor_mode.minibuffer.is_some() {
         if is_insertable(key) {
             handle_text_input(ed, key);
-            ed.events.drain_and_dispatch();
+            ed.dispatch_events_scoped();
             return;
         }
         // Fall through to keymap lookup for non-insertable keys.
@@ -125,7 +128,8 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
     } else if ed.editor_mode.accepts_text {
         handle_text_input(ed, key);
     }
-    ed.events.drain_and_dispatch();
+    ed.publish_buffer_changes();
+    ed.dispatch_events_scoped();
 }
 
 /// Get the focused buffer's slab key, or 0.
@@ -179,7 +183,7 @@ pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
             return;
         }
 
-        if let Some(view) = ed.views.get_mut(&slab) {
+        if let Some(view) = ed.view_of_buffer_mut(slab) {
             let cur = view.cursor_offset();
             view.insert(cur, key);
         }
@@ -190,7 +194,7 @@ pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
 fn apply_to_all_cursors(ed: &mut crate::kernel::state::Editor, slab: usize, key: &str) {
     let mut cursors: Vec<usize> = Vec::new();
     cursors.push({
-        if let Some(view) = ed.views.get(&slab) {
+        if let Some(view) = ed.view_of_buffer(slab) {
             view.cursor_offset()
         } else {
             return;
@@ -203,14 +207,14 @@ fn apply_to_all_cursors(ed: &mut crate::kernel::state::Editor, slab: usize, key:
     cursors.dedup();
 
     for &pos in cursors.iter().rev() {
-        if let Some(view) = ed.views.get_mut(&slab) {
+        if let Some(view) = ed.view_of_buffer_mut(slab) {
             view.set_cursor(pos);
             view.insert(pos, key);
         }
     }
 
     if let Some(&first) = cursors.first()
-        && let Some(view) = ed.views.get_mut(&slab) {
+        && let Some(view) = ed.view_of_buffer_mut(slab) {
             let adjustment = key.len();
             view.set_cursor(first + adjustment);
         }

@@ -72,26 +72,29 @@ fn store_janet_command(name: &str, fn_val: Janet) {
 fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &str) {
     let lookup_name = name.to_string();
     ed.commands.register_fn(name, "Janet-defined command", vec![], move |ed, _args| {
-        crate::kernel::scripting::set_editor_ptr(ed as *mut crate::kernel::state::Editor);
-        unsafe {
-            let env = janet_core_env(std::ptr::null_mut());
-            let mut root: Janet = std::mem::zeroed();
-            let sym_bytes = b"*janet-commands*";
-            let cmd_sym = janet_symbol(sym_bytes.as_ptr(), sym_bytes.len() as i32);
-            if janet_resolve(env, cmd_sym, &mut root) == JanetBindingType_JANET_BINDING_NONE {
-                return Ok(());
+        // The registry hands us a live exclusive borrow; the Janet call runs
+        // inside its scope (docs/core-redesign.md §11).
+        crate::kernel::scripting::scoped_editor(ed, || {
+            unsafe {
+                let env = janet_core_env(std::ptr::null_mut());
+                let mut root: Janet = std::mem::zeroed();
+                let sym_bytes = b"*janet-commands*";
+                let cmd_sym = janet_symbol(sym_bytes.as_ptr(), sym_bytes.len() as i32);
+                if janet_resolve(env, cmd_sym, &mut root) == JanetBindingType_JANET_BINDING_NONE {
+                    return Ok(());
+                }
+                let table = janet_unwrap_table(root);
+                let key = janet_string(lookup_name.as_ptr() as *const u8, lookup_name.len() as i32);
+                let func_val = janet_table_get(table, janet_wrap_string(key));
+                if janet_checktype(func_val, JanetType_JANET_FUNCTION) == 0 {
+                    return Ok(());
+                }
+                let func = janet_unwrap_function(func_val);
+                let mut out: Janet = std::mem::zeroed();
+                janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
             }
-            let table = janet_unwrap_table(root);
-            let key = janet_string(lookup_name.as_ptr() as *const u8, lookup_name.len() as i32);
-            let func_val = janet_table_get(table, janet_wrap_string(key));
-            if janet_checktype(func_val, JanetType_JANET_FUNCTION) == 0 {
-                return Ok(());
-            }
-            let func = janet_unwrap_function(func_val);
-            let mut out: Janet = std::mem::zeroed();
-            janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
-        }
-        Ok(())
+            Ok(())
+        })
     });
 }
 

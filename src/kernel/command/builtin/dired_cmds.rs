@@ -58,7 +58,7 @@ pub(super) fn register(editor: &mut Editor) {
                 editor.dired.toggle_mark(&name, mt);
                 dired_redraw(editor)?;
                 if let Some(key) = editor.dired.buf_key
-                    && let Some(view) = editor.views.get_mut(&key) {
+                    && let Some(view) = editor.view_of_buffer_mut(key) {
                         let next_off = view.buffer.lock().unwrap().line_start_offset(view.cursor.line + 1);
                         if let Some(off) = next_off { view.set_cursor(off); }
                     }
@@ -174,7 +174,7 @@ fn parse_mark_type(s: &str) -> MarkType {
 
 fn dired_cursor_line(editor: &Editor) -> usize {
     let Some(key) = editor.dired.buf_key else { return 0 };
-    editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0)
+    editor.view_of_buffer(key).map(|v| v.cursor.line).unwrap_or(0)
 }
 
 fn dired_redraw(editor: &mut Editor) -> CommandResult {
@@ -183,7 +183,7 @@ fn dired_redraw(editor: &mut Editor) -> CommandResult {
         editor.dired.sort_field, editor.dired.sort_reverse,
         editor.dired.filter_pattern.as_deref(), editor.dired.show_hidden);
     let Some(key) = editor.dired.buf_key else { return Ok(()); };
-    let saved_line = editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0);
+    let saved_line = editor.view_of_buffer(key).map(|v| v.cursor.line).unwrap_or(0);
     if let Some(arc) = editor.buffers.get(key) {
         let mut buf = arc.lock().unwrap();
         let len = buf.len();
@@ -192,7 +192,7 @@ fn dired_redraw(editor: &mut Editor) -> CommandResult {
         let new_off = buf.line_start_offset(saved_line.min(buf.line_count().saturating_sub(1)));
         drop(buf);
         if let Some(off) = new_off {
-            if let Some(view) = editor.views.get_mut(&key) {
+            if let Some(view) = editor.view_of_buffer_mut(key) {
                 view.set_cursor(off);
             }
         }
@@ -203,7 +203,7 @@ fn dired_redraw(editor: &mut Editor) -> CommandResult {
 fn dired_refresh_helper(editor: &mut Editor) -> CommandResult {
     let text = editor.dired.reload()?;
     let Some(key) = editor.dired.buf_key else { return Ok(()); };
-    let saved_line = editor.views.get(&key).map(|v| v.cursor.line).unwrap_or(0);
+    let saved_line = editor.view_of_buffer(key).map(|v| v.cursor.line).unwrap_or(0);
     if let Some(arc) = editor.buffers.get(key) {
         let mut buf = arc.lock().unwrap();
         let len = buf.len();
@@ -212,7 +212,7 @@ fn dired_refresh_helper(editor: &mut Editor) -> CommandResult {
         let new_off = buf.line_start_offset(saved_line.min(buf.line_count().saturating_sub(1)));
         drop(buf);
         if let Some(off) = new_off {
-            if let Some(view) = editor.views.get_mut(&key) {
+            if let Some(view) = editor.view_of_buffer_mut(key) {
                 view.set_cursor(off);
             }
         }
@@ -244,7 +244,7 @@ fn dired_open(editor: &mut Editor, dir: std::path::PathBuf) -> CommandResult {
         let header_off = buf.line_start_offset(dired::HEADER_LINES);
         drop(buf);
         if let Some(off) = header_off {
-            if let Some(view) = editor.views.get_mut(&buf_key) {
+            if let Some(view) = editor.view_of_buffer_mut(buf_key) {
                 view.set_cursor(off);
             }
         }
@@ -284,6 +284,9 @@ fn dired_open_at_cursor_helper(editor: &mut Editor) -> CommandResult {
         }
         editor.events.emit_typed(events::BUFFER_CHANGED, BufferChangedPayload {
             buffer_id: key.to_string(),
+            revision_before: "0".to_string(),
+            revision_after: "0".to_string(),
+            edits: String::new(),
         });
         if let Some(win) = editor.view_tree.focused_window_mut() {
             win.buffer_id = Some(key);

@@ -4,7 +4,7 @@
 //! `dired_display`, which is re-exported from here for convenience.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 // Re-export display utilities so consumers can `use dired::*`.
 pub use super::dired_display::*;

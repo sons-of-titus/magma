@@ -16,9 +16,11 @@ fn render_frame_event_modifies_surface() {
     }
 
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     // Fire editor-ready so ui.janet sets tab_bar_enabled, line numbers, faces.
     let data = std::collections::HashMap::new();
+    let _scope = scripting::EditorScope::new(&mut ed);
     ed.events.emit("editor-ready", data.clone());
     ed.events.drain_and_dispatch();
 
@@ -35,13 +37,16 @@ fn render_frame_event_modifies_surface() {
         .map(|c| c.ch)
         .collect();
 
-    // Now dispatch the render-frame event with SURFACE_PTR set.
+    // Now dispatch the render-frame event with SURFACE_PTR set and the
+    // editor pointer installed for Janet handlers (docs/core-redesign.md §11).
     scripting::set_surface_ptr(&mut surface as *mut _);
+    let _scope = scripting::EditorScope::new(&mut ed);
     ed.events.emit("render-frame", data.clone());
     if ed.tab_bar_enabled {
         ed.events.emit("render-tab-bar", data.clone());
     }
     ed.events.drain_and_dispatch();
+    drop(_scope);
     scripting::clear_surface_ptr();
 
     // Check what row 23 (status bar) looks like after Janet ran.

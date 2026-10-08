@@ -115,6 +115,7 @@ fn buffer_set_highlights_with_face_names() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let result = scripting::eval(
@@ -132,6 +133,7 @@ fn buffer_set_highlights_without_face_defaults_to_highlight() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let result = scripting::eval(
@@ -148,6 +150,7 @@ fn buffer_set_highlights_empty_clears() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let _ = scripting::eval(
@@ -164,6 +167,7 @@ fn buffer_set_highlights_layer_stores_per_layer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello world");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let result = scripting::eval(
@@ -182,6 +186,7 @@ fn buffer_clear_highlights_layer_removes_named_layer() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let _ = scripting::eval(
@@ -199,6 +204,7 @@ fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("hello");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     let _ = scripting::eval(
@@ -237,6 +243,7 @@ fn syntax_highlight_buffer_rust_produces_ranges() {
     let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor_with_buffer("fn main() { let x = 1; }");
     crate::kernel::scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
 
     // Set a path so guess-language can determine it's Rust
@@ -277,3 +284,90 @@ fn default_error_face_is_bold() {
         assert!(face.bold, "error-face should be bold by default");
     });
 }
+
+// ── Incremental highlighting (docs/core-redesign.md §7) ─────────────────
+
+#[test]
+fn highlight_follows_rust_path_typing() {
+    // The old architecture never refreshed highlights on the pure-Rust
+    // typing path; the canonical change publication now feeds the layer.
+    janet_test!(ed, {
+        let key = crate::tests::helpers::focused_key(&ed);
+        if let Some(arc) = ed.buffers.get(key) {
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/test/main.rs".to_string());
+            let len = buf.len();
+            buf.delete(0, len);
+            buf.insert(0, "fn one() {}");
+        }
+        scripting::eval("(syntax/highlight-buffer 1)");
+        ed.events.drain_and_dispatch();
+
+        // Type " two" at the end through the editor's own input path.
+        crate::kernel::input::dispatch_key(&mut ed, " ");
+        crate::kernel::input::dispatch_key(&mut ed, "t");
+        ed.events.drain_and_dispatch();
+
+        let view = ed.views.get(&key).unwrap();
+        let ranges = view.highlight_layers.get("syntax").expect("syntax layer exists");
+        assert!(
+            ranges.iter().any(|r| r.2 == "keyword-face" && r.0 == 0),
+            "keyword range for 'fn' must still be present after typing: {ranges:?}"
+        );
+    });
+}
+
+#[test]
+fn dirty_range_splice_equals_full_rescan() {
+    // After incremental (dirty-range) updates, the layer must be exactly
+    // what a full rescan of the same text produces.
+    janet_test!(ed, {
+        let key = crate::tests::helpers::focused_key(&ed);
+        let text = "let a = 1;\n// comment line\nlet b = \"str two\";\nfn c() { return 3; }\n";
+        if let Some(arc) = ed.buffers.get(key) {
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/test/main.rs".to_string());
+            let len = buf.len();
+            buf.delete(0, len);
+            buf.insert(0, text);
+        }
+        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        ed.events.drain_and_dispatch();
+
+        // Two incremental edits through the canonical path.
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(text.len() - 2, "x");       // edit near the end
+        ed.publish_buffer_changes();
+        ed.events.drain_and_dispatch();
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(4, "let z = 9;\n");         // edit near the start
+        ed.publish_buffer_changes();
+        ed.events.drain_and_dispatch();
+
+        let after_dirty: Vec<(usize, usize, String)> = ed
+            .views
+            .get(&key)
+            .unwrap()
+            .highlight_layers
+            .get("syntax")
+            .unwrap()
+            .clone();
+
+        // Full rescan of the same final text, into a scratch layer.
+        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        ed.events.drain_and_dispatch();
+        let after_full: Vec<(usize, usize, String)> = ed
+            .views
+            .get(&key)
+            .unwrap()
+            .highlight_layers
+            .get("syntax")
+            .unwrap()
+            .clone();
+
+        assert_eq!(after_dirty, after_full,
+            "incrementally spliced ranges must equal a full rescan");
+    });
+}
+
+

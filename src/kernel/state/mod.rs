@@ -1,6 +1,7 @@
 //! Editor state — the central `Editor` struct and all sub-modules.
 
 pub mod id;
+pub mod views;
 pub mod mode;
 pub mod persist;
 pub mod font;
@@ -77,6 +78,10 @@ pub struct Editor {
     pub buffers: slab::Slab<Arc<Mutex<Buffer>>>,
     /// Per-window view state (indexed by buffer slab key).
     pub views: std::collections::HashMap<usize, BufferView>,
+    /// Split-window view state: a window showing a buffer that another
+    /// window also shows gets its own view fork, keyed by (window id,
+    /// buffer slab key).  Buffers shown by a single window live in `views`.
+    pub window_views: std::collections::HashMap<(crate::kernel::state::id::WindowId, usize), BufferView>,
     pub view_tree: ViewTree,
     pub events: EventBus,
     pub commands: CommandRegistry,
@@ -114,7 +119,10 @@ pub struct Editor {
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
     pub cursor_shape: String,
-    pub ts_trees: std::collections::HashMap<usize, Vec<u8>>,
+    /// Incremental tree-sitter parse trees, keyed by buffer slab
+    /// (docs/core-redesign.md §7.2).  Each state records the document
+    /// revision its tree was parsed at.
+    pub ts_trees: std::collections::HashMap<usize, crate::kernel::semantic::ts_registry::TsTreeState>,
     pub ts_languages: std::collections::HashMap<usize, String>,
     pub saved_layouts: std::collections::HashMap<String, (Vec<crate::kernel::render::view_tree::Pane>, usize)>,
     pub mark_ring: Vec<(String, usize)>,
@@ -172,6 +180,7 @@ impl Editor {
         Editor {
             buffers: slab::Slab::new(),
             views: std::collections::HashMap::new(),
+            window_views: std::collections::HashMap::new(),
             view_tree: ViewTree::new(),
             events: EventBus::new(),
             commands: CommandRegistry::new(),
@@ -272,19 +281,6 @@ impl Editor {
         self.view_tree.focused_window()
             .and_then(|wid| self.view_tree.buffer(wid))
             .unwrap_or(0)
-    }
-
-    /// Get the focused window's view.
-    pub fn focused_view(&self) -> Option<&crate::kernel::text_engine::BufferView> {
-        let key = self.focused_buffer_key();
-        self.views.get(&key)
-    }
-
-    /// Get the focused window's view (mutable).
-    pub fn focused_view_mut(&mut self) -> Option<&mut crate::kernel::text_engine::BufferView> {
-        let key = self.view_tree.focused_window()
-            .and_then(|wid| self.view_tree.buffer(wid))?;
-        self.views.get_mut(&key)
     }
 
     /// Look up a theme color by key, falling back to a hardcoded default.

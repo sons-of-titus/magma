@@ -7,7 +7,6 @@
 use eframe::egui::{self, Color32, FontFamily, FontId, RichText};
 use crate::kernel::state::Editor;
 use super::gui_fonts::mode_color;
-use super::gui_render::safe_boundary;
 use super::gui_theme::{GuiTheme, icons};
 
 const FONT_SIZE: f32 = 12.0;
@@ -72,17 +71,12 @@ impl StatusWidget for PositionWidget {
         let Some(buf_id) = editor.view_tree.buffer(wid)      else { return };
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
 
-        let (content, cursor_offset) = {
+        let (row, col) = {
             let buf = arc.lock().unwrap();
-            let content = buf.slice(0, buf.len());
-            let offset  = editor.views.get(&buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            (content, offset)
+            let offset = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let pos = buf.position_of(offset);
+            (pos.line + 1, pos.column + 1)
         };
-        let safe   = safe_boundary(&content, cursor_offset);
-        let before = &content[..safe];
-        let row    = before.chars().filter(|&c| c == '\n').count() + 1;
-        let last   = before.rfind('\n').map(|p| &before[p + 1..]).unwrap_or(before);
-        let col    = last.chars().count() + 1;
 
         ui.label(
             RichText::new(format!("Ln {}, Col {}", row, col))

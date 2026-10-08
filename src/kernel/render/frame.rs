@@ -38,24 +38,17 @@ pub struct ScrollState {
     pub cursor_line: usize,
 }
 
-/// Compute scroll state from pre-extracted buffer data (no locking).
-/// Used by EditorView (which already holds the buffer lock) and by
-/// callers that have already extracted text/line-count themselves.
-pub fn compute_scroll_state_raw(
-    text: &str,
+/// Scroll state from line-index data — no text scan: the cursor's line
+/// comes from the line index and the cell column is summed over the
+/// cursor's line only (docs/core-redesign.md §3.3/§9).
+pub fn scroll_state_from_lines(
+    cursor_line: usize,
+    cursor_col: usize,
     total_lines: usize,
-    cursor_offset: usize,
     visible_lines: usize,
     scrolloff: usize,
-    glyph_widths: &std::collections::HashMap<char, u8>,
 ) -> ScrollState {
-    let safe = cursor_offset.min(text.len());
-    let cursor_line = text[..safe]
-        .chars()
-        .filter(|&c| c == '\n')
-        .count()
-        .min(total_lines.saturating_sub(1));
-
+    let cursor_line = cursor_line.min(total_lines.saturating_sub(1));
     let ideal_top = cursor_line.saturating_sub(scrolloff);
     let window_bottom = cursor_line + scrolloff;
     let scroll_top = if window_bottom >= visible_lines {
@@ -64,35 +57,50 @@ pub fn compute_scroll_state_raw(
         ideal_top
     };
     let scroll_top = scroll_top.min(total_lines.saturating_sub(1));
-
     let cursor_vis_row = cursor_line.saturating_sub(scroll_top);
-    let text_before = &text[..safe];
-    let last_line = text_before
-        .rfind('\n')
-        .map(|p| &text_before[p + 1..])
-        .unwrap_or(text_before);
-    let cursor_col: usize = last_line.chars()
-        .map(|c| cell_width(c, glyph_widths))
-        .sum();
-
     ScrollState { scroll_top, cursor_vis_row, cursor_col, cursor_line }
+}
+
+/// Scroll state for a buffer's cursor: O(log n) + one line of cell math.
+/// Caller must not hold another borrow of the view.
+pub fn scroll_state_for_buffer(
+    buf: &crate::kernel::text_engine::Buffer,
+    cursor_offset: usize,
+    visible_lines: usize,
+    scrolloff: usize,
+    glyph_widths: &std::collections::HashMap<char, u8>,
+) -> ScrollState {
+    let total_lines = buf.line_count();
+    let cursor_offset = cursor_offset.min(buf.len());
+    let pos = buf.position_of(cursor_offset);
+    let cursor_line = pos.line.min(total_lines.saturating_sub(1));
+    let line_start = buf.line_start_offset(cursor_line).unwrap_or(0);
+    // Exactly the cursor's line — never the rest of the document.
+    let line_end = buf.line_start_offset(cursor_line + 1).unwrap_or(buf.len());
+    let cursor_col = crate::kernel::text_engine::text_layout::cell_column(
+        &buf.slice(line_start, line_end),
+        cursor_offset.saturating_sub(line_start),
+        4,
+        glyph_widths,
+    );
+    scroll_state_from_lines(cursor_line, cursor_col, total_lines, visible_lines, scrolloff)
 }
 
 /// Compute the scroll state for the focused buffer, acquiring the lock internally.
 /// Do NOT call while holding the buffer lock.
 pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize) -> ScrollState {
     let scrolloff = int_option(editor, "scrolloff", 0);
-    let (text, total_lines) = editor.buffers.get(buf_id)
-        .map(|arc| {
-            let buf = arc.lock().unwrap();
-            (buf.slice(0, buf.len()), buf.line_count())
-        })
-        .unwrap_or_default();
-    let cursor_offset = editor.views.get(&buf_id)
+    let cursor_offset = editor.view_of_buffer(buf_id)
         .map(|v| v.cursor.offset)
         .unwrap_or(0);
-    compute_scroll_state_raw(&text, total_lines, cursor_offset, visible_lines,
-                             scrolloff, &editor.font_config.glyph_widths)
+    match editor.buffers.get(buf_id) {
+        Some(arc) => {
+            let buf = arc.lock().unwrap();
+            scroll_state_for_buffer(&buf, cursor_offset, visible_lines, scrolloff,
+                                    &editor.font_config.glyph_widths)
+        }
+        None => scroll_state_from_lines(0, 0, 1, visible_lines, scrolloff),
+    }
 }
 
 /// Populate `surface` from editor state by traversing the ViewTree.
@@ -145,7 +153,7 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface, editor_pane_only: bo
         && let Some(arc) = editor.buffers.get(buf_id)
     {
         let buf = arc.lock().unwrap();
-        let cursor_offset = editor.views.get(&buf_id).map(|v| v.cursor.offset).unwrap_or(0);
+        let cursor_offset = editor.view_of_buffer(buf_id).map(|v| v.cursor.offset).unwrap_or(0);
         let is_terminal_view = crate::kernel::terminal::is_terminal(editor, buf_id);
         render_status_bar(editor, &*buf, buf_id, cursor_offset, surface, is_terminal_view);
     }

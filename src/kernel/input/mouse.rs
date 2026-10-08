@@ -148,7 +148,7 @@ fn dispatch_text_click(
         None => return,
     };
 
-    if let Some(view) = ed.views.get_mut(&buf_id) {
+    if let Some(view) = ed.view_of_buffer_mut(buf_id) {
         view.set_cursor(offset);
     }
 
@@ -243,7 +243,7 @@ fn dispatch_drag(ed: &mut Editor, _surface: &Surface, event: &MouseEvent) {
     };
 
     ed.selection = Some(crate::kernel::state::mode::Selection::char(anchor));
-    if let Some(view) = ed.views.get_mut(&buf_id) {
+    if let Some(view) = ed.view_of_buffer_mut(buf_id) {
         view.set_cursor(cursor);
     }
 

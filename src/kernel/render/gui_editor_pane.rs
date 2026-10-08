@@ -192,7 +192,7 @@ fn scrollbar(
         egui::pos2(rect.left() + 2.0, rect.top() + thumb_top),
         egui::vec2(SCROLLBAR_W - 4.0, thumb_h),
     );
-    ui.painter().rect_filled(thumb, egui::Rounding::same(4.0), theme.surface1);
+    ui.painter().rect_filled(thumb, egui::CornerRadius::same(4), theme.surface1);
 
     let ptr = ui.ctx().pointer_hover_pos()?;
     if !rect.contains(ptr) { return None; }

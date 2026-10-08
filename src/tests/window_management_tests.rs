@@ -1,5 +1,4 @@
 use crate::kernel::state::id::WindowId;
-use crate::kernel::state::Editor;
 use crate::tests::helpers;
 
 // ── Window split and count ─────────────────────────────────────────────────

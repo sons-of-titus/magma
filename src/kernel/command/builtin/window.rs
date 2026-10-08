@@ -22,6 +22,9 @@ pub(super) fn register(editor: &mut Editor) {
                         win.buffer_id = Some(keys[next]);
                         editor.events.emit_typed(crate::kernel::event::keys::events::BUFFER_CHANGED, BufferChangedPayload {
                             buffer_id: keys[next].to_string(),
+                            revision_before: "0".to_string(),
+                            revision_after: "0".to_string(),
+                            edits: String::new(),
                         });
                     }
             Ok(())
@@ -40,6 +43,9 @@ pub(super) fn register(editor: &mut Editor) {
                         win.buffer_id = Some(keys[prev]);
                         editor.events.emit_typed(crate::kernel::event::keys::events::BUFFER_CHANGED, BufferChangedPayload {
                             buffer_id: keys[prev].to_string(),
+                            revision_before: "0".to_string(),
+                            revision_after: "0".to_string(),
+                            edits: String::new(),
                         });
                     }
             Ok(())
@@ -54,6 +60,11 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(new_id) = editor.view_tree.split_horizontal(win)
                     && let Some(new_win) = editor.view_tree.window_mut(new_id) {
                         new_win.buffer_id = existing_buf;
+                        // A split showing the same buffer gets its own view
+                        // fork: independent cursor/scroll (docs/core-redesign.md §3).
+                        if let Some(buf) = existing_buf {
+                            editor.fork_view_for_window(new_id, buf);
+                        }
                         editor.view_tree.focus(new_id);
                     }
             }
@@ -69,6 +80,11 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(new_id) = editor.view_tree.split_vertical(win)
                     && let Some(new_win) = editor.view_tree.window_mut(new_id) {
                         new_win.buffer_id = existing_buf;
+                        // A split showing the same buffer gets its own view
+                        // fork: independent cursor/scroll (docs/core-redesign.md §3).
+                        if let Some(buf) = existing_buf {
+                            editor.fork_view_for_window(new_id, buf);
+                        }
                         editor.view_tree.focus(new_id);
                     }
             }

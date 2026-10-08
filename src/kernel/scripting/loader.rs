@@ -4,7 +4,6 @@ use std::cell::Cell;
 use std::ffi::CString;
 use crate::kernel::state::Editor;
 use evil_janet::*;
-use super::EDITOR_PTR;
 
 thread_local! {
     /// Whether janet_init() has been called on this OS thread.
@@ -54,7 +53,6 @@ pub(super) fn load_builtin(name: &str, source: &str) {
 /// re-registering C APIs and reloading builtins.  New code should call
 /// `init_vm()` after setting EDITOR_PTR directly.
 pub fn init(editor: &mut Editor) {
-    EDITOR_PTR.with(|cell| cell.set(Some(editor as *mut Editor)));
     // Discard Janet values stored by previous test sessions — they belong to
     // GC heaps on other threads and would be dangling pointers now.
     super::event_api::reset_handlers();
@@ -62,7 +60,7 @@ pub fn init(editor: &mut Editor) {
     super::task_api::reset_task_complete_callbacks();
     super::debug_api::reset_dap_clients();
     super::extension_api::reset_current_extension();
-    init_vm();
+    super::scoped_editor(editor, init_vm);
     #[cfg(feature = "janet")]
     {
         editor.runtime = Some(Box::new(super::runtime::JanetRuntime));

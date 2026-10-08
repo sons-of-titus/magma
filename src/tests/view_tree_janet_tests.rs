@@ -8,6 +8,7 @@ fn view_tree_split_visible_via_window_list() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("test\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let initial_count = ed.view_tree.len();
     let wid = ed.view_tree.focused_window().unwrap();
@@ -23,6 +24,7 @@ fn view_tree_focus_works_via_window_focus() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("test\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     let id = ed.view_tree.focused_window().unwrap();
     let new_id = ed.view_tree.split_vertical(id).unwrap();
@@ -38,6 +40,7 @@ fn view_tree_layout_save_and_restore() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("test\n");
     scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
 
     scripting::eval("(editor/save-layout \"phase2-test\")");
     assert!(ed.saved_layouts.contains_key("phase2-test"));

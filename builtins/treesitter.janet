@@ -298,7 +298,7 @@
   (def query (get *ts-mode-queries* lang))
   (when (nil? query) (break))
   (def result (try
-    (ts/query buf-id query)
+    (ts/highlight buf-id query)
     ([e] (break))))
   (when result
     (def ranges @[])
@@ -306,8 +306,8 @@
       (array/push ranges [(r 0) (r 1) (r 2)]))
     (buffer/set-highlights-layer buf-id "syntax" ranges)))
 
-# Event handler — auto-parse on buffer change (debounced via the Janet
-# event bus).
+# Event handler — incremental reparse on buffer change; the Rust side
+# reuses the cached tree and applies only the edits since its revision.
 (event/on "buffer-changed"
   (fn [data]
     (def raw (get data :buffer-id))

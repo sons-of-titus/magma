@@ -299,9 +299,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             });
         }
         BackgroundEvent::TaskReady { id } => {
-            if let Some(ref mut rt) = ed.runtime {
-                rt.execute_stored_task(id);
+            let mut rt = ed.runtime.take();
+            if let Some(rt) = &mut rt {
+                rt.execute_stored_task(ed, id);
             }
+            ed.runtime = rt;
         }
         BackgroundEvent::FileIndexed { project_name, files } => {
             // Update the project state in the registry with the file list
@@ -512,9 +514,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     error: err,
                 });
             }
-            if let Some(ref mut rt) = ed.runtime {
-                rt.execute_task_complete_callback(id);
+            let mut rt = ed.runtime.take();
+            if let Some(rt) = &mut rt {
+                rt.execute_task_complete_callback(ed, id);
             }
+            ed.runtime = rt;
             if let Some(bg) = ed.background.clone() {
                 let ready: Vec<u64> = ed.task_scheduler.ready_to_run();
                 for rid in ready {

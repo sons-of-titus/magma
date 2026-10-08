@@ -7,12 +7,6 @@ use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Vec2};
 use crate::kernel::render::surface::Surface;
 use crate::kernel::state::Editor;
 
-pub fn safe_boundary(s: &str, mut offset: usize) -> usize {
-    offset = offset.min(s.len());
-    while offset > 0 && !s.is_char_boundary(offset) { offset -= 1; }
-    offset
-}
-
 /// Render a `Surface` onto an egui `Rect`.
 ///
 /// All surface rows are drawn. Status bar and tab bar are handled as native

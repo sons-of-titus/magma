@@ -67,7 +67,7 @@ unsafe fn parse_highlight_ranges(argc: i32, argv: *mut Janet, arg_idx: i32) -> V
 unsafe extern "C-unwind" fn c_buffer_set_highlights(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let Some(view) = ed.views.get_mut(&key) else { return conv::nil() };
+        let Some(view) = ed.view_of_buffer_mut(key) else { return conv::nil() };
         if argc < 2 { view.clear_highlights(); return conv::nil(); }
         let ranges = parse_highlight_ranges(argc, argv, 1);
         view.set_highlights(ranges);
@@ -78,7 +78,7 @@ unsafe extern "C-unwind" fn c_buffer_set_highlights(argc: i32, argv: *mut Janet)
 unsafe extern "C-unwind" fn c_buffer_clear_highlights(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.clear_highlights();
         }
         conv::nil()
@@ -91,7 +91,7 @@ unsafe extern "C-unwind" fn c_buffer_set_highlights_layer(argc: i32, argv: *mut 
         let Some(layer) = conv::get_str(argc, argv, 1) else {
             return conv::nil();
         };
-        let Some(view) = ed.views.get_mut(&key) else { return conv::nil() };
+        let Some(view) = ed.view_of_buffer_mut(key) else { return conv::nil() };
         if argc < 3 { view.clear_highlights_layer(&layer); return conv::nil(); }
         let ranges = parse_highlight_ranges(argc, argv, 2);
         view.set_highlights_layer(&layer, ranges);
@@ -105,7 +105,7 @@ unsafe extern "C-unwind" fn c_buffer_clear_highlights_layer(argc: i32, argv: *mu
         let Some(layer) = conv::get_str(argc, argv, 1) else {
             return conv::nil();
         };
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.clear_highlights_layer(&layer);
         }
         conv::nil()
@@ -117,7 +117,7 @@ unsafe extern "C-unwind" fn c_buffer_fold(argc: i32, argv: *mut Janet) -> Janet 
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let start = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.add_fold(start, end);
         }
         conv::nil()
@@ -129,7 +129,7 @@ unsafe extern "C-unwind" fn c_buffer_unfold(argc: i32, argv: *mut Janet) -> Jane
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let start = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.remove_fold(start, end);
         }
         conv::nil()
@@ -139,7 +139,7 @@ unsafe extern "C-unwind" fn c_buffer_unfold(argc: i32, argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_buffer_unfold_all(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        if let Some(view) = ed.views.get_mut(&key) {
+        if let Some(view) = ed.view_of_buffer_mut(key) {
             view.clear_folds();
         }
         conv::nil()
@@ -149,7 +149,7 @@ unsafe extern "C-unwind" fn c_buffer_unfold_all(argc: i32, argv: *mut Janet) -> 
 unsafe extern "C-unwind" fn c_buffer_folds(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let folds = match ed.views.get(&key) {
+        let folds = match ed.view_of_buffer(key) {
             Some(view) => view.folds.clone(),
             None => Vec::new(),
         };

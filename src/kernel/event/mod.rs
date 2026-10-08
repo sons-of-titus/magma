@@ -176,6 +176,10 @@ impl EventBus {
         Some(current)
     }
 
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
     pub fn subscriber_count(&self, event_name: &str) -> usize {
         self.subscribers.get(event_name).map_or(0, |s| s.len())
     }

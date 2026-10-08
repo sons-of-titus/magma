@@ -1,6 +1,6 @@
 //! Highlight and selection rendering passes for the buffer content area.
 
-use crate::kernel::text_engine::{Buffer, BufferView};
+use crate::kernel::text_engine::BufferView;
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::{Style, Surface};
 
@@ -9,12 +9,11 @@ use crate::kernel::render::surface::{Style, Surface};
 /// the visual selection highlight onto `surface`.
 pub fn apply_highlights(
     editor: &Editor,
-    buf: &Buffer,
     view: Option<&BufferView>,
     surface: &mut Surface,
-    text: &str,
-    scroll_top: usize,
-    max_visible: usize,
+    rows: &[(usize, usize, &str)],
+    _scroll_top: usize,
+    _max_visible: usize,
     content_x: u16,
     row_offset: u16,
     cursor_offset: usize,
@@ -42,13 +41,8 @@ pub fn apply_highlights(
     };
 
     if !all_highlights.is_empty() {
-        let row_ranges: Vec<(usize, usize)> = (scroll_top..scroll_top + max_visible)
-            .map(|row| {
-                let ls = buf.line_start_offset(row).unwrap_or(text.len());
-                let le = buf.line_start_offset(row + 1).unwrap_or(text.len());
-                (ls, le)
-            })
-            .collect();
+        let row_ranges: Vec<(usize, usize)> =
+            rows.iter().map(|(s, e, _)| (*s, *e)).collect();
 
         let visible_byte_start = row_ranges.first().map(|(s, _)| *s).unwrap_or(0);
         let visible_byte_end   = row_ranges.last().map(|(_, e)| *e).unwrap_or(0);
@@ -66,7 +60,8 @@ pub fn apply_highlights(
                 if *hl_end <= *line_start { break; }
                 if *hl_start >= *line_end { continue; }
                 let surf_row = row_offset + vis_row as u16;
-                let line_text = &text[*line_start..*line_end];
+                let Some((_, _, line_text)) = rows.get(vis_row) else { continue };
+                let line_text: &str = line_text;
                 let mut byte = *line_start;
                 for (col, ch) in line_text.chars().enumerate() {
                     if byte >= *hl_end { break; }
@@ -82,18 +77,13 @@ pub fn apply_highlights(
         }
     }
 
-    // Visual-selection highlight
+    // Visual-selection highlight — row text already includes its newline,
+    // so the byte cursor advances exactly once per row terminator.
     let sel = editor.selection_range(cursor_offset);
     if let Some((sel_start, sel_end)) = sel {
-        let total_lines = buf.line_count();
-        let mut byte = 0usize;
-        'outer: for row in scroll_top..total_lines {
-            let vis_row = row.saturating_sub(scroll_top);
-            if vis_row >= max_visible { break; }
+        let mut byte = rows.first().map(|(s, _, _)| *s).unwrap_or(0);
+        for (vis_row, (line_start, _, line_text)) in rows.iter().enumerate() {
             let surf_row = row_offset + vis_row as u16;
-            let line_start = buf.line_start_offset(row).unwrap_or(text.len());
-            let line_end = buf.line_start_offset(row + 1).unwrap_or(text.len());
-            let line_text = &text[line_start..line_end];
             for (col, ch) in line_text.chars().enumerate() {
                 if byte >= sel_start && byte < sel_end {
                     let sx = content_x + col as u16;
@@ -106,8 +96,8 @@ pub fn apply_highlights(
                 }
                 byte += ch.len_utf8();
             }
-            byte += 1;
-            if byte > sel_end { break 'outer; }
+            let _ = line_start;
+            if byte > sel_end { break; }
         }
     }
 }

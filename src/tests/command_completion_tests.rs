@@ -54,7 +54,7 @@ fn set_command_input_replaces_text_in_command_mode() {
 
 #[test]
 fn set_command_input_noop_outside_command_mode() {
-    let mut ed = helpers::make_editor();
+    let ed = helpers::make_editor();
     assert!(ed.editor_mode.is_named("normal"));
     assert!(ed.editor_mode.is_named("normal"));
 }

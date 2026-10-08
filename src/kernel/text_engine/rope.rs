@@ -89,6 +89,44 @@ impl Rope {
         Some(self.inner.char_to_byte(char_idx))
     }
 
+    /// Line containing the character at `byte_offset` (the byte at a `\n`
+    /// belongs to the line it terminates).  Clamped; an empty rope is line 0.
+    pub fn line_of(&self, byte_offset: usize) -> usize {
+        if self.inner.len_bytes() == 0 { return 0; }
+        let clamped = byte_offset.min(self.inner.len_bytes());
+        self.inner.byte_to_line(clamped)
+    }
+
+    /// Total version: `false` for offsets past the end of the rope.
+    /// ropey 1.6 has no direct query; a byte is a boundary iff it is the
+    /// start byte of its own char.
+    pub fn is_char_boundary(&self, byte_offset: usize) -> bool {
+        if byte_offset > self.inner.len_bytes() { return false; }
+        let char_idx = self.inner.byte_to_char(byte_offset);
+        self.inner.char_to_byte(char_idx) == byte_offset
+    }
+
+    /// Snap a byte offset down to the nearest preceding char boundary,
+    /// clamped to the rope length.
+    pub fn floor_boundary(&self, byte_offset: usize) -> usize {
+        let len = self.inner.len_bytes();
+        if byte_offset >= len { return len; }
+        let char_idx = self.inner.byte_to_char(byte_offset);
+        self.inner.char_to_byte(char_idx)
+    }
+
+    /// Chunked iteration over the rope's leaves — zero-copy text feed.
+    pub fn chunks(&self) -> ropey::iter::Chunks<'_> {
+        self.inner.chunks()
+    }
+
+    /// Number of chars in `[start, end)` — O(log n), no scan.
+    pub fn chars_between(&self, start: usize, end: usize) -> usize {
+        let end = end.min(self.inner.len_bytes());
+        let start = start.min(end);
+        self.inner.byte_to_char(end) - self.inner.byte_to_char(start)
+    }
+
     pub fn all_lines(&self) -> Vec<String> {
         (0..self.inner.len_lines())
             .filter_map(|i| self.line(i).map(|l| l.into_owned()))

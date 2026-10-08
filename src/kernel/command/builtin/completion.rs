@@ -81,7 +81,7 @@ fn completion_trigger(editor: &mut Editor, _args: &HashMap<String, ArgValue>) ->
     let buf_id = get_current_buffer_id(editor);
 
     // Collect prefix and buffer text without holding a view reference.
-    let data = if let Some(view) = editor.views.get(&buf_id) {
+    let data = if let Some(view) = editor.view_of_buffer(buf_id) {
         let cursor = view.cursor_offset();
         let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
         let before = &text[..cursor];
@@ -149,7 +149,7 @@ fn completion_accept(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> 
     let item = &editor.completion.items[editor.completion.idx];
     let suffix = item[editor.completion.prefix.len()..].to_string();
 
-    if let Some(view) = editor.views.get_mut(&buf_id) {
+    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
         let pos = view.cursor_offset();
         view.insert(pos, &suffix);
     }
@@ -170,7 +170,7 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
 
     // Extract trigger word before any mutable borrow
     let (word_start, trigger) = {
-        let Some(view) = editor.views.get(&buf_id) else { return Ok(()); };
+        let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
         let cursor = view.cursor_offset();
         let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
         let before = &text[..cursor];
@@ -181,7 +181,7 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
     };
 
     if let Some(expansion) = crate::kernel::snippet::expand_snippet(editor, &trigger) {
-        if let Some(view) = editor.views.get_mut(&buf_id) {
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
             view.replace(word_start, word_start + trigger.len(), &expansion);
             view.set_cursor(word_start);
             editor.snippet.active = true;
@@ -199,7 +199,7 @@ fn snippet_next_tabstop(editor: &mut Editor, _args: &HashMap<String, ArgValue>) 
         // If completion was not visible either, insert a literal tab
         if !editor.completion.visible {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.views.get_mut(&buf_id) {
+            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor_offset();
                 view.insert(pos, "\t");
             }
@@ -207,21 +207,21 @@ fn snippet_next_tabstop(editor: &mut Editor, _args: &HashMap<String, ArgValue>) 
         return Ok(());
     }
     let buf_id = get_current_buffer_id(editor);
-    if let Some(view) = editor.views.get_mut(&buf_id) {
-        if editor.snippet.tabstop_idx + 1 < editor.snippet.tabstops.len() {
-            editor.snippet.tabstop_idx += 1;
-            let ts_offset = editor.snippet.tabstops[editor.snippet.tabstop_idx].offset;
-            let ts_text = editor.snippet.tabstops[editor.snippet.tabstop_idx].text.clone();
+    if editor.snippet.tabstop_idx + 1 < editor.snippet.tabstops.len() {
+        editor.snippet.tabstop_idx += 1;
+        let ts_offset = editor.snippet.tabstops[editor.snippet.tabstop_idx].offset;
+        let ts_text = editor.snippet.tabstops[editor.snippet.tabstop_idx].text.clone();
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
             view.set_cursor(ts_offset);
-            if !ts_text.is_empty() {
-                editor.editor_mode = EditorMode::new("visual", false);
-                editor.selection = Some(Selection { anchor: ts_offset, kind: "char".into() });
-                editor.keymaps.push_layer("visual");
-            }
-        } else {
-            editor.snippet.active = false;
-            editor.snippet.tabstops.clear();
         }
+        if !ts_text.is_empty() {
+            editor.editor_mode = EditorMode::new("visual", false);
+            editor.selection = Some(Selection { anchor: ts_offset, kind: "char".into() });
+            editor.keymaps.push_layer("visual");
+        }
+    } else {
+        editor.snippet.active = false;
+        editor.snippet.tabstops.clear();
     }
     emit_cursor_moved(editor);
     Ok(())
@@ -235,7 +235,7 @@ fn snippet_prev_tabstop(editor: &mut Editor, _args: &HashMap<String, ArgValue>) 
         editor.snippet.tabstop_idx -= 1;
         let buf_id = get_current_buffer_id(editor);
         let ts_offset = editor.snippet.tabstops[editor.snippet.tabstop_idx].offset;
-        if let Some(view) = editor.views.get_mut(&buf_id) {
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
             view.set_cursor(ts_offset);
         }
     }

@@ -48,7 +48,7 @@ unsafe extern "C-unwind" fn c_editor_theme(argc: i32, argv: *mut Janet) -> Janet
 unsafe extern "C-unwind" fn c_editor_cursor(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let buf_id = crate::kernel::input::focused_buffer_id(ed);
-        match ed.views.get(&buf_id) {
+        match ed.view_of_buffer(buf_id) {
             Some(view) => conv::integer(view.cursor_offset() as i32),
             None => conv::integer(0),
         }

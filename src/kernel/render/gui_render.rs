@@ -1,7 +1,5 @@
 //! egui surface painter for the GUI backend (CPU fallback path).
 
-use std::sync::{Arc, RwLock};
-
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Vec2};
 
 use crate::kernel::render::surface::Surface;
@@ -13,18 +11,15 @@ use crate::kernel::state::Editor;
 /// egui panels; the surface passed here contains editor pane content only.
 pub fn present(
     ui: &egui::Ui,
-    editor_ref: &Arc<RwLock<Editor>>,
+    ed: &Editor,
     surface: &Surface,
     rect: Rect,
     char_w: f32,
     line_h: f32,
     surface_y_offset: usize,
 ) {
-    let bg_color = {
-        let ed = editor_ref.read().unwrap_or_else(|e| e.into_inner());
-        let (r, g, b) = ed.theme_color("gui-bg");
-        Color32::from_rgb(r, g, b)
-    };
+    let (r, g, b) = ed.theme_color("gui-bg");
+    let bg_color = Color32::from_rgb(r, g, b);
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, bg_color);
 

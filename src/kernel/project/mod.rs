@@ -91,6 +91,8 @@ pub struct Project {
     pub name: Option<String>,
     pub workspace: Option<Workspace>,
     pub files: Vec<String>,
+    /// Bumped whenever the file list is rebuilt — render caches key on it.
+    pub files_epoch: u64,
     pub file_index_dirty: bool,
     /// Per-project editor options (e.g. `"tab-width"`, `"lsp-server"`).
     pub options: HashMap<String, String>,
@@ -254,8 +256,37 @@ pub fn remove_recent(editor: &mut crate::kernel::state::Editor, path: &str) {
     crate::kernel::state::persist::save_recent_projects(&editor.project_manager.recent_projects);
 }
 
+/// Directories the index never descends into: dot-dirs (VCS, tool state),
+/// build output, and dependency trees.
+fn index_ignored_dir(name: &str) -> bool {
+    name.starts_with('.') || name == "node_modules" || name == "target"
+}
+
+/// Does this watcher event change the project's file list?
+///
+/// Churn inside an ignored directory never lands in the index, and a data
+/// write to an already-indexed file doesn't change the list — only creates,
+/// removals, and the first sighting of an unknown path do.
+pub fn index_change_marks_dirty(root: &std::path::Path, path: &str, kind: &str, indexed: &[String]) -> bool {
+    let Ok(rel_path) = std::path::Path::new(path).strip_prefix(root) else { return false };
+    let mut components = rel_path.components().peekable();
+    while let Some(component) = components.next() {
+        if components.peek().is_some()
+            && index_ignored_dir(component.as_os_str().to_string_lossy().as_ref()) {
+                return false;
+            }
+    }
+    match kind {
+        "removed" => true,
+        "modified" => !indexed.contains(&rel_path.to_string_lossy().into_owned()),
+        _ => true,
+    }
+}
+
 /// Recursively list files under `dir`, skipping VCS/build/dependency dirs.
-fn walk_dir(dir: &std::path::Path) -> std::io::Result<Vec<String>> {
+/// Paths are stored **relative to `root`** — the project's canonical file
+/// identity everywhere (sidebar tree, quick-open, project graph).
+fn walk_dir(dir: &std::path::Path, root: &std::path::Path) -> std::io::Result<Vec<String>> {
     let mut files = Vec::new();
     if dir.is_dir() {
         for entry in std::fs::read_dir(dir)? {
@@ -264,15 +295,15 @@ fn walk_dir(dir: &std::path::Path) -> std::io::Result<Vec<String>> {
             if path.is_dir() {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
-                if name.starts_with('.') || name == "node_modules" || name == "target" {
+                if index_ignored_dir(&name) {
                     continue;
                 }
-                if let Ok(mut sub) = walk_dir(&path) {
+                if let Ok(mut sub) = walk_dir(&path, root) {
                     files.append(&mut sub);
                 }
             } else if path.is_file()
-                && let Some(s) = path.to_str() {
-                    files.push(s.to_string());
+                && let Some(rel) = path.strip_prefix(root).ok().and_then(|p| p.to_str()) {
+                    files.push(rel.to_string());
                 }
         }
     }
@@ -289,7 +320,7 @@ pub fn spawn_file_index(ed: &mut crate::kernel::state::Editor) -> bool {
     let sender = bg.sender.clone();
     ed.project_manager.project.file_index_dirty = false;
     bg.spawn_blocking(move || {
-        let files = walk_dir(&root).unwrap_or_default();
+        let files = walk_dir(&root, &root).unwrap_or_default();
         let _ = sender.send(crate::kernel::runtime::BackgroundEvent::FileIndexed {
             project_name: name,
             files,

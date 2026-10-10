@@ -1,16 +1,62 @@
 //! Native status bar widget for the GUI — Phase 3.
 //!
 //! Defines `StatusWidget` trait and concrete per-slot widgets, then assembles
-//! them into `StatusBar::show` with left-aligned (mode, filename) and
-//! right-aligned (encoding, file type, position, git branch) sections.
+//! them into `StatusBar::show` with left-aligned (filename) and right-aligned
+//! (encoding, file type, position, git branch) sections.  Every slot renders
+//! as a JetBrains-style pill: quiet text that highlights on hover.
 
-use eframe::egui::{self, FontFamily, FontId, RichText};
+use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, RichText, Sense, Vec2};
 use crate::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 
 const FONT_SIZE: f32 = 12.0;
 
 fn label_font() -> FontId { FontId::new(FONT_SIZE, FontFamily::Proportional) }
+
+/// A status-bar pill: quiet text (with optional leading icon) in a rounded
+/// slot that highlights on hover.  Returns true when clicked.
+fn pill(
+    ui: &mut egui::Ui,
+    theme: &GuiTheme,
+    icon: Option<(&str, Color32)>,
+    text: &str,
+    color: Color32,
+) -> bool {
+    let font = label_font();
+    let mut w = ui.painter()
+        .layout_no_wrap(text.to_owned(), font.clone(), color)
+        .size().x + 12.0;
+    if let Some((glyph, _)) = icon {
+        w += ui.painter()
+            .layout_no_wrap(glyph.to_owned(), font.clone(), color)
+            .size().x + 4.0;
+    }
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 20.0), Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 4, theme.surface0.gamma_multiply(0.55));
+    }
+    let mut cx = rect.left() + 6.0;
+    if let Some((glyph, icon_color)) = icon {
+        ui.painter().text(
+            Pos2::new(cx, rect.center().y),
+            Align2::LEFT_CENTER,
+            glyph,
+            font.clone(),
+            icon_color,
+        );
+        cx += ui.painter()
+            .layout_no_wrap(glyph.to_owned(), font.clone(), color)
+            .size().x + 4.0;
+    }
+    ui.painter().text(
+        Pos2::new(cx, rect.center().y),
+        Align2::LEFT_CENTER,
+        text,
+        font,
+        color,
+    );
+    resp.clicked()
+}
 
 // ── StatusWidget trait ────────────────────────────────────────────────────────
 
@@ -22,7 +68,7 @@ pub trait StatusWidget {
 
 // ── Concrete widgets ──────────────────────────────────────────────────────────
 
-/// Buffer name with "[+]" when the buffer has unsaved changes.
+/// Focused buffer name; dimmed when unmodified, accented when dirty.
 pub struct FilenameWidget;
 
 impl StatusWidget for FilenameWidget {
@@ -35,12 +81,7 @@ impl StatusWidget for FilenameWidget {
             let buf = arc.lock().unwrap();
             (buf.name.clone(), buf.modified())
         };
-        let text = if modified {
-            format!("{} [+]", name)
-        } else {
-            name
-        };
-        ui.label(RichText::new(text).color(theme.text).font(label_font()));
+        pill(ui, theme, None, &name, if modified { theme.text } else { theme.subtext0 });
     }
 }
 
@@ -60,11 +101,7 @@ impl StatusWidget for PositionWidget {
             (pos.line + 1, pos.column + 1)
         };
 
-        ui.label(
-            RichText::new(format!("Ln {}, Col {}", row, col))
-                .color(theme.text)
-                .font(label_font()),
-        );
+        pill(ui, theme, None, &format!("Ln {}, Col {}", row, col), theme.subtext0);
     }
 }
 
@@ -82,13 +119,7 @@ impl GitBranchWidget {
     fn render_clickable(&self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> bool {
         let Some(status) = &editor.vc.last_status else { return false };
         if status.branch.is_empty() { return false; }
-        let btn = egui::Button::new(
-            RichText::new(format!("{} {}", icons::GIT_BRANCH, status.branch))
-                .color(theme.blue)
-                .font(label_font()),
-        )
-        .frame(false);
-        ui.add(btn).clicked()
+        pill(ui, theme, Some((icons::GIT_BRANCH, theme.blue)), &status.branch, theme.subtext0)
     }
 }
 
@@ -108,7 +139,7 @@ impl StatusWidget for FileTypeWidget {
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
 
         let mode = arc.lock().unwrap().major_mode.name().to_string();
-        ui.label(RichText::new(mode).color(theme.overlay0).font(label_font()));
+        pill(ui, theme, None, &mode, theme.overlay0);
     }
 }
 
@@ -117,7 +148,7 @@ pub struct EncodingWidget;
 
 impl StatusWidget for EncodingWidget {
     fn render(&self, ui: &mut egui::Ui, _editor: &Editor, theme: &GuiTheme) {
-        ui.label(RichText::new("UTF-8").color(theme.overlay0).font(label_font()));
+        pill(ui, theme, None, "UTF-8", theme.overlay0);
     }
 }
 
@@ -153,7 +184,7 @@ impl MessageWidget {
 
 /// Assembles all `StatusWidget`s into the bottom panel.
 ///
-/// Left side:  mode pill → filename
+/// Left side:  filename (+ transient message)
 /// Right side: encoding → file type → cursor position → git branch
 pub struct StatusBar;
 
@@ -162,12 +193,12 @@ impl StatusBar {
     pub fn show(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Option<StatusAction> {
         let mut action = None;
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.set_min_height(22.0);
 
             // ── Left-aligned ──────────────────────────────────────────────
             FilenameWidget.render(ui, editor, theme);
             if MessageWidget::fresh(editor) {
-                sep(ui, theme);
                 MessageWidget.render(ui, editor, theme);
             }
 
@@ -176,19 +207,11 @@ impl StatusBar {
                 if GitBranchWidget.render_clickable(ui, editor, theme) {
                     action = Some(StatusAction::OpenVc);
                 }
-                sep(ui, theme);
                 PositionWidget.render(ui, editor, theme);
-                sep(ui, theme);
                 FileTypeWidget.render(ui, editor, theme);
-                sep(ui, theme);
                 EncodingWidget.render(ui, editor, theme);
             });
         });
         action
     }
-}
-
-/// Dim vertical separator between adjacent widgets.
-fn sep(ui: &mut egui::Ui, theme: &GuiTheme) {
-    ui.label(RichText::new("|").color(theme.surface0).font(label_font()));
 }

@@ -14,12 +14,16 @@ use super::transaction::{
     CommittedEdit, EditTransaction, TransactionBuilder, TransactionError,
 };
 
+/// Transactions retained for incremental consumers.  Past this window,
+/// `changes_since` reports `None` and consumers must re-sync from scratch.
+const MAX_HISTORY: usize = 4096;
+
 #[derive(Debug)]
 pub struct Document {
     rope: Rope,
     revision: Revision,
-    /// Full committed history, ascending.  Bounded only by document lifetime;
-    /// Phase 2's ChangeHistory owns retention policy.
+    /// Committed history, ascending, bounded to the incremental-consumer
+    /// window.  Undo data lives in `UndoHistory`, not here.
     history: Vec<EditTransaction>,
 }
 
@@ -83,13 +87,19 @@ impl Document {
         LineIndex::new(&self.rope)
     }
 
-    /// Transactions committed strictly after `seen`.  The canonical change
-    /// feed for every consumer (Phase 6).
-    pub fn changes_since(&self, seen: Revision) -> &[EditTransaction] {
+    /// Transactions committed strictly after `seen` — the canonical change
+    /// feed for every consumer.  `None` when `seen` predates the retention
+    /// window: the consumer must re-sync from the document instead of
+    /// applying a silently-partial feed.
+    pub fn changes_since(&self, seen: Revision) -> Option<&[EditTransaction]> {
+        let oldest = self.history.first().map(|t| t.revision_before)?;
+        if seen < oldest {
+            return None;
+        }
         let pos = self
             .history
             .partition_point(|t| t.revision_before < seen);
-        &self.history[pos..]
+        Some(&self.history[pos..])
     }
 
     pub fn history(&self) -> &[EditTransaction] {
@@ -157,6 +167,9 @@ impl Document {
             origin,
         };
         self.history.push(txn.clone());
+        if self.history.len() > MAX_HISTORY {
+            self.history.drain(0..self.history.len() - MAX_HISTORY);
+        }
         Ok(Some(txn))
     }
 }

@@ -3,7 +3,15 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use crate::kernel::semantic::parse;
+use crate::kernel::semantic::lsp_proto;
+use crate::kernel::text_engine::Buffer;
+
+/// An LSP TextEdit range in LSP coordinates: `(line, utf16 character)`.
+struct EditRange {
+    start: (usize, usize),
+    end: (usize, usize),
+    new_text: String,
+}
 
 /// (lsp/apply-edit edit-json) → nil
 unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Janet { unsafe {
@@ -21,16 +29,16 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
             }
         };
 
-        let mut edits_by_uri: std::collections::HashMap<String, Vec<(usize, usize, String)>> =
+        let mut edits_by_uri: std::collections::HashMap<String, Vec<EditRange>> =
             std::collections::HashMap::new();
 
         if let Some(changes) = json.get("changes").and_then(|c| c.as_object()) {
             for (uri, text_edits) in changes {
-                let path = parse::uri_to_path(uri);
+                let path = lsp_proto::uri_to_path(uri);
                 if let Some(edits) = text_edits.as_array() {
                     for edit in edits {
-                        if let Some((start, end, new_text)) = parse_text_edit(edit) {
-                            edits_by_uri.entry(path.clone()).or_default().push((start, end, new_text));
+                        if let Some(range) = parse_text_edit(edit) {
+                            edits_by_uri.entry(path.clone()).or_default().push(range);
                         }
                     }
                 }
@@ -41,11 +49,11 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
             for entry in doc_changes {
                 if let Some(text_doc) = entry.get("textDocument")
                     && let Some(raw_uri) = text_doc.get("uri").and_then(|u| u.as_str()) {
-                        let path = parse::uri_to_path(raw_uri);
+                        let path = lsp_proto::uri_to_path(raw_uri);
                         if let Some(edits) = entry.get("edits").and_then(|e| e.as_array()) {
                             for e in edits {
-                                if let Some((start, end, new_text)) = parse_text_edit(e) {
-                                    edits_by_uri.entry(path.clone()).or_default().push((start, end, new_text));
+                                if let Some(range) = parse_text_edit(e) {
+                                    edits_by_uri.entry(path.clone()).or_default().push(range);
                                 }
                             }
                         }
@@ -53,23 +61,34 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
             }
         }
 
-        for (path, mut edits) in edits_by_uri {
-            edits.sort_by_key(|b| std::cmp::Reverse(b.0));
+        for (path, ranges) in edits_by_uri {
             // Find the slab key for this path
             let key = ed.buffers.iter()
                 .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(&path))
                 .map(|(k, _)| k);
-            if let Some(key) = key {
-                if let Some(view) = ed.view_of_buffer_mut(key) {
-                    let buf_len = view.buffer.lock().unwrap().len();
-                    for (start, end, new_text) in &edits {
-                        let start = *start;
-                        let end = *end;
-                        if end > buf_len || start > end { continue; }
-                        if start < end { view.delete(start, end); }
-                        if !new_text.is_empty() { view.insert(start, new_text); }
-                    }
-                }
+            let Some(key) = key else { continue };
+            let Some(view) = ed.view_of_buffer_mut(key) else { continue };
+
+            // Resolve LSP (line, character) positions against THIS buffer's
+            // line index before touching anything.
+            let buffer = view.buffer.clone();
+            let buf = buffer.lock().unwrap();
+            let mut spans: Vec<(usize, usize, String)> = ranges.into_iter()
+                .map(|r| (
+                    offset_of(&buf, r.start.0, r.start.1),
+                    offset_of(&buf, r.end.0, r.end.1),
+                    r.new_text,
+                ))
+                .collect();
+            drop(buf);
+
+            // Back to front, so earlier ranges stay valid while applying.
+            spans.sort_by_key(|b| std::cmp::Reverse(b.0));
+            for (start, end, new_text) in spans {
+                let buf_len = buffer.lock().unwrap().len();
+                if end > buf_len || start > end { continue; }
+                if start < end { view.delete(start, end); }
+                if !new_text.is_empty() { view.insert(start, &new_text); }
             }
         }
 
@@ -77,18 +96,41 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
     })
 }}
 
-fn parse_text_edit(edit: &serde_json::Value) -> Option<(usize, usize, String)> {
+fn parse_text_edit(edit: &serde_json::Value) -> Option<EditRange> {
     let range = edit.get("range")?;
     let start = range.get("start")?;
     let end = range.get("end")?;
-    let start_line = start.get("line")?.as_u64()? as usize;
-    let start_char = start.get("character")?.as_u64()? as usize;
-    let end_line = end.get("line")?.as_u64()? as usize;
-    let end_char = end.get("character")?.as_u64()? as usize;
-    let new_text = edit.get("newText").and_then(|t| t.as_str()).unwrap_or("");
-    let start_offset = start_line * 80 + start_char;
-    let end_offset = end_line * 80 + end_char;
-    Some((start_offset, end_offset, new_text.to_string()))
+    Some(EditRange {
+        start: line_char(start)?,
+        end: line_char(end)?,
+        new_text: edit.get("newText").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+    })
+}
+
+fn line_char(pos: &serde_json::Value) -> Option<(usize, usize)> {
+    Some((
+        pos.get("line")?.as_u64()? as usize,
+        pos.get("character")?.as_u64()? as usize,
+    ))
+}
+
+/// Byte offset of an LSP (line, utf16-character) position in `buf`.
+/// Positions past the end of a line or the document clamp.
+fn offset_of(buf: &Buffer, line: usize, character: usize) -> usize {
+    let len = buf.len();
+    let Some(line_start) = buf.line_start_offset(line) else {
+        return len; // line beyond the document
+    };
+    let line_end = buf.line_start_offset(line + 1).unwrap_or(len);
+    let text = buf.slice(line_start, line_end);
+    let mut utf16 = 0usize;
+    for (byte_off, c) in text.char_indices() {
+        if utf16 >= character {
+            return line_start + byte_off;
+        }
+        utf16 += c.len_utf16();
+    }
+    line_end
 }
 
 pub fn register() -> Vec<JanetReg> {
@@ -99,4 +141,33 @@ pub fn register() -> Vec<JanetReg> {
             documentation: c"Apply a WorkspaceEdit JSON object to open buffers".as_ptr() as *const _,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buffer_of(text: &str) -> Buffer {
+        crate::kernel::text_engine::Buffer::from_string(
+            crate::kernel::state::id::BufferId(1), "t", text,
+        )
+    }
+
+    #[test]
+    fn offset_of_resolves_lines_and_utf16_columns() {
+        let buf = buffer_of("hello\nwörld\nx");
+        assert_eq!(offset_of(&buf, 0, 0), 0);
+        assert_eq!(offset_of(&buf, 1, 0), 6);
+        // LSP character 2 on "wörld" is the start of 'r': ö is 2 UTF-8
+        // bytes but 1 UTF-16 unit.
+        assert_eq!(offset_of(&buf, 1, 2), 9);
+        assert_eq!(offset_of(&buf, 2, 0), 13);
+    }
+
+    #[test]
+    fn offset_of_clamps_past_line_and_document() {
+        let buf = buffer_of("ab\ncd");
+        assert_eq!(offset_of(&buf, 0, 99), 3, "past end of line clamps to line end");
+        assert_eq!(offset_of(&buf, 99, 0), buf.len(), "past document clamps to end");
+    }
 }

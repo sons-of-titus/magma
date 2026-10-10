@@ -243,3 +243,36 @@ The generation counter prevents use-after-free: if a buffer is deleted and its s
 | Event queue | 1,000 events | New events block (backpressure) |
 | Key sequence buffer | 10 keys | Buffer flushed, previous keys discarded |
 | Rope | Unlimited (system memory) | OOM handled at OS level |
+
+---
+
+# Growth Budgets (rework 2026-10)
+
+Every unbounded-growing structure in the kernel is capped.  These are the
+budgets and where they are enforced; `src/tests/memory_budget_tests.rs`
+floods each structure past its cap and asserts the bound holds.
+
+| Subsystem | Structure | Budget | Mechanism |
+|-----------|-----------|--------|-----------|
+| Document | committed transaction history | 4 096 txns | `Document::MAX_HISTORY`, front-drained on push; past the window `changes_since` reports `None` and consumers re-sync |
+| Document | undo entries | 10 000 | `UndoHistory::MAX_ENTRIES`, `VecDeque` front-eviction; the saved-cursor shifts with eviction (an evicted save point is no longer undo-reachable and can never compare clean) |
+| Terminal | scrollback | 10 000 lines | `SCROLLBACK_LINES`, `VecDeque` front-eviction |
+| Search | quickfix list | 500 entries | truncated per streamed batch |
+| Completion | popup items | 50 | truncated at collection |
+| Completion | word cache | 1 entry per buffer | keyed by buffer, evicted on `drop_buffer`; superseded by revision check |
+| Minimap | sampled-line cache | 1 entry per buffer | keyed by buffer + revision + strip size, evicted on `drop_buffer` |
+| Sidebar | FileNode tree | 1 per project epoch | replaced when `files_epoch` moves |
+| tree-sitter | parse handoff store | 8 trees | bounded `VecDeque`, oldest dropped |
+| tree-sitter | per-buffer trees | 1 per buffer | keyed by buffer, replaced when a fresher revision parses |
+| LSP | pending requests | swept at 30 s | `REQUEST_TIMEOUT` sweep before each send; dead servers fail all pending on exit |
+
+Deliberately unbounded (bounded by user action, documented so the choice
+is visible): open buffers (the user closes them), the project file list
+(the walk result), registers/marks/macros (user-created, tiny).
+
+## Measuring
+
+`cargo bench` reports kernel-path latency; memory soak runs assert
+structural bounds after flooding (the enforcement tests) and are the CI
+guard.  RSS measurement is platform-specific and belongs to the soak
+harness, not unit tests.

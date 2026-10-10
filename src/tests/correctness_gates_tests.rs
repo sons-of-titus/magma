@@ -57,7 +57,7 @@ fn gate_stale_diagnostics_and_changes_never_override_newer_text() {
     assert_eq!(buf.slice(0, usize::MAX), "hello, big world");
     // The old edit's coordinates no longer exist as a live address; the
     // change log is the only way to rebase them.
-    let chain = buf.changes_since(0);
+    let chain = buf.changes_since(0).expect("revision 0 is always retained");
     assert_eq!(chain.len(), 2);
     assert_eq!(chain[0].0, 0); // before
     assert_eq!(chain[1].0, 1);
@@ -222,4 +222,77 @@ fn gate_rendering_never_copies_the_document() {
     }
     assert!(seen.contains("ine-0"), "first line rendered");
     assert!(!seen.contains("ine-49999"), "no leak from outside the viewport");
+}
+
+// ── Performance gates (rework.md §8) ─────────────────────────────────────
+//
+// Generous debug-build thresholds that only fail when the architectural
+// invariants regress: the typing path must be flat in document size, and
+// per-frame work must not scale with the document.  Precise numbers live
+// in `benches/frame_pipeline.rs` (release builds).
+
+#[test]
+fn typing_latency_does_not_scale_with_document_size() {
+    let small = typing_median(1_000);
+    let large = typing_median(50_000);
+    assert!(
+        large.as_nanos() <= small.as_nanos() * 20 + 2_000_000,
+        "typing into a 50k-line doc ({}µs median) must stay within a generous          multiple of a 1k-line doc ({}µs) — O(document) work crept into the          keystroke path",
+        large.as_micros(), small.as_micros(),
+    );
+}
+
+fn typing_median(lines: usize) -> std::time::Duration {
+    let mut ed = crate::tests::helpers::make_editor();
+    let doc: String = (0..lines)
+        .map(|i| format!("fn item_{i}() {{ }} // fill\n"))
+        .collect();
+    let key = ed.create_buffer_from_str("gate.rs", &doc);
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    ed.editor_mode = crate::kernel::state::EditorMode::new("editor", true);
+    ed.keymaps.push_layer("editor");
+
+    let mut samples: Vec<std::time::Duration> = Vec::new();
+    for i in 0..50 {
+        let t = std::time::Instant::now();
+        crate::kernel::input::dispatch_key(&mut ed, &format!("{}", i % 10));
+        samples.push(t.elapsed());
+    }
+    samples.sort_unstable();
+    samples[samples.len() / 2]
+}
+
+#[test]
+fn render_frame_cost_does_not_scale_with_document_size() {
+    use crate::kernel::render::frame::render_frame;
+    use crate::kernel::render::surface::Surface;
+
+    let render_median = |lines: usize| {
+        let mut ed = crate::tests::helpers::make_editor();
+        let doc: String = (0..lines)
+            .map(|i| format!("fn item_{i}() {{ }} // fill\n"))
+            .collect();
+        let key = ed.create_buffer_from_str("gate.rs", &doc);
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
+        }
+        let mut samples: Vec<std::time::Duration> = Vec::new();
+        for _ in 0..30 {
+            let mut surface = Surface::new(80, 40);
+            let t = std::time::Instant::now();
+            render_frame(&ed, &mut surface);
+            samples.push(t.elapsed());
+        }
+        samples.sort_unstable();
+        samples[samples.len() / 2]
+    };
+    let small = render_median(1_000);
+    let large = render_median(50_000);
+    assert!(
+        large.as_nanos() <= small.as_nanos() * 10 + 5_000_000,
+        "rendering 80x40 visible cells ({}µs median at 50k lines) must not          scale with the document ({}µs at 1k lines) — an O(document) frame          path crept back in",
+        large.as_micros(), small.as_micros(),
+    );
 }

@@ -38,6 +38,18 @@ pub fn line_bar_px(chars: usize) -> f32 {
         .max(MIN_BAR_PX)
 }
 
+/// Sampled lines for one buffer, valid for the recorded revision and strip
+/// size.  The per-frame work is then only painting, not document reads
+/// (rework.md §7).
+#[derive(Debug, Clone, Default)]
+pub struct MinimapCache {
+    pub revision: u64,
+    pub total: usize,
+    pub max_rows: usize,
+    /// `(document line index, line text)` for sampled lines, ascending.
+    pub lines: Vec<(usize, String)>,
+}
+
 pub struct Minimap;
 
 impl Minimap {
@@ -47,7 +59,7 @@ impl Minimap {
     /// the strip, `None` otherwise.
     pub fn show(
         ui:           &mut egui::Ui,
-        editor:       &Editor,
+        editor:       &mut Editor,
         buf_id:       usize,
         rect:         Rect,
         theme:        &GuiTheme,
@@ -71,19 +83,31 @@ impl Minimap {
         let hl = collect_highlights(editor, buf_id);
 
         let base_fg = theme.subtext0;
-        // Only sampled lines are extracted — a viewport-scaled summary must
-        // not copy the whole document every frame (§9.1).
-        let mut line_idx = 0usize;
-        while line_idx < total {
-            if line_idx % step == 0 {
-                let span = buf.line_span(line_idx).unwrap_or(0..0);
-                Self::draw_line(
-                    ui, &buf.slice(span.start, span.end), span.start,
-                    &hl, editor, base_fg,
-                    rect.left(), rect.top() + (line_idx / step) as f32 * row_h, row_h,
-                );
+        // Sampled lines are cached per (revision, strip size); the frame
+        // only paints them.
+        let cache = editor.minimap_cache.entry(buf_id).or_default();
+        if cache.revision != buf.revision() || cache.total != total || cache.max_rows != max_rows {
+            let mut lines = Vec::with_capacity(total / step + 1);
+            let mut line_idx = 0usize;
+            while line_idx < total {
+                if line_idx % step == 0 {
+                    let span = buf.line_span(line_idx).unwrap_or(0..0);
+                    lines.push((span.start, buf.slice(span.start, span.end)));
+                }
+                line_idx += 1;
             }
-            line_idx += 1;
+            *cache = MinimapCache { revision: buf.revision(), total, max_rows, lines };
+        }
+        let lines = std::mem::take(&mut cache.lines);
+        for (row, (start, text)) in lines.iter().enumerate() {
+            Self::draw_line(
+                ui, text, *start,
+                &hl, editor, base_fg,
+                rect.left(), rect.top() + row as f32 * row_h, row_h,
+            );
+        }
+        if let Some(cache) = editor.minimap_cache.get_mut(&buf_id) {
+            cache.lines = lines;
         }
         Self::viewport_rect(ui, rect, theme, row_h, step, scroll_top, visible_rows);
 

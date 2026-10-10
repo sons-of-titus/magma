@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
@@ -19,65 +19,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server_mode = args.iter().any(|a| a == "--server");
     let connect_mode = args.iter().any(|a| a == "--connect");
 
-    let editor = Arc::new(RwLock::new(Editor::new(Box::new(DiskFileSystem::new()))));
+    let mut editor = Editor::new(Box::new(DiskFileSystem::new()));
 
-    {
-        let mut ed = editor.write().unwrap();
-        builtin::register_builtin_commands(&mut ed);
-        ed.command_history = persist::load_command_history();
-        for m in persist::load_marks() {
-            ed.marks.insert(m.name, m.byte_offset);
-        }
-        ed.project_manager.recent_projects = persist::load_recent_projects();
+    builtin::register_builtin_commands(&mut editor);
+    editor.command_history = persist::load_command_history();
+    for m in persist::load_marks() {
+        editor.marks.insert(m.name, m.byte_offset);
     }
+    editor.project_manager.recent_projects = persist::load_recent_projects();
 
-    {
-        let mut ed = editor.write().unwrap();
-        let id = ed.allocate_buffer_id();
-        let mut buffer = Buffer::new(BufferId(id), "*scratch*");
-        buffer.major_mode = magma::kernel::text_engine::MajorMode::Prog;
-        let arc = std::sync::Arc::new(std::sync::Mutex::new(buffer));
-        let entry = ed.buffers.vacant_entry();
-        let buf_key = entry.key();
-        entry.insert(arc.clone());
-        ed.views.insert(buf_key, magma::kernel::text_engine::BufferView::new(arc));
+    let id = editor.allocate_buffer_id();
+    let mut buffer = Buffer::new(BufferId(id), "*scratch*");
+    buffer.major_mode = magma::kernel::text_engine::MajorMode::Prog;
+    let arc = std::sync::Arc::new(std::sync::Mutex::new(buffer));
+    let entry = editor.buffers.vacant_entry();
+    let buf_key = entry.key();
+    entry.insert(arc.clone());
+    editor.views.insert(buf_key, magma::kernel::text_engine::BufferView::new(arc));
 
-        if let Some(win) = ed.view_tree.focused_window_mut() {
-            win.buffer_id = Some(buf_key);
-        }
+    if let Some(win) = editor.view_tree.focused_window_mut() {
+        win.buffer_id = Some(buf_key);
     }
 
     let runtime = Arc::new(tokio::runtime::Runtime::new()?);
     let (bg_sender, bg_receiver) = mpsc::unbounded_channel();
     let bg_handle = BackgroundHandle::new(runtime.clone(), bg_sender.clone());
 
-    {
-        let mut ed = editor.write().unwrap();
-        ed.background = Some(bg_handle.clone());
-    }
+    editor.background = Some(bg_handle.clone());
 
     {
-        let editor_ref = editor.clone();
         let bg = bg_handle.clone();
         runtime.spawn(async move {
-            auto_save_loop(editor_ref, bg).await;
+            auto_save_heartbeat(bg).await;
         });
     }
 
     #[cfg(feature = "janet")]
-    {
-        let mut ed = editor.write().unwrap();
+    if !server_mode {
+        // The GUI loop owns the editor on the main thread; the Janet VM is
+        // initialized there once and never leaves this thread.
         let mut rt = magma::kernel::scripting::JanetRuntime::new();
-        rt.init(&mut ed);
-        ed.runtime = Some(Box::new(rt));
+        rt.init(&mut editor);
+        editor.runtime = Some(Box::new(rt));
     }
 
     {
-        let mut ed = editor.write().unwrap();
         use magma::kernel::event::keys;
         use magma::kernel::event::payload::*;
-        ed.events.emit_typed(keys::events::EDITOR_READY, EmptyPayload);
-        ed.dispatch_events_scoped();
+        editor.events.emit_typed(keys::events::EDITOR_READY, EmptyPayload);
+        editor.dispatch_events_scoped();
     }
 
     if server_mode {
@@ -87,26 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|s| s.as_str())
             .unwrap_or("127.0.0.1:7890");
         eprintln!("Starting Magma server on {addr} (headless)");
-        let file_watcher = match magma::kernel::storage::watcher::FileWatcher::new(bg_sender.clone()) {
-            Ok(mut fw) => {
-                let ed = editor.read().unwrap();
-                for (_, arc) in ed.buffers.iter() {
-                    let buf = arc.lock().unwrap();
-                    if let Some(ref path) = buf.path {
-                        fw.watch(path);
-                    }
-                }
-                drop(ed);
-                Some(fw)
-            }
-            Err(e) => {
-                eprintln!("Warning: could not start file watcher: {e}");
-                None
-            }
-        };
-        let _ = file_watcher;
         return runtime.block_on(async move {
-            magma::kernel::server::run_server(editor, addr).await
+            magma::kernel::server::run_server(editor, bg_receiver, addr).await
         });
     }
 
@@ -164,53 +136,21 @@ async fn client_connect(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn auto_save_loop(editor: Arc<RwLock<Editor>>, bg: BackgroundHandle) {
+/// Opt-in auto-save heartbeat.  The heartbeat owns no editor state: it only
+/// nudges the foreground loop, which snapshots dirty buffers and hands the
+/// write to the background pool (rework.md §1: background threads never
+/// touch the editor).
+async fn auto_save_heartbeat(bg: BackgroundHandle) {
     let mut interval = tokio::time::interval(Duration::from_secs(30));
     loop {
         interval.tick().await;
-
-        // Opt-in only: the editor must never rewrite user files uninvited.
-        let enabled = editor.read().is_ok_and(|ed| {
-            ed.options.get("auto-save").map(|v| v.as_str()) == Some("true")
-        });
-        if !enabled {
-            continue;
-        }
-
-        let dirty: Vec<(usize, String, String, u64)> = {
-            let ed = match editor.read() {
-                Ok(g) => g,
-                Err(_) => continue,
-            };
-            ed.buffers.iter()
-                .filter(|(_, arc)| arc.lock().unwrap().modified())
-                .filter_map(|(key, arc)| {
-                    let buf = arc.lock().unwrap();
-                    buf.path.clone().map(|p| (key, p, buf.slice(0, buf.len()), buf.revision()))
-                })
-                .collect()
-        };
-
-        for (key, path, content, saved_rev) in dirty {
-            let editor = editor.clone();
-            bg.spawn_blocking(move || {
-                let result = magma::kernel::storage::disk::atomic_write(&path, &content);
-                if result.is_ok()
-                    && let Ok(mut ed) = editor.write()
-                    && let Some(arc) = ed.buffers.get_mut(key) {
-                            // Only the revision actually written becomes
-                            // clean; edits made after the snapshot keep the
-                            // buffer modified (docs/core-redesign.md §5.1).
-                            arc.lock().unwrap().mark_saved_at(saved_rev);
-                        }
-            });
-        }
+        bg.send_event(BackgroundEvent::AutoSaveTick);
     }
 }
 
 #[cfg(feature = "gui")]
 fn run_gui(
-    editor: Arc<RwLock<Editor>>,
+    editor: magma::kernel::state::Editor,
     bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use eframe::egui;
@@ -219,8 +159,8 @@ fn run_gui(
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Magma")
-            .with_inner_size([720.0, 480.0])
-            .with_min_inner_size([480.0, 360.0]),
+            .with_inner_size([800.0, 640.0])
+            .with_min_inner_size([640.0, 480.0]),
         ..Default::default()
     };
 
@@ -237,7 +177,7 @@ fn run_gui(
 
 #[cfg(not(feature = "gui"))]
 fn run_gui(
-    _editor: Arc<RwLock<Editor>>,
+    _editor: magma::kernel::state::Editor,
     _bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let _ = _bg_receiver;

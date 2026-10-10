@@ -31,16 +31,6 @@ unsafe extern "C-unwind" fn c_project_push_recent(argc: i32, argv: *mut Janet) -
     })
 }
 
-/// (project/remove-recent path) → nil
-unsafe extern "C-unwind" fn c_project_remove_recent(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| unsafe {
-        if let Some(path) = conv::get_str(argc, argv, 0) {
-            project::remove_recent(ed, &path);
-        }
-        conv::nil()
-    })
-}
-
 /// (project/path-exists? path) → boolean
 unsafe extern "C-unwind" fn c_project_path_exists(argc: i32, argv: *mut Janet) -> Janet { unsafe {
     let path_str = match conv::get_str(argc, argv, 0) {
@@ -161,11 +151,6 @@ pub fn register() -> Vec<JanetReg> {
             name: c"project/push-recent".as_ptr() as *const _,
             cfun: Some(c_project_push_recent as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Add a project path to the recent list and persist".as_ptr() as *const _,
-        },
-        JanetReg {
-            name: c"project/remove-recent".as_ptr() as *const _,
-            cfun: Some(c_project_remove_recent as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Remove a project path from the recent list and persist".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/path-exists?".as_ptr() as *const _,

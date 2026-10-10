@@ -29,7 +29,7 @@ pub(crate) fn apply_dap_command_result(
             if let Some(frame_id) = first_frame {
                 #[cfg(feature = "janet")]
                 crate::kernel::scripting::send_dap_command(
-                    session_id, "scopes", &format!(r#"{{"frameId":{frame_id}}}"#),
+                    ed, session_id, "scopes", &format!(r#"{{"frameId":{frame_id}}}"#),
                 );
             }
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
@@ -43,7 +43,7 @@ pub(crate) fn apply_dap_command_result(
             if let Some(r) = scope_ref {
                 #[cfg(feature = "janet")]
                 crate::kernel::scripting::send_dap_command(
-                    session_id, "variables", &format!(r#"{{"variablesReference":{r}}}"#),
+                    ed, session_id, "variables", &format!(r#"{{"variablesReference":{r}}}"#),
                 );
             }
         }
@@ -58,6 +58,40 @@ pub(crate) fn apply_dap_command_result(
                 .unwrap_or_default();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.set_variables(vars);
+            }
+        }
+        ("setBreakpoints", true) => {
+            // The adapter echoes the breakpoints with verified flags and
+            // (possibly adjusted) lines: the session stores what is real.
+            let verified: Vec<(bool, usize)> = v["breakpoints"].as_array()
+                .map(|arr| arr.iter()
+                    .map(|bp| (bp["verified"].as_bool().unwrap_or(false),
+                               bp["line"].as_u64().unwrap_or(0) as usize))
+                    .collect())
+                .unwrap_or_default();
+            if let Some(sessions_iter) = None::<()> { let _ = sessions_iter; }
+            if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+                session.set_verified_breakpoints(verified);
+            }
+        }
+        ("breakpoint", true) => {
+            // A single-breakpoint change event: same verification path.
+            if let Some(line) = v["breakpoint"]["line"].as_u64() {
+                let verified = v["breakpoint"]["verified"].as_bool().unwrap_or(false);
+                if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+                    session.set_verified_breakpoints(vec![(verified, line as usize)]);
+                }
+            }
+        }
+        ("threads", true) => {
+            let threads: Vec<crate::kernel::debug::types::Thread> = v["threads"].as_array()
+                .map(|arr| arr.iter().map(|t| crate::kernel::debug::types::Thread {
+                    id: t["id"].as_u64().unwrap_or(0),
+                    name: t["name"].as_str().unwrap_or("?").to_string(),
+                }).collect())
+                .unwrap_or_default();
+            if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+                session.set_threads(threads);
             }
         }
         _ => {}

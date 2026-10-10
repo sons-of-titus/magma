@@ -68,6 +68,9 @@ pub struct VcState {
     pub backends: Vec<Box<dyn VcBackend>>,
     /// Index into `backends` of the backend currently in use.
     pub active_backend: Option<usize>,
+    /// Name of the active backend — the identity background op jobs use,
+    /// since trait-object backends cannot cross into the pool by value.
+    pub active_backend_name: Option<String>,
     /// Slab key of the `*vc*` display buffer.
     pub buf_key: Option<usize>,
     /// Detected repository root.
@@ -102,6 +105,7 @@ impl VcState {
                 Box::new(backends::JjBackend),
             ],
             active_backend: None,
+            active_backend_name: None,
             buf_key: None,
             repo_root: None,
             last_status: None,
@@ -198,6 +202,56 @@ pub fn path_at_line(status: &VcStatus, line: usize) -> Option<String> {
 // ── Shell helper (shared by backends and shell-template backends) ──────────────
 
 /// Run a command in `dir` and return combined stdout + stderr.
+/// One background-dispatchable repository operation.
+#[derive(Debug, Clone)]
+pub enum VcRemoteOp {
+    Stage(String),
+    Unstage(String),
+    Diff(Option<String>),
+    Log,
+    Push,
+    Blame(String),
+    Commit(String),
+}
+
+/// Run `op` against the named backend at `root`.  Backends are stateless
+/// CLI wrappers, so a fresh detection by name is equivalent to the
+/// foreground's registry entry.
+pub fn run_op(root: &Path, backend_name: &str, op: &VcRemoteOp) -> Result<String, String> {
+    let backend = detect_backends(root).into_iter()
+        .find(|b| b.name() == backend_name)
+        .ok_or_else(|| format!("no '{backend_name}' backend available"))?;
+    match op {
+        VcRemoteOp::Stage(path) => backend.stage(root, path).map(|_| String::new()),
+        VcRemoteOp::Unstage(path) => backend.unstage(root, path).map(|_| String::new()),
+        VcRemoteOp::Diff(file) => backend.diff(root, file.as_deref()),
+        VcRemoteOp::Log => backend.log(root, 30),
+        VcRemoteOp::Push => backend.push(root),
+        VcRemoteOp::Blame(path) => backend.blame(root, path),
+        VcRemoteOp::Commit(message) => backend.commit(root, message).map(|_| String::new()),
+    }
+}
+
+/// Detect the backend for `root` and fetch its status.  Runs on background
+/// threads for the async refresh path (backends are stateless).
+pub fn status_for_root(root: &Path) -> Result<VcStatus, String> {
+    for backend in &detect_backends(root) {
+        if let Ok(status) = backend.status(root) {
+            return Ok(status);
+        }
+    }
+    Err("no version-control backend for this root".to_string())
+}
+
+fn detect_backends(_root: &Path) -> Vec<Box<dyn VcBackend>> {
+    vec![
+        Box::new(backends::GitBackend),
+        Box::new(backends::HgBackend),
+        Box::new(backends::SvnBackend),
+        Box::new(backends::JjBackend),
+    ]
+}
+
 pub fn run_cmd(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
     let out = std::process::Command::new(program)
         .args(args)

@@ -113,6 +113,16 @@ fn query_tree(
 }
 
 /// Incremental parse state cached per buffer.
+/// Parse `text` into a tree off the interactive path (lane scheduler).
+pub fn parse_tree(lang_name: &str, text: &str) -> Option<tree_sitter::Tree> {
+    with_language_map(|map| {
+        let language = map.get(lang_name)?;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(language).ok()?;
+        parser.parse(text, None)
+    })
+}
+
 #[derive(Clone)]
 pub struct TsTreeState {
     pub tree: tree_sitter::Tree,

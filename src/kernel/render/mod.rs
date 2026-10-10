@@ -6,7 +6,6 @@ pub mod frame;
 pub mod view;
 pub mod view_tree;
 pub mod editor_view;
-pub mod terminal_view;
 pub mod gutter;
 pub mod gutter_providers;
 pub(crate) mod highlight_pass;
@@ -57,11 +56,15 @@ pub(crate) mod gui_theme;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_welcome;
 #[cfg(feature = "gui")]
+pub(crate) mod gui_welcome_panes;
+#[cfg(feature = "gui")]
 pub(crate) mod gui_find_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_output_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_debug_tool;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_terminal_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gpu_rasterizer;
 #[cfg(feature = "gui")]

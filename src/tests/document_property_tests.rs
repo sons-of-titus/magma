@@ -391,3 +391,148 @@ fn empty_to_content_and_back() {
     assert_eq!(doc.revision(), Revision(2), "undo bumps; revisions never reused");
     check_line_index(&doc, "");
 }
+
+// ── Model-based random edits (Phase 2: document invariants) ─────────────
+
+/// Deterministic LCG so failures reproduce exactly.
+struct Lcg(u64);
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 >> 33
+    }
+}
+
+const MULTI_BYTE: &str = "héllo wörld — こんにちは 안녕 👋ificação\nsecond läne 中文\n";
+
+/// Mirror of the buffer's floor-boundary snap, for the shadow model.
+fn snap(model: &str, pos: usize) -> usize {
+    let pos = pos.min(model.len());
+    if model.is_char_boundary(pos) { return pos; }
+    let mut p = pos;
+    while p > 0 && !model.is_char_boundary(p) { p -= 1; }
+    p
+}
+
+#[test]
+fn random_multibyte_edits_match_a_string_model_and_undo_restores() {
+    let mut ed = crate::tests::helpers::make_editor();
+    let key = ed.create_buffer_from_str("prop.txt", MULTI_BYTE);
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    let arc = ed.buffers.get(key).unwrap().clone();
+
+    let mut model = MULTI_BYTE.to_string();
+    let mut rng = Lcg(0x5eed_cafe_f00d);
+    let mut last_rev = 0;
+
+    for _ in 0..500 {
+        let len = {
+            let buf = arc.lock().unwrap();
+            buf.len()
+        };
+        let op = rng.next() % 3;
+        let pos = (rng.next() as usize) % (len + 1);
+        let s = snap(&model, pos);
+        // A transaction commits iff it survives normalization as non-empty:
+        // deletes collapse when the range snaps to nothing inside a
+        // multibyte char; replaces with identical text still commit.
+        let mut expect_commit = true;
+        let new_rev = {
+            let mut buf = arc.lock().unwrap();
+            match op {
+                0 => {
+                    // Insert a random multibyte fragment.
+                    let frag = ["αβγ", "中", "π", "👀a", "é"][rng.next() as usize % 5];
+                    buf.insert(s, frag);
+                    model.insert_str(s, &frag);
+                }
+                1 if len > 0 => {
+                    let end = snap(&model, pos.max(s).saturating_add(1 + (rng.next() as usize) % 7));
+                    expect_commit = end > s;
+                    buf.delete(s, end);
+                    model.replace_range(s..end, "");
+                }
+                2 => {
+                    let frag = "é中!";
+                    let end = snap(&model, pos.max(s).saturating_add(1 + (rng.next() as usize) % 5));
+                    buf.replace(s, end, frag);
+                    model.replace_range(s..end.min(model.len()), frag);
+                }
+                _ => expect_commit = false,
+            }
+            buf.revision()
+        };
+        assert_eq!(new_rev == last_rev + 1, expect_commit,
+            "a non-empty transaction is exactly one revision; an empty one is none");
+        last_rev = new_rev;
+
+        {
+            let buf = arc.lock().unwrap();
+            assert_eq!(buf.slice(0, buf.len()), model, "buffer must match the model after op {op}");
+            // Multibyte integrity: every char boundary in the model must
+            // yield the same char from the buffer.
+            for (i, c) in model.char_indices() {
+                assert_eq!(buf.char_at(i), Some(c), "char at boundary {i}");
+            }
+        }
+    }
+
+    // Undo the entire history: the buffer must return to the loaded text.
+    loop {
+        let restored = arc.lock().unwrap().undo();
+        if restored.is_none() { break; }
+    }
+    let buf = arc.lock().unwrap();
+    assert_eq!(buf.slice(0, buf.len()), MULTI_BYTE,
+        "undoing all groups must restore the initial content exactly");
+}
+
+#[test]
+fn changes_since_reports_truncation_instead_of_partial_feeds() {
+    let mut ed = crate::tests::helpers::make_editor();
+    let key = ed.create_buffer_from_str("hist.txt", "x");
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    let arc = ed.buffers.get(key).unwrap().clone();
+
+    let mut first_rev = None;
+    for i in 0..(4096 + 8) {
+        let mut buf = arc.lock().unwrap();
+        let text = format!("{i}\n");
+        let end = buf.len();
+        buf.insert(end, &text);
+        if first_rev.is_none() { first_rev = Some(buf.revision()); }
+    }
+    let buf = arc.lock().unwrap();
+    assert_eq!(
+        buf.changes_since(0),
+        None,
+        "revision 0 left the retention window: callers must re-sync, not get a partial feed"
+    );
+    assert!(
+        buf.changes_since(first_rev.unwrap()).is_none(),
+        "anything before the retained window is None"
+    );
+    let recent = buf.revision() - 4;
+    let feed = buf.changes_since(recent).expect("recent revisions are retained");
+    assert_eq!(feed.len(), 4, "the feed covers exactly the requested range");
+}
+
+#[test]
+fn multi_cursor_insert_restores_the_cursor_after_its_own_text() {
+    let mut ed = crate::tests::helpers::make_editor();
+    let key = ed.create_buffer_from_str("multi.txt", "acb");
+    let arc = ed.buffers.get(key).unwrap().clone();
+
+    // Three cursors at 0, 1, 2 — cursor tracked is 0.
+    let txn = arc.lock().unwrap().insert_many(&[(0, "X"), (1, "Y"), (2, "Z")], 0).unwrap();
+    assert_eq!(txn.edits.len(), 3);
+    // Undo must restore cursor_after faithfully via the recorded entry.
+    let mut buf = arc.lock().unwrap();
+    assert_eq!(buf.slice(0, buf.len()), "XaYcZb");
+    let undo = buf.undo();
+    assert_eq!(undo, Some(0), "cursor restores to its own position, not shifted by others' inserts");
+}

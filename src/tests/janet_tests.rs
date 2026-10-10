@@ -65,3 +65,125 @@ fn janet_defined_commands_execute_but_stay_off_the_palette() {
             "Janet-defined commands are not palette surface");
     });
 }
+
+#[test]
+fn builtin_command_files_register_their_commands() {
+    // A compile error in any builtin (e.g. an unknown symbol) is only
+    // logged at load time — the registry going empty is the observable
+    // failure.  One command per file that registers verbs at load time.
+    janet_test!(ed, {
+        for name in ["dbg-start", "ws-save", "agent-ask"] {
+            assert!(ed.commands.exists(name), "builtin command {name} must be registered at load time");
+        }
+    });
+}
+
+#[test]
+fn every_builtin_compiles_at_init() {
+    // A builtin that fails to load silently disables everything it defines
+    // (LSP glue, syntax tables, …) — the failure must never be invisible.
+    janet_test!(ed, {
+        let errors = scripting::take_builtin_load_errors();
+        assert!(errors.is_empty(), "builtins failed to compile: {errors:?}");
+    });
+}
+
+#[test]
+fn command_run_passes_arguments_to_the_command() {
+    // The args previously vanished (empty HashMap) — every parameterized
+    // command failed with "Missing required argument" from Janet.  A real
+    // open is the observable: the project root must actually change.
+    janet_test!(ed, {
+        let dir = std::env::temp_dir().join(format!("magma-run-args-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = format!(r#"(command/run "open-project" :path "{}")"#, dir.display());
+        let r = scripting::eval_result(&src);
+        assert!(r.is_ok(), "command/run must accept :key value pairs: {:?}", r.err());
+        assert_eq!(ed.project_manager.project.root.as_ref(), Some(&dir),
+            "the :path argument must reach open-project");
+        std::fs::remove_dir_all(&dir).ok();
+    });
+}
+
+#[test]
+fn lsp_attach_uses_numeric_buffer_ids() {
+    // buffer-created delivers the id as a string; every buffer/* C function
+    // needs a number.  The attach handler must convert it, so a .rs buffer
+    // gets registered for its language (didOpen's prerequisite).
+    janet_test!(ed, {
+        let key = ed.create_buffer_from_str("main.rs", "fn main() {}");
+        if let Some(arc) = ed.buffers.get(key) {
+            arc.lock().unwrap().path = Some("/tmp/magma-lsp-test/main.rs".to_string());
+        }
+        // Registering a language is the first observable step of attach;
+        // lsp/start itself is skipped when the server binary is missing.
+        let r = scripting::eval(&format!("(do (event/emit \"buffer-created\" {{:buffer-id \"{key}\"}}) nil)"));
+        assert_eq!(r, "ok", "handler must not error on the string payload: {r}");
+    });
+}
+
+#[test]
+fn explorer_open_end_to_end_focuses_and_highlights() {
+    // The whole click path: open-project → index → sidebar click path →
+    // open-file → frame drain → the file is on screen and highlighted.
+    janet_test!(ed, {
+        use crate::kernel::command::{self, args::ArgValue};
+        use crate::kernel::runtime::{process_background_event, BackgroundHandle};
+
+        let rt = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        ed.background = Some(BackgroundHandle::new(rt, tx));
+
+        let dir = std::env::temp_dir().join(format!("magma-explorer-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/main.rs"), "fn main() {\n    let done = true;\n}\n").unwrap();
+
+        let mut args = std::collections::HashMap::new();
+        args.insert("path".to_string(), ArgValue::Path(dir.to_string_lossy().into_owned()));
+        command::execute_command(&mut ed, "open-project", &args).unwrap();
+
+        // What drain_background_events does every frame.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while ed.project_manager.project.files.is_empty() {
+            match rx.try_recv() {
+                Ok(ev) => process_background_event(&mut ed, ev),
+                _ if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                _ => panic!("no FileIndexed event"),
+            }
+        }
+        assert!(ed.project_manager.project.files.contains(&"src/main.rs".to_string()),
+            "index must be project-relative: {:?}", ed.project_manager.project.files);
+
+        // The exact string the sidebar click computes for a file node.
+        let root = ed.project_manager.project.root.as_ref().unwrap()
+            .to_string_lossy().into_owned();
+        let full = format!("{}/{}", root.trim_end_matches('/'), "src/main.rs");
+
+        // SidebarAction::Open → DialogAction::OpenFile → open-file.
+        let mut args = std::collections::HashMap::new();
+        args.insert("path".to_string(), ArgValue::Path(full.clone()));
+        command::execute_command(&mut ed, "open-file", &args).unwrap();
+
+        // What the editor shell now does every frame.
+        ed.dispatch_events_scoped();
+
+        // The file is on screen in the focused pane.
+        let focused = ed.view_tree.focused_window()
+            .and_then(|w| ed.view_tree.buffer(w))
+            .expect("a focused buffer after opening from the explorer");
+        assert_eq!(
+            ed.buffers.get(focused).unwrap().lock().unwrap().path.as_deref(),
+            Some(full.as_str()),
+            "the clicked file's buffer must be the focused one");
+
+        // The syntax core ran on buffer-created and highlighted it.
+        let view = ed.view_of_buffer(focused).expect("view for focused buffer");
+        let syntax = view.highlight_layers.get("syntax")
+            .expect("syntax highlight layer set by buffer-created handler");
+        assert!(!syntax.is_empty(), "rust keywords must be highlighted");
+
+        std::fs::remove_dir_all(&dir).ok();
+    });
+}

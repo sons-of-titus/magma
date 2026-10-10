@@ -29,6 +29,7 @@ pub enum TabAction {
 
 impl TabAction {
     pub fn apply(self, editor: &mut Editor) {
+        editor.frame_dirty = true;
         match self {
             TabAction::Focus(id) => editor.view_tree.focus(id),
             TabAction::Close(id) => {
@@ -84,12 +85,11 @@ impl TabBar {
         let dragging: Option<WindowId> = ui.ctx().data(|d| d.get_temp(drag_id));
         let drag_over: Option<WindowId> = ui.ctx().data(|d| d.get_temp(drag_over_id));
 
-        const TAB_H:     f32 = 28.0;
-        const H_PAD:     f32 = 10.0;
+        const TAB_H:     f32 = 30.0;
+        const H_PAD:     f32 = 12.0;
         const CLOSE_W:   f32 = 14.0;
         const DOT_R:     f32 = 3.5;
         const FONT_SIZE: f32 = 13.0;
-        const ACTIVE_LINE_H: f32 = 2.0;
 
         let font_id   = FontId::new(FONT_SIZE, FontFamily::Proportional);
         let close_fid = FontId::new(11.0, FontFamily::Proportional);
@@ -97,6 +97,17 @@ impl TabBar {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             ui.set_min_height(TAB_H);
+
+            // Strip baseline — the active tab's fill is painted over it, so
+            // the selected tab reads as connected to the editor surface.
+            let strip_left = ui.cursor().left();
+            let baseline_y = ui.cursor().top() + TAB_H - 1.0;
+            ui.painter().rect_filled(
+                Rect::from_min_size(Pos2::new(strip_left, baseline_y),
+                                    Vec2::new(ui.available_width() + strip_left, 1.0)),
+                CornerRadius::ZERO,
+                theme.surface0,
+            );
 
             let ptr: Option<Pos2> = ui.ctx().pointer_hover_pos();
 
@@ -113,14 +124,19 @@ impl TabBar {
 
                 let (tab_rect, tab_resp) =
                     ui.allocate_exact_size(Vec2::new(tab_w, TAB_H), Sense::click_and_drag());
+                let tab_resp = tab_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
 
                 let is_hovered  = ptr.map(|p| tab_rect.contains(p)).unwrap_or(false);
                 let is_drag_over = drag_over == Some(tab.window_id)
                     && dragging != Some(tab.window_id);
 
                 // ── Background ──────────────────────────────────────────────
-                let bg = if is_active { theme.base } else { theme.crust };
-                ui.painter().rect_filled(tab_rect, Self::top_rounding(), bg);
+                if is_active {
+                    ui.painter().rect_filled(tab_rect, Self::top_rounding(), theme.base);
+                } else if is_hovered {
+                    ui.painter().rect_filled(tab_rect, Self::top_rounding(),
+                                             theme.surface0.gamma_multiply(0.5));
+                }
 
                 if is_drag_over {
                     ui.painter().rect_stroke(
@@ -129,25 +145,6 @@ impl TabBar {
                         egui::Stroke::new(2.0, theme.blue),
                         egui::StrokeKind::Inside,
                     );
-                }
-
-                // Active-tab underline — fades in over ~150 ms.
-                if is_active {
-                    let anim = ui.ctx().animate_value_with_time(
-                        egui::Id::new("tab_active").with(tab.window_id),
-                        1.0,
-                        0.15,
-                    );
-                    if anim > 0.01 {
-                        let line = Rect::from_min_max(
-                            Pos2::new(tab_rect.left(),  tab_rect.bottom() - ACTIVE_LINE_H),
-                            Pos2::new(tab_rect.right(), tab_rect.bottom()),
-                        );
-                        ui.painter().rect_filled(
-                            line, CornerRadius::ZERO,
-                            theme.blue.gamma_multiply(anim.min(1.0)),
-                        );
-                    }
                 }
 
                 // ── Content ─────────────────────────────────────────────────
@@ -163,7 +160,13 @@ impl TabBar {
                     cx += DOT_R * 2.0 + 4.0;
                 }
 
-                let fg = if is_active { theme.text } else { theme.overlay0 };
+                let fg = if is_active {
+                    theme.text
+                } else if is_hovered {
+                    theme.subtext1
+                } else {
+                    theme.overlay0
+                };
                 ui.painter().text(
                     Pos2::new(cx, cy),
                     egui::Align2::LEFT_CENTER,

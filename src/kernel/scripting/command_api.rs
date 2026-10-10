@@ -4,14 +4,23 @@ use std::collections::HashMap;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use crate::kernel::command::args::ArgValue;
 
-/// (command/run name & args) — execute a Rust command
+/// (command/run name &opt kvs*) — execute a command with `:key value` pairs.
 unsafe extern "C-unwind" fn c_command_run(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        let Some(name) = (unsafe { conv::get_str(argc, argv, 0) }) else {
+    with_editor(|ed| unsafe {
+        let Some(name) = conv::get_str(argc, argv, 0) else {
             return conv::nil();
         };
-        let args = HashMap::new();
+        let mut args = HashMap::new();
+        let mut i = 1;
+        while i + 1 < argc {
+            let (Some(key), Some(value)) = (conv::get_str(argc, argv, i), conv::get_str(argc, argv, i + 1)) else {
+                break;
+            };
+            args.insert(key, ArgValue::String(value));
+            i += 2;
+        }
         match crate::kernel::command::execute_command(ed, &name, &args) {
             Ok(()) => conv::nil(),
             Err(e) => conv::signal_err(&e),

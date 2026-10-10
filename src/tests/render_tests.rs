@@ -279,23 +279,24 @@ mod render_damage {
     }
 
     #[test]
-    fn render_signature_stable_when_static_changes_when_edited() {
+    fn key_dispatch_marks_the_frame_dirty() {
         let mut ed = editor_with("hello");
-        let s1 = ed.render_signature();
-        let s2 = ed.render_signature();
-        assert_eq!(s1, s2, "static editor has a stable signature");
+        ed.editor_mode = crate::kernel::state::EditorMode::new("editor", true);
+        ed.keymaps.push_layer("editor");
+        ed.frame_dirty = false;
 
-        let key = crate::tests::helpers::focused_key(&ed);
-        let view = ed.views.get_mut(&key).unwrap();
-        view.insert(5, "!");
-        let s3 = ed.render_signature();
-        assert_ne!(s1, s3, "an edit must change the signature");
+        crate::kernel::input::dispatch_key(&mut ed, "x");
+        assert!(ed.frame_dirty, "a key that edits must request a repaint");
+    }
 
-        // Cursor movement alone also changes it (view state is painted).
-        let view = ed.views.get_mut(&key).unwrap();
-        view.set_cursor(3);
-        let s4 = ed.render_signature();
-        assert_ne!(s3, s4, "cursor movement must change the signature");
+    #[test]
+    fn background_events_mark_the_frame_dirty() {
+        let mut ed = editor_with("hello");
+        ed.frame_dirty = false;
+
+        crate::kernel::runtime::process_background_event(&mut ed,
+            crate::kernel::runtime::BackgroundEvent::AutoSaveWritten { buf_key: 0, saved_rev: 0 });
+        assert!(ed.frame_dirty, "async results landing must request a repaint");
     }
 
     #[test]

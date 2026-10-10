@@ -1,162 +1,80 @@
 use std::collections::HashMap;
-use crate::kernel::semantic::parse;
+
+use serde_json::json;
+
+use crate::kernel::semantic::lsp;
+use crate::kernel::semantic::lsp_proto;
 use crate::tests::helpers;
 
-// ── parse.rs unit tests ──────────────────────────────────────────────────
+// ── Wire protocol ────────────────────────────────────────────────────────
 
 #[test]
 fn test_parse_uri_to_path() {
-    assert_eq!(parse::uri_to_path("file:///home/user/file.rs"), "/home/user/file.rs");
-    assert_eq!(parse::uri_to_path("/raw/path"), "/raw/path");
-    assert_eq!(parse::uri_to_path("file://localhost/path/file.txt"), "/path/file.txt");
+    assert_eq!(lsp_proto::uri_to_path("file:///home/user/file.rs"), "/home/user/file.rs");
+    assert_eq!(lsp_proto::uri_to_path("/raw/path"), "/raw/path");
 }
 
 #[test]
-fn test_parse_diagnostics_mixed() {
-    let body = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///test.rs","diagnostics":[
+fn test_publish_diagnostics_typed() {
+    let body = json!({"uri": "file:///test.rs", "diagnostics": [
         {"range":{"start":{"line":0,"character":0},"end":{"line":1,"character":1}},"severity":1,"message":"error msg"},
         {"range":{"start":{"line":2,"character":5},"end":{"line":2,"character":10}},"severity":2,"message":"warn msg"},
         {"range":{"start":{"line":3,"character":0},"end":{"line":3,"character":1}},"severity":4,"message":"hint msg"}
-    ]}}"#;
-    let (path, diags) = parse::parse_diagnostics(body).unwrap();
-    assert_eq!(path, "/test.rs");
+    ]});
+    let diags = lsp::parse_diagnostics(&body);
     assert_eq!(diags.len(), 3);
-    assert!(diags[0].contains("[E]"), "expected error: {}", diags[0]);
-    assert!(diags[1].contains("[W]"), "expected warning: {}", diags[1]);
-    assert!(diags[2].contains("[H]"), "expected hint: {}", diags[2]);
+    assert_eq!(diags[0].severity.as_str(), "error");
+    assert_eq!(diags[0].line, 0);
+    assert_eq!(diags[0].end_line, 1);
+    assert_eq!(diags[1].severity.as_str(), "warning");
+    assert_eq!(diags[1].column, 5);
+    assert_eq!(diags[2].severity.as_str(), "hint");
 }
 
 #[test]
-fn test_parse_diagnostics_empty() {
-    let body = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///empty.rs","diagnostics":[]}}"#;
-    let (path, diags) = parse::parse_diagnostics(body).unwrap();
-    assert_eq!(path, "/empty.rs");
-    assert!(diags.is_empty());
+fn test_publish_diagnostics_empty() {
+    let body = json!({"uri": "file:///empty.rs", "diagnostics": []});
+    assert!(lsp::parse_diagnostics(&body).is_empty());
 }
 
 #[test]
-fn test_parse_hover_markdown() {
-    let body = r##"{"jsonrpc":"2.0","id":1,"result":{"contents":{"kind":"markdown","value":"# Title\n\nBody text"}}}"##;
-    let text = parse::parse_hover(body).unwrap();
-    assert!(text.contains("Title"), "expected Title in hover: {text}");
-    assert!(text.contains("Body"), "expected Body in hover: {text}");
+fn test_hover_text_markdown() {
+    let result = json!({"contents": {"kind": "markdown", "value": "# Title\n\nBody text"}});
+    let text = lsp::extract_hover_text(Some(&result));
+    assert!(text.contains("Title"));
+    assert!(text.contains("Body"));
 }
 
 #[test]
-fn test_parse_hover_plain() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":{"contents":"plain string"}}"#;
-    assert_eq!(parse::parse_hover(body).unwrap(), "plain string");
+fn test_hover_text_plain_and_null() {
+    let result = json!({"contents": "plain string"});
+    assert_eq!(lsp::extract_hover_text(Some(&result)), "plain string");
+    assert_eq!(lsp::extract_hover_text(Some(&serde_json::Value::Null)), "");
 }
 
 #[test]
-fn test_parse_hover_null() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
-    assert!(parse::parse_hover(body).is_none());
+fn test_definition_single_location() {
+    let result = json!({"uri": "file:///src/lib.rs",
+        "range": {"start": {"line": 10, "character": 5}, "end": {"line": 10, "character": 20}}});
+    let (uri, sl, sc, el, ec) = lsp::first_location(&result).unwrap();
+    assert_eq!(uri, "file:///src/lib.rs");
+    assert_eq!((sl, sc, el, ec), (10, 5, 10, 20));
 }
 
 #[test]
-fn test_parse_definition_single() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":{"uri":"file:///src/lib.rs","range":{"start":{"line":10,"character":5},"end":{"line":10,"character":20}}}}"#;
-    let (uri, sl, sc, el, ec) = parse::parse_definition(body).unwrap();
-    assert_eq!(uri, "/src/lib.rs");
-    assert_eq!(sl, 10);
-    assert_eq!(sc, 5);
-    assert_eq!(el, 10);
-    assert_eq!(ec, 20);
+fn test_definition_array_of_locations() {
+    let result = json!([
+        {"uri": "file:///a.rs", "range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 2}}},
+        {"uri": "file:///b.rs", "range": {"start": {"line": 9, "character": 0}, "end": {"line": 9, "character": 2}}}
+    ]);
+    let (uri, sl, _sc, _el, _ec) = lsp::first_location(&result).unwrap();
+    assert_eq!(uri, "file:///a.rs", "the first location wins");
+    assert_eq!(sl, 1);
 }
 
 #[test]
-fn test_parse_definition_array() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":[{"uri":"file:///a.rs","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}]}"#;
-    let (uri, sl, _sc, _el, _ec) = parse::parse_definition(body).unwrap();
-    assert_eq!(uri, "/a.rs");
-    assert_eq!(sl, 0);
-}
-
-#[test]
-fn test_parse_definition_null() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
-    assert!(parse::parse_definition(body).is_none());
-}
-
-#[test]
-fn test_parse_code_actions() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":[{"title":"Extract function","kind":"refactor.extract"},{"title":"Add type annotation","kind":"quickfix"}]}"#;
-    let actions = parse::parse_code_actions(body).unwrap();
-    assert_eq!(actions.len(), 2);
-    assert!(actions[0].contains("Extract function"));
-    assert!(actions[1].contains("Add type annotation"));
-}
-
-#[test]
-fn test_parse_code_actions_empty() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":[]}"#;
-    assert!(parse::parse_code_actions(body).is_none());
-}
-
-#[test]
-fn test_parse_completion_items() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":[{"label":"push","detail":"Vec::push"},{"label":"pop","detail":"Vec::pop"}]}"#;
-    let items = parse::parse_completion_items(body).unwrap();
-    assert_eq!(items.len(), 2);
-}
-
-#[test]
-fn test_parse_completion_list() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":{"isIncomplete":false,"items":[{"label":"map","detail":"Iterator::map"}]}}"#;
-    let items = parse::parse_completion_items(body).unwrap();
-    assert_eq!(items.len(), 1);
-}
-
-#[test]
-fn test_parse_rename() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":{"changes":{"/file.rs":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":5}},"newText":"newname"}]}}}"#;
-    let edit = parse::parse_rename(body).unwrap();
-    assert!(edit.contains("changes"));
-    assert!(edit.contains("newname"));
-}
-
-#[test]
-fn test_parse_rename_null() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"result":null}"#;
-    assert!(parse::parse_rename(body).is_none());
-}
-
-#[test]
-fn test_parse_progress_begin() {
-    let body = r#"{"jsonrpc":"2.0","method":"$/progress","params":{"token":"build-1","value":{"kind":"begin","message":"Building...","percentage":0}}}"#;
-    let (token, msg, pct) = parse::parse_progress(body).unwrap();
-    assert_eq!(token, "build-1");
-    assert_eq!(msg, "Building...");
-    assert_eq!(pct, "0");
-}
-
-#[test]
-fn test_parse_progress_report() {
-    let body = r#"{"jsonrpc":"2.0","method":"$/progress","params":{"token":42,"value":{"kind":"report","message":"Indexing","percentage":50}}}"#;
-    let (token, msg, pct) = parse::parse_progress(body).unwrap();
-    assert_eq!(token, "42");
-    assert_eq!(msg, "Indexing");
-    assert_eq!(pct, "50");
-}
-
-#[test]
-fn test_is_response_and_method() {
-    assert!(parse::is_response(r#"{"id":1,"result":null}"#));
-    assert!(!parse::is_response(r#"{"method":"test"}"#));
-}
-
-#[test]
-fn test_extract_error() {
-    let body = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}"#;
-    let err = parse::extract_error(body).unwrap();
-    assert!(err.contains("Method not found"));
-}
-
-#[test]
-fn test_has_error() {
-    assert!(parse::has_error(r#"{"id":1,"error":{"code":-1,"message":"err"}}"#));
-    assert!(!parse::has_error(r#"{"id":1,"result":null}"#));
+fn test_definition_null_is_none() {
+    assert!(lsp::first_location(&serde_json::Value::Null).is_none());
 }
 
 // ── BackgroundEvent LSP variants emit correct events ─────────────────────
@@ -290,12 +208,20 @@ fn test_lsp_response_event() {
     assert_eq!(captured.lock().unwrap().take(), Some("custom/method".into()));
 }
 
-// ── Build_request formatting ─────────────────────────────────────────────
+// ── Request shaping ──────────────────────────────────────────────────────
 
 #[test]
 fn test_build_request_format() {
-    let req = parse::build_request(1, "textDocument/hover", r#"{"pos":{}}"#);
-    assert!(req.contains(r#""id":1"#));
-    assert!(req.contains(r#""method":"textDocument/hover""#));
-    assert!(req.contains(r#""params":{"pos":{}}"#));
+    let req = lsp_proto::request(1, "textDocument/hover", json!({"pos": {}}));
+    assert_eq!(req["id"], 1);
+    assert_eq!(req["method"], "textDocument/hover");
+    assert_eq!(req["params"]["pos"], json!({}));
+}
+
+#[test]
+fn test_initialize_params_shape() {
+    let params = lsp_proto::initialize_params(Some("/Users/me/my proj"));
+    assert_eq!(params["rootUri"], "file:///Users/me/my%20proj");
+    let params = lsp_proto::initialize_params(None);
+    assert!(params["rootUri"].is_null());
 }

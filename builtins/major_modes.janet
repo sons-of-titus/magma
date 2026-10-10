@@ -12,7 +12,7 @@
 #   4. Emits the `major-mode-changed` event (handled by extensions).
 #
 # Extensions that define language modes should follow the same pattern and
-# register a colon verb in *colon-plugins* or call `major-mode/define`.
+# register a command via `command/define` or call `major-mode/define`.
 
 # Track which major mode layers are currently active so we can pop them.
 (var *active-major-mode-layers* @[])

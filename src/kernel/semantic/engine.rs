@@ -163,8 +163,8 @@ mod tests {
     fn update_and_query_diagnostics() {
         let mut engine = SemanticEngine::new();
         let diags = vec![
-            Diagnostic { message: "err".into(), severity: DiagnosticSeverity::Error, line: 0, column: 0 },
-            Diagnostic { message: "warn".into(), severity: DiagnosticSeverity::Warning, line: 1, column: 0 },
+            Diagnostic { message: "err".into(), severity: DiagnosticSeverity::Error, line: 0, column: 0, end_line: 0, end_column: 3 },
+            Diagnostic { message: "warn".into(), severity: DiagnosticSeverity::Warning, line: 1, column: 0, end_line: 1, end_column: 4 },
         ];
         engine.update_diagnostics("/a.rs", diags);
         assert_eq!(engine.error_count("/a.rs"), 1);

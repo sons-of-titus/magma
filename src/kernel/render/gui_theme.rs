@@ -26,6 +26,8 @@ pub mod icons {
     pub const CLOSE:    &str = "×";
     pub const SEPARATOR: &str = "›";
     pub const GIT_BRANCH: &str = "⚒";
+    pub const PROJECTS: &str = "☰";
+    pub const LEARN:    &str = "⌨";
 }
 
 #[derive(Debug, Clone)]

@@ -12,7 +12,7 @@ mod search;
 mod registers;
 mod window;
 mod file;
-mod vcs;
+pub mod vcs;
 mod completion;
 mod misc;
 mod project_cmds;

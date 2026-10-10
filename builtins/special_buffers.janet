@@ -1,5 +1,5 @@
 # Special buffer management — Sprint 2
-# Loaded after init.janet so *colon-plugins* and command/define are available.
+# Loaded after init.janet so command/define is available.
 
 # ── *scratch* initialisation ──────────────────────────────────────────────────
 #

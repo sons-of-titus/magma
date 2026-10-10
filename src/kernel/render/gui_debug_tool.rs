@@ -23,7 +23,7 @@ impl ToolWindow for DebugToolWindow {
     fn title(&self) -> &str { "Debug" }
     fn icon(&self)  -> char { '֍' }
 
-    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Vec<ToolAction> {
+    fn ui(&mut self, ui: &mut egui::Ui, editor: &mut Editor, theme: &GuiTheme) -> Vec<ToolAction> {
         let Some(session) = editor.debug.active_session() else {
             ui.label(
                 RichText::new("No debug session.  Start one with :dbg-start <adapter>.")

@@ -1,7 +1,6 @@
 use crate::kernel::render::view_tree::{ViewTree, LayoutConstraint, SplitDirection};
 use crate::kernel::render::view::{View, ViewKind};
 use crate::kernel::render::editor_view::EditorView;
-use crate::kernel::render::terminal_view::TerminalView;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::state::id::WindowId;
 use crate::tests::helpers;
@@ -112,12 +111,6 @@ fn resize_weighted_makes_panes_unequal() {
 fn editor_view_kind_is_editor() {
     let v = EditorView { buf_id: 0, pane_id: WindowId(1) };
     assert_eq!(v.kind(), ViewKind::Editor);
-}
-
-#[test]
-fn terminal_view_kind_is_terminal() {
-    let v = TerminalView { buf_id: 0 };
-    assert_eq!(v.kind(), ViewKind::Terminal);
 }
 
 // ── render_frame with ViewTree ─────────────────────────────────────────────

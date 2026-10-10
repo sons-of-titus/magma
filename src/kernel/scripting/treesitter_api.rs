@@ -131,26 +131,30 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
 
         let buf = arc.lock().unwrap();
         let current_rev = buf.revision();
-        let cached = ed.ts_trees.get(&buf_id).filter(|s| s.revision <= current_rev).cloned();
-        let edits: Vec<tree_sitter::InputEdit> = match &cached {
-            Some(state) => {
-                let mut out = Vec::new();
-                for (_before, _after, spans) in buf.changes_since(state.revision) {
-                    for &(start, old_end, new_end) in spans.iter().rev() {
-                        out.push(tree_sitter::InputEdit {
-                            start_byte: start,
-                            old_end_byte: old_end,
-                            new_end_byte: new_end,
-                            start_position: point_of(&buf, start),
-                            old_end_position: point_of(&buf, old_end.min(buf.len())),
-                            new_end_position: point_of(&buf, new_end.min(buf.len())),
-                        });
+        let mut cached = ed.ts_trees.get(&buf_id).filter(|s| s.revision <= current_rev).cloned();
+        let mut edits: Vec<tree_sitter::InputEdit> = Vec::new();
+        if let Some(state) = &cached {
+            match buf.changes_since(state.revision) {
+                Some(changes) => {
+                    for (_before, _after, spans) in changes {
+                        for &(start, old_end, new_end) in spans.iter().rev() {
+                            edits.push(tree_sitter::InputEdit {
+                                start_byte: start,
+                                old_end_byte: old_end,
+                                new_end_byte: new_end,
+                                start_position: point_of(&buf, start),
+                                old_end_position: point_of(&buf, old_end.min(buf.len())),
+                                new_end_position: point_of(&buf, new_end.min(buf.len())),
+                            });
+                        }
                     }
                 }
-                out
+                // The tree predates the retention window: no honest
+                // incremental feed exists, so discard it and force a full
+                // reparse.
+                None => cached = None,
             }
-            None => Vec::new(),
-        };
+        }
         let query_text = buf.slice(0, buf.len());
         let (result, mut state) =
             match ts_registry::highlight_incremental(&lang_name, buf.rope_handle(), &query_text, &query_str, &edits, cached) {

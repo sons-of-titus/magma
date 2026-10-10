@@ -44,12 +44,15 @@ pub struct TaskScheduler {
     pub tasks: HashMap<TaskId, Task>,
     /// Name → id mapping for named tasks.
     pub named: HashMap<String, TaskId>,
+    /// Kill handles for running children — `cancel` must actually stop
+    /// the process, not only flip a status flag (rework.md §6).
+    pub running: HashMap<TaskId, std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>>,
     pub next_id: u64,
 }
 
 impl TaskScheduler {
     pub fn new() -> Self {
-        TaskScheduler { tasks: HashMap::new(), named: HashMap::new(), next_id: 1 }
+        TaskScheduler { tasks: HashMap::new(), named: HashMap::new(), running: HashMap::new(), next_id: 1 }
     }
 
     /// Define (or redefine) a named task.  Returns the stable task ID for this name.
@@ -119,9 +122,12 @@ impl TaskScheduler {
         let command = task.command.clone();
         let environment = task.environment.clone();
         let sender = bg.sender.clone();
+        let child_slot: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(None));
+        self.running.insert(id, child_slot.clone());
 
         bg.spawn_blocking(move || {
-            use std::io::Read;
+            use std::io::BufRead;
             let start = Instant::now();
             let mut cmd = std::process::Command::new("sh");
             cmd.arg("-c").arg(&command);
@@ -132,17 +138,45 @@ impl TaskScheduler {
             cmd.stderr(std::process::Stdio::piped());
 
             let (exit_code, stdout, stderr) = match cmd.spawn() {
-                Ok(mut child) => {
+                Ok(child) => {
+                    *child_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
                     let mut out = String::new();
                     let mut err = String::new();
-                    if let Some(s) = child.stdout.take() {
-                        let _ = std::io::BufReader::new(s).read_to_string(&mut out);
+                    // Stream output line by line — long builds show
+                    // progress as they run instead of at completion.
+                    fn stream_lines<R: std::io::Read>(
+                        stream: Option<R>,
+                        sink: &mut String,
+                        stream_name: &str,
+                        id: u64,
+                        sender: &tokio::sync::mpsc::UnboundedSender<crate::kernel::runtime::BackgroundEvent>,
+                    ) {
+                        if let Some(s) = stream {
+                            for line in std::io::BufReader::new(s).lines().map_while(Result::ok) {
+                                sink.push_str(&line);
+                                sink.push('\n');
+                                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::TaskOutputLine {
+                                    id, stream: stream_name.into(), line,
+                                });
+                            }
+                        }
                     }
-                    if let Some(s) = child.stderr.take() {
-                        let _ = std::io::BufReader::new(s).read_to_string(&mut err);
+                    let mut slot = child_slot.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(child) = slot.as_mut() {
+                        let stdout = child.stdout.take();
+                        let stderr = child.stderr.take();
+                        drop(slot);
+                        stream_lines(stdout, &mut out, "stdout", id, &sender);
+                        stream_lines(stderr, &mut err, "stderr", id, &sender);
+                        let code = child_slot.lock().unwrap_or_else(|e| e.into_inner())
+                            .as_mut()
+                            .and_then(|c| c.wait().ok())
+                            .and_then(|s| s.code())
+                            .unwrap_or(-1);
+                        (code, out, err)
+                    } else {
+                        (-1, out, err)
                     }
-                    let code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
-                    (code, out, err)
                 }
                 Err(e) => (-1, String::new(), e.to_string()),
             };
@@ -183,10 +217,16 @@ impl TaskScheduler {
         self.launch(id, bg)
     }
 
-    /// Cancel a task.  Running tasks are marked Cancelled; the background thread
-    /// may still complete and send an event, which is ignored because the
-    /// status is no longer Running.
+    /// Cancel a task: kill its process and mark it Cancelled.  The
+    /// background thread's completion event lands on a non-Running task
+    /// and is ignored by the completion handler.
     pub fn cancel(&mut self, id: TaskId) {
+        if let Some(slot) = self.running.get(&id)
+            && let Ok(mut guard) = slot.lock()
+            && let Some(child) = guard.as_mut() {
+                let _ = child.kill();
+            }
+        self.running.remove(&id);
         if let Some(task) = self.tasks.get_mut(&id) {
             if matches!(task.status, TaskStatus::Running | TaskStatus::Pending) {
                 task.status = TaskStatus::Cancelled;

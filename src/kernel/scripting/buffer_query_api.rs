@@ -210,7 +210,7 @@ unsafe extern "C-unwind" fn c_buffer_changes_since(argc: i32, argv: *mut Janet) 
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let since = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as u64;
         let changes = ed.buffers.get(key)
-            .map(|a| a.lock().unwrap().changes_since(since))
+            .and_then(|a| a.lock().unwrap().changes_since(since))
             .unwrap_or_default();
         let arr = janet_array(changes.len() as i32);
         for (before, after, edits) in changes {

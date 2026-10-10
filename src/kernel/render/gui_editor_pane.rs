@@ -6,8 +6,6 @@
 //! (`minimap-enabled` option).  Mouse events that land inside the strip are
 //! consumed by the strip; only editor-rect events reach `dispatch_mouse`.
 
-use std::sync::{Arc, RwLock};
-
 use eframe::egui::{self, Rect};
 use eframe::wgpu::TextureFormat;
 
@@ -28,7 +26,7 @@ const THUMB_MIN_H: f32 = 18.0;
 
 /// Everything the pane needs to paint one frame.
 pub struct PanePaint<'a> {
-    pub editor:        &'a Arc<RwLock<Editor>>,
+    pub editor:        &'a mut Editor,
     pub atlas:         &'a GpuGlyphAtlas,
     pub use_gpu:       bool,
     pub target_format: Option<TextureFormat>,
@@ -46,16 +44,13 @@ pub enum EditorPaneAction {
 /// Render the central editor pane.  Returns a chrome-initiated action.
 pub fn render_editor_pane(
     ui:       &mut egui::Ui,
-    paint:    &PanePaint<'_>,
+    paint:    &mut PanePaint<'_>,
     char_w:   f32,
     line_h:   f32,
     raw:      &mut Vec<RawMouseEvent>,
 ) -> Option<EditorPaneAction> {
     let full   = ui.available_rect_before_wrap();
-    let minimap = {
-        let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
-        minimap_enabled(&ed)
-    };
+    let minimap = minimap_enabled(paint.editor);
 
     let strip_w = if minimap { STRIP_W } else { SCROLLBAR_W };
     let editor_rect = Rect::from_min_max(
@@ -70,29 +65,21 @@ pub fn render_editor_pane(
     let visible_cols = ((editor_rect.width()  / char_w).floor() as usize).max(1);
     let visible_rows = ((editor_rect.height() / line_h).floor() as usize).max(1);
     let mut surface = Surface::new(visible_cols as u16, visible_rows as u16);
-    {
-        let mut ed = paint.editor.write().unwrap_or_else(|e| e.into_inner());
-        ed.view_tree.resize(visible_cols as u16, visible_rows as u16);
-        // The surface must match the painted extent so no unpainted cells
-        // reach the screen.
-        let extent_w = ed.view_tree.panes().iter()
-            .map(|p| p.x + p.width).max().unwrap_or(visible_cols as u16);
-        let extent_h = ed.view_tree.panes().iter()
-            .map(|p| p.y + p.height).max().unwrap_or(visible_rows as u16);
-        if extent_w as usize != visible_cols || extent_h as usize != visible_rows {
-            surface = Surface::new(extent_w, extent_h);
-        }
+    let ed = &mut *paint.editor;
+    ed.view_tree.resize(visible_cols as u16, visible_rows as u16);
+    // The surface must match the painted extent so no unpainted cells
+    // reach the screen.
+    let extent_w = ed.view_tree.panes().iter()
+        .map(|p| p.x + p.width).max().unwrap_or(visible_cols as u16);
+    let extent_h = ed.view_tree.panes().iter()
+        .map(|p| p.y + p.height).max().unwrap_or(visible_rows as u16);
+    if extent_w as usize != visible_cols || extent_h as usize != visible_rows {
+        surface = Surface::new(extent_w, extent_h);
     }
-    {
-        let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
-        render_frame(&ed, &mut surface);
-    }
+    render_frame(ed, &mut surface);
 
-    let bg_color = {
-        let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
-        let (r, g, b) = ed.theme_color("gui-bg");
-        egui::Color32::from_rgb(r, g, b)
-    };
+    let (r, g, b) = ed.theme_color("gui-bg");
+    let bg_color = egui::Color32::from_rgb(r, g, b);
 
     if paint.use_gpu && let Some(fmt) = paint.target_format {
         let bg = [
@@ -126,23 +113,14 @@ pub fn render_editor_pane(
 
     // ── Right strip: minimap or scrollbar ────────────────────────────────
     let mut action = None;
-    let focused_buf = {
-        let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
-        ed.view_tree.focused_window().and_then(|wid| ed.view_tree.buffer(wid))
-    };
+    let focused_buf = paint.editor.view_tree.focused_window()
+        .and_then(|wid| paint.editor.view_tree.buffer(wid));
     if strip_w > 0.0 && let Some(buf_id) = focused_buf {
-        let scroll = {
-            let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
-            compute_scroll_state(&ed, buf_id, visible_rows)
-        };
-        let total = {
-            let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
-            ed.buffers.get(buf_id).map(|a| a.lock().unwrap().line_count()).unwrap_or(1)
-        };
+        let scroll = compute_scroll_state(paint.editor, buf_id, visible_rows);
+        let total = paint.editor.buffers.get(buf_id).map(|a| a.lock().unwrap().line_count()).unwrap_or(1);
         if minimap {
-            let ed = paint.editor.read().unwrap_or_else(|e| e.into_inner());
             if let Some(line0) =
-                Minimap::show(ui, &ed, buf_id, strip_rect, paint.theme, scroll.scroll_top, visible_rows)
+                Minimap::show(ui, paint.editor, buf_id, strip_rect, paint.theme, scroll.scroll_top, visible_rows)
             {
                 action = Some(EditorPaneAction::GotoLine(line0 + 1));
             }
@@ -155,7 +133,7 @@ pub fn render_editor_pane(
 
     // ── Mouse dispatch (pixel → cell coords, editor rect only) ───────────
     if !raw.is_empty() {
-        let mut ed = paint.editor.write().unwrap_or_else(|e| e.into_inner());
+        let ed = &mut *paint.editor;
         for ev in raw.drain(..) {
             if !editor_rect.contains(egui::pos2(ev.px, ev.py))
                 && matches!(ev.kind, crate::kernel::input::event::MouseEventKind::Click
@@ -165,7 +143,7 @@ pub fn render_editor_pane(
             }
             let cell_x = ((ev.px - editor_rect.min.x) / char_w).max(0.0) as u16;
             let cell_y = ((ev.py - editor_rect.min.y) / line_h).max(0.0) as u16;
-            mouse::dispatch_mouse(&mut ed, &surface, &MouseEvent {
+            mouse::dispatch_mouse(ed, &surface, &MouseEvent {
                 kind:      ev.kind,
                 x:         cell_x,
                 y:         cell_y,

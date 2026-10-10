@@ -81,7 +81,7 @@ fn format_modifiers(mods: &egui::Modifiers) -> String {
     parts.join(",")
 }
 
-fn translate_event(ev: &egui::Event) -> Option<String> {
+pub(crate) fn translate_event(ev: &egui::Event) -> Option<String> {
     match ev {
         egui::Event::Key { key, pressed: true, modifiers, .. } => {
             use egui::Key;
@@ -127,6 +127,9 @@ fn translate_event(ev: &egui::Event) -> Option<String> {
                 }
                 if *key == Key::Comma {
                     return Some(format!("{}-comma", modifier_prefix(ctrl, shift)));
+                }
+                if *key == Key::Space {
+                    return Some(format!("{}-space", modifier_prefix(ctrl, shift)));
                 }
                 let ch = key_char(*key)?;
                 return Some(format!("{}-{}", modifier_prefix(ctrl, shift), ch));

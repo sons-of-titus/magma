@@ -15,6 +15,9 @@ pub struct DebugSession {
     pub variables: Vec<Variable>,
     pub stopped: bool,
     pub stopped_thread: Option<ThreadId>,
+    /// (verified, line) pairs as confirmed by the adapter — the UI's
+    /// gutter shows unverified breakpoints differently.
+    pub verified_breakpoints: Vec<(bool, usize)>,
     seq: i64,
 }
 
@@ -28,6 +31,7 @@ impl DebugSession {
             variables: Vec::new(),
             stopped: false,
             stopped_thread: None,
+            verified_breakpoints: Vec::new(),
             seq: 1,
         }
     }
@@ -52,6 +56,12 @@ impl DebugSession {
     /// Update the visible variables from a DAP `variables` response.
     pub fn set_variables(&mut self, variables: Vec<Variable>) {
         self.variables = variables;
+    }
+
+    /// Record adapter-verified breakpoints.  The manager maps them back to
+    /// its per-file lists by line number.
+    pub fn set_verified_breakpoints(&mut self, verified: Vec<(bool, usize)>) {
+        self.verified_breakpoints = verified;
     }
 
     /// Return the frame with the given id, if known.

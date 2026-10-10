@@ -1,14 +1,16 @@
 //! Background task system — bridges the tokio async runtime with the
 //! synchronous editor loop via a typed `BackgroundEvent` channel.
 //!
-//! This is the single largest match in the kernel (every async subsystem
-//! lands here); it was already past the 400-line gate before the GUI
-//! redesign.  DAP result handling lives in `runtime_dap.rs`; further
-//! subsystem splits happen at their own abstraction boundaries.
+//! Documented over the size gate (AGENTS.md gate 3): this file is the
+//! single dispatch match every async subsystem lands in.  Subsystem
+//! handlers that grow domain logic split out at their abstraction
+//! boundaries — DAP results in `runtime_dap.rs`, index reconciliation in
+//! `kernel/index`, LSP validation in `semantic/lsp` — leaving the arms
+//! as thin calls.
 
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::kernel::state::Editor;
 use crate::kernel::event::payload::*;
@@ -29,95 +31,20 @@ pub struct TaskState {
     pub running: bool,
 }
 
-/// Insert terminal PTY output into a buffer, respecting cursor-control semantics.
-///
-/// Characters produced by `strip_ansi` can contain:
-///   `\r`   — standalone CR: overwrite from the start of the current line.
-///   `\x08` — backspace marker: remove the last character on the current line.
-///             `strip_ansi` emits these for `\x08` and `\x1b[nD` sequences so
-///             that ghost-suggestion text can be cancelled even when it arrived
-///             in a prior `read()` chunk.
-fn apply_terminal_output(buf: &mut crate::kernel::text_engine::Buffer, data: &str) {
-    // Fast path: plain text with no control markers.
-    if !data.contains('\r') && !data.contains('\x08') {
-        let pos = buf.len();
-        buf.insert(pos, data);
-        return;
-    }
-
-    // Helper: byte index of the start of the last line in the buffer.
-    let line_start = |buf: &crate::kernel::text_engine::Buffer| -> usize {
-        let len = buf.len();
-        if len == 0 { return 0; }
-        let text = buf.slice(0, len);
-        text.rfind('\n').map(|i| i + 1).unwrap_or(0)
-    };
-
-    let mut remaining = data;
-    while !remaining.is_empty() {
-        // Find the next control character (\r or \x08).
-        let ctrl = remaining
-            .char_indices()
-            .find(|(_, c)| *c == '\r' || *c == '\x08');
-
-        match ctrl {
-            None => {
-                let pos = buf.len();
-                buf.insert(pos, remaining);
-                break;
-            }
-            Some((idx, ch)) => {
-                // Append everything before the control char.
-                if idx > 0 {
-                    let pos = buf.len();
-                    buf.insert(pos, &remaining[..idx]);
-                }
-                remaining = &remaining[idx + ch.len_utf8()..];
-
-                match ch {
-                    '\r' => {
-                        // Overwrite from the start of the current line.
-                        let cur_len = buf.len();
-                        let ls = line_start(buf);
-                        if ls < cur_len {
-                            buf.delete(ls, cur_len);
-                        }
-                    }
-                    '\x08' => {
-                        // Remove the last character on the current line.
-                        let cur_len = buf.len();
-                        let ls = line_start(buf);
-                        if ls < cur_len {
-                            let text = buf.slice(0, cur_len);
-                            let last_char_offset = text[ls..]
-                                .char_indices()
-                                .next_back()
-                                .map(|(i, _)| ls + i);
-                            if let Some(start) = last_char_offset {
-                                buf.delete(start, cur_len);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-}
-
 /// Events sent from background tasks to the main thread event loop.
 #[derive(Debug, Clone)]
 pub enum BackgroundEvent {
     FileReadResult { path: String, content: Result<String, String>, request_id: u64 },
     FileWriteResult { path: String, result: Result<(), String>, request_id: u64 },
-    /// LSP diagnostic publish notification.
-    LspDiagnostics { path: String, diagnostics: Vec<String> },
+    /// LSP diagnostic publish notification — typed, with the server-side
+    /// document version when the server provides one.
+    LspDiagnostics { path: String, version: Option<u64>, diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic> },
     /// LSP completion response (Sprint 4).
     LspCompletion { path: String, items: Vec<String>, request_id: u64 },
     /// Terminal output chunk from a background process.
-    TerminalOutput { buf_id: usize, data: String },
+    TerminalOutput { terminal_id: usize, data: String },
     /// A terminal process has exited.
-    TerminalExited { buf_id: usize, exit_code: i32 },
+    TerminalExited { terminal_id: usize, exit_code: i32 },
     /// A watched file changed on disk.
     FileChanged { path: String, kind: String },
     /// A line of output from a managed subprocess (Sprint 3).
@@ -128,9 +55,11 @@ pub enum BackgroundEvent {
     TaskReady { id: u64 },
     /// Project file index completed (Sprint 4).
     FileIndexed { project_name: String, files: Vec<String> },
-    /// A project-wide content search finished; results land in the
-    /// quickfix list so the panel, `:cn/:cp`, and grep share one list.
-    GrepResults { entries: Vec<crate::kernel::task::QuickfixEntry> },
+    /// A streamed batch of project-search results; appended to the
+    /// quickfix list when the generation is still current.
+    GrepResultsBatch { generation: u64, entries: Vec<crate::kernel::task::QuickfixEntry> },
+    /// A project-wide search finished; the quickfix index resets.
+    GrepDone { generation: u64 },
     // ── Sprint 13 Network API ─────────────────────────────────────────────
     /// An HTTP request completed successfully.
     HttpResponse { id: u64, status: u16, body: String },
@@ -153,20 +82,34 @@ pub enum BackgroundEvent {
     TcpClientDisconnected { server_id: u64, client_id: u64 },
     // ─────────────────────────────────────────────────────────────────────
     // ── Sprint 5 LSP Power Features ──────────────────────────────────────
-    /// Generic LSP response for arbitrary methods.
-    LspResponse { path: String, method: String, result: String, request_id: u64 },
-    /// Parsed hover response contents.
-    LspHover { path: String, contents: String },
-    /// Parsed go-to-definition result.
-    LspDefinition { path: String, uri: String, start_line: usize, start_col: usize, end_line: usize, end_col: usize },
-    /// Parsed code actions (JSON array of `{"title","kind"}`).
-    LspCodeActions { path: String, actions: String },
-    /// Parsed completion items (JSON array of `{"label","detail","insertText"}`).
-    LspCompletionItems { path: String, items: String },
-    /// Parsed rename result (WorkspaceEdit JSON).
-    LspRenameResult { path: String, edit: String },
+    /// Generic LSP response for arbitrary methods, revision-tagged.
+    LspResponse { path: String, method: String, result: String, request_id: u64, buf_key: Option<usize>, revision: u64 },
+    /// Parsed hover response contents, tagged with the request's buffer and
+    /// revision so stale responses can be rejected on arrival.
+    LspHover { path: String, contents: String, buf_key: Option<usize>, revision: u64 },
+    /// Parsed go-to-definition result, revision-tagged.
+    LspDefinition { path: String, uri: String, start_line: usize, start_col: usize, end_line: usize, end_col: usize, buf_key: Option<usize>, revision: u64 },
+    /// Parsed code actions (JSON array of `{"title","kind"}`), revision-tagged.
+    LspCodeActions { path: String, actions: String, buf_key: Option<usize>, revision: u64 },
+    /// Parsed completion items (JSON array of `{"label","detail","insertText"}`),
+    /// revision-tagged.
+    LspCompletionItems { path: String, items: String, buf_key: Option<usize>, revision: u64 },
+    /// Parsed rename result (WorkspaceEdit JSON), revision-tagged.
+    LspRenameResult { path: String, edit: String, buf_key: Option<usize>, revision: u64 },
     /// Progress notification from `$/progress`.
     LspProgress { token: String, message: String, percentage: String },
+    /// A language server process exited (crash or termination).
+    LspServerExited { language: String },
+    /// The awaited DAP initialize handshake finished off-thread.
+    DapStarted {
+        session_id: u64,
+        result: Result<std::sync::Arc<crate::kernel::debug::dap_client::DapHandle>, String>,
+    },
+    /// The awaited initialize handshake finished off-thread.
+    LspStarted {
+        language: String,
+        result: Result<std::sync::Arc<crate::kernel::semantic::lsp::LspHandle>, String>,
+    },
     // ─────────────────────────────────────────────────────────────────────
     /// A task defined in the TaskScheduler has completed (Phase 4).
     TaskRunCompleted { id: u64, exit_code: i32, stdout: String, stderr: String, duration_ms: u64 },
@@ -198,6 +141,35 @@ pub enum BackgroundEvent {
     WorkCompleted { id: u64 },
     /// A directly-submitted work item failed.
     WorkFailed { id: u64, error: String },
+    /// Auto-save heartbeat: the foreground loop snapshots dirty buffers and
+    /// hands the writes to the background pool.
+    AutoSaveTick,
+    /// An auto-save write landed on disk for the given buffer revision.
+    /// Only that exact revision may be marked clean (docs/core-redesign.md §5.1).
+    AutoSaveWritten { buf_key: usize, saved_rev: u64 },
+    /// A background word scan finished for completion.  Applied only when
+    /// the buffer is still at the scanned revision; otherwise discarded.
+    BufferWords { buf_key: usize, revision: u64, words: Vec<String> },
+    /// One file's symbol extraction finished for the project index.
+    IndexRecordArrived(crate::kernel::index::IndexRecord),
+    /// One streamed output line from a running task.
+    TaskOutputLine { id: u64, stream: String, line: String },
+    /// A VCS status fetch finished off the foreground thread.
+    VcStatusFetched {
+        backend_idx: usize,
+        root: std::path::PathBuf,
+        result: Result<crate::kernel::vc::VcStatus, String>,
+    },
+    /// A scheduled tree-sitter parse finished on the lane; pick the tree
+    /// up from the bounded handoff store if the revision still matches.
+    TsTreeReady { buf_key: usize, revision: u64 },
+    /// A VCS repository operation (stage/diff/log/push/blame/commit)
+    /// finished off the foreground thread.
+    VcOpDone {
+        scratch: Option<String>,
+        then_refresh: bool,
+        result: Result<String, String>,
+    },
 }
 
 /// Handle for spawning background tasks and sending events to the main thread.
@@ -207,10 +179,71 @@ pub struct BackgroundHandle {
     runtime: Arc<Runtime>,
     /// Channel to send events to the main thread event loop.
     pub sender: mpsc::UnboundedSender<BackgroundEvent>,
+    /// Priority lanes for background work (rework.md §3).  P0 interactive
+    /// work never enters this struct — it runs inline on the foreground.
+    lanes: Arc<Lanes>,
+}
+
+/// Bounded concurrency per priority class, plus coalescing: a queued job
+/// whose coalesce key was superseded skips itself instead of doing work
+/// whose result is already stale.
+struct Lanes {
+    foreground: Arc<tokio::sync::Semaphore>,
+    indexing: Arc<tokio::sync::Semaphore>,
+    maintenance: Arc<tokio::sync::Semaphore>,
+    superseded: Mutex<std::collections::HashMap<(Lane, String), u64>>,
+    tickets: std::sync::atomic::AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Lane {
+    /// P1: visible-buffer work (parses, completion scans). 2 slots.
+    Foreground,
+    /// P2: project indexing, symbol extraction. cpu-1 slots.
+    Indexing,
+    /// P3: persistence flushes, refreshes. 1 slot.
+    Maintenance,
+}
+
+impl Lane {
+    fn semaphore(self, lanes: &Lanes) -> Arc<tokio::sync::Semaphore> {
+        match self {
+            Lane::Foreground => lanes.foreground.clone(),
+            Lane::Indexing => lanes.indexing.clone(),
+            Lane::Maintenance => lanes.maintenance.clone(),
+        }
+    }
+
+    fn slots(&self) -> usize {
+        match self {
+            Lane::Foreground => 2,
+            Lane::Indexing => (std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) - 1).max(1),
+            Lane::Maintenance => 1,
+        }
+    }
+}
+
+/// True when the buffer the request was made against is still at the
+/// revision the response was computed for — the stale-result gate
+/// (rework.md §2).  Requests without document context pass.
+fn revision_current(ed: &Editor, buf_key: Option<usize>, revision: u64) -> bool {
+    match buf_key {
+        None => true,
+        Some(key) => ed.buffers.get(key)
+            .map(|a| a.lock().unwrap().revision() == revision)
+            .unwrap_or(false),
+    }
+}
+
+/// Match a publishDiagnostics URI against a buffer path (LSP sends file URIs).
+fn lsp_path_matches(buf_path: Option<&str>, diag_path: &str) -> bool {
+    let diag = diag_path.strip_prefix("file://").unwrap_or(diag_path);
+    buf_path == Some(diag) || buf_path == Some(diag_path)
 }
 
 /// Process a background event on the main thread, dispatching it to the event bus.
 pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
+    ed.frame_dirty = true;
     match event {
         BackgroundEvent::FileReadResult { path, content, request_id: _ } => {
             match content {
@@ -232,22 +265,31 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 }
             }
         }
-        BackgroundEvent::LspDiagnostics { path, diagnostics } => {
+        BackgroundEvent::LspDiagnostics { path, version: _, diagnostics } => {
             let count = diagnostics.len();
-            // Store on the buffer if we can find it.
-            for (_, arc) in ed.buffers.iter_mut() {
+            // Typed diagnostics live in the semantic engine (canonical);
+            // the buffer keeps display strings only.  URI vs path is
+            // normalized so servers sending file:// URIs still land.
+            let display: Vec<String> = diagnostics.iter()
+                .map(|d| format!("[{}] line {}:{} {}",
+                    d.severity.as_str()[..1].to_uppercase(), d.line + 1, d.column + 1, d.message))
+                .collect();
+            let typed = diagnostics.clone();
+            let mut buffer_id: Option<usize> = None;
+            for (key, arc) in ed.buffers.iter_mut() {
                 let mut buf = arc.lock().unwrap();
-                if buf.path.as_deref() == Some(&path) {
-                    buf.set_diagnostics(diagnostics.clone());
+                if lsp_path_matches(buf.path.as_deref(), &path) {
+                    buf.set_diagnostics(display.clone());
+                    buffer_id = Some(key);
                     break;
                 }
             }
-            // Also store typed diagnostics in the semantic engine.
-            ed.semantic.update_diagnostics_from_strings(&path, &diagnostics);
+            ed.semantic.update_diagnostics(&path, typed);
             ed.events.emit_typed(keys::events::LSP_DIAGNOSTICS, LspDiagnosticsPayload {
+                buffer_id: buffer_id.map(|k| k.to_string()).unwrap_or_default(),
                 path,
                 count: count.to_string(),
-                items: diagnostics.join("\n"),
+                items: display.join("\n"),
             });
         }
         BackgroundEvent::LspCompletion { path, items, request_id: _ } => {
@@ -256,41 +298,26 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 items: items.join("\n"),
             });
         }
-        BackgroundEvent::TerminalOutput { buf_id, data } => {
-            if let Some(arc) = ed.buffers.get_mut(buf_id) {
-                let mut buf = arc.lock().unwrap();
-                apply_terminal_output(&mut buf, &data);
-            }
+        BackgroundEvent::TerminalOutput { terminal_id, data } => {
+            ed.io.terminals.apply_output(terminal_id, &data);
         }
-        BackgroundEvent::TerminalExited { buf_id, exit_code: _ } => {
-            ed.io.terminals.remove(&buf_id);
-
-            // Switch the focused window away from this buffer before removing it.
-            let fallback = ed.buffers.iter()
-                .map(|(k, _)| k)
-                .find(|&k| k != buf_id);
-            if let Some(win) = ed.view_tree.focused_window_mut()
-                && win.buffer_id == Some(buf_id) {
-                    win.buffer_id = fallback;
-                }
-
-            // Kill the buffer so the terminal content doesn't linger.
-            ed.buffers.remove(buf_id);
-
-            // Return to the standard editing mode (we were in Terminal mode).
-            if ed.io.terminal_mode_buf == Some(buf_id) {
-                ed.io.terminal_mode_buf = None;
-                ed.editor_mode = crate::kernel::state::mode::EditorMode::default();
-                ed.keymaps.push_layer("editor");
+        BackgroundEvent::TerminalExited { terminal_id, .. } => {
+            ed.io.terminals.mark_exited(terminal_id);
+            if ed.io.terminals.focused.is_none() && ed.editor_mode.name == "terminal" {
+                crate::kernel::terminal::set_focused(ed, None);
             }
         }
         BackgroundEvent::FileChanged { path, kind } => {
-            // A change under the project root — including new/deleted files
-            // in no open buffer — marks the index stale for the GUI's
-            // debounced rescan.
+            // Only list-relevant changes mark the index stale for the GUI's
+            // debounced rescan — churn in ignored dirs (build output, VCS,
+            // tool state) and writes to already-indexed files don't change
+            // the file list, and re-walking on each of them re-indexed the
+            // project every couple of seconds during any build.
             if let Some(root) = ed.project_manager.project.root.clone()
                 && let Some(canonical) = std::fs::canonicalize(&root).ok()
-                && path.starts_with(canonical.to_string_lossy().as_ref()) {
+                && path.starts_with(canonical.to_string_lossy().as_ref())
+                && crate::kernel::project::index_change_marks_dirty(
+                    &canonical, &path, &kind, &ed.project_manager.project.files) {
                     ed.project_manager.project.file_index_dirty = true;
                 }
             ed.events.emit_typed(keys::events::FILE_CHANGED, FileChangedPayload { path, kind });
@@ -328,22 +355,32 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             // Update the project state in the registry with the file list
             if let Some(proj) = ed.project_manager.projects.get_mut(&project_name) {
                 proj.files = files.clone();
+                proj.files_epoch += 1;
                 proj.file_index_dirty = false;
             }
             if ed.project_manager.current_project.as_deref() == Some(&project_name) {
                 ed.project_manager.project.files = files.clone();
+                ed.project_manager.project.files_epoch += 1;
                 ed.project_manager.project.file_index_dirty = false;
                 // Phase 5: wire indexed files into the Semantic Engine's ProjectGraph
                 ed.project_manager.sync_to_project_graph(&mut ed.semantic.project_graph);
+                crate::kernel::index::reconcile_project_index(ed, &files);
             }
             ed.events.emit_typed(keys::events::FILE_INDEXED, FileIndexedPayload {
                 project_name,
                 count: files.len().to_string(),
             });
         }
-        BackgroundEvent::GrepResults { entries } => {
-            ed.quickfix_list = entries;
-            ed.quickfix_index = 0;
+        BackgroundEvent::GrepResultsBatch { generation, entries } => {
+            if generation == ed.search_generation {
+                ed.quickfix_list.extend(entries);
+                ed.quickfix_list.truncate(crate::kernel::render::gui_find_tool::MAX_RESULTS);
+            }
+        }
+        BackgroundEvent::GrepDone { generation } => {
+            if generation == ed.search_generation {
+                ed.quickfix_index = 0;
+            }
         }
         // ── Sprint 13 Network API ─────────────────────────────────────────
         BackgroundEvent::HttpResponse { id, status, body } => {
@@ -413,30 +450,78 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         // ─────────────────────────────────────────────────────────────────
         // ── Sprint 5 LSP Power Features ──────────────────────────────────
-        BackgroundEvent::LspResponse { path, method, result, request_id: _ } => {
-            ed.events.emit_typed(keys::events::LSP_RESPONSE, LspResponsePayload { path, method, result });
+        BackgroundEvent::LspResponse { path, method, result, request_id: _, buf_key, revision } => {
+            if revision_current(ed, buf_key, revision) {
+                ed.events.emit_typed(keys::events::LSP_RESPONSE, LspResponsePayload { path, method, result });
+            }
         }
-        BackgroundEvent::LspHover { path, contents } => {
-            ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
+        BackgroundEvent::LspServerExited { language } => {
+            ed.lsp.exited(&language);
+            ed.show_message(crate::kernel::state::MessageKind::Error,
+                format!("language server for {language} exited"));
         }
-        BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col } => {
-            ed.events.emit_typed(keys::events::LSP_DEFINITION, LspDefinitionPayload {
-                path,
-                uri,
-                start_line: start_line.to_string(),
-                end_line: end_line.to_string(),
-                start_col: start_col.to_string(),
-                end_col: end_col.to_string(),
-            });
+        BackgroundEvent::DapStarted { session_id, result } => {
+            match result {
+                Ok(handle) => {
+                    ed.debug.connections.insert(session_id, handle);
+                    ed.events.emit_typed(keys::events::DEBUG_SESSION_STARTED,
+                        crate::kernel::event::payload::DebugSessionStartedPayload {
+                            session_id: session_id.to_string(),
+                            adapter: ed.debug.sessions.get(&session_id)
+                                .map(|s| s.adapter.clone()).unwrap_or_default(),
+                        });
+                }
+                Err(e) => {
+                    ed.debug.sessions.remove(&session_id);
+                    ed.show_message(crate::kernel::state::MessageKind::Error, e);
+                }
+            }
         }
-        BackgroundEvent::LspCodeActions { path, actions } => {
-            ed.events.emit_typed(keys::events::LSP_CODE_ACTIONS, LspCodeActionsPayload { path, actions });
+        BackgroundEvent::LspStarted { language, result } => {
+            match result {
+                Ok(handle) => {
+                    ed.lsp.insert(&language, handle);
+                    ed.lsp.note_ready(&language);
+                    let mut data = std::collections::HashMap::new();
+                    data.insert("language".to_string(), language);
+                    ed.events.emit("lsp-initialized", data);
+                }
+                Err(e) => {
+                    ed.show_message(crate::kernel::state::MessageKind::Error, e);
+                }
+            }
         }
-        BackgroundEvent::LspCompletionItems { path, items } => {
-            ed.events.emit_typed(keys::events::LSP_COMPLETION_ITEMS, LspCompletionItemsPayload { path, items });
+        BackgroundEvent::LspHover { path, contents, buf_key, revision } => {
+            if revision_current(ed, buf_key, revision) {
+                ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
+            }
         }
-        BackgroundEvent::LspRenameResult { path, edit } => {
-            ed.events.emit_typed(keys::events::LSP_RENAME_RESULT, LspRenameResultPayload { path, edit });
+        BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col, buf_key, revision } => {
+            if revision_current(ed, buf_key, revision) {
+                ed.events.emit_typed(keys::events::LSP_DEFINITION, LspDefinitionPayload {
+                    path,
+                    uri,
+                    start_line: start_line.to_string(),
+                    end_line: end_line.to_string(),
+                    start_col: start_col.to_string(),
+                    end_col: end_col.to_string(),
+                });
+            }
+        }
+        BackgroundEvent::LspCodeActions { path, actions, buf_key, revision } => {
+            if revision_current(ed, buf_key, revision) {
+                ed.events.emit_typed(keys::events::LSP_CODE_ACTIONS, LspCodeActionsPayload { path, actions });
+            }
+        }
+        BackgroundEvent::LspCompletionItems { path, items, buf_key, revision } => {
+            if revision_current(ed, buf_key, revision) {
+                ed.events.emit_typed(keys::events::LSP_COMPLETION_ITEMS, LspCompletionItemsPayload { path, items });
+            }
+        }
+        BackgroundEvent::LspRenameResult { path, edit, buf_key, revision } => {
+            if revision_current(ed, buf_key, revision) {
+                ed.events.emit_typed(keys::events::LSP_RENAME_RESULT, LspRenameResultPayload { path, edit });
+            }
         }
         BackgroundEvent::LspProgress { token, message, percentage } => {
             ed.events.emit_typed(keys::events::LSP_PROGRESS, LspProgressPayload { token, message, percentage });
@@ -451,7 +536,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             // A stopped debuggee with no stack is a facade — fetch it.
             #[cfg(feature = "janet")]
             crate::kernel::scripting::send_dap_command(
-                session_id, "stackTrace", &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
+                ed, session_id, "stackTrace", &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
             );
             ed.events.emit_typed(keys::events::DEBUG_STOPPED, crate::kernel::event::payload::DebugStoppedPayload {
                 session_id: session_id.to_string(),
@@ -467,6 +552,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             });
         }
         BackgroundEvent::DapTerminated { session_id } => {
+            ed.debug.connections.remove(&session_id);
             ed.debug.sessions.remove(&session_id);
             if ed.debug.active_session == Some(session_id) {
                 ed.debug.active_session = None;
@@ -520,12 +606,94 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 id: id.to_string(), name, error,
             });
         }
+        BackgroundEvent::AutoSaveTick => {
+            // The heartbeat doubles as the maintenance tick: persist the
+            // project index when it has pending changes.
+            if ed.index.is_dirty()
+                && let Err(e) = ed.index.flush() {
+                    debug!("index flush failed: {e}");
+                }
+            // Opt-in only: the editor must never rewrite user files uninvited.
+            if ed.options.get("auto-save").map(|v| v.as_str()) != Some("true") {
+                return;
+            }
+            let Some(bg) = ed.background.clone() else { return };
+            let dirty: Vec<(usize, String, String, u64)> = ed.buffers.iter()
+                .filter(|(_, arc)| arc.lock().unwrap().modified())
+                .filter_map(|(key, arc)| {
+                    let buf = arc.lock().unwrap();
+                    buf.path.clone().map(|p| (key, p, buf.slice(0, buf.len()), buf.revision()))
+                })
+                .collect();
+            for (key, path, content, saved_rev) in dirty {
+                let sender = bg.sender.clone();
+                bg.spawn_blocking(move || {
+                    let result = crate::kernel::storage::disk::atomic_write(&path, &content);
+                    if result.is_ok() {
+                        let _ = sender.send(BackgroundEvent::AutoSaveWritten { buf_key: key, saved_rev });
+                    }
+                });
+            }
+        }
+        BackgroundEvent::AutoSaveWritten { buf_key, saved_rev } => {
+            if let Some(arc) = ed.buffers.get_mut(buf_key) {
+                // Only the revision actually written becomes clean; edits
+                // made after the snapshot keep the buffer modified
+                // (docs/core-redesign.md §5.1).
+                arc.lock().unwrap().mark_saved_at(saved_rev);
+            }
+        }
+        BackgroundEvent::BufferWords { buf_key, revision, words } => {
+            let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap().revision());
+            if current == Some(revision) {
+                ed.completion.word_cache.insert(buf_key, crate::kernel::state::completion::WordCache {
+                    revision,
+                    words: std::sync::Arc::new(words.into_iter().collect()),
+                });
+            }
+            // Clear the in-flight marker only for the request that landed —
+            // a newer revision's scan must keep its slot.
+            if ed.completion.words_requested == Some((buf_key, revision)) {
+                ed.completion.words_requested = None;
+            }
+        }
+        BackgroundEvent::IndexRecordArrived(rec) => {
+            ed.index.apply(rec);
+        }
+        BackgroundEvent::TsTreeReady { buf_key, revision } => {
+            crate::kernel::semantic::ts_schedule::take_ready_tree(ed, buf_key, revision);
+        }
+        BackgroundEvent::VcOpDone { scratch, then_refresh, result } => {
+            if let Err(e) = crate::kernel::command::builtin::vcs::apply_vc_op(
+                ed, scratch.as_deref(), then_refresh, result,
+            ) {
+                ed.show_message(crate::kernel::state::MessageKind::Error, e);
+            }
+        }
+        BackgroundEvent::VcStatusFetched { backend_idx, root, result } => {
+            match result {
+                Ok(status) => {
+                    ed.vc.last_status = Some(status);
+                    crate::kernel::command::builtin::vcs::redraw_vc_buffer(ed);
+                }
+                Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
+            }
+            let _ = (backend_idx, root);
+        }
+        BackgroundEvent::TaskOutputLine { id, stream, line } => {
+            let mut data = std::collections::HashMap::new();
+            data.insert("task-id".to_string(), id.to_string());
+            data.insert("stream".to_string(), stream);
+            data.insert("line".to_string(), line);
+            ed.events.emit("task-output-line", data);
+        }
         BackgroundEvent::TaskRunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
             use crate::kernel::task::TaskOutput;
             let output = TaskOutput { stdout, stderr, exit_code, duration_ms };
             let task_name = ed.task_scheduler.tasks.get(&id)
                 .map(|t| t.name.clone())
                 .unwrap_or_default();
+            ed.task_scheduler.running.remove(&id);
             ed.last_task = Some((task_name.clone(), format!(
                 "$ {}\n{}{}",
                 ed.task_scheduler.tasks.get(&id).map(|t| t.command.clone()).unwrap_or_default(),
@@ -596,7 +764,48 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
 
 impl BackgroundHandle {
     pub fn new(runtime: Arc<Runtime>, sender: mpsc::UnboundedSender<BackgroundEvent>) -> Self {
-        Self { runtime, sender }
+        let lanes = Lanes {
+            foreground: Arc::new(tokio::sync::Semaphore::new(Lane::Foreground.slots())),
+            indexing: Arc::new(tokio::sync::Semaphore::new(Lane::Indexing.slots())),
+            maintenance: Arc::new(tokio::sync::Semaphore::new(Lane::Maintenance.slots())),
+            superseded: Mutex::new(std::collections::HashMap::new()),
+            tickets: std::sync::atomic::AtomicU64::new(0),
+        };
+        Self { runtime, sender, lanes: Arc::new(lanes) }
+    }
+
+    /// Submit blocking work on a priority lane with an optional coalesce
+    /// key.  A queued job whose key was superseded by a later submission
+    /// exits when it finally gets a slot — newer work wins over stale.
+    pub fn spawn_on<F>(&self, lane: Lane, coalesce: Option<&str>, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let ticket = self.lanes.tickets.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let coalesce_key = coalesce.map(|k| (lane, k.to_string()));
+        if let Some(key) = &coalesce_key {
+            let mut guard = self.lanes.superseded.lock().unwrap_or_else(|e| e.into_inner());
+            guard.insert(key.clone(), ticket);
+        }
+        let semaphore = lane.semaphore(&self.lanes);
+        let lanes = self.lanes.clone();
+        self.spawn_blocking(move || {
+            // Coalescing: a newer ticket for this key means the input is
+            // already outdated — skip without occupying a lane slot.
+            if let Some(key) = &coalesce_key {
+                let guard = lanes.superseded.lock().unwrap_or_else(|e| e.into_inner());
+                if guard.get(key).is_some_and(|&current| current != ticket) {
+                    return;
+                }
+            }
+            // spawn_blocking threads carry a runtime Handle; block on the
+            // lane's semaphore there.
+            let Ok(permit) = tokio::runtime::Handle::current().block_on(semaphore.acquire()) else {
+                return;
+            };
+            f();
+            drop(permit);
+        });
     }
 
     pub fn spawn<F>(&self, future: F)

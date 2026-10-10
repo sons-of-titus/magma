@@ -1,6 +1,12 @@
 (var *lsp-servers* @{})
 (var *buffer-languages* @{})
 (var *lsp-progress* @{})
+# Buffers whose language server is still initializing — didOpen is sent
+# when the `lsp-initialized` event confirms the server is ready.
+(var *pending-attach* @{})
+# Buffers that have received didOpen for their server (idempotence across
+# focus/attach events).
+(var *attached-buffers* @{})
 
 (def *lang-servers*
   {:rs    {:command "rust-analyzer" :args @[] :language-id "rust"}
@@ -47,24 +53,35 @@
 (defn diagnostics [buffer-id] (buffer/diagnostics buffer-id))
 (defn- language-id-for [buffer-id] (get *buffer-languages* buffer-id))
 
-(defn- ensure-server [language-id command args]
-  (var server (get *lsp-servers* (keyword language-id)))
-  (when server (lsp/start language-id command (splice args)) (put *lsp-servers* (keyword language-id) true)))
-
 (defn- buffer-uri [buffer-id]
   (def path (buffer/path buffer-id))
   (if path (string "file://" path) (string "untitled:" (buffer/name buffer-id))))
 
+(defn send-did-open [buffer-id]
+  (def lang-id (get *buffer-languages* buffer-id))
+  (when (and lang-id (get *lsp-servers* lang-id) (not (get *attached-buffers* buffer-id)))
+    (lsp/did-open lang-id buffer-id)
+    (put *attached-buffers* buffer-id true)))
+
 (defn attach-if-supported [buffer-id]
   (def cfg (language-for buffer-id))
   (when cfg
-    (def lang-id (get cfg :language-id)) (def cmd (get cfg :command)) (def args (get cfg :args))
-    (def uri (buffer-uri buffer-id)) (def text (buffer/slice buffer-id 0 (buffer/len buffer-id)))
+    (def lang-id (get cfg :language-id))
     (put *buffer-languages* buffer-id lang-id)
-    (lsp/start lang-id cmd (splice args))
-    (lsp/notify lang-id "textDocument/didOpen"
-      (string/format "{\"textDocument\":{\"uri\":\"%s\",\"languageId\":\"%s\",\"version\":1,\"text\":\"%s\"}}"
-        uri lang-id (json-escape text)))))
+    (unless (get *lsp-servers* lang-id)
+      (def cmd (get cfg :command)) (def args (get cfg :args))
+      (put *lsp-servers* lang-id :starting)
+      (lsp/start lang-id cmd (splice args)))))
+
+(event/on "lsp-initialized"
+  (fn [ev]
+    (def lang-id (get ev :language))
+    (put *lsp-servers* lang-id :ready)
+    (put *pending-attach* lang-id nil)
+    # Sync every buffer already attached to this language.
+    (each buf-id (keys *buffer-languages*)
+      (when (= lang-id (get *buffer-languages* buf-id))
+        (send-did-open buf-id)))))
 
 (command/define "lsp-go-to-definition"
   (fn []
@@ -78,12 +95,12 @@
 
 (event/on "lsp-definition"
   (fn [ev]
-    (def uri (get ev :uri)) (def sl (get ev :start-line)) (def sc (get ev :start-col))
-    (when uri
-      (command/run "open-file" {:path uri})
-      (def buf-id (buffer/current))
-      (def line-start (buffer/line-start-offset buf-id (scan-number sl)))
-      (buffer/cursor buf-id (+ line-start (scan-number sc))))))
+    (def path (get ev :path)) (def sl (get ev :start-line)) (def sc (get ev :start-col))
+    (when path
+      (command/run "open-file" :path path)
+      (when-let [buf-id (buffer/current)]
+        (def line-start (buffer/line-start-offset buf-id (scan-number sl)))
+        (buffer/cursor buf-id (+ line-start (scan-number sc)))))))
 
 (command/define "lsp-hover"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/hover lang-id))))
@@ -110,7 +127,8 @@
 (command/define "lsp-rename"
   (fn [& new-name]
     (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id))
-    (when lang-id (lsp/rename lang-id (or new-name "new_name")))))
+    (when lang-id
+      (lsp/rename lang-id (if (empty? new-name) "new_name" (first new-name))))))
 
 (event/on "lsp-rename-result"
   (fn [ev] (def edit (get ev :edit)) (when edit (lsp/apply-edit edit) (editor/log-message "[rename] applied"))))
@@ -130,7 +148,13 @@
     (when (or (= method "textDocument/hover") (= method "textDocument/definition"))
       (editor/echo (slice result 0 160)))))
 
-(event/on "buffer-created" (fn [ev] (attach-if-supported (get ev :buffer-id))))
+(defn attach-from-event [ev]
+  (when-let [id (scan-number (get ev :buffer-id))]
+    (attach-if-supported id)
+    (send-did-open id)))
+
+(event/on "buffer-created" attach-from-event)
+(event/on "buffer-focused" attach-from-event)
 
 # Incremental didChange (docs/core-redesign.md §8): one range change per
 # edit of the transaction, emitted back-to-front so every range and every
@@ -174,20 +198,13 @@
 
 (event/on "buffer-changed"
   (fn [ev]
-    (def raw (get ev :buffer-id)) (def lang-id (get *buffer-languages* raw))
-    (when (and lang-id raw)
-      (def buf-id (scan-number raw))
+    (def buf-id (scan-number (get ev :buffer-id)))
+    (def lang-id (get *buffer-languages* buf-id))
+    (when (and lang-id buf-id)
       (def uri (buffer-uri buf-id))
       (def rev (get ev :revision-after))
       (lsp/notify lang-id "textDocument/didChange"
         (string/format "{\"textDocument\":{\"uri\":\"%s\",\"version\":%s},\"contentChanges\":[%s]}"
           uri (or rev "0") (did-change-payload buf-id (get ev :edits)))))))
-
-(defn- lsp-colon [arg]
-  (case arg
-    "gd" (command/run "lsp-go-to-definition") "definition" (command/run "lsp-go-to-definition")
-    "hover" (command/run "lsp-hover") "actions" (command/run "lsp-code-actions")
-    "rename" (command/run "lsp-rename")
-    (editor/log-message (string "Unknown LSP command: " arg))))
 
 (print "lsp.janet loaded")

@@ -66,7 +66,7 @@ event_payload!(LspCodeActionsPayload { path, actions });
 event_payload!(LspCompletionItemsPayload { path, items });
 event_payload!(LspCompletionPayload { path, items });
 event_payload!(LspDefinitionPayload { path, uri, start_line, end_line, start_col, end_col });
-event_payload!(LspDiagnosticsPayload { path, count, items });
+event_payload!(LspDiagnosticsPayload { buffer_id, path, count, items });
 event_payload!(LspHoverPayload { path, contents });
 event_payload!(LspProgressPayload { token, message, percentage });
 event_payload!(LspRenameResultPayload { path, edit });

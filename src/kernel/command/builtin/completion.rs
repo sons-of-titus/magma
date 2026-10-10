@@ -8,6 +8,8 @@ use crate::kernel::state::Editor;
 use crate::kernel::state::mode::{EditorMode, Selection};
 
 use super::helpers::*;
+use crate::kernel::completion;
+
 
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
@@ -78,90 +80,28 @@ pub(super) fn register(editor: &mut Editor) {
 }
 
 fn completion_trigger(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
-    let buf_id = get_current_buffer_id(editor);
-
-    // Collect prefix and buffer text without holding a view reference.
-    let data = if let Some(view) = editor.view_of_buffer(buf_id) {
-        let cursor = view.cursor_offset();
-        let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
-        let before = &text[..cursor];
-        let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .map(|i| i + 1)
-            .unwrap_or(0);
-        let prefix = text[word_start..cursor].to_string();
-        if prefix.is_empty() { return Ok(()); }
-        Some((prefix, text))
-    } else {
-        None
-    };
-
-    if let Some((prefix, text)) = data {
-        editor.completion.prefix = prefix.clone();
-
-        // Collect words from buffer text.
-        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for w in text.split(|c: char| !c.is_alphanumeric() && c != '_') {
-            if !w.is_empty() && w.starts_with(prefix.as_str()) && w != prefix {
-                seen.insert(w.to_string());
-            }
-        }
-
-        // Augment with symbols from the semantic engine's symbol index.
-        for sym in editor.semantic.completions_for_prefix(&prefix) {
-            if sym != prefix { seen.insert(sym); }
-        }
-
-        let mut items: Vec<String> = seen.into_iter().collect();
-        items.sort();
-        items.truncate(50);
-
-        if items.is_empty() { return Ok(()); }
-        editor.completion.items = items;
-        editor.completion.idx = 0;
-        editor.completion.visible = true;
-    }
+    completion::trigger(editor);
     Ok(())
 }
 
 fn completion_next(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
-    if editor.completion.visible && !editor.completion.items.is_empty() {
-        editor.completion.idx = (editor.completion.idx + 1) % editor.completion.items.len();
-    }
+    completion::next(editor);
     Ok(())
 }
 
 fn completion_prev(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
-    if editor.completion.visible && !editor.completion.items.is_empty() {
-        editor.completion.idx = if editor.completion.idx == 0 {
-            editor.completion.items.len() - 1
-        } else {
-            editor.completion.idx - 1
-        };
-    }
+    completion::prev(editor);
     Ok(())
 }
 
 fn completion_accept(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
-    if !editor.completion.visible || editor.completion.items.is_empty() {
-        return Ok(());
-    }
-    let buf_id = get_current_buffer_id(editor);
-    let item = &editor.completion.items[editor.completion.idx];
-    let suffix = item[editor.completion.prefix.len()..].to_string();
-
-    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-        let pos = view.cursor_offset();
-        view.insert(pos, &suffix);
-    }
-    editor.completion.visible = false;
-    editor.completion.items.clear();
+    completion::accept(editor);
     emit_cursor_moved(editor);
     Ok(())
 }
 
 fn completion_dismiss(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> CommandResult {
-    editor.completion.visible = false;
-    editor.completion.items.clear();
+    completion::dismiss(editor);
     Ok(())
 }
 

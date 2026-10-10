@@ -118,6 +118,7 @@ location.  This is the ground truth for both Rust and Janet subscribers.
 
 | Event | Key | Type | Emitter |
 |-------|-----|------|---------|
+| `lsp-diagnostics` | `buffer_id` | String | Buffer slab key, empty when no open buffer matches |
 | `lsp-diagnostics` | `path` | String | `runtime.rs` — `process_background_event` |
 | `lsp-diagnostics` | `count` | usize | |
 | `lsp-diagnostics` | `items` | String | |

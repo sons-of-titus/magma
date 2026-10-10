@@ -232,3 +232,55 @@ fn sync_without_language_uses_empty_string() {
     let node = graph.files.get("README.md").unwrap();
     assert_eq!(node.language, "");
 }
+
+// ── FileChanged → index dirty decision ────────────────────────────────────────
+//
+// The watcher reports every create/modify under the project root; only
+// list-relevant changes may mark `file_index_dirty`, or any build/VCS churn
+// re-indexes the whole project on the GUI's debounce.
+
+#[test]
+fn ignored_dir_churn_never_marks_the_index_dirty() {
+    use crate::kernel::project::index_change_marks_dirty;
+
+    let root = std::path::Path::new("/proj");
+    let files = vec!["src/main.rs".to_string()];
+    for path in [
+        "/proj/target/debug/libmagma.rlib",
+        "/proj/.git/index",
+        "/proj/node_modules/pkg/index.js",
+        "/proj/.zcode/session.json",
+        "/proj/src/.hidden/state.bin",
+    ] {
+        for kind in ["modified", "created", "removed"] {
+            assert!(!index_change_marks_dirty(root, path, kind, &files),
+                "{path} ({kind}) sits under an ignored dir");
+        }
+    }
+}
+
+#[test]
+fn writing_an_indexed_file_does_not_dirty_the_index() {
+    use crate::kernel::project::index_change_marks_dirty;
+
+    let root = std::path::Path::new("/proj");
+    let files = vec!["src/main.rs".to_string(), ".gitignore".to_string()];
+    assert!(!index_change_marks_dirty(root, "/proj/src/main.rs", "modified", &files),
+        "a data write to an indexed file leaves the list unchanged");
+    assert!(!index_change_marks_dirty(root, "/proj/.gitignore", "modified", &files),
+        "dotfiles at indexed levels are members too");
+}
+
+#[test]
+fn creates_removals_and_unknown_paths_dirty_the_index() {
+    use crate::kernel::project::index_change_marks_dirty;
+
+    let root = std::path::Path::new("/proj");
+    let files = vec!["src/main.rs".to_string()];
+    assert!(index_change_marks_dirty(root, "/proj/src/extra.rs", "modified", &files),
+        "an unknown path reported as modified is a creation whose event was lost");
+    assert!(index_change_marks_dirty(root, "/proj/src/main.rs", "removed", &files));
+    assert!(index_change_marks_dirty(root, "/proj/src/new.rs", "created", &files));
+    assert!(!index_change_marks_dirty(root, "/elsewhere/file.txt", "created", &files),
+        "paths outside the root are not the index's business");
+}

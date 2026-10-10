@@ -26,6 +26,7 @@ pub fn dispatch_mouse(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
     if ed.options.get("mouse-support").map(|s| s.as_str()) != Some("true") {
         return;
     }
+    ed.frame_dirty = true;
 
     match event.kind {
         MouseEventKind::Click => dispatch_click(ed, surface, event),

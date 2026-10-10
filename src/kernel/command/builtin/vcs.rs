@@ -216,6 +216,7 @@ fn vc_open(editor: &mut Editor) -> CommandResult {
         .ok_or_else(|| "No version-control repository found".to_string())?;
 
     editor.vc.active_backend = Some(backend_idx);
+    editor.vc.active_backend_name = Some(editor.vc.backends[backend_idx].name().to_string());
     editor.vc.repo_root = Some(root.clone());
 
     let status = editor.vc.backends[backend_idx].status(&root)?;
@@ -252,16 +253,43 @@ fn vc_open(editor: &mut Editor) -> CommandResult {
     Ok(())
 }
 
-/// Re-fetch status and redraw the *vc* buffer.
+/// Re-fetch status off the foreground thread; the `VcStatusFetched` event
+/// redraws the *vc* buffer when the shell-out completes (rework.md §1: no
+/// blocking IO on the interactive path).
 fn vc_refresh(editor: &mut Editor) -> CommandResult {
     let (backend_idx, root) = match (editor.vc.active_backend, editor.vc.repo_root.clone()) {
         (Some(i), Some(r)) => (i, r),
         _ => return vc_open(editor),
     };
-    let status = editor.vc.backends[backend_idx].status(&root)?;
+    let Some(bg) = editor.background.clone() else {
+        // No background pool (tests, server-less embed): synchronous.
+        let status = editor.vc.backends[backend_idx].status(&root)?;
+        let text = crate::kernel::vc::build_display(&root, &status);
+        editor.vc.last_status = Some(status);
+        vc_write_buf(editor, &text)?;
+        return Ok(());
+    };
+    // The backend registry is not clonable (trait objects); the background
+    // job re-detects from the repo root — backends are stateless CLI
+    // wrappers, so detection is exact and cheap.
+    let sender = bg.sender.clone();
+    bg.spawn_blocking(move || {
+        let result = crate::kernel::vc::status_for_root(&root);
+        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::VcStatusFetched {
+            backend_idx, root, result,
+        });
+    });
+    Ok(())
+}
+
+/// Redraw the *vc* buffer from `vc.last_status` (the async status path).
+pub(crate) fn redraw_vc_buffer(editor: &mut Editor) {
+    let Some(root) = editor.vc.repo_root.clone() else { return };
+    let Some(status) = editor.vc.last_status.clone() else { return };
     let text = crate::kernel::vc::build_display(&root, &status);
-    editor.vc.last_status = Some(status);
-    vc_write_buf(editor, &text)
+    if let Err(e) = vc_write_buf(editor, &text) {
+        editor.show_message(crate::kernel::state::MessageKind::Error, e);
+    }
 }
 
 /// Apply a file operation (stage / unstage / diff) to the entry under the cursor.
@@ -271,47 +299,76 @@ fn vc_file_op(editor: &mut Editor, op: VcOp) -> CommandResult {
         .and_then(|s| crate::kernel::vc::path_at_line(s, line))
         .ok_or_else(|| "No file on this line".to_string())?;
 
-    let (backend_idx, root) = match (editor.vc.active_backend, editor.vc.repo_root.clone()) {
-        (Some(i), Some(r)) => (i, r),
+    let remote = match op {
+        VcOp::Stage => crate::kernel::vc::VcRemoteOp::Stage(path),
+        VcOp::Unstage => crate::kernel::vc::VcRemoteOp::Unstage(path),
+        VcOp::Diff => crate::kernel::vc::VcRemoteOp::Diff(Some(path)),
+    };
+    vc_spawn_op(editor, remote, Some("*vc-diff*"), matches!(op, VcOp::Stage | VcOp::Unstage))
+}
+
+/// Dispatch a repository operation on the maintenance lane; the
+/// `VcOpDone` event writes the scratch buffer and refreshes status from
+/// the foreground (rework.md §1: no blocking IO on the interactive path).
+fn vc_spawn_op(
+    editor: &mut Editor,
+    op: crate::kernel::vc::VcRemoteOp,
+    scratch: Option<&str>,
+    then_refresh: bool,
+) -> CommandResult {
+    let (backend, root) = match (editor.vc.active_backend_name.clone(), editor.vc.repo_root.clone()) {
+        (Some(b), Some(r)) => (b, r),
         _ => return Err("No active VC backend".to_string()),
     };
+    let Some(bg) = editor.background.clone() else {
+        // No background pool (tests, embedded): synchronous.
+        let result = crate::kernel::vc::run_op(&root, &backend, &op);
+        apply_vc_op(editor, scratch, then_refresh, result)?;
+        return Ok(());
+    };
+    let sender = bg.sender.clone();
+    let scratch_name = scratch.map(String::from);
+    bg.spawn_blocking(move || {
+        let result = crate::kernel::vc::run_op(&root, &backend, &op);
+        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::VcOpDone {
+            scratch: scratch_name,
+            then_refresh,
+            result,
+        });
+    });
+    Ok(())
+}
 
-    match op {
-        VcOp::Stage   => editor.vc.backends[backend_idx].stage(&root, &path)?,
-        VcOp::Unstage => editor.vc.backends[backend_idx].unstage(&root, &path)?,
-        VcOp::Diff    => {
-            let out = editor.vc.backends[backend_idx].diff(&root, Some(&path))?;
-            return vc_output_buf(editor, "*vc-diff*", &out);
+/// Apply a finished operation: scratch output, follow-up refresh.
+pub(crate) fn apply_vc_op(
+    editor: &mut Editor,
+    scratch: Option<&str>,
+    then_refresh: bool,
+    result: Result<String, String>,
+) -> CommandResult {
+    match result {
+        Ok(output) => {
+            if let Some(name) = scratch {
+                vc_output_buf(editor, name, &output)?;
+            }
+            if then_refresh {
+                vc_refresh(editor)?;
+            }
+            Ok(())
         }
+        Err(e) => Err(e),
     }
-    vc_refresh(editor)
 }
 
 /// Show output (diff, log, push result, blame) in a scratch buffer.
 fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
-    let (backend_idx, root) = match (editor.vc.active_backend, editor.vc.repo_root.clone()) {
-        (Some(i), Some(r)) => (i, r),
-        _ => return Err("No active VC backend".to_string()),
+    let (scratch, remote) = match show {
+        VcShow::Diff(file) => ("*vc-diff*", crate::kernel::vc::VcRemoteOp::Diff(file)),
+        VcShow::Log => ("*vc-log*", crate::kernel::vc::VcRemoteOp::Log),
+        VcShow::Push => ("*vc-push*", crate::kernel::vc::VcRemoteOp::Push),
+        VcShow::Blame(path) => ("*vc-blame*", crate::kernel::vc::VcRemoteOp::Blame(path)),
     };
-    let (name, out) = match show {
-        VcShow::Diff(file) => (
-            "*vc-diff*",
-            editor.vc.backends[backend_idx].diff(&root, file.as_deref())?,
-        ),
-        VcShow::Log => (
-            "*vc-log*",
-            editor.vc.backends[backend_idx].log(&root, 30)?,
-        ),
-        VcShow::Push => (
-            "*vc-push*",
-            editor.vc.backends[backend_idx].push(&root)?,
-        ),
-        VcShow::Blame(ref path) => (
-            "*vc-blame*",
-            editor.vc.backends[backend_idx].blame(&root, path)?,
-        ),
-    };
-    vc_output_buf(editor, name, &out)
+    vc_spawn_op(editor, remote, Some(scratch), false)
 }
 
 /// Write `text` into a named scratch buffer and display it.
@@ -370,10 +427,5 @@ fn vc_read_commit_buf(editor: &mut Editor) -> Result<String, String> {
 
 /// Commit with the given message and refresh the VC buffer.
 fn vc_commit(editor: &mut Editor, message: &str) -> CommandResult {
-    let (backend_idx, root) = match (editor.vc.active_backend, editor.vc.repo_root.clone()) {
-        (Some(i), Some(r)) => (i, r),
-        _ => return Err("No active VC backend".to_string()),
-    };
-    editor.vc.backends[backend_idx].commit(&root, message)?;
-    vc_refresh(editor)
+    vc_spawn_op(editor, crate::kernel::vc::VcRemoteOp::Commit(message.to_string()), None, true)
 }

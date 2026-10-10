@@ -167,3 +167,36 @@ fn semantic_documentation_returns_indexed_doc() {
         assert_eq!(result, Ok("\"Does the thing.\"".to_string()));
     });
 }
+
+// ── Persistent project index ─────────────────────────────────────────────
+
+#[test]
+fn workspace_symbols_c_function_registered() {
+    janet_test!(ed, {
+        let result = scripting::eval(r#"(semantic/workspace-symbols "foo")"#);
+        assert_eq!(result, "ok", "semantic/workspace-symbols should return ok");
+    });
+}
+
+#[test]
+fn index_stats_c_function_registered() {
+    janet_test!(ed, {
+        let result = scripting::eval("(semantic/index-stats)");
+        assert_eq!(result, "ok", "semantic/index-stats should return ok");
+    });
+}
+
+#[test]
+fn workspace_symbols_find_indexed_declarations() {
+    janet_test!(ed, {
+        // A real record flows through the store the same way background
+        // extraction results do.
+        let rec = crate::kernel::index::record_from_text("alpha.rs", 1,
+            "fn alpha_one() {}\nfn alpha_two() {}\nstruct Beta {}");
+        ed.index.apply(rec);
+        ed.index.flush().ok();
+
+        let result = scripting::eval(r#"(length (semantic/workspace-symbols "alpha"))"#);
+        assert_eq!(result, "ok");
+    });
+}

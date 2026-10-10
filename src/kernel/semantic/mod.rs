@@ -7,18 +7,19 @@
 pub mod provider;
 pub mod lsp_provider;
 pub mod ts_registry;
+pub mod ts_schedule;
 pub mod treesitter_provider;
 pub mod symbol_index;
 pub mod project_graph;
 pub mod engine;
 pub mod language_registry;
 
-/// The original LSP JSON-RPC client — spawns and manages server processes.
-pub mod client;
-/// JSON-RPC response parsers.
-pub mod parse;
+/// LSP client — real server lifecycle, revision-tagged requests.
+pub mod lsp;
+/// LSP wire protocol — framing and JSON-RPC shaping.
+pub mod lsp_proto;
 
-pub use client::{LspManager, pending_map};
+pub use lsp::LspRegistry;
 pub use provider::{
     CompletionItem, CompletionKind, Diagnostic, DiagnosticSeverity,
     LanguageProvider, ParseResult, Symbol, SymbolKind,

@@ -173,10 +173,56 @@ unsafe extern "C-unwind" fn c_semantic_diagnostics(argc: i32, argv: *mut Janet) 
     })
 }
 
+// ── Workspace symbols (persistent project index) ────────────────────────────
+
+/// (semantic/workspace-symbols prefix) → array of [name kind file line]
+/// Project-wide symbol search against the persistent index.
+unsafe extern "C-unwind" fn c_workspace_symbols(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let Some(prefix) = conv::get_str(argc, argv, 0) else {
+            return conv::nil();
+        };
+        let hits = ed.index.symbols_with_prefix(&prefix);
+        let arr = janet_array(hits.len() as i32);
+        for (path, sym) in hits {
+            let entry = janet_array(4);
+            janet_array_push(entry, conv::string(&sym.name));
+            janet_array_push(entry, conv::string(&sym.kind));
+            janet_array_push(entry, conv::string(&path));
+            janet_array_push(entry, conv::integer(sym.line as i32));
+            janet_array_push(arr, janet_wrap_array(entry));
+        }
+        janet_wrap_array(arr)
+    })
+}
+
+/// (semantic/index-stats) → table {files symbols pending}
+unsafe extern "C-unwind" fn c_index_stats(argc: i32, _argv: *mut Janet) -> Janet {
+    let _ = argc;
+    with_editor(|ed| unsafe {
+        let stats = ed.index.stats();
+        let tbl = janet_table(0);
+        janet_table_put(tbl, conv::keyword("files"), conv::integer(stats.files as i32));
+        janet_table_put(tbl, conv::keyword("symbols"), conv::integer(stats.symbols as i32));
+        janet_table_put(tbl, conv::keyword("pending"), conv::integer(stats.pending as i32));
+        janet_wrap_table(tbl)
+    })
+}
+
 // ── Registration ─────────────────────────────────────────────────────────────
 
 pub fn register() -> Vec<JanetReg> {
     vec![
+        JanetReg {
+            name: c"semantic/workspace-symbols".as_ptr() as *const _,
+            cfun: Some(c_workspace_symbols as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Project-wide symbol search against the persistent index: [name kind file line] entries".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"semantic/index-stats".as_ptr() as *const _,
+            cfun: Some(c_index_stats as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Index observability: {files symbols pending}".as_ptr() as *const _,
+        },
         JanetReg {
             name: c"semantic/symbols".as_ptr() as *const _,
             cfun: Some(c_semantic_symbols as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),

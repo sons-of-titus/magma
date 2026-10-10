@@ -316,6 +316,8 @@ fn every_theme_icon_glyph_is_covered_by_egui_default_fonts() {
         ("CLOSE",     icons::CLOSE),
         ("SEPARATOR", icons::SEPARATOR),
         ("GIT_BRANCH", icons::GIT_BRANCH),
+        ("PROJECTS",  icons::PROJECTS),
+        ("LEARN",     icons::LEARN),
     ];
     for (name, icon) in all {
         for ch in icon.chars() {
@@ -331,8 +333,7 @@ fn every_theme_icon_glyph_is_covered_by_egui_default_fonts() {
 
 #[test]
 fn every_sidebar_glyph_is_covered_by_egui_default_fonts() {
-    use crate::kernel::render::gui_sidebar::{file_icon, ARROW_CLOSED, ARROW_OPEN,
-                                             DIR_CLOSED, DIR_OPEN};
+    use crate::kernel::render::gui_sidebar::{file_icon, ARROW_CLOSED, ARROW_OPEN};
     use eframe::egui::epaint::text::{FontDefinitions, FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
@@ -342,8 +343,6 @@ fn every_sidebar_glyph_is_covered_by_egui_default_fonts() {
     let tree_glyphs = [
         ("ARROW_OPEN", ARROW_OPEN),
         ("ARROW_CLOSED", ARROW_CLOSED),
-        ("DIR_OPEN", DIR_OPEN),
-        ("DIR_CLOSED", DIR_CLOSED),
     ];
     let extensions = ["main.rs", "init.janet", "app.py", "Cargo.toml", "README.md",
                       "data.json", "conf.yaml", "conf.yml", "run.sh", "Cargo.lock",
@@ -362,4 +361,89 @@ fn every_sidebar_glyph_is_covered_by_egui_default_fonts() {
             );
         }
     }
+}
+
+// ── Project explorer tree construction ───────────────────────────────────────
+
+#[test]
+fn sidebar_tree_roots_at_the_project_not_the_filesystem() {
+    use crate::kernel::render::gui_sidebar::ProjectTree;
+
+    let files = vec![
+        "src/main.rs".to_string(),
+        "src/kernel/state.rs".to_string(),
+        "README.md".to_string(),
+    ];
+    let tree = ProjectTree::build_tree(&files);
+
+    let top: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
+    assert_eq!(top, vec!["src", "README.md"],
+        "top-level nodes are the project's own entries, not Users/me/… chain");
+
+    let src = tree.iter().find(|n| n.name == "src").unwrap();
+    assert!(src.is_dir);
+    assert_eq!(src.path, "src", "directory node paths are project-relative");
+    let main = src.children.iter().find(|n| n.name == "main.rs").unwrap();
+    assert!(!main.is_dir);
+    assert_eq!(main.path, "src/main.rs",
+        "file node paths are project-relative (the click handler joins the root once)");
+}
+
+#[test]
+fn sidebar_state_resets_when_the_project_changes() {
+    use crate::kernel::render::gui_sidebar_state::{PendingOp, SidebarState};
+
+    let mut state = SidebarState::default();
+    state.reset_for("/old/project".to_string());
+    state.expanded_dirs.insert("src".to_string());
+    state.selected = Some("src/main.rs".to_string());
+    state.pending = Some(PendingOp::NewFile { dir: "/old/project".to_string() });
+    state.confirm_delete = Some("/old/project/src".to_string());
+
+    state.reset_for("/new/project".to_string());
+    assert!(state.expanded_dirs.is_empty(), "expansions from the old project are gone");
+    assert_eq!(state.selected, None);
+    assert!(state.pending.is_none());
+    assert!(state.confirm_delete.is_none());
+    assert_eq!(state.root.as_deref(), Some("/new/project"));
+}
+
+#[test]
+fn close_editor_session_ends_the_project_and_its_terminals() {
+    use crate::kernel::render::gui_shell::close_editor_session;
+    use crate::kernel::runtime::BackgroundEvent;
+
+    let mut ed = crate::tests::helpers::make_editor();
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
+    ed.io.terminals
+        .spawn("sh", &[], &std::env::temp_dir(), tx)
+        .expect("spawn terminal");
+
+    crate::kernel::project::open_root(&mut ed, "/tmp/some-project");
+    assert!(ed.project_manager.project.root.is_some());
+    assert_eq!(ed.io.terminals.sessions.len(), 1);
+
+    close_editor_session(&mut ed);
+
+    assert!(ed.project_manager.project.root.is_none(),
+        "project must end with the editor or welcome re-opens it immediately");
+    assert_eq!(ed.project_manager.current_project, None);
+    assert!(ed.io.terminals.sessions.is_empty(), "terminal sessions are killed on editor close");
+    assert_eq!(ed.io.terminals.focused, None);
+}
+
+#[test]
+fn ctrl_space_translates_to_a_keymap_key() {
+    use crate::kernel::render::gui_input;
+    use eframe::egui::{Event, Key, Modifiers};
+
+    let ev = Event::Key {
+        key: Key::Space,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers { ctrl: true, ..Default::default() },
+    };
+    assert_eq!(gui_input::translate_event(&ev), Some("ctrl-space".to_string()),
+        "ctrl-space must reach the keymap (completion-trigger's binding)");
 }

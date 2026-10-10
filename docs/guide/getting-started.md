@@ -46,7 +46,8 @@ supports.
 |-----|--------|
 | `ctrl-p` | Search everywhere: files, symbols, and commands in one list |
 | `ctrl-shift-n` | Go to file |
-| `ctrl-space` | Completion (while typing; `ctrl-n` cycles) |
+| `ctrl-space` | Completion at any prefix; also pops up automatically after ~2 typed characters |
+| `↑`/`↓`, `tab`/`return`, `esc` | While the completion popup is open: cycle, accept, dismiss |
 | `ctrl-]` | Go to definition (tree-sitter, LSP fallback) |
 | `ctrl-shift-f` | Search open buffers (`n`/`N` walk the matches) |
 | `ctrl-shift-o` | Go to symbol |
@@ -74,9 +75,11 @@ supports.
   scratch buffer.
 - Splits: run `window-split` / `window-vsplit` from the palette;
   `window-wider` / `window-narrower` resize the focused pane.
-- `terminal-start` runs a PTY in a buffer; typing goes to the shell while it
-  has focus, and the docked **Terminal** tool window shows live output with
-  an input row.
+- `terminal-start` opens a terminal session in the docked **Terminal**
+  panel — never a buffer.  Each session gets a tab (+ for a new one, ✕ to
+  close); click a session to type into it, Esc returns to the editor.
+  Sessions keep running while hidden and stay in the dock after they exit
+  until closed.
 - `:dbg-start`-style debugging is available through the debug API; the
   **Debug** tool window shows threads, the call stack (click to jump), and
   variables at the stopped point.

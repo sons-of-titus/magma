@@ -12,7 +12,7 @@ use super::tool_window::{ToolAction, ToolWindow};
 fn mono(size: f32) -> FontId { FontId::new(size, FontFamily::Monospace) }
 fn prop(size: f32) -> FontId { FontId::new(size, FontFamily::Proportional) }
 
-const MAX_RESULTS: usize = 500;
+pub(crate) const MAX_RESULTS: usize = 500;
 
 /// Parse one `--vimgrep` line: `path:line:col:text`.
 fn parse_vimgrep(line: &str) -> Option<crate::kernel::task::QuickfixEntry> {
@@ -61,14 +61,22 @@ pub struct FindInFilesToolWindow {
     /// A background search is in flight for `last_pattern`.
     searching: bool,
     last_pattern: String,
+    /// Kill handle for the running `rg` — a newer search cancels the
+    /// older one instead of racing it (rework.md §6).
+    running: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
 }
 
 impl FindInFilesToolWindow {
     pub fn new() -> Self {
-        Self { query: String::new(), searching: false, last_pattern: String::new() }
+        Self {
+            query: String::new(),
+            searching: false,
+            last_pattern: String::new(),
+            running: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        }
     }
 
-    fn run_search(&mut self, editor: &Editor) {
+    fn run_search(&mut self, editor: &mut Editor) {
         if self.query.is_empty() { return; }
         let Some(bg) = editor.background.clone() else { return };
         let root = editor.project_manager.project.root.clone()
@@ -76,21 +84,63 @@ impl FindInFilesToolWindow {
         let pattern = self.query.clone();
         self.searching = true;
         self.last_pattern = pattern.clone();
+
+        // Cancel any in-flight search: kill its rg and void its results.
+        if let Ok(mut guard) = self.running.lock()
+            && let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        editor.search_generation += 1;
+        let generation = editor.search_generation;
+        editor.quickfix_list.clear();
+
         let sender = bg.sender.clone();
+        let running = self.running.clone();
         bg.spawn_blocking(move || {
-            let output = std::process::Command::new("rg")
+            let Ok(child) = std::process::Command::new("rg")
                 .args(["--vimgrep", "--no-heading", &pattern, "."])
                 .current_dir(&root)
-                .output();
-            let mut entries: Vec<crate::kernel::task::QuickfixEntry> = match output {
-                Ok(o) => String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .filter_map(parse_vimgrep)
-                    .collect(),
-                Err(_) => Vec::new(),
-            };
-            entries.truncate(MAX_RESULTS);
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepResults { entries });
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            else { return };
+            *running.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
+
+            // Stream results in batches so the quickfix list fills while
+            // rg walks, instead of after the whole project.
+            let mut stdout = running.lock().unwrap_or_else(|e| e.into_inner())
+                .as_mut()
+                .and_then(|c| c.stdout.take());
+            let mut batch: Vec<crate::kernel::task::QuickfixEntry> = Vec::new();
+            let mut total = 0usize;
+            if let Some(out) = stdout.as_mut() {
+                use std::io::BufRead;
+                for line in std::io::BufReader::new(&mut *out).lines().map_while(Result::ok) {
+                    if let Some(entry) = parse_vimgrep(&line) {
+                        batch.push(entry);
+                        total += 1;
+                    }
+                    if total >= MAX_RESULTS { break; }
+                    if batch.len() >= 100 {
+                        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepResultsBatch {
+                            generation, entries: std::mem::take(&mut batch),
+                        });
+                    }
+                }
+            }
+            if !batch.is_empty() {
+                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepResultsBatch {
+                    generation, entries: batch,
+                });
+            }
+            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepDone { generation });
+            if let Ok(mut guard) = running.lock() {
+                if let Some(child) = guard.as_mut() {
+                    let _ = child.wait();
+                }
+                *guard = None;
+            }
         });
     }
 }
@@ -99,7 +149,7 @@ impl ToolWindow for FindInFilesToolWindow {
     fn title(&self) -> &str { "Find in Files" }
     fn icon(&self)  -> char { super::gui_theme::icons::SEARCH.chars().next().unwrap_or('⌕') }
 
-    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Vec<ToolAction> {
+    fn ui(&mut self, ui: &mut egui::Ui, editor: &mut Editor, theme: &GuiTheme) -> Vec<ToolAction> {
         let resp = ui.add(
             egui::TextEdit::singleline(&mut self.query)
                 .hint_text("Search project (ripgrep)…  Enter to run")

@@ -18,7 +18,12 @@ fn editor() -> Editor {
 #[test]
 fn grep_results_replace_the_quickfix_list() {
     let mut ed = editor();
-    process_background_event(&mut ed, BackgroundEvent::GrepResults {
+    ed.search_generation += 1;
+    let generation = ed.search_generation;
+    process_background_event(&mut ed, BackgroundEvent::GrepDone { generation });
+    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch { generation, entries: Vec::new() });
+    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
+        generation,
         entries: vec![
             QuickfixEntry {
                 filename: "src/main.rs".into(),
@@ -77,4 +82,35 @@ fn open_file_twice_focuses_instead_of_forking() {
         .collect();
     assert_eq!(opened.len(), 1, "opening twice must not fork a duplicate");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn stale_search_generations_are_dropped() {
+    let mut ed = editor();
+    ed.search_generation = 5;
+    let entry = QuickfixEntry {
+        filename: "old.rs".into(),
+        line: 1,
+        col: 1,
+        message: "stale".into(),
+    };
+    // A result from generation 3 lands after the search moved to 5: gone.
+    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
+        generation: 3,
+        entries: vec![entry],
+    });
+    assert!(ed.quickfix_list.is_empty(), "stale search results must never land");
+
+    let fresh = QuickfixEntry {
+        filename: "new.rs".into(),
+        line: 2,
+        col: 1,
+        message: "fresh".into(),
+    };
+    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
+        generation: 5,
+        entries: vec![fresh],
+    });
+    assert_eq!(ed.quickfix_list.len(), 1);
+    assert_eq!(ed.quickfix_list[0].filename, "new.rs");
 }

@@ -2,7 +2,6 @@
 //! project watching with debounced re-index, and the native folder picker.
 //! Rendering stays in `gui.rs`; this type owns the state those behaviors need.
 
-use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
@@ -15,6 +14,7 @@ use super::gui_dialog::DialogAction;
 use super::gui_sidebar_state::SidebarAction;
 use super::gui_status::StatusAction;
 use super::gui_welcome::{WelcomeAction, WelcomeScreen};
+use super::tool_window::ToolAction;
 
 /// Apply chrome-initiated actions — the shell's write-lock boundary.  Every
 /// failure lands in the status message; nothing is discarded silently.
@@ -66,13 +66,60 @@ pub(crate) fn apply_status_action(ed: &mut Editor, action: StatusAction) {
     }
 }
 
+/// Teardown when the editor window goes away (quit, guarded close): the
+/// active project ends with it and terminal sessions are killed.  Without
+/// this the welcome screen's `project.root` gate would immediately re-open
+/// the editor instead of returning to the welcome flow.
+pub(crate) fn close_editor_session(ed: &mut Editor) {
+    if ed.project_manager.project.root.take().is_some() {
+        ed.project_manager.current_project = None;
+        ed.events.emit_typed(
+            crate::kernel::event::keys::events::PROJECT_CLOSED,
+            crate::kernel::event::payload::EmptyPayload,
+        );
+    }
+    ed.io.terminals.close_all();
+    ed.debug.disconnect_all();
+    let _ = ed.index.flush();
+}
+
+/// Apply tool-window requests (navigation hits, terminal lifecycle) at the
+/// shell's write-lock boundary.
+pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {    use crate::kernel::terminal;
+
+    for action in actions {
+        match action {
+            ToolAction::Goto { path, line } => {
+                DialogAction::OpenFileAtLine { path, line }.apply(ed);
+            }
+            ToolAction::TerminalFocus(id) => {
+                terminal::set_focused(ed, Some(id));
+            }
+            ToolAction::TerminalNew => {
+                if let Err(e) = execute_command(ed, "terminal-start", &std::collections::HashMap::new()) {
+                    ed.show_message(MessageKind::Error, e);
+                }
+            }
+            ToolAction::TerminalClose(id) => {
+                ed.io.terminals.close(id);
+                if ed.io.terminals.focused.is_none() {
+                    terminal::set_focused(ed, None);
+                }
+            }
+            ToolAction::TerminalResize { id, cols, rows } => {
+                let _ = ed.io.terminals.resize(id, cols, rows);
+            }
+        }
+    }
+}
+
 /// One-time GPU target capture + font (re)build after a font change.
 /// Returns true when the glyph atlas was re-rasterized.
 pub(crate) fn sync_gpu_and_fonts(
     target_format: &mut Option<eframe::wgpu::TextureFormat>,
     atlas: &mut super::gpu_atlas::GpuGlyphAtlas,
     atlas_dirty: &mut bool,
-    editor: &std::sync::Arc<std::sync::RwLock<Editor>>,
+    ed: &mut Editor,
     frame: &eframe::Frame,
     ctx: &egui::Context,
 ) -> bool {
@@ -80,13 +127,10 @@ pub(crate) fn sync_gpu_and_fonts(
     if target_format.is_none() {
         *target_format = Some(rs.target_format);
     }
-    let (needs_rebuild, font_config) = {
-        let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-        let changed = ed.font_changed;
-        ed.font_changed = false;
-        (changed, ed.font_config.clone())
-    };
-    if needs_rebuild {
+    let changed = ed.font_changed;
+    ed.font_changed = false;
+    if changed {
+        let font_config = ed.font_config.clone();
         super::gui_fonts::apply_fonts_to_egui(ctx, &font_config);
         if let Some(bytes) = font_config.loaded_fonts.values().next() {
             atlas.rasterize(bytes, font_config.size);
@@ -103,18 +147,14 @@ pub(crate) fn sync_theme(
     theme: &mut super::gui_theme::GuiTheme,
     synced: &mut bool,
     ctx: &egui::Context,
-    editor: &std::sync::Arc<std::sync::RwLock<Editor>>,
+    ed: &mut Editor,
 ) {
-    let next = {
-        let ed = editor.read().unwrap_or_else(|e| e.into_inner());
-        super::gui_theme::GuiTheme::from_options(&ed.options)
-    };
+    let next = super::gui_theme::GuiTheme::from_options(&ed.options);
     let changed = !*synced || next.light != theme.light;
     *theme = next;
     if changed {
         theme.apply_egui(ctx);
-        let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-        theme.apply_editor(&mut ed);
+        theme.apply_editor(ed);
         *synced = true;
     }
 }
@@ -152,10 +192,13 @@ pub(crate) fn dispatch_shell_key(
     if key == "ctrl-shift-l" {
         let next = if super::gui_theme::GuiTheme::option_is_light(&ed.options) { "mocha" } else { "latte" };
         ed.options.insert("gui-theme".to_string(), next.to_string());
+        // sync_theme ran at frame start; flag a repaint so the new palette
+        // lands on the next frame.
+        ed.frame_dirty = true;
         return true;
     }
     if let Some(kind) = super::gui_dialog::DialogManager::shortcut(key)
-        && ed.io.terminal_mode_buf.is_none() {
+        && ed.io.terminals.focused.is_none() {
         dialogs.open_dialog(kind);
         return true;
     }
@@ -163,17 +206,25 @@ pub(crate) fn dispatch_shell_key(
     if dialogs.is_open() {
         if key == "esc" {
             dialogs.close();
+            ed.frame_dirty = true;
         }
         return true;
     }
     false
 }
 
+/// Where a welcome pick-folder request should point the native dialog.
+#[derive(Clone, Copy, PartialEq)]
+enum FolderRequest {
+    Open,
+    Create,
+}
+
 pub(crate) struct ShellRuntime {
     pub welcome: WelcomeScreen,
     /// Set when the user asked for the native folder picker; consumed at the
     /// end of the frame (the modal blocks, so it must not run mid-layout).
-    pending_open_folder: bool,
+    pending_folder: Option<FolderRequest>,
     /// Watches open files and the project root for external changes.
     file_watcher: Option<FileWatcher>,
     /// Canonical project root currently under recursive watch.
@@ -183,24 +234,21 @@ pub(crate) struct ShellRuntime {
 }
 
 impl ShellRuntime {
-    pub(crate) fn new(editor: &Arc<RwLock<Editor>>) -> Self {
-        let file_watcher = {
-            let ed = editor.write().unwrap_or_else(|e| e.into_inner());
-            let mut watcher = ed.background.as_ref()
-                .and_then(|bg| FileWatcher::new(bg.sender.clone()).ok());
-            if let Some(w) = watcher.as_mut() {
+    pub(crate) fn new(ed: &mut Editor) -> Self {
+        let file_watcher = ed.background.as_ref()
+            .and_then(|bg| FileWatcher::new(bg.sender.clone()).ok())
+            .map(|mut w| {
                 for (_, arc) in ed.buffers.iter() {
                     let buf = arc.lock().unwrap();
                     if let Some(ref path) = buf.path {
                         w.watch(path);
                     }
                 }
-            }
-            watcher
-        };
+                w
+            });
         Self {
             welcome: WelcomeScreen::default(),
-            pending_open_folder: false,
+            pending_folder: None,
             file_watcher,
             watched_project: None,
             last_index_request: None,
@@ -229,8 +277,10 @@ impl ShellRuntime {
     }
 
     pub(crate) fn handle_welcome_action(&mut self, ed: &mut Editor, action: WelcomeAction) {
+        ed.frame_dirty = true;
         match action {
-            WelcomeAction::OpenFolder => self.pending_open_folder = true,
+            WelcomeAction::OpenFolder => self.pending_folder = Some(FolderRequest::Open),
+            WelcomeAction::NewProject => self.pending_folder = Some(FolderRequest::Create),
             WelcomeAction::OpenProject(path) => {
                 let mut args = std::collections::HashMap::new();
                 args.insert("path".to_string(), ArgValue::Path(path));
@@ -238,22 +288,40 @@ impl ShellRuntime {
                     ed.show_message(MessageKind::Error, e);
                 }
             }
+            WelcomeAction::RemoveRecent(path) => {
+                crate::kernel::project::remove_recent(ed, &path);
+            }
+            WelcomeAction::SetTheme(name) => {
+                ed.options.insert("gui-theme".to_string(), name.to_string());
+            }
+            WelcomeAction::FontSize(step) => {
+                ed.font_config.size = (ed.font_config.size + step).clamp(8.0, 40.0);
+                ed.font_changed = true;
+            }
         }
     }
 
     /// Run the native folder picker if a click requested it.  The modal
     /// blocks the frame, so this runs after layout, outside widget closures.
-    pub(crate) fn consume_open_folder_request(&mut self, ed: &mut Editor) {
-        if !self.pending_open_folder {
-            return;
+    pub(crate) fn consume_folder_request(&mut self, ed: &mut Editor) {
+        let Some(kind) = self.pending_folder.take() else { return };
+        let mut dialog = rfd::FileDialog::new().set_title(match kind {
+            FolderRequest::Open => "Open Folder",
+            FolderRequest::Create => "New Project",
+        });
+        if kind == FolderRequest::Create {
+            dialog = dialog.set_can_create_directories(true);
         }
-        self.pending_open_folder = false;
-        let Some(dir) = rfd::FileDialog::new()
-            .set_title("Open Folder")
-            .pick_folder() else { return };
+        let Some(dir) = dialog.pick_folder() else { return };
+        let path = dir.to_string_lossy().into_owned();
+        if kind == FolderRequest::Create
+            && !dir.is_dir()
+            && let Err(e) = std::fs::create_dir_all(&dir) {
+                ed.show_message(MessageKind::Error, format!("Could not create {path}: {e}"));
+                return;
+            }
         let mut args = std::collections::HashMap::new();
-        args.insert("path".to_string(),
-            ArgValue::Path(dir.to_string_lossy().into_owned()));
+        args.insert("path".to_string(), ArgValue::Path(path));
         if let Err(e) = crate::kernel::command::execute_command(ed, "open-project", &args) {
             ed.show_message(MessageKind::Error, e);
         }

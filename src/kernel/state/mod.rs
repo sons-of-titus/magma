@@ -14,7 +14,7 @@ pub mod io;
 pub mod gutter;
 pub mod overlay;
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use crate::kernel::text_engine::{Buffer, BufferView};
 use crate::kernel::clipboard::Clipboard;
@@ -129,6 +129,9 @@ pub struct Editor {
     pub theme: std::collections::HashMap<String, (u8, u8, u8)>,
     pub quickfix_list: Vec<crate::kernel::task::QuickfixEntry>,
     pub quickfix_index: usize,
+    /// Search generation: each new find-in-files supersedes the last, and
+    /// results from stale generations are dropped on arrival.
+    pub search_generation: u64,
     pub vc: crate::kernel::vc::VcState,
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
@@ -136,6 +139,11 @@ pub struct Editor {
     /// Cursor blink phase, owned by the GUI's heartbeat (§9.4); the cursor
     /// renders while true.
     pub cursor_visible: bool,
+    /// Invalidation flag for the GUI: every mutating entry point (key
+    /// dispatch, background event, mouse, chrome action) sets this, and the
+    /// frame that observes it repaints and clears it.  Replaces polling all
+    /// buffers for a render signature (rework.md §7).
+    pub frame_dirty: bool,
     /// Incremental tree-sitter parse trees, keyed by buffer slab
     /// (docs/core-redesign.md §7.2).  Each state records the document
     /// revision its tree was parsed at.
@@ -166,6 +174,10 @@ pub struct Editor {
     pub gutter: GutterRegistry,
     pub semantic: SemanticEngine,
     pub language_registry: LanguageRegistry,
+    pub lsp: crate::kernel::semantic::lsp::LspRegistry,
+    pub index: crate::kernel::index::IndexStore,
+    /// Minimap sampled-line caches keyed by buffer slab key (rework.md §7).
+    pub minimap_cache: std::collections::HashMap<usize, crate::kernel::render::gui_minimap::MinimapCache>,
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
     pub scheduler: WorkScheduler,
@@ -229,11 +241,13 @@ impl Editor {
             theme,
             quickfix_list: Vec::new(),
             quickfix_index: 0,
+            search_generation: 0,
             vc: crate::kernel::vc::VcState::new(),
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),
             cursor_shape: "block".to_string(),
             cursor_visible: true,
+            frame_dirty: true,
             ts_trees: std::collections::HashMap::new(),
             ts_languages: std::collections::HashMap::new(),
             saved_layouts: std::collections::HashMap::new(),
@@ -262,6 +276,9 @@ impl Editor {
             gutter: GutterRegistry::default(),
             semantic: SemanticEngine::new(),
             language_registry: LanguageRegistry::new(),
+            lsp: crate::kernel::semantic::lsp::LspRegistry::default(),
+            index: crate::kernel::index::IndexStore::default(),
+            minimap_cache: std::collections::HashMap::new(),
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),
             scheduler: WorkScheduler::new(),
@@ -381,6 +398,3 @@ impl Editor {
         });
     }
 }
-
-/// Thread-safe handle to the editor
-pub type EditorHandle = Arc<RwLock<Editor>>;

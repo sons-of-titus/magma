@@ -23,7 +23,7 @@ impl ToolWindow for OutputToolWindow {
     fn title(&self) -> &str { "Output" }
     fn icon(&self)  -> char { '⚑' }
 
-    fn ui(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Vec<ToolAction> {
+    fn ui(&mut self, ui: &mut egui::Ui, editor: &mut Editor, theme: &GuiTheme) -> Vec<ToolAction> {
         match &editor.last_task {
             Some((name, output)) => {
                 ui.label(

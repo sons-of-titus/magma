@@ -297,6 +297,9 @@ mod runtime;
 pub use loader::init;
 
 #[cfg(feature = "janet")]
+pub use loader::take_builtin_load_errors;
+
+#[cfg(feature = "janet")]
 pub use runtime::JanetRuntime;
 
 /// Evaluate a Janet expression.

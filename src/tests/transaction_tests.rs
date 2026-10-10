@@ -85,8 +85,8 @@ fn one_commit_is_exactly_one_revision() {
     assert_eq!(txn.revision_after, Revision(1));
     assert_eq!(doc.revision(), Revision(1));
     assert_eq!(doc.history().len(), 1);
-    assert_eq!(doc.changes_since(Revision(0)).len(), 1);
-    assert_eq!(doc.changes_since(Revision(1)).len(), 0);
+    assert_eq!(doc.changes_since(Revision(0)).map(|c| c.len()), Some(1));
+    assert_eq!(doc.changes_since(Revision(1)).map(|c| c.len()), Some(0));
 }
 
 #[test]
@@ -197,8 +197,8 @@ fn revision_chain_is_continuous_across_undo() {
     for pair in history.windows(2) {
         assert_eq!(pair[0].revision_after, pair[1].revision_before);
     }
-    assert_eq!(doc.changes_since(Revision(1)).len(), 3);
-    assert_eq!(doc.changes_since(Revision(3)).len(), 1);
+    assert_eq!(doc.changes_since(Revision(1)).map(|c| c.len()), Some(3));
+    assert_eq!(doc.changes_since(Revision(3)).map(|c| c.len()), Some(1));
 }
 
 #[test]

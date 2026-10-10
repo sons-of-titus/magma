@@ -1,7 +1,6 @@
 /// All I/O subsystem state: terminals, processes, tasks, and network connections.
 pub struct IoState {
-    pub terminals: std::collections::HashMap<usize, crate::kernel::terminal::TerminalSession>,
-    pub terminal_mode_buf: Option<usize>,
+    pub terminals: crate::kernel::terminal::TerminalManager,
     pub processes: std::collections::HashMap<u64, crate::kernel::runtime::ProcessState>,
     pub next_process_id: u64,
     pub tasks: std::collections::HashMap<u64, crate::kernel::runtime::TaskState>,
@@ -14,8 +13,7 @@ pub struct IoState {
 impl Default for IoState {
     fn default() -> Self {
         IoState {
-            terminals: std::collections::HashMap::new(),
-            terminal_mode_buf: None,
+            terminals: crate::kernel::terminal::TerminalManager::default(),
             processes: std::collections::HashMap::new(),
             next_process_id: 1,
             tasks: std::collections::HashMap::new(),

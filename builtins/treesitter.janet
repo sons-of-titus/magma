@@ -19,12 +19,15 @@
   (def cur (try (ts/has-tree? buf-id) ([e] false)))
   (unless cur
     (def grammar-path (get *ts-grammars* lang))
+    # Only tag the buffer with a language that has a registered grammar —
+    # the semantic engine keys symbol indexing off this language, so a
+    # bogus entry (e.g. "fundamental") silently empties the symbol index.
     (when grammar-path
       (try
         (ts/load-grammar grammar-path lang)
-        ([e] (print "ts: failed to load grammar: " e))))
-    (ts/set-language buf-id lang)
-    (ts/parse buf-id)))
+        ([e] (print "ts: failed to load grammar: " e)))
+      (ts/set-language buf-id lang)
+      (ts/parse buf-id))))
 
 # Language-specific tree-sitter highlighting queries.
 (def *ts-mode-queries*
@@ -293,10 +296,9 @@
 (defn ts/highlight-buffer
   [buf-id]
   (def lang (try (buffer/major-mode buf-id) ([_] nil)))
-  (when (nil? lang) (break))
-  (ts/ensure-language buf-id lang)
   (def query (get *ts-mode-queries* lang))
   (when (nil? query) (break))
+  (ts/ensure-language buf-id lang)
   (def result (try
     (ts/highlight buf-id query)
     ([e] (break))))

@@ -1,0 +1,183 @@
+//! Completion popup — trigger, refilter, navigation, accept.
+
+use crate::kernel::input;
+use crate::kernel::state::Editor;
+use crate::kernel::storage::disk::DiskFileSystem;
+use crate::tests::helpers::make_editor;
+
+fn editor_with(text: &str) -> Editor {
+    let mut ed = make_editor();
+    let key = ed.create_buffer_from_str("words.txt", text);
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    // Type at the end, like a user at the bottom of a file.
+    ed.view_of_buffer_mut(key).unwrap().set_cursor(text.len());
+    ed
+}
+
+fn type_key(ed: &mut Editor, key: &str) {
+    input::dispatch_key(ed, key);
+}
+
+#[test]
+fn typing_two_word_chars_opens_the_popup() {
+    let mut ed = editor_with("done door dormant\n");
+    type_key(&mut ed, "d");
+    assert!(!ed.completion.visible, "one char is too short for the auto popup");
+
+    type_key(&mut ed, "o");
+    assert!(ed.completion.visible, "two word chars must open the popup");
+    assert_eq!(ed.completion.prefix, "do");
+    assert_eq!(ed.completion.items, vec!["done", "door", "dormant"]);
+}
+
+#[test]
+fn typing_refilters_the_popup_in_place() {
+    let mut ed = editor_with("done door dormant\n");
+    type_key(&mut ed, "d");
+    type_key(&mut ed, "o");
+    type_key(&mut ed, "n");
+    assert!(ed.completion.visible);
+    assert_eq!(ed.completion.items, vec!["done"]);
+}
+
+#[test]
+fn popup_dismisses_when_nothing_matches() {
+    let mut ed = editor_with("done door\n");
+    type_key(&mut ed, "d");
+    type_key(&mut ed, "o");
+    assert!(ed.completion.visible);
+    type_key(&mut ed, "z");
+    assert!(!ed.completion.visible, "no candidates must close the popup");
+}
+
+#[test]
+fn non_word_input_dismisses_and_inserts() {
+    let mut ed = editor_with("done door\n");
+    type_key(&mut ed, "d");
+    type_key(&mut ed, "o");
+    assert!(ed.completion.visible);
+
+    type_key(&mut ed, "(");
+    assert!(!ed.completion.visible);
+    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
+    assert_eq!(text, "done door\ndo(", "the paren must still insert");
+}
+
+#[test]
+fn popup_navigation_and_accept() {
+    let mut ed = editor_with("dog done\n");
+    type_key(&mut ed, "d");
+    type_key(&mut ed, "o");
+    assert_eq!(ed.completion.items, vec!["dog", "done"]);
+    assert_eq!(ed.completion.idx, 0);
+
+    type_key(&mut ed, "down");
+    assert_eq!(ed.completion.idx, 1, "down moves the selection");
+    type_key(&mut ed, "up");
+    assert_eq!(ed.completion.idx, 0, "up moves back");
+
+    type_key(&mut ed, "tab");
+    assert!(!ed.completion.visible, "accept closes the popup");
+    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
+    assert!(text.starts_with("dog done\ndog"),
+        "accept inserts the remaining suffix, got: {text:?}");
+}
+
+#[test]
+fn escape_dismisses_without_inserting() {
+    let mut ed = editor_with("done door\n");
+    type_key(&mut ed, "d");
+    type_key(&mut ed, "o");
+    assert!(ed.completion.visible);
+
+    type_key(&mut ed, "esc");
+    assert!(!ed.completion.visible);
+    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
+    assert_eq!(text, "done door\ndo", "esc must not alter the text");
+}
+
+#[test]
+fn ctrl_space_triggers_at_any_prefix_length() {
+    let mut ed = editor_with("done door\n");
+    // Move cursor between 'd' and 'o' in "done" is awkward; instead put the
+    // cursor after the single char 'd' of "door" via insert.
+    type_key(&mut ed, "d");
+    assert!(!ed.completion.visible);
+
+    // ctrl-space routes here through the keymap (janet-loaded); the
+    // command itself is the contract the key resolves to.
+    let r = crate::kernel::command::execute_command(
+        &mut ed, "completion-trigger", &std::collections::HashMap::new());
+    r.unwrap();
+    assert!(ed.completion.visible, "completion-trigger must open the popup");
+    assert_eq!(ed.completion.prefix, "d");
+    assert_eq!(ed.completion.items, vec!["done", "door"]);
+}
+
+#[test]
+fn word_prefix_len_measures_the_current_word() {
+    let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
+    let key = ed.create_buffer_from_str("t", "hello world\n");
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    ed.view_of_buffer_mut(key).unwrap().set_cursor(8); // after "hello_wo".len().."hello wo"
+    assert_eq!(crate::kernel::completion::word_prefix_len(&ed), 2);
+    ed.view_of_buffer_mut(key).unwrap().set_cursor(6); // after the space
+    assert_eq!(crate::kernel::completion::word_prefix_len(&ed), 0);
+}
+
+// ── Revision-keyed word cache (rework: no per-keystroke document copy) ──
+
+#[test]
+fn word_cache_hits_while_the_revision_is_current_and_rebuilds_after_an_edit() {
+    let mut ed = editor_with("alpha alphabet\n");
+    let key = crate::tests::helpers::focused_key(&ed);
+
+    type_key(&mut ed, "a");
+    type_key(&mut ed, "l");
+    assert!(ed.completion.visible);
+    let cached = ed.completion.word_cache.get(&key).expect("inline scan caches the word set");
+    assert_eq!(cached.revision, ed.buffers.get(key).unwrap().lock().unwrap().revision());
+    assert!(cached.words.contains("alphabet"));
+
+    // An edit moves the revision; the next trigger must rebuild, not serve
+    // the stale set.
+    let stale = cached.revision;
+    ed.view_of_buffer_mut(key).unwrap().insert(0, "zeta ");
+    type_key(&mut ed, "p");
+    type_key(&mut ed, "h");
+    let cached = ed.completion.word_cache.get(&key).expect("re-scan after edit");
+    assert_ne!(cached.revision, stale, "the cache must track the new revision");
+    assert!(cached.words.contains("zeta"), "new text participates in candidates");
+}
+
+#[test]
+fn stale_background_word_results_are_discarded() {
+    let mut ed = editor_with("word one\n");
+    let key = crate::tests::helpers::focused_key(&ed);
+    let stale_rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
+
+    // The buffer moves on while the scan is in flight.
+    ed.view_of_buffer_mut(key).unwrap().insert(0, "new ");
+    assert_ne!(ed.buffers.get(key).unwrap().lock().unwrap().revision(), stale_rev);
+
+    // The scan result for the obsolete revision must be dropped.
+    crate::kernel::runtime::process_background_event(&mut ed,
+        crate::kernel::runtime::BackgroundEvent::BufferWords {
+            buf_key: key, revision: stale_rev, words: vec!["stale".into()] });
+    assert!(!ed.completion.word_cache.contains_key(&key),
+        "a result for an obsolete revision must never land");
+
+    // A result matching the current revision lands.
+    let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
+    crate::kernel::runtime::process_background_event(&mut ed,
+        crate::kernel::runtime::BackgroundEvent::BufferWords {
+            buf_key: key, revision: rev, words: vec!["fresh".into()] });
+    assert!(ed.completion.word_cache.contains_key(&key));
+}

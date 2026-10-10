@@ -71,6 +71,7 @@ impl DialogAction {
     pub fn apply(self, ed: &mut Editor) {
         use crate::kernel::command::{execute_command, args::ArgValue};
         use crate::kernel::state::MessageKind;
+        ed.frame_dirty = true;
         // Dialog-initiated commands report failure instead of discarding it —
         // a silent dialog is how users learn the editor cannot be trusted.
         let report = |ed: &mut Editor, result: Result<(), String>| {

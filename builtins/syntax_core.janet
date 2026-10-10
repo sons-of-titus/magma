@@ -230,8 +230,10 @@
       (def lang (get *extension-language* ext))
       (def kw-table (when lang (get *syntax-rules* lang)))
       (when (and lang kw-table)
-        (def rev-before (scan-number (get data :revision-before)))
-        (def rev-after (scan-number (get data :revision-after)))
+        # buffer-created payloads carry no revisions — scan-number(nil)
+        # throws, so absent keys must degrade to nil, not kill the handler.
+        (def rev-before (when-let [r (get data :revision-before)] (scan-number r)))
+        (def rev-after (when-let [r (get data :revision-after)] (scan-number r)))
         (def edits (parse-edits (get data :edits)))
         (def cache (get *hl-cache* [buf-id "syntax"]))
         (def take-dirty (and rev-before rev-after cache

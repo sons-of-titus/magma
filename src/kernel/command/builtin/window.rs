@@ -2,7 +2,6 @@
 
 use crate::kernel::command::args::{ArgSpec, ArgType, ArgValue};
 use crate::kernel::state::Editor;
-use crate::kernel::state::mode::EditorMode;
 use crate::kernel::event::payload::*;
 
 use super::helpers::*;
@@ -124,7 +123,7 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("terminal-start", "Start a terminal emulator in a new buffer",
+    cmds.register_fn("terminal-start", "Start an interactive terminal in the terminal dock",
         vec![ArgSpec::optional("shell", ArgType::String, ArgValue::String("".to_string()))],
         |editor, args| {
             let custom_shell = args.get("shell")
@@ -137,48 +136,64 @@ pub(super) fn register(editor: &mut Editor) {
                 let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
                 (shell, vec![])
             };
-            let buf_key = crate::kernel::terminal::start_terminal(editor, &cmd, &cmd_args)?;
-            editor.io.terminal_mode_buf = Some(buf_key);
-            editor.editor_mode = EditorMode::new("terminal", false);
+            let cwd = editor.project_manager.project.root.clone()
+                .or_else(|| std::env::current_dir().ok())
+                .ok_or_else(|| "No working directory available".to_string())?;
+            let sender = editor.background.as_ref()
+                .ok_or_else(|| "No background handle available".to_string())?
+                .sender.clone();
+            let id = editor.io.terminals.spawn(&cmd, &cmd_args, &cwd, sender)?;
+            crate::kernel::terminal::set_focused(editor, Some(id));
             Ok(())
         },
     );
 
     cmds.register_fn("terminal-send-input", "Send text to a terminal process",
         vec![
-            ArgSpec::new("buffer", ArgType::Integer),
+            ArgSpec::new("terminal", ArgType::Integer),
             ArgSpec::new("text", ArgType::String),
         ],
         |editor, args| {
-            let buf_id = args.get("buffer").and_then(|a| a.as_integer())
-                .ok_or_else(|| "Missing buffer id".to_string())? as usize;
+            let term_id = args.get("terminal").and_then(|a| a.as_integer())
+                .ok_or_else(|| "Missing terminal id".to_string())? as usize;
             let text = args.get("text").and_then(|a| a.as_string())
                 .ok_or_else(|| "Missing text".to_string())?;
-            crate::kernel::terminal::send_input(editor, buf_id, text)?;
+            crate::kernel::terminal::send_input(editor, term_id, text)?;
             Ok(())
         },
     );
 
-    cmds.register_fn("enter-terminal-mode", "Enter terminal insert mode for the current buffer",
+    cmds.register_fn("terminal-focus", "Focus the active terminal (keyboard goes to the PTY)",
         vec![],
         |editor, _args| {
-            let buf_id = super::helpers::get_current_buffer_id(editor);
-            if crate::kernel::terminal::is_terminal(editor, buf_id) {
-                editor.io.terminal_mode_buf = Some(buf_id);
-                editor.editor_mode = EditorMode::new("terminal", false);
-                editor.keymaps.pop_layer("editor");
-                editor.keymaps.pop_layer("insert");
+            let id = editor.io.terminals.active_id()
+                .ok_or_else(|| "No terminal running".to_string())?;
+            crate::kernel::terminal::set_focused(editor, Some(id));
+            Ok(())
+        },
+    );
+
+    cmds.register_fn("exit-terminal-mode", "Release the keyboard from the terminal, back to normal",
+        vec![],
+        |editor, _args| {
+            crate::kernel::terminal::set_focused(editor, None);
+            Ok(())
+        },
+    );
+
+    cmds.register_fn("terminal-close", "Kill and remove the focused terminal session",
+        vec![ArgSpec::optional("terminal", ArgType::Integer, ArgValue::Integer(0))],
+        |editor, args| {
+            let id = args.get("terminal").and_then(|a| a.as_integer())
+                .filter(|&v| v > 0)
+                .map(|v| v as usize)
+                .or(editor.io.terminals.focused)
+                .or_else(|| editor.io.terminals.sessions.last().map(|s| s.id))
+                .ok_or_else(|| "No terminal running".to_string())?;
+            editor.io.terminals.close(id);
+            if editor.io.terminals.focused.is_none() {
+                crate::kernel::terminal::set_focused(editor, None);
             }
-            Ok(())
-        },
-    );
-
-    cmds.register_fn("exit-terminal-mode", "Exit terminal insert mode, return to normal",
-        vec![],
-        |editor, _args| {
-            editor.editor_mode = EditorMode::new("normal", false);
-            editor.io.terminal_mode_buf = None;
-            editor.keymaps.push_layer("editor");
             Ok(())
         },
     );

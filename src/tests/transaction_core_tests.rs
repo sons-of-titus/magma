@@ -273,7 +273,8 @@ fn change_event_carries_revision_and_edits() {
 
     // The pending queue is empty; verify the payload shape through the
     // Janet-facing accessor instead (documented contract of changes-since).
-    let changes = ed.buffers.get(key).unwrap().lock().unwrap().changes_since(0);
+    let changes = ed.buffers.get(key).unwrap().lock().unwrap().changes_since(0)
+        .expect("revision 0 is always retained");
     assert_eq!(changes.len(), 1);
     let (before, after, edits) = &changes[0];
     assert_eq!(*before, 0);
@@ -282,7 +283,8 @@ fn change_event_carries_revision_and_edits() {
 
     let view = ed.views.get_mut(&key).unwrap();
     view.delete(0, 6);
-    let changes = ed.buffers.get(key).unwrap().lock().unwrap().changes_since(1);
+    let changes = ed.buffers.get(key).unwrap().lock().unwrap().changes_since(1)
+        .expect("recent revisions are retained");
     assert_eq!(changes.len(), 1);
     let (_, after, edits) = &changes[0];
     assert_eq!(*after, 2);

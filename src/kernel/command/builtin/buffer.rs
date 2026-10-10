@@ -116,6 +116,11 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(arc) = editor.buffers.get(key) {
                 arc.lock().unwrap().path = Some(path.to_string());
             }
+            // A newly opened file lands in the focused pane — an invisible
+            // background buffer is indistinguishable from a failed open.
+            if let Some(win) = editor.view_tree.focused_window_mut() {
+                win.buffer_id = Some(key);
+            }
             editor.events.emit_typed(keys::events::BUFFER_CREATED, BufferCreatedPayload {
                 buffer_id: buf_id.to_string(),
                 name,
@@ -209,17 +214,12 @@ pub(super) fn register(editor: &mut Editor) {
             editor.events.emit_typed(keys::events::BUFFER_CLOSED, BufferClosedPayload {
                 buffer_id: key.to_string(),
             });
-            editor.buffers.remove(key);
-            editor.views.remove(&key);
-            editor.drop_window_views_of_buffer(key);
+            editor.drop_buffer(key);
             let focused_shows_closed = editor.view_tree.focused_window()
                 .and_then(|wid| editor.view_tree.buffer(wid))
                 == Some(key);
             if focused_shows_closed {
                 let other = editor.buffers.iter().next().map(|(k, _)| k);
-                if let Some(win) = editor.view_tree.focused_window_mut() {
-                    win.buffer_id = other;
-                }
                 if let Some(new_id) = other {
                     editor.events.emit_typed(keys::events::BUFFER_FOCUSED, BufferFocusedPayload {
                         buffer_id: new_id.to_string(),

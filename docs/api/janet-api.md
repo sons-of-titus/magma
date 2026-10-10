@@ -218,9 +218,9 @@ Define a new command. `name` is a string, `fn` is the handler. Refuses to overwr
 
 Define or overwrite a command. Like `command/define` but silently replaces any existing entry, including Rust-registered commands.
 
-### `(command/run name & args)` → nil
+### `(command/run name &opt kvs*)` → nil
 
-Execute a registered command by name with optional arguments.
+Execute a registered command by name, passing `:key value` pairs as arguments.
 
 ### `(command/list)` → `[string …]`
 
@@ -821,6 +821,19 @@ Return all key→command pairs registered in the named layer.
 ## lsp/ — Language Server Protocol
 
 ### `(lsp/start language-id command & args)` → nil
+Starts the server and performs the initialize handshake off the editor thread; readiness arrives via the `lsp-initialized` event.
+
+### `(lsp/did-open language-id buffer-id)` → nil
+Tells the server the buffer is open, sending its full text at the current revision as the document version.
+
+### `(lsp/did-change language-id buffer-id)` → nil
+Sends the buffer's full current text as a change, versioned with the document revision.
+
+### `(lsp/did-close language-id buffer-id)` → nil
+Tells the server the buffer is closed.
+
+### `(lsp/shutdown language-id)` → nil
+Performs an ordered shutdown of the server and forgets it.
 
 Start an LSP server for the given language. No-op if already running.
 
@@ -938,7 +951,7 @@ Set the project name.
 
 ### `(project/files)` → `[string …]`
 
-Return the cached project file list.
+Return the cached project file list as project-relative paths.
 
 ### `(project/index-files)` → nil
 
@@ -1170,6 +1183,12 @@ Return the current local time as `"YYYY-MM-DD HH:MM:SS"`.
 
 ## semantic/ — Semantic Engine
 
+### `(semantic/workspace-symbols prefix)` → array
+Project-wide symbol search against the persistent index; entries are `[name kind file line]`.
+
+### `(semantic/index-stats)` → table
+Index observability: file count, symbol count, and pending-extraction depth.
+
 ### `(semantic/symbols buf-id)` → `[[name kind file line col] …]`
 
 Return live symbols extracted from buffer `buf-id` using its registered language provider.  Returns an empty array if no language is set or no provider is registered.  `kind` is one of `"function"`, `"method"`, `"struct"`, `"enum"`, `"class"`, `"module"`, `"constant"`, `"variable"`, `"interface"`, `"unknown"`.
@@ -1204,7 +1223,11 @@ Return typed diagnostics for the buffer's file path.  `severity` is one of `"err
 
 The debug subsystem speaks the Debug Adapter Protocol (DAP) over a spawned subprocess.  All DAP I/O runs on a background thread; results arrive via events on the main thread.
 
-### `(debug/start adapter)` → session-id
+### `(debug/start adapter &opt launch-config-json)` → session-id
+Spawns the adapter, awaits the initialize handshake off the editor thread, and sends the optional launch/attach configuration; readiness arrives via the session-started event.
+
+### `(debug/disconnect &opt session-id)` → nil
+Performs an ordered disconnect (terminate debuggee) and forgets the session.
 
 Spawn the debug adapter binary `adapter` (e.g. `"codelldb"`, `"debugpy"`) and perform the DAP `initialize` handshake.  Returns a numeric session ID.  The first session started becomes the *active* session.  Emits `debug-session-started`.
 

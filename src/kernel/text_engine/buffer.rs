@@ -200,18 +200,22 @@ impl Buffer {
 
     /// One transaction inserting at several positions (multi-cursor).
     /// Offsets are pre-transaction coordinates and must be distinct.
+    /// The restored cursor sits after the text inserted at its own
+    /// position, shifted by inserts made before it.
     pub fn insert_many(
         &mut self,
         edits: &[(usize, &str)],
         cursor_before: usize,
     ) -> Option<EditTransaction> {
         let len = self.doc.len();
+        let mut cursor_after = cursor_before;
         let builder = edits.iter().fold(TransactionBuilder::new(), |b, &(off, text)| {
             let off = off.min(len);
+            if off <= cursor_before {
+                cursor_after += text.len();
+            }
             b.insert(off, text)
         });
-        let grown: usize = edits.iter().map(|(_, t)| t.len()).sum();
-        let cursor_after = cursor_before.saturating_add(grown);
         self.commit(builder, cursor_before, cursor_after)
     }
 
@@ -353,31 +357,35 @@ impl Buffer {
 
     /// Transactions committed strictly after `rev`, as
     /// `(revision_before, revision_after, [(start, old_end, new_end)])`.
+    /// `None` when `rev` has fallen out of the retention window and the
+    /// caller must re-sync from the document.
     pub fn changes_since(
         &self,
         rev: u64,
-    ) -> Vec<(u64, u64, Vec<(usize, usize, usize)>)> {
+    ) -> Option<Vec<(u64, u64, Vec<(usize, usize, usize)>)>> {
         use crate::kernel::text_engine::revision::Revision;
         self.doc
             .changes_since(Revision(rev))
-            .iter()
-            .map(|t| {
-                (
-                    t.revision_before.0,
-                    t.revision_after.0,
-                    t.edits
-                        .iter()
-                        .map(|ce| {
-                            (
-                                ce.edit.start(),
-                                ce.edit.end(),
-                                ce.edit.start() + ce.edit.inserted_len(),
-                            )
-                        })
-                        .collect(),
-                )
+            .map(|txns| {
+                txns.iter()
+                    .map(|t| {
+                        (
+                            t.revision_before.0,
+                            t.revision_after.0,
+                            t.edits
+                                .iter()
+                                .map(|ce| {
+                                    (
+                                        ce.edit.start(),
+                                        ce.edit.end(),
+                                        ce.edit.start() + ce.edit.inserted_len(),
+                                    )
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect()
             })
-            .collect()
     }
 
     // ── Diagnostics ──

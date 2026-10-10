@@ -9,9 +9,9 @@
 #   agent-result   {:session-id :result}
 #   agent-error    {:session-id :error}
 #
-# Colon verbs:
-#   :agent-ask  <prompt>  — ask the agent a question
-#   :agent-task <desc>    — submit a structured task
+# Commands (run-command / keybindings):
+#   agent-ask  <prompt>  — ask the agent a question
+#   agent-task <desc>    — submit a structured task
 
 (event/on "agent-thought"
   (fn [data]
@@ -46,18 +46,18 @@
   [kind callback]
   (event/on (string "agent-" kind) callback))
 
-# ── Colon verbs ───────────────────────────────────────────────────────────────
+# ── Commands ─────────────────────────────────────────────────────────────────
 
-(colon/define "agent-ask"
+(command/define "agent-ask"
   (fn [prompt]
     (if (empty? prompt)
-      (editor/log-message "Usage: :agent-ask <prompt>")
+      (editor/log-message "Usage: agent-ask <prompt>")
       (let [id (agent/ask prompt)]
         (editor/log-message (string "agent session " id " started"))))))
 
-(colon/define "agent-task"
+(command/define "agent-task"
   (fn [desc]
     (if (empty? desc)
-      (editor/log-message "Usage: :agent-task run:<name> | goto:<symbol> | diagnose:<path>")
+      (editor/log-message "Usage: agent-task run:<name> | goto:<symbol> | diagnose:<path>")
       (let [id (agent/run-task desc)]
         (editor/log-message (string "agent task " id " submitted"))))))

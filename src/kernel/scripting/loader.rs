@@ -1,6 +1,6 @@
 //! Janet VM initialisation: API registration, builtin script loading, user init.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::CString;
 use crate::kernel::state::Editor;
 use evil_janet::*;
@@ -9,6 +9,11 @@ thread_local! {
     /// Whether janet_init() has been called on this OS thread.
     /// Each test thread starts with false; janet_init() is called exactly once per thread.
     static JANET_THREAD_INITIALIZED: Cell<bool> = const { Cell::new(false) };
+
+    /// Builtins that failed to compile since the last `take_builtin_load_errors`.
+    /// A failed load disables everything the file defines — silently, unless
+    /// something inspects this list.
+    static LOAD_ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 pub(super) fn eval_string(name: &str, source: &str) -> Result<(), String> {
@@ -43,8 +48,14 @@ pub(super) fn load_builtin(name: &str, source: &str) {
         );
         if status != 0 {
             debug!("Janet: error loading {name}");
+            LOAD_ERRORS.with(|e| e.borrow_mut().push(name.to_string()));
         }
     }
+}
+
+/// Names of builtins that failed to compile since the last call.
+pub fn take_builtin_load_errors() -> Vec<String> {
+    LOAD_ERRORS.with(|e| std::mem::take(&mut *e.borrow_mut()))
 }
 
 /// Initialise the Janet VM with EDITOR_PTR set.
@@ -58,12 +69,25 @@ pub fn init(editor: &mut Editor) {
     super::event_api::reset_handlers();
     super::process_api::reset_task_functions();
     super::task_api::reset_task_complete_callbacks();
-    super::debug_api::reset_dap_clients();
     super::extension_api::reset_current_extension();
     super::scoped_editor(editor, init_vm);
     #[cfg(feature = "janet")]
     {
         editor.runtime = Some(Box::new(super::runtime::JanetRuntime));
+    }
+    // A builtin that failed to compile is a broken editor: its keybindings,
+    // commands, and event handlers are silently missing.  This is never a
+    // debug-level detail — surface it immediately.
+    let failed = take_builtin_load_errors();
+    if !failed.is_empty() {
+        editor.show_message(
+            crate::kernel::state::MessageKind::Error,
+            format!("builtin scripts failed to load: {}", failed.join(", ")),
+        );
+        for name in &failed {
+            editor.events.emit("builtin-load-error", std::iter::once(
+                ("file".to_string(), name.clone())).collect());
+        }
     }
 }
 

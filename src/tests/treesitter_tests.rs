@@ -33,3 +33,17 @@ fn ts_language_set_on_valid_buffer() {
     ed.ts_languages.insert(key, "janet".to_string());
     assert_eq!(ed.ts_languages.get(&key).unwrap(), "janet");
 }
+
+// ── Scheduled tree-sitter parsing (lane-backed, revision-checked) ────────
+
+#[test]
+fn scheduled_parse_is_a_noop_without_a_registered_grammar() {
+    let _lock = crate::tests::helpers::acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor();
+    let key = ed.create_buffer_from_str("x.rs", "fn a() {}");
+    ed.ts_languages.insert(key, "rust".to_string());
+    // No grammar in the map: the lane job's parse returns None and the
+    // handoff store stays empty — never a panic, never a stale tree.
+    crate::kernel::semantic::ts_schedule::schedule_tree_update(&mut ed, key);
+    assert!(!ed.ts_trees.contains_key(&key));
+}

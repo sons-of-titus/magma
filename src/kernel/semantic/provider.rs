@@ -97,6 +97,9 @@ pub struct Diagnostic {
     pub line: usize,
     /// 0-based column index.
     pub column: usize,
+    /// End of the range, 0-based; a point diagnostic repeats `line`/`column`.
+    pub end_line: usize,
+    pub end_column: usize,
 }
 
 impl Diagnostic {
@@ -120,6 +123,8 @@ impl Diagnostic {
             severity,
             line: line.saturating_sub(1),
             column: column.saturating_sub(1),
+            end_line: line.saturating_sub(1),
+            end_column: column.saturating_sub(1),
         })
     }
 }

@@ -195,3 +195,41 @@ fn editor_scheduler_tracks_tasks() {
     let _wid = ed.scheduler.register_task(1, "cargo-build");
     assert_eq!(ed.scheduler.active_count(), 1);
 }
+
+// ── Lane scheduler (rework.md §3) ────────────────────────────────────────
+
+#[test]
+fn lanes_bound_concurrency_and_coalesce_superseded_work() {
+    let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let bg = crate::kernel::runtime::BackgroundHandle::new(runtime.clone(), tx);
+
+    // The maintenance lane has exactly one slot: a superseded job must not
+    // run even though it was queued first.
+    let ran = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let r1 = ran.clone();
+    bg.spawn_on(crate::kernel::runtime::Lane::Maintenance, Some("k"), move || {
+        r1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    });
+    let r2 = ran.clone();
+    bg.spawn_on(crate::kernel::runtime::Lane::Maintenance, Some("k"), move || {
+        r2.fetch_add(10, std::sync::atomic::Ordering::SeqCst);
+    });
+    let r3 = ran.clone();
+    bg.spawn_on(crate::kernel::runtime::Lane::Maintenance, Some("k"), move || {
+        r3.fetch_add(100, std::sync::atomic::Ordering::SeqCst);
+    });
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline
+        && ran.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    // Only the newest job for the key runs: jobs queued behind a newer
+    // submission skip themselves — coalescing means stale input never
+    // wastes a lane slot.
+    assert_eq!(ran.load(std::sync::atomic::Ordering::SeqCst), 100,
+        "only the newest job for a coalesce key may run");
+}

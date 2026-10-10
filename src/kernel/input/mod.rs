@@ -3,7 +3,7 @@
 pub mod event;
 pub mod mouse;
 
-/// Forward a key to the shell process running in a terminal buffer.
+/// Forward a key to the shell process of the focused terminal session.
 ///
 /// This completely bypasses the editor keymap so that keys like ctrl-c,
 /// ctrl-s, backspace, and return reach the shell instead of triggering
@@ -77,16 +77,45 @@ fn forward_to_terminal(ed: &mut crate::kernel::state::Editor, buf_id: usize, key
 /// Dispatch a single key through the generic editor pipeline.
 ///
 /// Order of dispatch:
-/// 1. Terminal forwarding — raw PTY bypass.
-/// 2. Raw input interceptor (Janet `editor/on-input`).
-/// 3. Keymap lookup — if a command is bound, execute it.
-/// 4. Text input — only when `editor_mode.accepts_text` is true.
+/// 1. Terminal forwarding — when a terminal session holds the keyboard,
+///    keys go straight to its PTY.
+/// 2. Completion popup — while visible it owns navigation/accept keys and
+///    word typing refilters it in place.
+/// 3. Raw input interceptor (Janet `editor/on-input`).
+/// 4. Keymap lookup — if a command is bound, execute it.
+/// 5. Text input — only when `editor_mode.accepts_text` is true.
 pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
     // ── Terminal forwarding ─────────────────────────────────────────
-    if let Some(buf_id) = ed.io.terminal_mode_buf {
-        forward_to_terminal(ed, buf_id, key);
+    if let Some(term_id) = ed.io.terminals.focused {
+        forward_to_terminal(ed, term_id, key);
         ed.dispatch_events_scoped();
         return;
+    }
+
+    // ── Completion popup keys ───────────────────────────────────────
+    if ed.completion.visible {
+        let mut consumed = true;
+        match key {
+            "up"    => crate::kernel::completion::prev(ed),
+            "down"  => crate::kernel::completion::next(ed),
+            "tab" | "return" => crate::kernel::completion::accept(ed),
+            "esc"   => crate::kernel::completion::dismiss(ed),
+            k if is_word_input(k) => {
+                handle_text_input(ed, k);
+                crate::kernel::completion::trigger(ed);
+            }
+            _ => {
+                // Chords and navigation leave the popup behind and fall
+                // through to the regular pipeline.
+                crate::kernel::completion::dismiss(ed);
+                consumed = false;
+            }
+        }
+        if consumed {
+            ed.publish_buffer_changes();
+            ed.dispatch_events_scoped();
+            return;
+        }
     }
 
     // ── Raw input interceptor (editor/on-input from Janet) ──────────
@@ -114,6 +143,7 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
     } else if ed.editor_mode.accepts_text {
         handle_text_input(ed, key);
     }
+    ed.frame_dirty = true;
     ed.publish_buffer_changes();
     ed.dispatch_events_scoped();
 }
@@ -163,7 +193,16 @@ pub fn handle_text_input(ed: &mut crate::kernel::state::Editor, key: &str) {
             let cur = view.cursor_offset();
             view.insert(cur, key);
         }
+        // Typing a word extends or starts the completion popup.
+        crate::kernel::completion::auto_trigger_if_word(ed, key);
     }
+}
+
+/// Single alphanumeric/underscore character — the input the completion
+/// popup filters on.
+fn is_word_input(key: &str) -> bool {
+    key.chars().count() == 1
+        && key.chars().next().is_some_and(|c| c.is_alphanumeric() || c == '_')
 }
 
 /// Apply a text input operation to all cursors (primary + extras).

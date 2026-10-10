@@ -51,3 +51,57 @@ fn index_project_without_project_errors() {
     let err = run(&mut ed, "index-project", "").unwrap_err();
     assert!(err.contains("No project open"), "got: {err}");
 }
+
+// ── Index contract: project-relative paths ───────────────────────────────────
+
+fn editor_with_background()
+    -> (Editor, tokio::sync::mpsc::UnboundedReceiver<crate::kernel::runtime::BackgroundEvent>) {
+    let mut ed = editor();
+    let rt = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    ed.background = Some(crate::kernel::runtime::BackgroundHandle::new(rt, tx));
+    (ed, rx)
+}
+
+#[test]
+fn open_project_indexes_files_relative_to_root() {
+    let dir = std::env::temp_dir().join(format!("magma-rel-index-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
+    std::fs::write(dir.join("README.md"), "# t").unwrap();
+
+    let (mut ed, mut rx) = editor_with_background();
+    run(&mut ed, "open-project", dir.to_str().unwrap()).unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let files = loop {
+        match rx.try_recv() {
+            Ok(crate::kernel::runtime::BackgroundEvent::FileIndexed { files, .. }) => break files,
+            _ if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            _ => panic!("no FileIndexed event arrived"),
+        }
+    };
+
+    assert!(files.contains(&"src/main.rs".to_string()),
+        "indexed paths must be project-relative, got: {files:?}");
+    assert!(files.iter().all(|f| !f.starts_with('/')),
+        "absolute paths would root the explorer at the filesystem root: {files:?}");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn open_project_expands_tilde() {
+    let Ok(home) = std::env::var("HOME") else { return };
+    let name = format!(".magma-tilde-test-{}", std::process::id());
+    let dir = std::path::Path::new(&home).join(&name);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut ed = editor();
+    run(&mut ed, "open-project", &format!("~/{name}")).unwrap();
+
+    assert_eq!(ed.project_manager.project.root.as_ref(), Some(&dir));
+    std::fs::remove_dir_all(&dir).ok();
+}

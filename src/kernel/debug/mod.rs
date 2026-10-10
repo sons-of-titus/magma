@@ -22,6 +22,8 @@ pub struct DebugManager {
     pub active_session: Option<SessionId>,
     /// Breakpoints per source file path (absolute paths).
     pub breakpoints: HashMap<String, Vec<Breakpoint>>,
+    /// Live adapter connections, foreground-owned (rework.md §1).
+    pub connections: HashMap<SessionId, std::sync::Arc<dap_client::DapHandle>>,
     next_session_id: SessionId,
     next_bp_id: u64,
 }
@@ -32,6 +34,7 @@ impl DebugManager {
             sessions: HashMap::new(),
             active_session: None,
             breakpoints: HashMap::new(),
+            connections: HashMap::new(),
             next_session_id: 1,
             next_bp_id: 1,
         }
@@ -84,6 +87,27 @@ impl DebugManager {
     /// The currently active session (mutable).
     pub fn active_session_mut(&mut self) -> Option<&mut DebugSession> {
         self.active_session.and_then(|id| self.sessions.get_mut(&id))
+    }
+
+    /// Ordered teardown of one session's adapter.
+    pub fn disconnect(&mut self, id: SessionId) {
+        if let Some(handle) = self.connections.remove(&id) {
+            handle.disconnect();
+        }
+        self.sessions.remove(&id);
+        if self.active_session == Some(id) {
+            self.active_session = None;
+        }
+    }
+
+    /// Teardown of everything — the editor session is ending.
+    pub fn disconnect_all(&mut self) {
+        for handle in self.connections.values() {
+            handle.disconnect();
+        }
+        self.connections.clear();
+        self.sessions.clear();
+        self.active_session = None;
     }
 
     /// Build the `setBreakpoints` arguments JSON for a given file.

@@ -12,97 +12,64 @@
 //!   (debug/session)                    → session-id or nil
 //!   (debug/breakpoints file)           → array of line numbers
 
-use std::sync::{Arc, LazyLock, Mutex};
-use std::collections::HashMap;
+use serde_json::json;
 
-use tokio::io::AsyncWriteExt;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use crate::kernel::debug::dap_client::{DapClient, dap_request};
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
 
 type SessionId = crate::kernel::debug::types::SessionId;
 
-struct DapHandle {
-    stdin: Arc<tokio::sync::Mutex<tokio::process::ChildStdin>>,
-    bg: crate::kernel::runtime::BackgroundHandle,
-    next_seq: Arc<Mutex<i64>>,
-}
-
-static DAP_CLIENTS: LazyLock<Mutex<HashMap<SessionId, DapHandle>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-pub fn reset_dap_clients() {
-    if let Ok(mut guard) = DAP_CLIENTS.lock() {
-        guard.clear();
-    }
-}
-
-fn alloc_seq(handle: &DapHandle) -> i64 {
-    let mut g = handle.next_seq.lock().unwrap_or_else(|e| e.into_inner());
-    let s = *g;
-    *g += 1;
-    s
-}
-
-pub(crate) fn send_dap_command(session_id: SessionId, command: &str, arguments: &str) {
-    let (stdin_arc, bg, body) = {
-        let mut guard = DAP_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
-        let h = match guard.get_mut(&session_id) {
-            Some(h) => h,
-            None => return,
-        };
-        let seq = alloc_seq(h);
-        let body = dap_request(seq, command, arguments);
-        (h.stdin.clone(), h.bg.clone(), body)
-    };
-    bg.spawn(async move {
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        let mut stdin = stdin_arc.lock().await;
-        let _ = stdin.write_all(header.as_bytes()).await;
-        let _ = stdin.write_all(body.as_bytes()).await;
-        let _ = stdin.flush().await;
-    });
+/// Send a DAP request through the session's foreground-owned connection.
+pub(crate) fn send_dap_command(ed: &mut crate::kernel::state::Editor, session_id: SessionId, command: &str, arguments: &str) {
+    let Some(handle) = ed.debug.connections.get(&session_id).cloned() else { return };
+    let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or(json!({}));
+    handle.request(command, args);
 }
 
 // ── C functions ───────────────────────────────────────────────────────────────
 
-/// (debug/start adapter) → session-id
+/// (debug/start adapter &opt launch-config-json) → session-id
+/// The initialize handshake runs off the foreground; readiness arrives via
+/// the `DapStarted` background event.
 unsafe extern "C-unwind" fn c_debug_start(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let adapter = unsafe { conv::get_str(argc, argv, 0) }
             .unwrap_or_else(|| "codelldb".to_string());
+        let launch_config: Option<serde_json::Value> =
+            unsafe { conv::get_str(argc, argv, 1) }
+                .and_then(|c| serde_json::from_str(&c).ok());
         let bg = match ed.background.clone() {
             Some(bg) => bg,
             None => conv::signal_err("debug/start: no background runtime"),
         };
         let session_id = ed.debug.new_session(adapter.clone());
-        {
-            let adapter_clone = adapter.clone();
-            let bg_clone = bg.clone();
-            bg.spawn(async move {
-                match DapClient::start(&adapter_clone, session_id, bg_clone).await {
-                    Ok(client) => {
-                        let mut guard = DAP_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
-                        guard.insert(session_id, DapHandle {
-                            stdin: client.stdin,
-                            bg: client.bg,
-                            next_seq: client.next_seq,
-                        });
-                    }
-                    Err(e) => {
-                        debug!("debug/start: adapter failed: {e}");
-                    }
-                }
-            });
-        }
-        ed.events.emit_typed(keys::events::DEBUG_SESSION_STARTED, DebugSessionStartedPayload {
-            session_id: session_id.to_string(),
-            adapter,
-        });
+        std::thread::Builder::new()
+            .name(format!("dap-init-{session_id}"))
+            .spawn(move || {
+                let result = crate::kernel::debug::dap_client::DapHandle::start(
+                    &adapter, session_id, launch_config, bg.clone()).map(std::sync::Arc::new);
+                bg.send_event(crate::kernel::runtime::BackgroundEvent::DapStarted { session_id, result });
+            })
+            .map_err(|e| debug!("dap-init thread: {e}"))
+            .ok();
         conv::integer(session_id as i32)
+    })
+}
+
+/// (debug/disconnect &opt session-id) → nil
+/// Ordered teardown of the active (or named) session.
+unsafe extern "C-unwind" fn c_debug_disconnect(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let sid = unsafe { conv::get_int(argc, argv, 0) }
+            .map(|v| v as u64)
+            .or(ed.debug.active_session);
+        if let Some(sid) = sid {
+            ed.debug.disconnect(sid);
+        }
+        conv::nil()
     })
 }
 
@@ -114,7 +81,7 @@ unsafe extern "C-unwind" fn c_debug_continue(argc: i32, argv: *mut Janet) -> Jan
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
             .unwrap_or(1);
-        send_dap_command(sid, "continue", &format!(r#"{{"threadId":{thread_id}}}"#));
+        send_dap_command(ed, sid, "continue", &format!(r#"{{"threadId":{thread_id}}}"#));
         if let Some(s) = ed.debug.active_session_mut() { s.stopped = false; }
         conv::nil()
     })
@@ -128,7 +95,7 @@ unsafe extern "C-unwind" fn c_debug_step_in(argc: i32, argv: *mut Janet) -> Jane
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
             .unwrap_or(1);
-        send_dap_command(sid, "stepIn", &format!(r#"{{"threadId":{thread_id}}}"#));
+        send_dap_command(ed, sid, "stepIn", &format!(r#"{{"threadId":{thread_id}}}"#));
         conv::nil()
     })
 }
@@ -141,7 +108,7 @@ unsafe extern "C-unwind" fn c_debug_step_over(argc: i32, argv: *mut Janet) -> Ja
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
             .unwrap_or(1);
-        send_dap_command(sid, "next", &format!(r#"{{"threadId":{thread_id}}}"#));
+        send_dap_command(ed, sid, "next", &format!(r#"{{"threadId":{thread_id}}}"#));
         conv::nil()
     })
 }
@@ -154,7 +121,7 @@ unsafe extern "C-unwind" fn c_debug_step_out(argc: i32, argv: *mut Janet) -> Jan
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
             .unwrap_or(1);
-        send_dap_command(sid, "stepOut", &format!(r#"{{"threadId":{thread_id}}}"#));
+        send_dap_command(ed, sid, "stepOut", &format!(r#"{{"threadId":{thread_id}}}"#));
         conv::nil()
     })
 }
@@ -171,7 +138,7 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
         // Notify the active debug session.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
-            send_dap_command(sid, "setBreakpoints", &args);
+            send_dap_command(ed, sid, "setBreakpoints", &args);
         }
         ed.events.emit_typed(keys::events::DEBUG_BREAKPOINT_CHANGED, DebugBreakpointChangedPayload {
             file,
@@ -193,7 +160,7 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
         // no gutter state manipulation needed here.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
-            send_dap_command(sid, "setBreakpoints", &args);
+            send_dap_command(ed, sid, "setBreakpoints", &args);
         }
         ed.events.emit_typed(keys::events::DEBUG_BREAKPOINT_CHANGED, DebugBreakpointChangedPayload {
             file,
@@ -212,7 +179,7 @@ unsafe extern "C-unwind" fn c_debug_evaluate(argc: i32, argv: *mut Janet) -> Jan
         let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
         let escaped = expr.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
         let args = format!(r#"{{"expression":"{escaped}","context":"repl","frameId":{frame_id}}}"#);
-        send_dap_command(sid, "evaluate", &args);
+        send_dap_command(ed, sid, "evaluate", &args);
         conv::nil()
     })
 }
@@ -246,6 +213,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"debug/start".as_ptr() as *const _,
             cfun: Some(c_debug_start),
             documentation: c"(debug/start adapter) → session-id — spawn a debug adapter and initialize a DAP session".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/disconnect".as_ptr() as *const _,
+            cfun: Some(c_debug_disconnect),
+            documentation: c"(debug/disconnect &opt session-id) → nil — ordered disconnect + terminate of a debug session".as_ptr() as *const _,
         },
         JanetReg {
             name: c"debug/continue".as_ptr() as *const _,

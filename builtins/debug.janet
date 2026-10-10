@@ -3,7 +3,7 @@
 # Provides:
 #   - Event handlers for debug-stopped, debug-output, debug-session-ended,
 #     debug-evaluate-result, and debug-breakpoint-changed.
-#   - Colon-mode verbs for common debug operations.
+#   - Commands for common debug operations (run-command / keybindings).
 #   - Helper functions that wrap the Rust debug/ API.
 
 # ── Event handlers ────────────────────────────────────────────────────────────
@@ -57,33 +57,33 @@
   []
   (not (nil? (debug/session))))
 
-# ── Colon verbs ───────────────────────────────────────────────────────────────
+# ── Commands ─────────────────────────────────────────────────────────────────
 
-(colon/define "dbg-start"
+(command/define "dbg-start"
   (fn [arg]
     (debug/start (if (empty? arg) "codelldb" arg))))
 
-(colon/define "dbg-bp"
+(command/define "dbg-bp"
   (fn [_]
     (debug/toggle-breakpoint)))
 
-(colon/define "dbg-continue"
+(command/define "dbg-continue"
   (fn [_]
     (debug/continue)))
 
-(colon/define "dbg-step-in"
+(command/define "dbg-step-in"
   (fn [_]
     (debug/step-in)))
 
-(colon/define "dbg-step-over"
+(command/define "dbg-step-over"
   (fn [_]
     (debug/step-over)))
 
-(colon/define "dbg-step-out"
+(command/define "dbg-step-out"
   (fn [_]
     (debug/step-out)))
 
-(colon/define "dbg-eval"
+(command/define "dbg-eval"
   (fn [expr]
     (when (not (empty? expr))
       (debug/evaluate expr))))

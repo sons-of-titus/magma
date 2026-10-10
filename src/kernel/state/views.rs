@@ -74,6 +74,22 @@ impl Editor {
         }
     }
 
+    /// Remove a buffer with its views and point every pane that showed it
+    /// at a surviving buffer.  The one close path for buffer teardown.
+    pub fn drop_buffer(&mut self, key: usize) {
+        self.buffers.remove(key);
+        self.views.remove(&key);
+        self.drop_window_views_of_buffer(key);
+        self.completion.word_cache.remove(&key);
+        self.minimap_cache.remove(&key);
+        let fallback = self.buffers.iter().map(|(k, _)| k).find(|&k| k != key);
+        for pane in self.view_tree.panes_mut() {
+            if pane.buffer_id == Some(key) {
+                pane.buffer_id = fallback;
+            }
+        }
+    }
+
     /// Drain every buffer's pending transactions into canonical
     /// `buffer-changed` events — one event per committed transaction, each
     /// carrying its revision transition and edit spans (docs/core-redesign.md
@@ -89,6 +105,7 @@ impl Editor {
                 }
             }
         }
+        let mut ts_dirty: Vec<usize> = Vec::new();
         for (key, txn) in notes {
             let edits = txn
                 .edits
@@ -103,6 +120,9 @@ impl Editor {
                 })
                 .collect::<Vec<_>>()
                 .join(",");
+            if self.ts_languages.contains_key(&key) {
+                ts_dirty.push(key);
+            }
             self.events.emit_typed(
                 crate::kernel::event::keys::events::BUFFER_CHANGED,
                 crate::kernel::event::payload::BufferChangedPayload {
@@ -113,37 +133,11 @@ impl Editor {
                 },
             );
         }
-    }
-
-    /// A hash of everything the render depends on: when it is unchanged
-    /// between frames there is nothing new to paint and the GUI does not
-    /// need to schedule a repaint (docs/core-redesign.md §9.4).
-    pub fn render_signature(&self) -> u64 {
-        let mut h: u64 = 0xcbf29ce484222325;
-        let mut mix = |v: u64| {
-            h ^= v;
-            h = h.wrapping_mul(0x100000001b3);
-        };
-        for (key, arc) in self.buffers.iter() {
-            let b = arc.lock().unwrap();
-            mix(key as u64);
-            mix(b.revision());
-            mix(b.diagnostics.len() as u64);
+        // Changed buffers with a registered grammar get a lane-scheduled
+        // parse; the interactive path returns immediately.
+        for key in ts_dirty {
+            crate::kernel::semantic::ts_schedule::schedule_tree_update(self, key);
         }
-        for v in self.views.values() {
-            mix(v.cursor.offset as u64);
-            mix(v.scroll_offset as u64);
-        }
-        for v in self.window_views.values() {
-            mix(v.cursor.offset as u64);
-        }
-        mix(self.selection.is_some() as u64);
-        mix(self.editor_mode.accepts_text as u64);
-        mix(self.completion.visible as u64);
-        mix(self.overlays.len() as u64);
-        mix(self.events.pending_len() as u64);
-        mix(self.io.terminal_mode_buf.is_some() as u64);
-        h
     }
 
     /// Publish pending change events, then dispatch the event queue inside

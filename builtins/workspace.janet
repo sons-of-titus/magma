@@ -43,17 +43,17 @@
     (when (= (get result :status) "error")
       (editor/log-message (string "workspace/restore error: " (get result :error ""))))))
 
-# ── Colon-mode verbs ──────────────────────────────────────────────────────────
+# ── Commands ─────────────────────────────────────────────────────────────────
 
-(colon/define "ws-save"
+(command/define "ws-save"
   (fn [_]
     (workspace/save-and-report)))
 
-(colon/define "ws-restore"
+(command/define "ws-restore"
   (fn [_]
     (workspace/restore-and-report)))
 
-(colon/define "ws-session-save"
+(command/define "ws-session-save"
   (fn [name]
     (if (empty? name)
       (editor/log-message "ws-session-save: provide a session name")
@@ -62,7 +62,7 @@
           (editor/log-message
             (string "workspace/session-save error: " (get result :error ""))))))))
 
-(colon/define "ws-session-load"
+(command/define "ws-session-load"
   (fn [name]
     (if (empty? name)
       (editor/log-message "ws-session-load: provide a session name")
@@ -71,7 +71,7 @@
           (editor/log-message
             (string "workspace/session-load error: " (get result :error ""))))))))
 
-(colon/define "ws-sessions"
+(command/define "ws-sessions"
   (fn [_]
     (let [sessions (workspace/session-list)]
       (if (empty? sessions)

@@ -1,6 +1,6 @@
 # Window and workspace management — Sprint 8.
 # Provides directional window focus, layout save/restore, and resize bindings.
-# Loaded after init.janet so *colon-plugins* and command/define are available.
+# Loaded after init.janet so command/define is available.
 
 # ── Directional focus helper ───────────────────────────────────────────────────
 

@@ -8,7 +8,6 @@ use crate::kernel::state::Editor;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view::{Rect, RenderCtx, View};
 use crate::kernel::render::editor_view::EditorView;
-use crate::kernel::render::terminal_view::TerminalView;
 use super::decorations::render_overlays;
 
 /// Return the display-column width of a character, consulting the glyph-width
@@ -117,11 +116,7 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
         let area = Rect::new(pane.x, pane.y, pane.width, pane.height);
         let ctx = RenderCtx { editor, area };
 
-        if crate::kernel::terminal::is_terminal(editor, buf_id) {
-            TerminalView { buf_id }.render(surface, &ctx);
-        } else {
-            EditorView { buf_id, pane_id: pane.id }.render(surface, &ctx);
-        }
+        EditorView { buf_id, pane_id: pane.id }.render(surface, &ctx);
     }
 
     // ── Overlays (z-ordered, above all pane content) ─────────────────────

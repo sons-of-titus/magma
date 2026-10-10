@@ -1,6 +1,6 @@
 # builtins/janet_eval.janet
 # Janet Eval and interactive REPL support (Sprint 12).
-# Requires *colon-plugins* and buffer/* API from init.janet.
+# Requires the buffer/* API from init.janet.
 
 # ── *janet-output* buffer helper ─────────────────────────────────────────────
 

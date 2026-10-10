@@ -1,378 +1,314 @@
+//! Headless server — a foreground loop owns the editor and applies ops
+//! arriving from TCP clients over a channel (rework.md §1: one owner, no
+//! global lock).
+//!
+//! The protocol is JSON lines: `{cmd, args, id}` → `{ok, result|error, id}`.
+//! The former peer-broadcast layer was deleted: it echoed raw byte offsets
+//! to remote peers with no transformation, which corrupts documents the
+//! moment two writers race — a façade of collaboration, not a feature.
+
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::RwLock;
-use std::sync::LazyLock;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use serde::{Deserialize, Serialize};
 
+use crate::kernel::runtime::BackgroundEvent;
 use crate::kernel::state::Editor;
 
-/// Broadcast channel for peer events (cursor moves, buffer inserts, etc.).
-/// All subscribers receive every message sent on this channel.
-static PEER_TX: LazyLock<broadcast::Sender<String>> =
-    LazyLock::new(|| broadcast::channel::<String>(256).0);
+/// One editor operation requested by a client.  File content is read on the
+/// async side; the foreground loop only ever touches in-memory state.
+enum ServerOp {
+    Ping,
+    OpenFile { path: String, content: String, id: u64 },
+    GetBuffer { buf_id: usize, id: u64 },
+    Insert { buf_id: usize, text: String, offset: Option<usize>, id: u64 },
+    Delete { buf_id: usize, start: usize, end: usize, id: u64 },
+    Save { buf_id: usize, id: u64 },
+    Eval { code: String, id: u64 },
+    Close { buf_id: usize, id: u64 },
+    ListBuffers { id: u64 },
+}
 
-/// Listen for TCP connections on `addr`, handling editor commands
-/// via a JSON-line protocol.
-pub async fn run_server(editor: Arc<RwLock<Editor>>, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+type Responder = tokio::sync::oneshot::Sender<Response>;
+
+/// Listen on `addr`.  A dedicated thread owns the editor; every TCP handler
+/// proxies ops to it and replies through a oneshot.
+pub async fn run_server(
+    editor: Editor,
+    bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
+    addr: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(addr).await?;
     debug!("Magma server listening on {addr}");
+
+    let (op_tx, op_rx) = mpsc::unbounded_channel::<(ServerOp, Responder)>();
+    std::thread::Builder::new()
+        .name("magma-server-foreground".into())
+        .spawn(move || foreground_loop(editor, bg_receiver, op_rx))?;
 
     loop {
         let (stream, peer) = listener.accept().await?;
         debug!("Connection from {peer}");
-        let ed = editor.clone();
+        let op_tx = op_tx.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_client(ed, stream).await {
+            if let Err(e) = handle_client(op_tx, stream).await {
                 debug!("Client {peer} error: {e}");
             }
         });
     }
 }
 
-async fn handle_client(editor: Arc<RwLock<Editor>>, stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    let (reader, mut writer) = stream.into_split();
-    let mut lines = BufReader::new(reader).lines();
-    // Peer event subscription — activated by the "subscribe-events" command.
-    let mut peer_rx: Option<broadcast::Receiver<String>> = None;
+/// The server's single owner of editor state.  Janet is initialized on this
+/// thread and never leaves it.
+fn foreground_loop(
+    mut ed: Editor,
+    mut bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
+    op_rx: mpsc::UnboundedReceiver<(ServerOp, Responder)>,
+) {
+    #[cfg(feature = "janet")]
+    {
+        use crate::kernel::scripting::ScriptRuntime;
+        let mut rt = crate::kernel::scripting::JanetRuntime::new();
+        rt.init(&mut ed);
+        ed.runtime = Some(Box::new(rt));
+    }
 
+    let mut op_rx = op_rx;
     loop {
-        let peer_rx_ref = &mut peer_rx;
-        let event = tokio::select! {
-            line = lines.next_line() => {
-                match line? {
-                    Some(l) => Either::Line(l),
-                    None => break,
+        while let Ok(event) = bg_receiver.try_recv() {
+            crate::kernel::runtime::process_background_event(&mut ed, event);
+        }
+        ed.publish_buffer_changes();
+        ed.dispatch_events_scoped();
+
+        let Some((op, responder)) = op_rx.blocking_recv() else { return };
+        let response = apply_op(&mut ed, op);
+        let _ = responder.send(response);
+    }
+}
+
+fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
+    match op {
+        ServerOp::Ping => Response::ok(serde_json::json!("pong"), 0),
+        ServerOp::OpenFile { path, content, id } => {
+            for (key, arc) in ed.buffers.iter() {
+                let buf = arc.lock().unwrap();
+                if buf.path.as_deref() == Some(&path) {
+                    let result = serde_json::json!({
+                        "buffer": key,
+                        "name": buf.name.clone(),
+                        "path": buf.path.clone(),
+                        "size": buf.len(),
+                    });
+                    return Response::ok(result, id);
                 }
             }
-            ev = async {
-                match peer_rx_ref {
-                    Some(rx) => match rx.recv().await {
-                        Ok(msg) => Some(msg),
-                        Err(_) => None,
-                    },
-                    None => {
-                        std::future::pending::<Option<String>>().await
+            let name = std::path::Path::new(&path)
+                .file_name().map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            let buf_id = ed.allocate_buffer_id();
+            let mut buf = crate::kernel::text_engine::Buffer::from_string(
+                crate::kernel::state::id::BufferId(buf_id), &name, &content,
+            );
+            buf.path = Some(path);
+            let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
+            let entry = ed.buffers.vacant_entry();
+            let key = entry.key();
+            entry.insert(arc.clone());
+            ed.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
+            Response::ok(serde_json::json!({"buffer": key, "name": name, "size": content.len()}), id)
+        }
+        ServerOp::GetBuffer { buf_id, id } => {
+            let Some(arc) = ed.buffers.get(buf_id) else {
+                return Response::error(&format!("Buffer {buf_id} not found"), id);
+            };
+            let buf = arc.lock().unwrap();
+            let result = serde_json::json!({
+                "content": buf.slice(0, buf.len()),
+                "name": buf.name.clone(),
+                "path": buf.path.clone(),
+                "size": buf.len(),
+                "cursor": ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0),
+            });
+            Response::ok(result, id)
+        }
+        ServerOp::Insert { buf_id, text, offset, id } => {
+            if !ed.buffers.contains(buf_id) {
+                return Response::error(&format!("Buffer {buf_id} not found"), id);
+            }
+            let pos = offset.unwrap_or_else(|| ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0));
+            if let Some(view) = ed.view_of_buffer_mut(buf_id) {
+                view.insert(pos, &text);
+            }
+            let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+            Response::ok(serde_json::json!({"cursor": cursor, "size": size}), id)
+        }
+        ServerOp::Delete { buf_id, start, end, id } => {
+            if !ed.buffers.contains(buf_id) {
+                return Response::error(&format!("Buffer {buf_id} not found"), id);
+            }
+            if let Some(view) = ed.view_of_buffer_mut(buf_id) {
+                view.delete(start, end);
+            }
+            let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+            Response::ok(serde_json::json!({"cursor": cursor, "size": size}), id)
+        }
+        ServerOp::Save { buf_id, id } => {
+            let Some(arc) = ed.buffers.get(buf_id) else {
+                return Response::error(&format!("Buffer {buf_id} not found"), id);
+            };
+            let (path, content, rev) = {
+                let buf = arc.lock().unwrap();
+                let Some(path) = buf.path.clone() else {
+                    return Response::error("Buffer has no path", id);
+                };
+                (path, buf.slice(0, buf.len()), buf.revision())
+            };
+            // Atomic write happens off the foreground thread; the buffer is
+            // marked clean only for the exact revision that was written.
+            let write = move || crate::kernel::storage::disk::atomic_write(&path, &content);
+            match std::thread::spawn(write).join() {
+                Ok(Ok(())) => {
+                    if let Some(arc) = ed.buffers.get_mut(buf_id) {
+                        arc.lock().unwrap().mark_saved_at(rev);
                     }
+                    Response::ok(serde_json::json!({"saved": true}), id)
                 }
-            } => {
-                match ev {
-                    Some(json) => Either::PeerEvent(json),
-                    None => continue,
-                }
+                Ok(Err(e)) => Response::error(&format!("Save failed: {e}"), id),
+                Err(_) => Response::error("Save task panicked", id),
+            }
+        }
+        ServerOp::Eval { code, id } => {
+            let mut rt = ed.runtime.take();
+            let result = match &mut rt {
+                Some(rt) => rt.eval(ed, &code),
+                None => "Scripting runtime not available".to_string(),
+            };
+            ed.runtime = rt;
+            Response::ok(serde_json::json!({"result": result}), id)
+        }
+        ServerOp::Close { buf_id, id } => {
+            if ed.buffers.contains(buf_id) {
+                ed.drop_buffer(buf_id);
+                Response::ok(serde_json::json!("closed"), id)
+            } else {
+                Response::error(&format!("Buffer {buf_id} not found"), id)
+            }
+        }ServerOp::ListBuffers { id } => {
+            let buffers: Vec<serde_json::Value> = ed.buffers.iter().map(|(key, arc)| {
+                let buf = arc.lock().unwrap();
+                serde_json::json!({
+                    "id": key,
+                    "name": buf.name.clone(),
+                    "path": buf.path.clone(),
+                    "size": buf.len(),
+                    "modified": buf.modified(),
+                })
+            }).collect();
+            Response::ok(serde_json::json!(buffers), id)
+        }
+    }
+}
+
+async fn handle_client(
+    op_tx: mpsc::UnboundedSender<(ServerOp, Responder)>,
+    stream: TcpStream,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (reader, mut writer) = stream.into_split();
+    let mut lines = BufReader::new(reader).lines();
+
+    while let Some(raw) = lines.next_line().await? {
+        let line = raw.trim().to_string();
+        if line.is_empty() { continue; }
+
+        let request: Request = match serde_json::from_str(&line) {
+            Ok(r) => r,
+            Err(e) => {
+                let resp = Response::error(&format!("Invalid JSON: {e}"), 0);
+                writer.write_all(resp.to_json().as_bytes()).await?;
+                writer.write_all(b"\n").await?;
+                continue;
             }
         };
 
-        match event {
-            Either::PeerEvent(json) => {
-                writer.write_all(format!("{json}\n").as_bytes()).await?;
-            }
-            Either::Line(raw_line) => {
-                let line = raw_line.trim().to_string();
-                if line.is_empty() { continue; }
-
-                let request: Request = match serde_json::from_str(&line) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let resp = Response::error(&format!("Invalid JSON: {e}"), 0);
-                        let _ = writer.write_all(&resp.to_json().into_bytes()).await;
-                        let _ = writer.write_all(b"\n").await;
-                        continue;
-                    }
-                };
-
-                let response = match request.cmd.as_str() {
-                    "ping" => Response::ok(serde_json::json!("pong"), request.id),
-                    "open-file" => handle_open_file(&editor, &request).await,
-                    "get-buffer" => handle_get_buffer(&editor, &request),
-                    "insert" => {
-                        let resp = handle_insert(&editor, &request);
-                        if resp.ok {
-                            // Broadcast peer insert event to subscribed clients
-                            let buf_id = request.args.get("buffer").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let pos = request.args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let text = request.args.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let ev = serde_json::json!({
-                                "event": "peer-insert",
-                                "buffer": buf_id,
-                                "offset": pos,
-                                "text": text,
-                            }).to_string();
-                            let _ = PEER_TX.send(ev);
-                        }
-                        resp
-                    }
-                    "delete" => {
-                        let resp = handle_delete(&editor, &request);
-                        if resp.ok {
-                            let buf_id = request.args.get("buffer").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let start = request.args.get("start").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let end = request.args.get("end").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let ev = serde_json::json!({
-                                "event": "peer-delete",
-                                "buffer": buf_id,
-                                "start": start,
-                                "end": end,
-                            }).to_string();
-                            let _ = PEER_TX.send(ev);
-                        }
-                        resp
-                    }
-                    "save" => handle_save(&editor, &request),
-                    "eval" => handle_eval(&editor, &request),
-                    "close" => handle_close(&editor, &request),
-                    "list-buffers" => handle_list_buffers(&editor, &request),
-                    "subscribe-events" => {
-                        peer_rx = Some(PEER_TX.subscribe());
-                        Response::ok(serde_json::json!("subscribed"), request.id)
-                    }
-                    "peer-cursor" => {
-                        let buf_id = request.args.get("buffer").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let offset = request.args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let ev = serde_json::json!({
-                            "event": "peer-cursor",
-                            "buffer": buf_id,
-                            "offset": offset,
-                        }).to_string();
-                        let _ = PEER_TX.send(ev);
-                        Response::ok(serde_json::json!("broadcast"), request.id)
-                    }
-                    _ => Response::error(&format!("Unknown command: {}", request.cmd), request.id),
-                };
-
-                let out = response.to_json();
-                writer.write_all(out.as_bytes()).await?;
+        let op = match translate_op(&request).await {
+            Ok(op) => op,
+            Err(resp) => {
+                writer.write_all(resp.to_json().as_bytes()).await?;
                 writer.write_all(b"\n").await?;
+                continue;
             }
+        };
+
+        let (responder, receipt) = tokio::sync::oneshot::channel();
+        let id = request.id;
+        if op_tx.send((op, responder)).is_err() {
+            writer.write_all(Response::error("server shutting down", id).to_json().as_bytes()).await?;
+            writer.write_all(b"\n").await?;
+            continue;
         }
+        let response = match receipt.await {
+            Ok(r) => r,
+            Err(_) => Response::error("foreground loop dropped the request", id),
+        };
+        writer.write_all(response.to_json().as_bytes()).await?;
+        writer.write_all(b"\n").await?;
     }
 
     Ok(())
 }
 
-/// Internal discriminant to break `tokio::select!` into typed arms.
-enum Either {
-    Line(String),
-    PeerEvent(String),
-}
+/// Translate a protocol request into a foreground op.  Argument validation
+/// and the file read (async context) happen here, never on the foreground
+/// thread.
+async fn translate_op(request: &Request) -> Result<ServerOp, Response> {
+    let id = request.id;
+    let arg_u64 = |name: &str| request.args.get(name).and_then(|v| v.as_u64());
+    let arg_str = |name: &str| request.args.get(name).and_then(|v| v.as_str()).map(String::from);
 
-// ── Command handlers ──────────────────────────────────────────────────────────
-
-async fn handle_open_file(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let path = match req.args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p.to_string(),
-        None => return Response::error("Missing 'path' argument", req.id),
-    };
-
-    let content = match tokio::task::spawn_blocking({
-        let path = path.clone();
-        move || std::fs::read_to_string(&path)
-    }).await {
-        Ok(Ok(text)) => text,
-        Ok(Err(e)) => return Response::error(&format!("Cannot read {path}: {e}"), req.id),
-        Err(e) => return Response::error(&format!("Task error: {e}"), req.id),
-    };
-
-    let ed = editor.read().unwrap_or_else(|e| e.into_inner());
-    // Check if already open
-    for (key, arc) in ed.buffers.iter() {
-        let buf = arc.lock().unwrap();
-        if buf.path.as_deref() == Some(&path) {
-            let result = serde_json::json!({
-                "buffer": key,
-                "name": buf.name.clone(),
-                "path": buf.path.clone(),
-                "size": buf.len(),
-            });
-            return Response::ok(result, req.id);
+    match request.cmd.as_str() {
+        "ping" => Ok(ServerOp::Ping),
+        "open-file" => {
+            let path = arg_str("path").ok_or_else(|| Response::error("Missing 'path' argument", id))?;
+            let content = tokio::fs::read_to_string(&path).await
+                .map_err(|e| Response::error(&format!("Cannot read {path}: {e}"), id))?;
+            Ok(ServerOp::OpenFile { path, content, id })
         }
-    }
-    drop(ed);
-
-    // Open new buffer
-    let name = std::path::Path::new(&path)
-        .file_name().map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.clone());
-
-    let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    let id = ed.allocate_buffer_id();
-    let mut buf = crate::kernel::text_engine::Buffer::from_string(
-        crate::kernel::state::id::BufferId(id), &name, &content,
-    );
-    buf.path = Some(path);
-    let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
-    let entry = ed.buffers.vacant_entry();
-    let key = entry.key();
-    entry.insert(arc.clone());
-    ed.views.insert(key, crate::kernel::text_engine::BufferView::new(arc));
-
-    let result = serde_json::json!({
-        "buffer": key,
-        "name": name,
-        "size": content.len(),
-    });
-    Response::ok(result, req.id)
-}
-
-fn handle_get_buffer(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let buf_id = match req.args.get("buffer").and_then(|v| v.as_u64()).map(|v| v as usize) {
-        Some(id) => id,
-        None => return Response::error("Missing 'buffer' argument", req.id),
-    };
-
-    let ed = editor.read().unwrap_or_else(|e| e.into_inner());
-    match ed.buffers.get(buf_id) {
-        Some(arc) => {
-            let buf = arc.lock().unwrap();
-            let content = buf.slice(0, buf.len());
-            let name = buf.name.clone();
-            let path = buf.path.clone();
-            let size = buf.len();
-            drop(buf);
-            let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            let result = serde_json::json!({
-                "content": content,
-                "name": name,
-                "path": path,
-                "size": size,
-                "cursor": cursor,
-            });
-            Response::ok(result, req.id)
+        "get-buffer" => {
+            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            Ok(ServerOp::GetBuffer { buf_id, id })
         }
-        None => Response::error(&format!("Buffer {buf_id} not found"), req.id),
-    }
-}
-
-fn handle_insert(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let buf_id = match req.args.get("buffer").and_then(|v| v.as_u64()) {
-        Some(id) => id as usize,
-        None => return Response::error("Missing 'buffer' argument", req.id),
-    };
-    let text = match req.args.get("text").and_then(|v| v.as_str()) {
-        Some(t) => t.to_string(),
-        None => return Response::error("Missing 'text' argument", req.id),
-    };
-    let offset = req.args.get("offset").and_then(|v| v.as_u64()).map(|v| v as usize);
-
-    let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    if ed.buffers.contains(buf_id) {
-        let pos = offset.unwrap_or_else(|| ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0));
-        if let Some(view) = ed.view_of_buffer_mut(buf_id) {
-            view.insert(pos, &text);
+        "insert" => {
+            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            let text = arg_str("text").ok_or_else(|| Response::error("Missing 'text' argument", id))?;
+            let offset = arg_u64("offset").map(|v| v as usize);
+            Ok(ServerOp::Insert { buf_id, text, offset, id })
         }
-        let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-        let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
-        Response::ok(serde_json::json!({"cursor": cursor, "size": size}), req.id)
-    } else {
-        Response::error(&format!("Buffer {buf_id} not found"), req.id)
-    }
-}
-
-fn handle_delete(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let buf_id = match req.args.get("buffer").and_then(|v| v.as_u64()) {
-        Some(id) => id as usize,
-        None => return Response::error("Missing 'buffer' argument", req.id),
-    };
-    let start = match req.args.get("start").and_then(|v| v.as_u64()) {
-        Some(v) => v as usize,
-        None => return Response::error("Missing 'start' argument", req.id),
-    };
-    let end = match req.args.get("end").and_then(|v| v.as_u64()) {
-        Some(v) => v as usize,
-        None => return Response::error("Missing 'end' argument", req.id),
-    };
-
-    let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    if ed.buffers.contains(buf_id) {
-        if let Some(view) = ed.view_of_buffer_mut(buf_id) {
-            view.delete(start, end);
+        "delete" => {
+            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            let start = arg_u64("start").ok_or_else(|| Response::error("Missing 'start' argument", id))? as usize;
+            let end = arg_u64("end").ok_or_else(|| Response::error("Missing 'end' argument", id))? as usize;
+            Ok(ServerOp::Delete { buf_id, start, end, id })
         }
-        let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-        let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
-        Response::ok(serde_json::json!({"cursor": cursor, "size": size}), req.id)
-    } else {
-        Response::error(&format!("Buffer {buf_id} not found"), req.id)
-    }
-}
-
-fn handle_save(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let buf_id = match req.args.get("buffer").and_then(|v| v.as_u64()) {
-        Some(id) => id as usize,
-        None => return Response::error("Missing 'buffer' argument", req.id),
-    };
-
-    let ed = editor.read().unwrap_or_else(|e| e.into_inner());
-    match ed.buffers.get(buf_id) {
-        Some(arc) => {
-            let buf = arc.lock().unwrap();
-            let path = match &buf.path {
-                Some(p) => p.clone(),
-                None => return Response::error("Buffer has no path", req.id),
-            };
-            let content = buf.slice(0, buf.len());
-            drop(buf);
-            drop(ed);
-
-            if let Err(e) = std::fs::write(&path, &content) {
-                return Response::error(&format!("Save failed: {e}"), req.id);
-            }
-            let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-            if let Some(arc) = ed.buffers.get_mut(buf_id) {
-                arc.lock().unwrap().mark_saved();
-            }
-            Response::ok(serde_json::json!({"path": path}), req.id)
+        "save" => {
+            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            Ok(ServerOp::Save { buf_id, id })
         }
-        None => Response::error(&format!("Buffer {buf_id} not found"), req.id),
+        "eval" => {
+            let code = arg_str("code").ok_or_else(|| Response::error("Missing 'code' argument", id))?;
+            Ok(ServerOp::Eval { code, id })
+        }
+        "close" => {
+            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            Ok(ServerOp::Close { buf_id, id })
+        }
+        "list-buffers" => Ok(ServerOp::ListBuffers { id }),
+        other => Err(Response::error(&format!("Unknown command: {other}"), id)),
     }
-}
-
-fn handle_eval(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let code = match req.args.get("code").and_then(|v| v.as_str()) {
-        Some(c) => c.to_string(),
-        None => return Response::error("Missing 'code' argument", req.id),
-    };
-
-    let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    let mut rt = ed.runtime.take();
-    let result = match &mut rt {
-        Some(rt) => rt.eval(&mut ed, &code),
-        None => "Scripting runtime not available".to_string(),
-    };
-    ed.runtime = rt;
-    Response::ok(serde_json::json!({"result": result}), req.id)
-}
-
-fn handle_close(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let buf_id = match req.args.get("buffer").and_then(|v| v.as_u64()) {
-        Some(id) => id as usize,
-        None => return Response::error("Missing 'buffer' argument", req.id),
-    };
-
-    let mut ed = editor.write().unwrap_or_else(|e| e.into_inner());
-    if ed.buffers.contains(buf_id) {
-        ed.buffers.remove(buf_id);
-        Response::ok(serde_json::json!("closed"), req.id)
-    } else {
-        Response::error(&format!("Buffer {buf_id} not found"), req.id)
-    }
-}
-
-fn handle_list_buffers(editor: &Arc<RwLock<Editor>>, req: &Request) -> Response {
-    let ed = editor.read().unwrap_or_else(|e| e.into_inner());
-    let buffers: Vec<serde_json::Value> = ed.buffers.iter().map(|(key, arc)| {
-        let buf = arc.lock().unwrap();
-        serde_json::json!({
-            "id": key,
-            "name": buf.name.clone(),
-            "path": buf.path.clone(),
-            "size": buf.len(),
-            "modified": buf.modified(),
-        })
-    }).collect();
-    Response::ok(serde_json::json!(buffers), req.id)
 }
 
 // ── Protocol types ────────────────────────────────────────────────────────────

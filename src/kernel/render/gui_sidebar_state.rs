@@ -32,6 +32,8 @@ impl PendingOp {
 
 /// Interaction state for the project tree sidebar.
 pub struct SidebarState {
+    /// Project root the state was built for; a change resets everything.
+    pub root:          Option<String>,
     pub expanded_dirs: HashSet<String>,
     pub selected:      Option<String>,
     /// Inline text row collecting a name for a new/rename operation.
@@ -41,15 +43,34 @@ pub struct SidebarState {
     /// Path armed for deletion via the context menu; a second menu
     /// confirmation executes it.
     pub confirm_delete: Option<String>,
+    /// Built FileNode tree cached by project files-epoch — the sidebar
+    /// must not re-walk the flat list every frame (rework.md §7).  Shared
+    /// via Rc so frames borrow it without pinning the state.
+    pub tree_cache: Option<(u64, std::rc::Rc<Vec<crate::kernel::render::gui_sidebar::FileNode>>)>,
+
+}
+
+impl SidebarState {
+    /// Drop all per-project interaction state.
+    pub fn reset_for(&mut self, root: String) {
+        self.root = Some(root);
+        self.expanded_dirs.clear();
+        self.selected = None;
+        self.pending = None;
+        self.pending_name.clear();
+        self.confirm_delete = None;
+    }
 }
 
 impl Default for SidebarState {
     fn default() -> Self {
         Self {
+            tree_cache: None,
+            root: None,
             expanded_dirs: HashSet::new(),
-            selected:      None,
-            pending:       None,
-            pending_name:  String::new(),
+            selected: None,
+            pending: None,
+            pending_name: String::new(),
             confirm_delete: None,
         }
     }

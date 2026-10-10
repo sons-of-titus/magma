@@ -21,10 +21,12 @@ macro_rules! test_pairs { ($($base:ident),+ $(,)?) => {
 }; }
 
 mod command_tests;
+mod completion_tests;
 mod event_tests;
 mod mode_tests;
 mod insertable_tests;
 mod terminal_tests;
+mod terminal_manager_tests;
 mod terminal_palette_tests;
 mod vc_backend_tests;
 mod janet_eval_tests;
@@ -40,6 +42,10 @@ mod project_open_tests;
 mod quickfix_tests;
 #[cfg(feature = "gui")]
 mod view_layout_tests;
+#[cfg(feature = "gui")]
+mod gui_repaint_tests;
+#[cfg(feature = "gui")]
+mod gui_welcome_tests;
 
 test_pairs!(
     extension_foundation, special_buffers, process_async, project_api,
@@ -58,3 +64,5 @@ test_pairs!(
 #[cfg(feature = "janet")] mod render_integration_tests;
 #[cfg(feature = "janet")] mod keymap_guard_tests;
 #[cfg(feature = "janet")] mod builtin_parse_tests;
+mod scratch_probe_tests;
+mod memory_budget_tests;

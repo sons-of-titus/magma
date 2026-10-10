@@ -61,7 +61,9 @@ impl BreadcrumbBar {
         let (path, cursor_offset) = {
             let buf = arc.lock().unwrap();
             let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            (buf.name.clone(), cursor)
+            // Prefer the full path so the bar shows the JetBrains-style
+            // directory chain; scratch buffers fall back to their name.
+            (buf.path.clone().unwrap_or_else(|| buf.name.clone()), cursor)
         };
 
         let cursor_line = {
@@ -75,7 +77,10 @@ impl BreadcrumbBar {
 
         ui.horizontal(|ui| {
             ui.set_min_height(BAR_H);
-            ui.spacing_mut().item_spacing.x = 2.0;
+            // The breadcrumb sits on the editor surface, so the active tab's
+            // fill reads as continuing through the band into the editor.
+            ui.painter().rect_filled(ui.max_rect(), 0, theme.base);
+            ui.spacing_mut().item_spacing.x = 4.0;
             ui.add_space(4.0);
 
             let font = FontId::new(FONT_SIZE, FontFamily::Proportional);
@@ -101,7 +106,7 @@ impl BreadcrumbBar {
                     ui.painter().rect_filled(
                         r.expand2(egui::vec2(3.0, 1.0)),
                         egui::CornerRadius::same(4),
-                        theme.surface1,
+                        theme.surface0.gamma_multiply(0.5),
                     );
                     // Re-paint the label above the hover fill.
                     ui.painter().text(

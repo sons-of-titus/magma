@@ -38,6 +38,10 @@ name = "buffer_ops"
 harness = false
 
 [[bench]]
+name = "frame_pipeline"
+harness = false
+
+[[bench]]
 name = "rope_ops"
 harness = false
 

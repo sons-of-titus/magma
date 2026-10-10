@@ -302,7 +302,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             ed.io.terminals.apply_output(terminal_id, &data);
         }
         BackgroundEvent::TerminalExited { terminal_id, .. } => {
-            ed.io.terminals.mark_exited(terminal_id);
+            ed.io.terminals.close(terminal_id);
             if ed.io.terminals.focused.is_none() && ed.editor_mode.name == "terminal" {
                 crate::kernel::terminal::set_focused(ed, None);
             }

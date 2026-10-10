@@ -15,13 +15,35 @@ fn prop(size: f32) -> FontId { FontId::new(size, FontFamily::Proportional) }
 /// click-to-focus, and a PTY resize that follows the panel size.
 pub struct TerminalToolWindow {
     last_resize: Option<(usize, u16, u16)>,
-    /// Flattened lines cached per (session, screen revision, row count) so
-    /// idle frames (cursor blink, mouse move) don't re-shape the grid.
-    cache: Option<(usize, u64, usize, Vec<StyledLine>)>,
+    /// Flattened lines cached per (session, screen revision, row count,
+    /// first visible line) so idle frames don't re-shape the grid.
+    cache: Option<(usize, u64, usize, usize, Vec<StyledLine>)>,
+    /// Session being renamed inline, its edit buffer, and a flag to grab
+    /// focus on the first frame of the edit.
+    renaming: Option<usize>,
+    rename_buf: String,
+    rename_focus: bool,
+    /// Absolute first visible line while scrolled back through history;
+    /// `None` follows the live screen.  New output never moves a scrolled
+    /// view — scrollback line indices are stable, so the anchor does too.
+    scroll_anchor: Option<usize>,
+    /// Last `input_seq` seen from the manager; a change means the user sent
+    /// stdin, which snaps a scrolled view back to the live screen.
+    last_input_seq: u64,
 }
 
 impl TerminalToolWindow {
-    pub fn new() -> Self { Self { last_resize: None, cache: None } }
+    pub fn new() -> Self {
+        Self {
+            last_resize: None,
+            cache: None,
+            renaming: None,
+            rename_buf: String::new(),
+            rename_focus: false,
+            scroll_anchor: None,
+            last_input_seq: 0,
+        }
+    }
 }
 
 impl super::tool_window::ToolWindow for TerminalToolWindow {
@@ -31,39 +53,84 @@ impl super::tool_window::ToolWindow for TerminalToolWindow {
     fn ui(&mut self, ui: &mut egui::Ui, editor: &mut Editor, theme: &GuiTheme) -> Vec<ToolAction> {
         let mut actions = Vec::new();
         let manager = &editor.io.terminals;
+        let input_seq = manager.input_seq.load(std::sync::atomic::Ordering::Relaxed);
+        if input_seq != self.last_input_seq {
+            self.last_input_seq = input_seq;
+            self.scroll_anchor = None;
+        }
 
         // ── Session tab strip: [/bin/zsh ×] [+] ─────────────────────────
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            for session in &manager.sessions {
-                let is_active = manager.active_id() == Some(session.id);
-                let label = RichText::new(&session.title)
-                    .font(prop(12.0))
-                    .color(if is_active { theme.text } else { theme.overlay0 });
-                let tab = egui::Button::new(label)
-                    .fill(if is_active { theme.surface0 } else { theme.mantle })
-                    .corner_radius(egui::CornerRadius::ZERO);
-                if ui.add(tab).clicked() {
-                    actions.push(ToolAction::TerminalFocus(session.id));
-                }
-                if ui.add(
-                    egui::Button::new(
-                        RichText::new(gui_theme::icons::CLOSE)
-                            .font(prop(11.0))
-                            .color(theme.overlay0),
-                    )
-                    .frame(false),
-                ).clicked() {
-                    actions.push(ToolAction::TerminalClose(session.id));
-                }
-            }
-            if ui.add(
-                egui::Button::new(RichText::new("+").font(prop(13.0)).color(theme.green))
-                    .frame(false)
-            ).on_hover_text("New terminal").clicked() {
-                actions.push(ToolAction::TerminalNew);
-            }
-        });
+        // Horizontally scrollable so a pile of sessions never squeezes the
+        // row; drag or trackpad-swipe to reach the overflow.  The egui bar
+        // idles at 2px and fattens to 10px on hover — pin both to 2px.
+        let scroll = &mut ui.spacing_mut().scroll;
+        scroll.bar_width = 2.0;
+        scroll.floating_width = 2.0;
+        egui::ScrollArea::horizontal()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    for session in &manager.sessions {
+                        let is_active = manager.active_id() == Some(session.id);
+                        if self.renaming == Some(session.id) {
+                            let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                            let edit = ui.add(
+                                egui::TextEdit::singleline(&mut self.rename_buf)
+                                    .desired_width(110.0)
+                                    .font(prop(12.0)),
+                            );
+                            if self.rename_focus {
+                                edit.request_focus();
+                                self.rename_focus = false;
+                            }
+                            if edit.lost_focus() || esc {
+                                let name = self.rename_buf.trim();
+                                if !esc && !name.is_empty() {
+                                    actions.push(ToolAction::TerminalRename {
+                                        id: session.id,
+                                        name: name.to_string(),
+                                    });
+                                }
+                                self.renaming = None;
+                            }
+                        } else {
+                            let label = RichText::new(&session.title)
+                                .font(prop(12.0))
+                                .color(if is_active { theme.text } else { theme.overlay0 });
+                            let tab = egui::Button::new(label)
+                                .fill(if is_active { theme.surface0 } else { theme.mantle })
+                                .corner_radius(egui::CornerRadius::ZERO);
+                            let resp = ui.add(tab);
+                            if resp.clicked() {
+                                actions.push(ToolAction::TerminalFocus(session.id));
+                            }
+                            if resp.double_clicked() {
+                                self.rename_buf = session.title.clone();
+                                self.renaming = Some(session.id);
+                                self.rename_focus = true;
+                            }
+                            resp.on_hover_text("Click to focus · double-click to rename");
+                        }
+                        if ui.add(
+                            egui::Button::new(
+                                RichText::new(gui_theme::icons::CLOSE)
+                                    .font(prop(11.0))
+                                    .color(theme.overlay0),
+                            )
+                            .frame(false),
+                        ).clicked() {
+                            actions.push(ToolAction::TerminalClose(session.id));
+                        }
+                    }
+                    if ui.add(
+                        egui::Button::new(RichText::new("+").font(prop(13.0)).color(theme.green))
+                            .frame(false)
+                    ).on_hover_text("New terminal").clicked() {
+                        actions.push(ToolAction::TerminalNew);
+                    }
+                });
+            });
         ui.separator();
 
         // ── Screen of the active session ────────────────────────────────
@@ -91,16 +158,40 @@ impl super::tool_window::ToolWindow for TerminalToolWindow {
         );
         if body_resp.clicked() {
             actions.push(ToolAction::TerminalFocus(active_id));
+            self.scroll_anchor = None;
         }
 
         let rows_that_fit = (((body_rect.height() - 8.0) / row_h).floor() as usize).max(1);
+        let total = screen.line_count();
+        let max_first = total.saturating_sub(rows_that_fit);
+        if body_resp.hovered() {
+            let dy = ui.input(|i| i.smooth_scroll_delta.y);
+            if dy != 0.0 {
+                let base = self.scroll_anchor.unwrap_or(max_first);
+                let lines = (dy / row_h).trunc() as isize;
+                let next = (base as isize - lines).clamp(0, max_first as isize) as usize;
+                self.scroll_anchor = (next < max_first).then_some(next);
+            }
+        }
+        if self.scroll_anchor.is_some_and(|f| f >= max_first) {
+            self.scroll_anchor = None;
+        }
+        let first_visible = self.scroll_anchor.unwrap_or(max_first);
+
         let revision = screen.revision;
         let rows = match &self.cache {
-            Some((id, rev, n, lines))
-                if *id == active_id && *rev == revision && *n == rows_that_fit => lines.clone(),
+            Some((id, rev, n, first, lines))
+                if *id == active_id
+                    && *rev == revision
+                    && *n == rows_that_fit
+                    && *first == first_visible =>
+                lines.clone(),
             _ => {
-                let lines = screen.tail_styled(rows_that_fit);
-                self.cache = Some((active_id, revision, rows_that_fit, lines.clone()));
+                let end = (first_visible + rows_that_fit).min(total);
+                let lines: Vec<StyledLine> =
+                    (first_visible..end).map(|i| screen.styled_line(i)).collect();
+                self.cache =
+                    Some((active_id, revision, rows_that_fit, first_visible, lines.clone()));
                 lines
             }
         };
@@ -146,9 +237,9 @@ impl super::tool_window::ToolWindow for TerminalToolWindow {
         }
 
         // The block cursor sits on the session's real cursor cell — not the
-        // last visible row — so typing echoes where the block is.
+        // last visible row — so typing echoes where the block is.  While
+        // scrolled back, the cursor only shows if its line is on screen.
         if manager.focused == Some(active_id) && screen.cursor_visible() {
-            let first_visible = screen.line_count().saturating_sub(rows.len());
             let cursor_line = screen.scrollback_len() + screen.cursor_screen_row() as usize;
             if let Some(i) = cursor_line.checked_sub(first_visible)
                 && i < rows.len() {

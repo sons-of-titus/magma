@@ -95,14 +95,16 @@ impl GuiApp {
             gui_shell::apply_status_action(&mut self.editor, action);
         }
 
-        // The terminal dock follows session focus: spawning or focusing a
-        // terminal opens the dock (entry 0); closing stays visible until
-        // the user toggles it away.
-        if self.editor.io.terminals.focused.is_some()
-            && let Some(entry) = self.tool_windows.entries.first()
-            && !entry.visible {
-                self.tool_windows.toggle(super::tool_window::TERMINAL_TOOL);
+        // The terminal dock tracks the session set: focusing a terminal
+        // opens the dock (entry 0); the last session ending minimizes it.
+        if let Some(entry) = self.tool_windows.entries.first_mut() {
+            if self.editor.io.terminals.sessions.is_empty() {
+                entry.visible = false;
+            } else if self.editor.io.terminals.focused.is_some() && !entry.visible {
+                entry.visible = true;
+                self.tool_windows.active_bottom = super::tool_window::TERMINAL_TOOL;
             }
+        }
 
         // Docked-bottom tool windows — inside the status bar, outside the editor.
         let mut tool_actions = self.tool_windows.show_docked_bottom(ui, &mut self.editor, &self.theme);
@@ -131,7 +133,18 @@ impl GuiApp {
                 toggled_tool = self.tool_windows.show_sidebar_edge(ui, &self.theme);
             });
         if let Some(idx) = toggled_tool {
-            self.tool_windows.toggle(idx);
+            if idx == super::tool_window::TERMINAL_TOOL {
+                // The terminal button always hands you a fresh shell and
+                // opens the dock; the other tool windows keep their
+                // show/hide toggle.
+                if let Some(entry) = self.tool_windows.entries.first_mut() {
+                    entry.visible = true;
+                }
+                self.tool_windows.active_bottom = super::tool_window::TERMINAL_TOOL;
+                tool_actions.push(super::tool_window::ToolAction::TerminalNew);
+            } else {
+                self.tool_windows.toggle(idx);
+            }
         }
 
         // Project tree sidebar.

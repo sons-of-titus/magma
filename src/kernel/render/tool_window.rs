@@ -19,6 +19,7 @@ pub enum ToolAction {
     TerminalFocus(usize),
     TerminalNew,
     TerminalClose(usize),
+    TerminalRename { id: usize, name: String },
     TerminalResize { id: usize, cols: u16, rows: u16 },
 }
 

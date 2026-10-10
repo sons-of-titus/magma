@@ -106,6 +106,9 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
                     terminal::set_focused(ed, None);
                 }
             }
+            ToolAction::TerminalRename { id, name } => {
+                ed.io.terminals.rename(id, &name);
+            }
             ToolAction::TerminalResize { id, cols, rows } => {
                 let _ = ed.io.terminals.resize(id, cols, rows);
             }

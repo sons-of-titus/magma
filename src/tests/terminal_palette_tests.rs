@@ -74,7 +74,7 @@ fn terminal_start_with_custom_shell_command() {
     command::execute_command(&mut ed, "terminal-start", &args).expect("terminal-start failed");
     let id = ed.io.terminals.focused.expect("session focused");
     let session = ed.io.terminals.get(id).expect("session exists");
-    assert_eq!(session.title, "/bin/sh");
+    assert_eq!(session.title, "sh 1", "default names read \"shell index\"");
     command::execute_command(&mut ed, "exit-terminal-mode", &HashMap::new()).unwrap();
     ed.io.terminals.close(id);
 }

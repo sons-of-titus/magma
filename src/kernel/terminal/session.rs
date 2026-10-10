@@ -11,6 +11,10 @@ use super::screen::TerminalScreen;
 pub struct TerminalSession {
     pub id: usize,
     pub title: String,
+    /// The generated part of the tab name ("zsh", "sh -c read _"), kept so
+    /// renumbering can regenerate `title`; `None` once the user renames the
+    /// tab, which makes the name permanently user-owned.
+    pub(crate) auto_label: Option<String>,
     pub cwd: PathBuf,
     pub screen: TerminalScreen,
     pub(crate) writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,

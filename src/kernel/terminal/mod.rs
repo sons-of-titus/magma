@@ -10,6 +10,7 @@ pub mod session;
 
 pub use session::TerminalSession;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
@@ -24,11 +25,20 @@ pub struct TerminalManager {
     next_id: usize,
     /// The session keys are routed to; `None` means editor keys.
     pub focused: Option<usize>,
+    /// Bumped per delivered stdin chunk.  Atomic because `send_input` takes
+    /// `&self` (the editor-level wrapper only has `&Editor`); the dock reads
+    /// it to snap a scrolled view back to the live screen on user input.
+    pub input_seq: AtomicU64,
 }
 
 impl Default for TerminalManager {
     fn default() -> Self {
-        Self { sessions: Vec::new(), next_id: 1, focused: None }
+        Self {
+            sessions: Vec::new(),
+            next_id: 1,
+            focused: None,
+            input_seq: AtomicU64::new(0),
+        }
     }
 }
 
@@ -63,20 +73,28 @@ impl TerminalManager {
 
         let id = self.next_id;
         self.next_id += 1;
-        let title = if args.is_empty() {
-            cmd.to_string()
+        // Default tab names read "{shell} {index}" and renumber dynamically
+        // as sessions come and go; a rename makes a tab's name user-owned.
+        let base = std::path::Path::new(cmd)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| cmd.to_string());
+        let label = if args.is_empty() {
+            base
         } else {
-            format!("{cmd} {}", args.join(" "))
+            format!("{base} {}", args.join(" "))
         };
         self.sessions.push(TerminalSession {
             id,
-            title,
+            title: label.clone(),
+            auto_label: Some(label),
             cwd: cwd.to_path_buf(),
             screen: screen::TerminalScreen::default(),
             writer: Arc::new(Mutex::new(writer)),
             master: Mutex::new(pair.master),
             child,
         });
+        self.renumber();
 
         std::thread::spawn(move || read_pipe(reader, id, sender));
         Ok(id)
@@ -96,9 +114,13 @@ impl TerminalManager {
     }
 
     pub fn send_input(&self, id: usize, input: &str) -> Result<(), String> {
-        self.get(id)
+        let result = self.get(id)
             .ok_or_else(|| "Not a terminal".to_string())?
-            .send_input(input)
+            .send_input(input);
+        if result.is_ok() {
+            self.input_seq.fetch_add(1, Ordering::Relaxed);
+        }
+        result
     }
 
     pub fn resize(&mut self, id: usize, cols: u16, rows: u16) -> Result<(), String> {
@@ -115,28 +137,46 @@ impl TerminalManager {
         }
     }
 
-    /// The child exited: close the session entirely — the tab disappears and
-    /// the keyboard is released, the way a terminal emulator closes its tab
-    /// when the shell inside it ends.
-    pub fn mark_exited(&mut self, id: usize) {
+    /// The tab label is user-owned: rename a session at any time.  A renamed
+    /// tab never gets renumbered again — but committing the rename editor
+    /// with an unchanged name is not a rename, so auto numbering survives
+    /// a double-click accident.
+    pub fn rename(&mut self, id: usize, name: &str) {
         if let Some(s) = self.get_mut(id) {
-            s.kill();
-        }
-        self.sessions.retain(|s| s.id != id);
-        if self.focused == Some(id) {
-            self.focused = None;
+            if s.title == name {
+                return;
+            }
+            s.title = name.to_string();
+            s.auto_label = None;
         }
     }
 
-    /// Kill and remove a session for good.
+    /// Regenerate default tab names as "{label} {index}" with gapless,
+    /// per-label numbering; user-renamed tabs are skipped untouched.
+    fn renumber(&mut self) {
+        let mut counters: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
+        for s in &mut self.sessions {
+            if let Some(label) = s.auto_label.as_deref() {
+                let n = counters.entry(label).or_insert(0);
+                *n += 1;
+                s.title = format!("{label} {}", *n);
+            }
+        }
+    }
+
+    /// Kill and remove a session for good.  If it held the keyboard, focus
+    /// moves to the newest survivor so the shell keeps typing without a
+    /// click; only the last session hands the keyboard back to the editor.
     pub fn close(&mut self, id: usize) {
         if let Some(s) = self.get_mut(id) {
             s.kill();
         }
         self.sessions.retain(|s| s.id != id);
         if self.focused == Some(id) {
-            self.focused = None;
+            self.focused = self.sessions.last().map(|s| s.id);
         }
+        self.renumber();
     }
 
     /// Kill and remove every session — the editor session is ending.

@@ -39,7 +39,7 @@ fn pump(
                 mgr.apply_output(terminal_id, &data);
             }
             Ok(BackgroundEvent::TerminalExited { terminal_id, .. }) => {
-                mgr.mark_exited(terminal_id);
+                mgr.close(terminal_id);
             }
             _ => std::thread::sleep(Duration::from_millis(20)),
         }
@@ -82,15 +82,74 @@ fn exiting_shell_closes_the_session_entirely() {
 }
 
 #[test]
-fn mark_exited_releases_focus_and_closes() {
+fn default_names_renumber_gaplessly_when_a_session_closes() {
     let (mut mgr, tx, mut rx) = manager_with_channel();
-    let id = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx)
-        .expect("spawn");
-    mgr.focused = Some(id);
+    let a = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let b = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let c = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    let title = |m: &TerminalManager, id: usize| m.get(id).unwrap().title.clone();
+    assert_eq!(title(&mgr, a), "sh -c read _ 1");
+    assert_eq!(title(&mgr, b), "sh -c read _ 2");
+    assert_eq!(title(&mgr, c), "sh -c read _ 3");
 
-    mgr.mark_exited(id);
-    assert!(mgr.get(id).is_none(), "exited session is gone from the dock");
-    assert_eq!(mgr.focused, None, "keyboard released on exit");
+    mgr.close(a);
+    assert_eq!(title(&mgr, b), "sh -c read _ 1", "the next shell slides into the freed number");
+    assert_eq!(title(&mgr, c), "sh -c read _ 2");
+    mgr.close(b);
+    assert_eq!(title(&mgr, c), "sh -c read _ 1");
+    mgr.close(c);
+    let _ = rx.try_recv();
+}
+
+#[test]
+fn renamed_tabs_keep_their_name_while_defaults_renumber() {
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let a = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let b = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let c = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    mgr.rename(b, "build");
+    let title = |m: &TerminalManager, id: usize| m.get(id).unwrap().title.clone();
+
+    mgr.close(a);
+    assert_eq!(title(&mgr, b), "build", "a renamed tab is never renumbered");
+    assert_eq!(title(&mgr, c), "sh -c read _ 1", "numbering skips renamed tabs");
+    mgr.close(c);
+    assert_eq!(title(&mgr, b), "build");
+    mgr.close(b);
+    let _ = rx.try_recv();
+}
+
+#[test]
+fn committing_rename_without_changes_keeps_default_numbering() {
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let a = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let b = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    let title = |m: &TerminalManager, id: usize| m.get(id).unwrap().title.clone();
+
+    // Double-click accident: commit the editor with the same text.
+    let unchanged = title(&mgr, b);
+    mgr.rename(b, &unchanged);
+
+    mgr.close(a);
+    assert_eq!(title(&mgr, b), "sh -c read _ 1",
+        "the untouched tab still participates in renumbering — no duplicate numbers");
+    mgr.close(b);
+    let _ = rx.try_recv();
+}
+
+#[test]
+fn closing_the_focused_session_hands_focus_to_the_newest_survivor() {
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let first = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let second = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    mgr.focused = Some(first);
+
+    mgr.close(first);
+    assert!(mgr.get(first).is_none());
+    assert_eq!(mgr.focused, Some(second), "focus moves to the survivor");
+
+    mgr.close(second);
+    assert_eq!(mgr.focused, None, "the last exit releases the keyboard");
     let _ = rx.try_recv();
 }
 
@@ -105,6 +164,52 @@ fn send_input_reaches_interactive_shell() {
     }, 10);
     assert!(mgr.get(id).expect("alive").screen.text().contains("typed-ping-777"));
     mgr.close(id);
+}
+
+#[test]
+fn spawned_sessions_get_distinct_default_titles() {
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let a = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let b = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    let ta = mgr.get(a).unwrap().title.clone();
+    let tb = mgr.get(b).unwrap().title.clone();
+    assert_ne!(ta, tb, "sibling tabs must be distinguishable: {ta} vs {tb}");
+    assert!(ta.contains("sh") && tb.contains("sh"), "titles: {ta}, {tb}");
+    mgr.close(a);
+    mgr.close(b);
+    let _ = rx.try_recv();
+}
+
+#[test]
+fn rename_updates_session_title_at_any_time() {
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let id = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+
+    mgr.rename(id, "build server");
+    assert_eq!(mgr.get(id).map(|s| s.title.as_str()), Some("build server"));
+
+    mgr.send_input(id, "echo still-alive\n").expect("session still interactive after rename");
+    mgr.rename(id, "");
+    assert_eq!(mgr.get(id).map(|s| s.title.as_str()), Some(""), "rename applies even to an empty name");
+    mgr.close(id);
+    let _ = rx.try_recv();
+}
+
+#[test]
+fn send_input_bumps_the_input_sequence() {
+    use std::sync::atomic::Ordering;
+
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let id = mgr.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).expect("spawn");
+    let before = mgr.input_seq.load(Ordering::Relaxed);
+
+    mgr.send_input(id, "hi\n").expect("send");
+    assert_eq!(mgr.input_seq.load(Ordering::Relaxed), before + 1, "delivered stdin bumps the seq");
+
+    mgr.send_input(999, "x").expect_err("unknown id");
+    assert_eq!(mgr.input_seq.load(Ordering::Relaxed), before + 1, "failed sends stay silent");
+    mgr.close(id);
+    let _ = rx.try_recv();
 }
 
 #[test]
@@ -178,7 +283,7 @@ fn shell_exit_closes_session_and_restores_editor_mode() {
     let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     ed.keymaps.push_layer("editor");
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let id = ed.io.terminals.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    let id = ed.io.terminals.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
     set_focused(&mut ed, Some(id));
 
     crate::kernel::runtime::process_background_event(
@@ -190,6 +295,28 @@ fn shell_exit_closes_session_and_restores_editor_mode() {
     assert_eq!(ed.io.terminals.focused, None);
     assert_eq!(ed.editor_mode.name, "normal", "the keyboard returns to the editor");
     assert!(ed.keymaps.is_layer_active("editor"), "editor bindings restored");
+    let _ = rx.try_recv();
+}
+
+#[test]
+fn shell_exit_with_survivors_keeps_terminal_focus_and_mode() {
+    let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
+    ed.keymaps.push_layer("editor");
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let a = ed.io.terminals.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx.clone()).unwrap();
+    let b = ed.io.terminals.spawn("sh", &shell_script("read _"), &std::env::temp_dir(), tx).unwrap();
+    set_focused(&mut ed, Some(a));
+
+    crate::kernel::runtime::process_background_event(
+        &mut ed,
+        BackgroundEvent::TerminalExited { terminal_id: a, exit_code: 0 },
+    );
+
+    assert!(ed.io.terminals.get(a).is_none());
+    assert_eq!(ed.io.terminals.focused, Some(b), "focus lands on the surviving shell");
+    assert_eq!(ed.editor_mode.name, "terminal", "no click needed to keep typing");
+    assert!(!ed.keymaps.is_layer_active("editor"), "terminal bindings still hold");
+    ed.io.terminals.close(b);
     let _ = rx.try_recv();
 }
 

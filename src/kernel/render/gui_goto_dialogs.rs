@@ -76,9 +76,7 @@ pub fn collect_entries(editor: &Editor, source: PickerSource) -> Vec<PickerEntry
                 .collect()
         }
         PickerSource::Commands => {
-            // The palette is a Rust-native surface; Janet-defined commands
-            // stay reachable through the keymap and colon mode.
-            editor.commands.list_rust_commands().into_iter()
+            editor.commands.list_detailed().into_iter()
                 .map(|(name, description, needs_args)| {
                     PickerEntry::Command { name, description, needs_args }
                 })
@@ -100,25 +98,59 @@ pub struct PickerDialog {
     pub query:       String,
     pub selected:    usize,
     focus_pending:   bool,
+    /// Set when a command needing arguments was activated: the picker turns
+    /// into an argument prompt for that command.  Escape steps back to the
+    /// list (`go_back`).
+    args_for: Option<String>,
 }
 
 impl PickerDialog {
     pub fn new() -> Self {
-        Self { query: String::new(), selected: 0, focus_pending: false }
+        Self { query: String::new(), selected: 0, focus_pending: false, args_for: None }
     }
 
     pub fn reset(&mut self) {
         self.query.clear();
         self.selected = 0;
         self.focus_pending = true;
+        self.args_for = None;
     }
 
-    fn activate(entry: &PickerEntry, actions: &mut Vec<DialogAction>) {
-        actions.push(match entry.clone() {
-            PickerEntry::File(path)                 => DialogAction::OpenFile(path),
-            PickerEntry::Symbol { file, line, .. }  => DialogAction::GotoSymbol { file, line },
-            PickerEntry::Command { name, .. }       => DialogAction::ExecuteCommand(name),
-        });
+    /// Escape in argument mode steps back to the list; returns true when
+    /// consumed.  The shell calls this before closing the whole dialog.
+    pub fn go_back(&mut self) -> bool {
+        if self.args_for.take().is_some() {
+            self.query.clear();
+            self.focus_pending = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn activate(&mut self, entry: &PickerEntry, actions: &mut Vec<DialogAction>) -> bool {
+        match entry.clone() {
+            PickerEntry::File(path) => {
+                actions.push(DialogAction::OpenFile(path));
+                true
+            }
+            PickerEntry::Symbol { file, line, .. } => {
+                actions.push(DialogAction::GotoSymbol { file, line });
+                true
+            }
+            PickerEntry::Command { name, needs_args, .. } => {
+                if needs_args && self.args_for.is_none() {
+                    self.args_for = Some(name);
+                    self.query.clear();
+                    self.selected = 0;
+                    self.focus_pending = true;
+                    false
+                } else {
+                    actions.push(DialogAction::ExecuteCommand(name));
+                    true
+                }
+            }
+        }
     }
 
     /// Returns true when the dialog should close.
@@ -130,6 +162,33 @@ impl PickerDialog {
         source:  PickerSource,
         actions: &mut Vec<DialogAction>,
     ) -> bool {
+        let mono = FontId::new(12.0, FontFamily::Monospace);
+
+        // Argument mode: one input whose contents are passed to the command.
+        if let Some(name) = self.args_for.clone() {
+            let hint = format!("Arguments for {name}…");
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.query)
+                    .hint_text(hint)
+                    .font(mono)
+                    .desired_width(f32::INFINITY),
+            );
+            if self.focus_pending {
+                resp.request_focus();
+                self.focus_pending = false;
+            }
+            ui.label(RichText::new("Enter runs · Esc back")
+                .size(11.0).color(theme.overlay0));
+            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if enter {
+                let args = self.query.trim().to_string();
+                let line = if args.is_empty() { name } else { format!("{name} {args}") };
+                actions.push(DialogAction::ExecuteCommandLine(line));
+                return true;
+            }
+            return false;
+        }
+
         let hint = match source {
             PickerSource::Files      => "File name…",
             PickerSource::Symbols    => "Symbol name…",
@@ -162,7 +221,6 @@ impl PickerDialog {
         }
 
         ui.separator();
-        let mono = FontId::new(12.0, FontFamily::Monospace);
         let shown = ranked.iter().take(MAX_SHOWN).enumerate();
         for (vis, (_, idx)) in shown {
             let entry = &entries[*idx];
@@ -185,8 +243,8 @@ impl PickerDialog {
                 }
             };
             let label = label.color(if is_sel { Color32::WHITE } else { theme.subtext1 });
-            if ui.selectable_label(is_sel, label).clicked() {
-                Self::activate(entry, actions);
+            if ui.selectable_label(is_sel, label).clicked()
+                && self.activate(entry, actions) {
                 return true;
             }
         }
@@ -202,8 +260,7 @@ impl PickerDialog {
 
         if enter && !ranked.is_empty() {
             let (_, idx) = ranked[self.selected.min(ranked.len() - 1)];
-            Self::activate(&entries[idx], actions);
-            return true;
+            return self.activate(&entries[idx], actions);
         }
         false
     }

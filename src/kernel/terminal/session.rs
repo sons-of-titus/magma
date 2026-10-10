@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use portable_pty::{Child, MasterPty};
+use portable_pty::{ChildKiller, MasterPty};
 
 use super::screen::TerminalScreen;
 
@@ -21,7 +21,9 @@ pub struct TerminalSession {
     /// Mutex, not bare: `dyn MasterPty` is Send but not Sync, and `Editor`
     /// must stay Sync (it is shared across threads via `Arc<RwLock<Editor>>`).
     pub(crate) master: Mutex<Box<dyn MasterPty + Send>>,
-    pub(crate) child: Box<dyn Child + Send + Sync>,
+    /// Kill handle only: the child itself moved to the waiter thread, which
+    /// reaps the real exit code when it exits.
+    pub(crate) child_killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 }
 
 impl TerminalSession {
@@ -47,6 +49,8 @@ impl TerminalSession {
     }
 
     pub fn kill(&mut self) {
-        let _ = self.child.kill();
+        if let Ok(mut killer) = self.child_killer.lock() {
+            let _ = killer.kill();
+        }
     }
 }

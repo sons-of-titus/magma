@@ -23,8 +23,10 @@ pub enum DialogKind {
     GotoFile,
     GotoSymbol,
     CommandPalette,
+    CommandLine,
     Settings,
     QuitConfirm,
+    RunConfig,
 }
 
 impl DialogKind {
@@ -34,8 +36,10 @@ impl DialogKind {
             DialogKind::GotoFile       => "Go to File",
             DialogKind::GotoSymbol     => "Go to Symbol",
             DialogKind::CommandPalette => "Command Palette",
+            DialogKind::CommandLine    => "Run Command",
             DialogKind::Settings       => "Settings",
             DialogKind::QuitConfirm    => "Unsaved Changes",
+            DialogKind::RunConfig      => "Run Configurations",
         }
     }
 
@@ -45,8 +49,10 @@ impl DialogKind {
             DialogKind::GotoFile       => icons::FILE,
             DialogKind::GotoSymbol     => icons::SYMBOL,
             DialogKind::CommandPalette => icons::COMMAND,
+            DialogKind::CommandLine    => icons::COMMAND,
             DialogKind::Settings       => icons::SETTINGS,
             DialogKind::QuitConfirm    => icons::CLOSE,
+            DialogKind::RunConfig      => icons::SETTINGS,
         }
     }
 }
@@ -63,8 +69,20 @@ pub enum DialogAction {
     /// find-in-files results, and task output all land here.
     OpenFileAtLine { path: String, line: usize },
     ExecuteCommand(String),
+    /// A full `"name args…"` line from the command line or the palette's
+    /// argument prompt — parsed by `execute_command_line`.
+    ExecuteCommandLine(String),
     SetOption { name: String, value: String },
     ReplaceAllInFocused { find: String, replace: String },
+    UpsertRunConfig {
+        original: Option<String>,
+        name: String,
+        command: String,
+        args: String,
+        cwd: String,
+        build_first: String,
+        debuggable: bool,
+    },
 }
 
 impl DialogAction {
@@ -124,6 +142,13 @@ impl DialogAction {
                 let result = execute_command(ed, &name, &HashMap::new());
                 report(ed, result);
             }
+            DialogAction::ExecuteCommandLine(line) => {
+                let result = crate::kernel::command::execute_command_line(ed, &line);
+                report(ed, result);
+            }
+            DialogAction::UpsertRunConfig { original, name, command, args, cwd, build_first, debuggable } => {
+                upsert_run_config(ed, original, name, command, args, cwd, build_first, debuggable);
+            }
             DialogAction::SetOption { name, value } => {
                 ed.options.insert(name, value);
             }
@@ -154,6 +179,32 @@ fn replace_all_in_focused(ed: &mut Editor, find: &str, replace: &str) {
     }
 }
 
+fn upsert_run_config(
+    ed: &mut Editor,
+    original: Option<String>,
+    name: String,
+    command: String,
+    args: String,
+    cwd: String,
+    build_first: String,
+    debuggable: bool,
+) {
+    use crate::kernel::state::MessageKind;
+    let cfg = crate::kernel::run_config::RunConfig {
+        name,
+        command,
+        args: args.split_whitespace().map(str::to_string).collect(),
+        cwd: if cwd.trim().is_empty() { None } else { Some(cwd.trim().to_string()) },
+        env: HashMap::new(),
+        build_before_run: if build_first.trim().is_empty() { None } else { Some(build_first.trim().to_string()) },
+        debuggable,
+    };
+    match crate::kernel::run_config::upsert_config(ed, original, cfg) {
+        Ok(saved) => ed.show_message(MessageKind::Info, format!("Saved run configuration '{saved}'")),
+        Err(e) => ed.show_message(MessageKind::Error, e),
+    }
+}
+
 // ── SettingsDialog ───────────────────────────────────────────────────────────
 // The typed settings UI lives in `gui_settings_dialog.rs`; re-exported here
 // so `DialogManager` and existing call sites keep one import path.
@@ -167,6 +218,8 @@ pub struct DialogManager {
     pub search:   SearchDialog,
     pub settings: SettingsDialog,
     pub picker:   super::gui_goto_dialogs::PickerDialog,
+    pub command_line: super::gui_command_line::CommandLineDialog,
+    pub run_config: super::gui_run_config_dialog::RunConfigDialog,
 }
 
 impl DialogManager {
@@ -176,6 +229,8 @@ impl DialogManager {
             search:   SearchDialog::new(),
             settings: SettingsDialog::new(),
             picker:   super::gui_goto_dialogs::PickerDialog::new(),
+            command_line: super::gui_command_line::CommandLineDialog::new(),
+            run_config: super::gui_run_config_dialog::RunConfigDialog::new(),
         }
     }
 
@@ -187,12 +242,26 @@ impl DialogManager {
         } else {
             self.open = Some(kind);
             self.picker.reset();
+            self.command_line.reset();
+            if kind == DialogKind::RunConfig {
+                self.run_config.reset();
+            }
             if kind == DialogKind::Search {
                 self.search.query.clear();
                 self.search.last_query.clear();
                 self.search.results.clear();
                 self.search.selected = 0;
             }
+        }
+    }
+
+    /// Open the run-configuration editor pre-loaded with the active config.
+    pub fn open_run_config_editor(&mut self, ed: &Editor) {
+        if self.open == Some(DialogKind::RunConfig) {
+            self.open = None;
+        } else {
+            self.open = Some(DialogKind::RunConfig);
+            self.run_config.load_from(ed);
         }
     }
 
@@ -221,6 +290,7 @@ impl DialogManager {
     pub fn shortcut(key: &str) -> Option<DialogKind> {
         match key {
             "ctrl-p"         => Some(DialogKind::CommandPalette),
+            "alt-x"          => Some(DialogKind::CommandLine),
             "ctrl-shift-f"   => Some(DialogKind::Search),
             "ctrl-shift-n"   => Some(DialogKind::GotoFile),
             "ctrl-shift-o"   => Some(DialogKind::GotoSymbol),
@@ -248,6 +318,8 @@ impl DialogManager {
                     DialogKind::GotoFile       => close = self.picker.show(ui, editor, theme, PickerSource::Files, &mut actions),
                     DialogKind::GotoSymbol     => close = self.picker.show(ui, editor, theme, PickerSource::Symbols, &mut actions),
                     DialogKind::CommandPalette => close = self.picker.show(ui, editor, theme, PickerSource::Everywhere, &mut actions),
+                    DialogKind::CommandLine    => close = self.command_line.show(ui, editor, theme, &mut actions),
+                    DialogKind::RunConfig      => close = self.run_config.show(ui, editor, theme, &mut actions),
                     DialogKind::QuitConfirm    => {
                         let names = editor.dirty_buffer_names().join(", ");
                         ui.label(RichText::new(format!("Unsaved changes in: {names}")).color(theme.text));

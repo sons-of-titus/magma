@@ -11,6 +11,7 @@ pub mod decoration;
 pub mod position;
 pub mod view;
 pub mod buffer;
+mod breakpoint_anchors;
 pub use buffer::Buffer;
 mod fold;
 

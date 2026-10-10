@@ -80,7 +80,7 @@ fn store_janet_command(name: &str, fn_val: Janet) {
 
 fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &str) {
     let lookup_name = name.to_string();
-    ed.commands.register_janet_backed(name, "Janet-defined command", vec![], Box::new(move |ed, _args| {
+    ed.commands.register(name, "Janet-defined command", vec![], Box::new(move |ed, args| {
         // The registry hands us a live exclusive borrow; the Janet call runs
         // inside its scope (docs/core-redesign.md §11).
         crate::kernel::scripting::scoped_editor(ed, || {
@@ -100,7 +100,18 @@ fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &
                 }
                 let func = janet_unwrap_function(func_val);
                 let mut out: Janet = std::mem::zeroed();
-                janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
+                // Janet commands take one raw string argument (`(fn [arg] …)`);
+                // execute_command_line delivers it under the "arg" key.
+                let raw = args.get("arg").and_then(|v| v.as_string().map(|s| s.to_string()));
+                match raw {
+                    Some(s) => {
+                        let cargs = [conv::string(&s)];
+                        janet_pcall(func, 1, cargs.as_ptr(), &mut out, std::ptr::null_mut());
+                    }
+                    None => {
+                        janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
+                    }
+                }
             }
             Ok(())
         })

@@ -17,6 +17,7 @@ use super::gui_breadcrumb::{BreadcrumbAction, BreadcrumbBar};
 use super::gui_dialog::DialogAction;
 use super::gui_editor_pane::{render_editor_pane, EditorPaneAction, PanePaint};
 use super::gui_input;
+use super::gui_run_tool::{RunAction, RunBar};
 use super::gui_shell::{self, window_title};
 use super::gui_sidebar::ProjectTree;
 use super::gui_sidebar_state::SidebarAction;
@@ -122,6 +123,18 @@ impl GuiApp {
                 }
             });
 
+        // Run toolbar — its own exact-size panel: a right-aligned row inside
+        // the nav panel would size itself to the panel's full remaining
+        // height and push the editor off-screen.
+        let mut run_actions: Vec<RunAction> = Vec::new();
+        egui::containers::Panel::top("magma_run_bar")
+            .exact_size(28.0)
+            .resizable(false)
+            .frame(egui::Frame::NONE.fill(self.theme.crust))
+            .show(ui, |ui| {
+                run_actions = RunBar::show(ui, &self.editor, &self.theme);
+            });
+
         // Tool window icon strip — outermost left strip (28 px wide).
         let mut toggled_tool: Option<usize> = None;
         egui::containers::Panel::left("magma_tool_strip")
@@ -164,6 +177,42 @@ impl GuiApp {
 
         if !sidebar_actions.is_empty() {
             gui_shell::apply_sidebar_actions(&mut self.editor, sidebar_actions);
+        }
+
+        // Run-bar actions dispatch through commands; launching also opens the
+        // Output tool window so the run has a visible surface.
+        if !run_actions.is_empty() {
+            for action in run_actions {
+                match action {
+                    RunAction::Run | RunAction::Stop => {
+                        let cmd = if matches!(action, RunAction::Run) { "run-config" } else { "stop-config" };
+                        if let Err(e) = crate::kernel::command::execute_command(
+                            &mut self.editor, cmd, &std::collections::HashMap::new()) {
+                            self.editor.show_message(
+                                crate::kernel::state::MessageKind::Error, e);
+                        }
+                        if cmd == "run-config" {
+                            if let Some(entry) = self.tool_windows.entries.get_mut(super::tool_window::OUTPUT_TOOL) {
+                                entry.visible = true;
+                            }
+                            self.tool_windows.active_bottom = super::tool_window::OUTPUT_TOOL;
+                        }
+                    }
+                    RunAction::Select(name) => {
+                        let mut args = std::collections::HashMap::new();
+                        args.insert("name".to_string(),
+                            crate::kernel::command::args::ArgValue::String(name));
+                        if let Err(e) = crate::kernel::command::execute_command(
+                            &mut self.editor, "select-config", &args) {
+                            self.editor.show_message(
+                                crate::kernel::state::MessageKind::Error, e);
+                        }
+                    }
+                    RunAction::Edit => {
+                        self.dialogs.open_run_config_editor(&self.editor);
+                    }
+                }
+            }
         }
 
         if let Some(BreadcrumbAction::RevealInSidebar { rel_dir }) = breadcrumb_action.take() {
@@ -289,7 +338,9 @@ impl GuiApp {
     }
 }
 
-/// Persist history + marks on editor shutdown.
+/// Persist history + marks on editor shutdown; the project session joins
+/// them when a project is open.
 fn persist_session(ed: &Editor) {
     crate::kernel::state::persist::save_session(ed);
+    crate::kernel::session::save_if_project(ed);
 }

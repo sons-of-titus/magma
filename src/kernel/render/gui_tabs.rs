@@ -6,9 +6,11 @@
 //! or active.  Tabs can be drag-reordered.
 
 use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, CornerRadius, Sense, Vec2};
+use crate::kernel::icons::IconKind;
 use crate::kernel::state::id::WindowId;
 use crate::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
+use super::gui_icons;
 
 /// A single tab's display data, derived from a Pane + Buffer.
 #[derive(Clone)]
@@ -17,6 +19,8 @@ pub struct TabItem {
     pub window_id: WindowId,
     pub modified:  bool,
     pub closable:  bool,
+    /// Pack icon for the buffer's file; None for special (`*…*`) buffers.
+    pub icon:      Option<IconKind>,
 }
 
 /// Action the caller should apply to the editor after `TabBar::show` returns.
@@ -65,7 +69,12 @@ impl TabBar {
                 })
                 .unwrap_or_else(|| ("?".to_string(), false));
             let short = label.rsplit('/').next().unwrap_or(&label).to_string();
-            Some(TabItem { label: short, window_id: pane.id, modified, closable: true })
+            // Special buffers (*scratch*, *grep*) carry no file icon.
+            let icon = (!short.starts_with('*'))
+                .then(|| editor.icons.lookup(&short))
+                .flatten()
+                .cloned();
+            Some(TabItem { label: short, window_id: pane.id, modified, closable: true, icon })
         }).collect()
     }
 
@@ -120,6 +129,7 @@ impl TabBar {
                 });
 
                 let mut tab_w = H_PAD * 2.0 + label_w + CLOSE_W + 6.0;
+                if tab.icon.is_some() { tab_w += gui_icons::SLOT; }
                 if tab.modified { tab_w += DOT_R * 2.0 + 4.0; }
 
                 let (tab_rect, tab_resp) =
@@ -167,6 +177,13 @@ impl TabBar {
                 } else {
                     theme.overlay0
                 };
+
+                if let Some(kind) = &tab.icon {
+                    gui_icons::draw(ui, kind, Pos2::new(cx + gui_icons::SLOT / 2.0, cy),
+                                    gui_icons::SLOT, font_id.clone(), fg);
+                    cx += gui_icons::SLOT;
+                }
+
                 ui.painter().text(
                     Pos2::new(cx, cy),
                     egui::Align2::LEFT_CENTER,

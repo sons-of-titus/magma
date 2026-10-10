@@ -12,22 +12,21 @@ use crate::kernel::state::Editor;
 
 /// Shared icon glyphs — one consistent set across chrome widgets.
 ///
-/// Every codepoint must be covered by egui's default font fallback chain
-/// (Ubuntu-Light → NotoEmoji → emoji-icon-font); an uncovered glyph renders
-/// as epaint's replacement tofu square.  Enforced by
-/// `every_theme_icon_glyph_is_covered_by_egui_default_fonts`.
+/// Glyphs come from the bundled Nerd Font symbols (`magma-icons`), which
+/// `gui_fonts::font_definitions` appends to every family.  Coverage is
+/// enforced by `every_theme_icon_glyph_is_covered_by_bundled_fonts`.
 pub mod icons {
-    pub const TERMINAL: &str = "⊟";
-    pub const SEARCH:   &str = "⌖";
-    pub const FILE:     &str = "⛶";
-    pub const SYMBOL:   &str = "ƒ";
-    pub const COMMAND:  &str = "⌘";
-    pub const SETTINGS: &str = "⚙";
-    pub const CLOSE:    &str = "×";
-    pub const SEPARATOR: &str = "›";
-    pub const GIT_BRANCH: &str = "⚒";
-    pub const PROJECTS: &str = "☰";
-    pub const LEARN:    &str = "⌨";
+    pub const TERMINAL: &str = "\u{EA85}"; // cod-terminal
+    pub const SEARCH:   &str = "\u{EA6D}"; // cod-search
+    pub const FILE:     &str = "\u{EA7B}"; // cod-file
+    pub const SYMBOL:   &str = "\u{F121}"; // fa-code
+    pub const COMMAND:  &str = "\u{F4B5}"; // oct-command-palette
+    pub const SETTINGS: &str = "\u{EAF8}"; // cod-gear
+    pub const CLOSE:    &str = "\u{EA76}"; // cod-close
+    pub const SEPARATOR: &str = "\u{F460}"; // oct-chevron-right
+    pub const GIT_BRANCH: &str = "\u{EA68}"; // cod-source-control
+    pub const PROJECTS: &str = "\u{F03A}"; // fa-list
+    pub const LEARN:    &str = "\u{F02D}"; // fa-book
 }
 
 #[derive(Debug, Clone)]

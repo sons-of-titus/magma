@@ -38,9 +38,10 @@ pub(super) fn register(editor: &mut Editor) {
                 arc.lock().unwrap().mark_saved_at(saved_rev);
             }
             editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
-                path,
+                path: path.clone(),
                 buffer_id: buf_id.to_string(),
             });
+            crate::kernel::debug::resync_after_save(editor, &path);
             Ok(())
         },
     );
@@ -71,6 +72,7 @@ pub(super) fn register(editor: &mut Editor) {
                             path: path.clone(),
                             buffer_id: key.to_string(),
                         });
+                        crate::kernel::debug::resync_after_save(editor, &path);
                     }
                     Err(e) => failures.push(format!("{path}: {e}")),
                 }

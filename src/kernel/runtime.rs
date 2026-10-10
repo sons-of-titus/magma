@@ -301,7 +301,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::TerminalOutput { terminal_id, data } => {
             ed.io.terminals.apply_output(terminal_id, &data);
         }
-        BackgroundEvent::TerminalExited { terminal_id, .. } => {
+        BackgroundEvent::TerminalExited { terminal_id, exit_code } => {
+            if exit_code != 0 {
+                ed.show_message(crate::kernel::state::MessageKind::Error,
+                    format!("terminal exited with code {exit_code}"));
+            }
             ed.io.terminals.close(terminal_id);
             if ed.io.terminals.focused.is_none() && ed.editor_mode.name == "terminal" {
                 crate::kernel::terminal::set_focused(ed, None);
@@ -330,9 +334,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             });
         }
         BackgroundEvent::ProcessExited { id, exit_code, cmd } => {
-            if let Some(state) = ed.io.processes.get_mut(&id) {
-                state.running = false;
-            }
+            // Finished processes leave the list — it tracks live processes,
+            // and a graveyard of exited entries taught nothing.
+            ed.io.processes.remove(&id);
             if exit_code == 0 {
                 ed.scheduler.complete_process(id);
             } else {
@@ -464,6 +468,20 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             match result {
                 Ok(handle) => {
                     ed.debug.connections.insert(session_id, handle);
+                    // Sync every project breakpoint to the fresh adapter,
+                    // then release it with configurationDone — adapters that
+                    // require the sequence (e.g. js-debug) hang without it.
+                    crate::kernel::debug::sync_breakpoint_lines(ed);
+                    let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
+                    for file in files {
+                        #[cfg(feature = "janet")]
+                        crate::kernel::scripting::send_dap_command(
+                            ed, session_id, "setBreakpoints",
+                            &ed.debug.set_breakpoints_args(&file));
+                    }
+                    #[cfg(feature = "janet")]
+                    crate::kernel::scripting::send_dap_command(
+                        ed, session_id, "configurationDone", "{}");
                     ed.events.emit_typed(keys::events::DEBUG_SESSION_STARTED,
                         crate::kernel::event::payload::DebugSessionStartedPayload {
                             session_id: session_id.to_string(),
@@ -529,8 +547,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         // ──────────────────────────────────────────────────────────────────
         // ── Phase 6 Debug System ─────────────────────────────────────────────
         BackgroundEvent::DapStopped { session_id, reason, thread_id } => {
+            let watch_count = ed.debug.watches.len();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
-                session.stopped = true;
+                session.note_stopped(watch_count);
                 session.stopped_thread = Some(thread_id);
             }
             // A stopped debuggee with no stack is a facade — fetch it.
@@ -545,6 +564,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             });
         }
         BackgroundEvent::DapOutput { session_id, category, output } => {
+            if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+                session.push_console(&output);
+            }
             ed.events.emit_typed(keys::events::DEBUG_OUTPUT, crate::kernel::event::payload::DebugOutputPayload {
                 session_id: session_id.to_string(),
                 category,
@@ -563,6 +585,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::DapResponse { session_id, event_type, data } => {
             if event_type == "evaluate" {
+                crate::kernel::runtime_dap::apply_dap_response(ed, session_id, &data);
                 ed.events.emit_typed(keys::events::DEBUG_EVALUATE_RESULT, crate::kernel::event::payload::DebugEvaluateResultPayload {
                     session_id: session_id.to_string(),
                     result: data,
@@ -576,6 +599,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             }
         }
         BackgroundEvent::DapCommandResult { session_id, command, success, body } => {
+            if !success {
+                crate::kernel::runtime_dap::note_request_error(ed, session_id, &command, &body);
+            }
             crate::kernel::runtime_dap::apply_dap_command_result(ed, session_id, &command, success, &body);
         }
         // ─────────────────────────────────────────────────────────────────────
@@ -681,6 +707,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             let _ = (backend_idx, root);
         }
         BackgroundEvent::TaskOutputLine { id, stream, line } => {
+            // Output-buffer tasks stream straight into their buffer so long
+            // builds show progress as they run.
+            if let Some(sink) = ed.task_scheduler.output_sinks.get(&id).cloned() {
+                crate::kernel::task::append_output_line(ed, &sink, &line);
+            }
             let mut data = std::collections::HashMap::new();
             data.insert("task-id".to_string(), id.to_string());
             data.insert("stream".to_string(), stream);
@@ -690,6 +721,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::TaskRunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
             use crate::kernel::task::TaskOutput;
             let output = TaskOutput { stdout, stderr, exit_code, duration_ms };
+            crate::kernel::task::finish_output_task(ed, id, exit_code, &output.stdout, &output.stderr);
             let task_name = ed.task_scheduler.tasks.get(&id)
                 .map(|t| t.name.clone())
                 .unwrap_or_default();
@@ -719,6 +751,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     error: err,
                 });
             }
+            crate::kernel::run_config::continue_pending(ed, id, exit_code);
             let mut rt = ed.runtime.take();
             if let Some(rt) = &mut rt {
                 rt.execute_task_complete_callback(ed, id);

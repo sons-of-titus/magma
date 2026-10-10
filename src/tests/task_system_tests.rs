@@ -193,13 +193,13 @@ fn auto_detect_cargo_project() {
     let _ = std::fs::remove_file(dir.join("Makefile"));
 
     let mut pm = crate::kernel::project::ProjectManager::default();
-    let mut s = TaskScheduler::new();
-    pm.detect(&dir.to_string_lossy(), &mut s);
+    pm.detect(&dir.to_string_lossy());
     assert_eq!(pm.project.language, "rust");
-    assert!(s.task_by_name("build").is_some(), "build task should be defined");
-    assert_eq!(s.tasks.get(&s.task_by_name("build").unwrap()).unwrap().command, "cargo build");
-    assert!(s.task_by_name("test").is_some());
-    assert!(s.task_by_name("run").is_some());
+    let build = pm.run_configs.named("build").expect("build config should be seeded");
+    assert_eq!(build.command, "cargo");
+    assert_eq!(build.args, vec!["build"]);
+    assert!(pm.run_configs.named("test").is_some());
+    assert!(pm.run_configs.named("run").is_some());
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -215,9 +215,8 @@ fn auto_detect_no_markers_defines_nothing() {
     let _ = std::fs::remove_file(dir.join("pyproject.toml"));
 
     let mut pm = crate::kernel::project::ProjectManager::default();
-    let mut s = TaskScheduler::new();
-    pm.detect(&dir.to_string_lossy(), &mut s);
-    assert!(s.tasks.is_empty(), "no markers → no tasks defined");
+    pm.detect(&dir.to_string_lossy());
+    assert!(pm.run_configs.configs.is_empty(), "no markers → no configs seeded");
     assert!(pm.project.language.is_empty(), "no markers → no language detected");
 
     std::fs::remove_dir_all(&dir).ok();

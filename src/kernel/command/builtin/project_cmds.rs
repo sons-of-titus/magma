@@ -26,8 +26,12 @@ pub(super) fn register(editor: &mut Editor) {
             if !std::path::Path::new(&path).is_dir() {
                 return Err(format!("Not a directory: {path}"));
             }
+            // Switching projects snapshots the outgoing session first, so
+            // each project reopens exactly as it was left.
+            crate::kernel::session::save_if_project(editor);
             crate::kernel::project::open_root(editor, &path);
             crate::kernel::project::spawn_file_index(editor);
+            crate::kernel::session::restore(editor, std::path::Path::new(&path));
             Ok(())
         },
     );

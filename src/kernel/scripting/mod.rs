@@ -243,6 +243,8 @@ mod ecosystem_api;
 #[cfg(feature = "janet")]
 mod font_api;
 #[cfg(feature = "janet")]
+mod icons_api;
+#[cfg(feature = "janet")]
 mod ui_api;
 #[cfg(feature = "janet")]
 mod overlay_api;
@@ -276,6 +278,7 @@ mod clipboard_api;
 mod task_api;
 #[cfg(feature = "janet")]
 mod debug_api;
+mod toolchain_api;
 #[cfg(feature = "janet")]
 pub(crate) use debug_api::send_dap_command;
 #[cfg(feature = "janet")]

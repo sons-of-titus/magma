@@ -71,6 +71,8 @@ pub(crate) fn apply_status_action(ed: &mut Editor, action: StatusAction) {
 /// this the welcome screen's `project.root` gate would immediately re-open
 /// the editor instead of returning to the welcome flow.
 pub(crate) fn close_editor_session(ed: &mut Editor) {
+    // Snapshot the project session before the root goes away.
+    crate::kernel::session::save_if_project(ed);
     if ed.project_manager.project.root.take().is_some() {
         ed.project_manager.current_project = None;
         ed.events.emit_typed(
@@ -111,6 +113,44 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
             }
             ToolAction::TerminalResize { id, cols, rows } => {
                 let _ = ed.io.terminals.resize(id, cols, rows);
+            }
+            ToolAction::DebugCmd(cmd) => {
+                if let Err(e) = execute_command(ed, cmd, &std::collections::HashMap::new()) {
+                    ed.show_message(MessageKind::Error, e);
+                }
+            }
+            ToolAction::DebugEval(expr) => {
+                if let Err(e) = crate::kernel::command::execute_command_line(
+                    ed, &format!("dbg-eval {expr}")) {
+                    ed.show_message(MessageKind::Error, e);
+                }
+            }
+            ToolAction::DebugExpand(reference) => {
+                if let Some(sid) = ed.debug.active_session {
+                    crate::kernel::runtime_dap::request_variables(ed, sid, reference);
+                }
+            }
+            ToolAction::WatchAdd(expr) => {
+                if !ed.debug.watches.contains(&expr) {
+                    ed.debug.watches.push(expr.clone());
+                    ed.show_message(MessageKind::Info, format!("Watching {expr} — evaluated next stop"));
+                }
+            }
+            ToolAction::WatchRemove(expr) => {
+                ed.debug.watches.retain(|w| w != &expr);
+                for session in ed.debug.sessions.values_mut() {
+                    session.watch_results = vec![None; ed.debug.watches.len()];
+                }
+            }
+            ToolAction::BreakpointToggle { file, line } => {
+                let enabled = ed.debug.breakpoints_for(&file).iter()
+                    .find(|bp| bp.line == line)
+                    .map(|bp| bp.enabled)
+                    .unwrap_or(false);
+                crate::kernel::debug::set_breakpoint_enabled(ed, &file, line, !enabled);
+            }
+            ToolAction::BreakpointRemove { file, line } => {
+                crate::kernel::debug::remove_breakpoints_at(ed, &file, line);
             }
         }
     }
@@ -205,9 +245,10 @@ pub(crate) fn dispatch_shell_key(
         dialogs.open_dialog(kind);
         return true;
     }
-    // An open dialog owns the keyboard; Escape closes it.
+    // An open dialog owns the keyboard; Escape closes it — but in the
+    // picker's argument mode it steps back to the list first.
     if dialogs.is_open() {
-        if key == "esc" {
+        if key == "esc" && !dialogs.picker.go_back() {
             dialogs.close();
             ed.frame_dirty = true;
         }

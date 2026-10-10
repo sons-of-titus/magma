@@ -208,12 +208,12 @@ fn task_detect_project_empty_root_noops() {
     janet_test!(ed, {
         let r = scripting::eval(r#"(task/detect-project "")"#);
         assert_eq!(r, "ok");
-        assert!(ed.task_scheduler.tasks.is_empty());
+        assert!(ed.project_manager.run_configs.configs.is_empty());
     });
 }
 
 #[test]
-fn task_detect_project_cargo_defines_tasks() {
+fn task_detect_project_cargo_seeds_configs() {
     janet_test!(ed, {
         let dir = std::env::temp_dir().join("magma_janet_detect_cargo");
         std::fs::create_dir_all(&dir).ok();
@@ -222,9 +222,9 @@ fn task_detect_project_cargo_defines_tasks() {
         let _ = std::fs::remove_file(dir.join("Makefile"));
 
         scripting::eval(&format!(r#"(task/detect-project "{}")"#, dir.to_string_lossy()));
-        assert!(ed.task_scheduler.task_by_name("build").is_some());
-        assert!(ed.task_scheduler.task_by_name("test").is_some());
-        assert!(ed.task_scheduler.task_by_name("run").is_some());
+        assert!(ed.project_manager.run_configs.named("build").is_some());
+        assert!(ed.project_manager.run_configs.named("test").is_some());
+        assert!(ed.project_manager.run_configs.named("run").is_some());
 
         std::fs::remove_dir_all(&dir).ok();
     });

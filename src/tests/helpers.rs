@@ -48,3 +48,82 @@ pub fn cursor(ed: &Editor) -> usize {
 pub fn acquire_janet_lock() -> std::sync::MutexGuard<'static, ()> {
     crate::kernel::scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
+
+/// A minimal DAP adapter that answers `initialize` and appends every request
+/// command it receives to a log file — the observability the ordering tests
+/// need without a real debugger.
+const FAKE_DAP_ADAPTER: &str = r#"#!/usr/bin/env python3
+import sys, json
+LOG_PATH = "__LOG_PATH__"
+log = open(LOG_PATH, "w")
+seq = 0
+def send(msg):
+    global seq
+    msg["seq"] = seq; seq += 1
+    body = json.dumps(msg).encode()
+    sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n%s" % (len(body), body))
+    sys.stdout.buffer.flush()
+def read_message():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if line in (b"\r\n", b"\n"):
+            break
+        k, _, v = line.decode().partition(":")
+        headers[k.strip().lower()] = v.strip()
+    length = int(headers["content-length"])
+    return json.loads(sys.stdin.buffer.read(length))
+while True:
+    try:
+        msg = read_message()
+    except Exception:
+        break
+    log.write(msg.get("command", "?") + "\n")
+    if "arguments" in msg:
+        log.write("\t" + json.dumps(msg["arguments"]) + "\n")
+    log.flush()
+    if msg.get("command") == "initialize":
+        send({"type": "response", "request_seq": msg["seq"], "success": True,
+              "command": "initialize", "body": {}})
+"#;
+
+pub fn python3_available() -> bool {
+    std::process::Command::new("python3").arg("-c").arg("1").output().is_ok()
+}
+
+pub struct FakeDap {
+    pub script: std::path::PathBuf,
+    pub log: std::path::PathBuf,
+}
+
+pub fn spawn_fake_dap(tag: &str) -> FakeDap {
+    let dir = std::env::temp_dir().join(format!("magma_fake_dap_{tag}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("fake_adapter.py");
+    let log = dir.join("requests.log");
+    let text = FAKE_DAP_ADAPTER.replace("__LOG_PATH__", &log.to_string_lossy());
+    std::fs::write(&script, text).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    FakeDap { script, log }
+}
+
+pub fn dap_log_lines(log: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(log)
+        .map(|t| t.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+pub fn editor_with_background() -> (Editor, crate::kernel::runtime::BackgroundHandle,
+    tokio::sync::mpsc::UnboundedReceiver<crate::kernel::runtime::BackgroundEvent>) {
+    let mut ed = make_editor();
+    let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let handle = crate::kernel::runtime::BackgroundHandle::new(runtime, tx);
+    ed.background = Some(handle.clone());
+    (ed, handle, rx)
+}

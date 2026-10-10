@@ -114,3 +114,24 @@ fn next_ids_increment() {
     ed.io.next_task_id += 1;
     assert_eq!(second_tid, first_tid + 1);
 }
+
+#[test]
+fn exited_processes_leave_the_process_list() {
+    use crate::kernel::runtime::{BackgroundEvent, ProcessState};
+
+    let mut ed = crate::tests::helpers::make_editor();
+    ed.io.processes.insert(9, ProcessState {
+        cmd: "sleep 100".into(),
+        running: true,
+        pid: 4242,
+        stdin: None,
+    });
+
+    crate::kernel::runtime::process_background_event(
+        &mut ed,
+        BackgroundEvent::ProcessExited { id: 9, exit_code: 3, cmd: "sleep 100".into() },
+    );
+
+    assert!(!ed.io.processes.contains_key(&9),
+        "the list tracks live processes; exited ones are removed");
+}

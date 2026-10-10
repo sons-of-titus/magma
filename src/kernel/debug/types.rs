@@ -11,6 +11,9 @@ pub struct Breakpoint {
     pub file: String,
     pub line: usize,
     pub verified: bool,
+    /// Disabled breakpoints stay in the model (and the UI, dimmed) but are
+    /// withheld from `setBreakpoints` — DAP has no per-breakpoint enabled flag.
+    pub enabled: bool,
     pub condition: Option<String>,
 }
 

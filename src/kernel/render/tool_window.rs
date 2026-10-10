@@ -21,6 +21,16 @@ pub enum ToolAction {
     TerminalClose(usize),
     TerminalRename { id: usize, name: String },
     TerminalResize { id: usize, cols: u16, rows: u16 },
+    /// Invoke a debug command (`dbg-continue`, `dbg-step-over`, …).
+    DebugCmd(&'static str),
+    /// Evaluate an expression in the debug console.
+    DebugEval(String),
+    /// Fetch the children of a variables reference.
+    DebugExpand(i64),
+    WatchAdd(String),
+    WatchRemove(String),
+    BreakpointToggle { file: String, line: usize },
+    BreakpointRemove { file: String, line: usize },
 }
 
 pub trait ToolWindow: Send {
@@ -34,6 +44,8 @@ pub trait ToolWindow: Send {
 
 /// The terminal dock's index in the manager's entry list.
 pub const TERMINAL_TOOL: usize = 0;
+/// The output window's index.
+pub const OUTPUT_TOOL: usize = 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DockPosition {

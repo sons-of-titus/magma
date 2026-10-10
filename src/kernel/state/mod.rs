@@ -39,7 +39,7 @@ pub use completion::CompletionState;
 pub use snippet::SnippetState;
 pub use crate::kernel::project::{
     Project, ProjectManager, ProjectMember, Workspace,
-    Module, Dependency, DependencyKind, BuildKind, BuildTarget, Config,
+    Module, Dependency, DependencyKind,
 };
 pub use io::IoState;
 pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
@@ -176,6 +176,10 @@ pub struct Editor {
     pub language_registry: LanguageRegistry,
     pub lsp: crate::kernel::semantic::lsp::LspRegistry,
     pub index: crate::kernel::index::IndexStore,
+    /// Active file-icon pack; the Janet-installed default is snapshotted
+    /// here so the `icon-pack` option can switch back to it.
+    pub icons: crate::kernel::icons::IconPack,
+    pub default_icons: crate::kernel::icons::IconPack,
     /// Minimap sampled-line caches keyed by buffer slab key (rework.md §7).
     pub minimap_cache: std::collections::HashMap<usize, crate::kernel::render::gui_minimap::MinimapCache>,
     pub task_scheduler: TaskScheduler,
@@ -278,6 +282,8 @@ impl Editor {
             language_registry: LanguageRegistry::new(),
             lsp: crate::kernel::semantic::lsp::LspRegistry::default(),
             index: crate::kernel::index::IndexStore::default(),
+            icons: crate::kernel::icons::IconPack::empty("default"),
+            default_icons: crate::kernel::icons::IconPack::empty("default"),
             minimap_cache: std::collections::HashMap::new(),
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),

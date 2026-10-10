@@ -108,8 +108,9 @@ impl GutterProvider for Diagnostics {
 
 // ── Breakpoints ───────────────────────────────────────────────────────────────
 
-/// Renders a breakpoint indicator (●) for lines that have a DAP breakpoint.
-/// Reads live from `ctx.editor.debug.breakpoints`.
+/// Renders the breakpoint indicator for lines that have a DAP breakpoint:
+/// `●` enabled and adapter-verified, `○` enabled but unverified, dimmed `○`
+/// disabled.  Reads live from `ctx.editor.debug.breakpoints`.
 pub struct Breakpoints;
 
 impl GutterProvider for Breakpoints {
@@ -120,16 +121,27 @@ impl GutterProvider for Breakpoints {
         let path = ctx.buf_path?;
         let bps = ctx.editor.debug.breakpoints_for(path);
         // line in GutterCtx is 0-based; DAP breakpoints store 1-based lines.
-        let has_bp = bps.iter().any(|bp| bp.line == line + 1);
-        if !has_bp { return None; }
+        let bp = bps.iter().find(|bp| bp.line == line + 1)?;
+        let verified = ctx.editor.debug.active_session()
+            .map(|s| s.verified_breakpoints.iter()
+                .any(|(v, l)| *v && *l == bp.line))
+            .unwrap_or(false);
+        let dim = ctx.editor.theme_color("line-num");
+        let (text, fg) = if !bp.enabled {
+            ("○ ", dim)
+        } else if verified {
+            ("● ", ctx.editor.theme_color("diag-error"))
+        } else {
+            ("○ ", ctx.editor.theme_color("line-num-current"))
+        };
         let style = ctx.editor.resolve_face_style("gutter-breakpoint")
             .unwrap_or_else(|| Style {
-                fg: ctx.editor.theme_color("diag-error"),
+                fg,
                 bg: ctx.editor.theme_color("line-num-bg"),
-                bold: true,
+                bold: bp.enabled,
                 ..Default::default()
             });
-        Some(GutterCell { text: "● ".to_string(), style })
+        Some(GutterCell { text: text.to_string(), style })
     }
 }
 

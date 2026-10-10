@@ -7,27 +7,18 @@
 #   - Helper functions that wrap the Rust debug/ API.
 
 # ── Event handlers ────────────────────────────────────────────────────────────
+# Adapter output and evaluate results surface in the debug pane's console;
+# only lifecycle transitions land in the status message area.
 
 (event/on "debug-stopped"
   (fn [data]
     (let [reason (get data :reason "breakpoint")]
       (editor/log-message (string "Debug: stopped — " reason)))))
 
-(event/on "debug-output"
-  (fn [data]
-    (let [cat (get data :category "console")
-          out (string/trimr (get data :output ""))]
-      (when (and (not (empty? out)) (= cat "console"))
-        (editor/log-message out)))))
-
 (event/on "debug-session-ended"
   (fn [data]
     (editor/log-message
       (string "Debug session " (get data :session-id "") " ended"))))
-
-(event/on "debug-evaluate-result"
-  (fn [data]
-    (editor/log-message (string "= " (get data :result "")))))
 
 (event/on "debug-breakpoint-changed"
   (fn [data]
@@ -36,7 +27,11 @@
           line   (get data :line "0")]
       (when (not (empty? file))
         (editor/log-message
-          (string (if (= action "add") "Breakpoint set" "Breakpoint cleared")
+          (string (case action
+                    "add" "Breakpoint set"
+                    "remove" "Breakpoint cleared"
+                    "enable" "Breakpoint enabled"
+                    "Breakpoint disabled")
                   " at " file ":" line))))))
 
 # ── Helper functions ──────────────────────────────────────────────────────────
@@ -82,6 +77,28 @@
 (command/define "dbg-step-out"
   (fn [_]
     (debug/step-out)))
+
+(command/define "dbg-pause"
+  (fn [_]
+    (debug/pause)))
+
+(command/define "dbg-restart"
+  (fn [_]
+    (debug/restart)))
+
+(command/define "dbg-stop"
+  (fn [_]
+    (debug/disconnect)))
+
+(command/define "dbg-watch-add"
+  (fn [expr]
+    (when (not (empty? expr))
+      (debug/watch-add expr))))
+
+(command/define "dbg-watch-remove"
+  (fn [expr]
+    (when (not (empty? expr))
+      (debug/watch-remove expr))))
 
 (command/define "dbg-eval"
   (fn [expr]

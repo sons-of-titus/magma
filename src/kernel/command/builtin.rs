@@ -16,6 +16,7 @@ pub mod vcs;
 mod completion;
 mod misc;
 mod project_cmds;
+mod run_config_cmds;
 pub(crate) mod helpers;
 
 use crate::kernel::state::Editor;
@@ -35,4 +36,5 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     completion::register(editor);
     misc::register(editor);
     project_cmds::register(editor);
+    run_config_cmds::register(editor);
 }

@@ -123,6 +123,7 @@ impl eframe::App for GuiApp {
             self.font_size = self.editor.font_config.size;
         }
         gui_shell::sync_theme(&mut self.theme, &mut self.theme_synced, &ctx, &mut self.editor);
+        crate::kernel::icons::sync_option(&mut self.editor);
 
         // ── The welcome window is the whole primary surface ───────────────
         if !self.editor_open {

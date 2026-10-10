@@ -54,15 +54,15 @@ fn option_set_is_the_configuration_path() {
 }
 
 #[test]
-fn janet_defined_commands_execute_but_stay_off_the_palette() {
+fn janet_defined_commands_execute_and_reach_the_palette() {
     janet_test!(ed, {
         let r = scripting::eval(
             "(command/define \"community-hello\" (fn [&] (editor/echo \"hi\")))");
         assert_eq!(r, "ok");
         assert!(ed.commands.exists("community-hello"));
-        assert!(ed.commands.list_rust_commands().iter()
-            .all(|(name, _, _)| name != "community-hello"),
-            "Janet-defined commands are not palette surface");
+        assert!(ed.commands.list_detailed().iter()
+            .any(|(name, _, _)| name == "community-hello"),
+            "Janet-defined commands are palette surface");
     });
 }
 

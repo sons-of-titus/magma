@@ -220,14 +220,20 @@ unsafe extern "C-unwind" fn c_task_output(argc: i32, argv: *mut Janet) -> Janet 
 
 /// (task/detect-project root) → nil
 ///
-/// Auto-detects project type from marker files in `root` (Cargo.toml, package.json, …),
-/// defines `build`/`test`/`run` tasks, and populates `project.language` and
-/// `project.build_targets` via the Project Model layer (Phase 5).
+/// Auto-detects project type from marker files in `root` and seeds the
+/// project's run configurations.  An unrecognized folder says so instead of
+/// failing silently later.
 unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let root = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         if !root.is_empty() {
-            ed.project_manager.detect(&root, &mut ed.task_scheduler);
+            ed.project_manager.detect(&root);
+            if ed.project_manager.project.language.is_empty() {
+                ed.show_message(
+                    crate::kernel::state::MessageKind::Info,
+                    "No recognized build system here (Cargo, go, npm, Make, Python, CMake, Maven, Gradle) — create run configurations with the toolbar gear",
+                );
+            }
         }
         conv::nil()
     })

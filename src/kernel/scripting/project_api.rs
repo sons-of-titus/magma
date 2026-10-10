@@ -116,7 +116,7 @@ unsafe extern "C-unwind" fn c_project_option_set(argc: i32, argv: *mut Janet) ->
 /// (project/current) → table or nil
 ///
 /// Returns a table describing the active project:
-///   `{:name :root :language :tasks [:task-id …] :build-targets [{:name :kind :task-id} …]}`
+///   `{:name :root :language :run-configs [name …] :active-config name-or-nil}`
 /// Returns nil when no project is active.
 unsafe extern "C-unwind" fn c_project_current(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -133,29 +133,17 @@ unsafe extern "C-unwind" fn c_project_current(_argc: i32, _argv: *mut Janet) -> 
         janet_table_put(t, conv::keyword("root"),     conv::string(&root));
         janet_table_put(t, conv::keyword("language"), conv::string(&proj.language));
 
-        // tasks array
-        let tasks_arr = janet_wrap_array(janet_array(proj.tasks.len() as i32));
-        for &tid in &proj.tasks {
-            janet_array_push(janet_unwrap_array(tasks_arr), conv::integer(tid as i32));
+        let rc_arr = janet_wrap_array(janet_array(pm.run_configs.configs.len() as i32));
+        for cfg in &pm.run_configs.configs {
+            janet_array_push(janet_unwrap_array(rc_arr), conv::string(&cfg.name));
         }
-        janet_table_put(t, conv::keyword("tasks"), tasks_arr);
+        janet_table_put(t, conv::keyword("run-configs"), rc_arr);
 
-        // build-targets array
-        let bt_arr = janet_wrap_array(janet_array(proj.build_targets.len() as i32));
-        for bt in &proj.build_targets {
-            let bt_tbl = janet_wrap_table(janet_table(3));
-            let bt_t = janet_unwrap_table(bt_tbl);
-            janet_table_put(bt_t, conv::keyword("name"), conv::string(&bt.name));
-            let kind_kw = match bt.kind {
-                crate::kernel::project::BuildKind::Debug => "debug",
-                crate::kernel::project::BuildKind::Release => "release",
-            };
-            janet_table_put(bt_t, conv::keyword("kind"), conv::keyword(kind_kw));
-            let tid_val = bt.task_id.map(|id| conv::integer(id as i32)).unwrap_or_else(conv::nil);
-            janet_table_put(bt_t, conv::keyword("task-id"), tid_val);
-            janet_array_push(janet_unwrap_array(bt_arr), bt_tbl);
-        }
-        janet_table_put(t, conv::keyword("build-targets"), bt_arr);
+        let active = match &pm.run_configs.active {
+            Some(a) => conv::string(a),
+            None => conv::nil(),
+        };
+        janet_table_put(t, conv::keyword("active-config"), active);
 
         tbl
     })
@@ -170,10 +158,7 @@ unsafe extern "C-unwind" fn c_project_build(_argc: i32, _argv: *mut Janet) -> Ja
         };
         match ed.project_manager.build(&mut ed.task_scheduler, &bg) {
             Ok(id) => {
-                ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
-                    id: id.to_string(),
-                    name: "build".to_string(),
-                });
+                crate::kernel::run_config::announce_launch(ed, id);
                 conv::integer(id as i32)
             }
             Err(e) => conv::signal_err(&e),
@@ -190,10 +175,7 @@ unsafe extern "C-unwind" fn c_project_test(_argc: i32, _argv: *mut Janet) -> Jan
         };
         match ed.project_manager.test(&mut ed.task_scheduler, &bg) {
             Ok(id) => {
-                ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
-                    id: id.to_string(),
-                    name: "test".to_string(),
-                });
+                crate::kernel::run_config::announce_launch(ed, id);
                 conv::integer(id as i32)
             }
             Err(e) => conv::signal_err(&e),
@@ -210,10 +192,7 @@ unsafe extern "C-unwind" fn c_project_run(_argc: i32, _argv: *mut Janet) -> Jane
         };
         match ed.project_manager.run(&mut ed.task_scheduler, &bg) {
             Ok(id) => {
-                ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
-                    id: id.to_string(),
-                    name: "run".to_string(),
-                });
+                crate::kernel::run_config::announce_launch(ed, id);
                 conv::integer(id as i32)
             }
             Err(e) => conv::signal_err(&e),
@@ -266,7 +245,7 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"project/current".as_ptr() as *const _,
             cfun: Some(c_project_current as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return {:name :root :language :tasks :build-targets} for the active project, or nil".as_ptr() as *const _,
+            documentation: c"Return {:name :root :language :run-configs :active-config} for the active project, or nil".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/build".as_ptr() as *const _,

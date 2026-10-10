@@ -16,6 +16,7 @@ eframe = { version = "0.36.2", optional = true, features = ["wgpu"] }
 bytemuck = { version = "1", optional = true }
 ab_glyph = { version = "0.2", optional = true }
 rfd = { version = "0.15", optional = true }
+resvg = { version = "0.45", optional = true }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
 arboard = { version = "3.2", default-features = false }
 tokio = { version = "1", features = ["full"] }
@@ -72,4 +73,4 @@ harness = false
 [features]
 default = ["janet", "gui"]
 janet = ["dep:evil-janet"]
-gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph", "dep:rfd"]
+gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph", "dep:rfd", "dep:resvg"]

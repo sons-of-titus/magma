@@ -211,6 +211,25 @@ impl View for EditorView {
         apply_highlights(editor, view, surface, &row_refs, scroll_top, max_visible,
                          content_x, row_offset, cursor_offset);
 
+        // ── Current execution line — the stopped debuggee's location ──────
+        if let Some((path, line)) = editor.debug.active_session()
+            .and_then(|s| s.stopped_line.clone())
+            && buf_path_owned.as_deref() == Some(path.as_str()) {
+            let stop_offset = buf.line_start_offset(line.saturating_sub(1));
+            if let Some(stop_offset) = stop_offset
+                && let Some(row_idx) = rows.iter()
+                    .position(|r| r.start <= stop_offset && stop_offset < r.end) {
+                    let surf_row = row_offset + row_idx as u16;
+                    let (hl_r, hl_g, hl_b) = editor.theme_color("highlight-bg");
+                    for x in content_x..area.x + area.width {
+                        if let Some(cell) = surface.cell(x, surf_row) {
+                            let style = Style { bg: (hl_r, hl_g, hl_b), ..cell.style };
+                            surface.set_cell(x, surf_row, cell.ch, Some(style));
+                        }
+                    }
+                }
+        }
+
         // ── Column ruler ──────────────────────────────────────────────────
         let col_col = int_option(editor, "colorcolumn", 0);
         if col_col > 0 {

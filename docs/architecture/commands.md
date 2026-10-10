@@ -168,21 +168,14 @@ Commands can be intercepted via hooks:
 
 ## Command Palette
 
-The command palette lists all registered commands and allows interactive invocation:
+The command palette (ctrl-p) lists **all** registered commands — Rust and
+Janet-defined alike — with their descriptions.  Commands declaring a required
+argument first prompt for it; the entered remainder maps positionally over
+declared arguments, a lone argument receives the whole remainder, and a
+Janet-defined command receives it as its one string argument.
 
-```janet
-(command/run "command-palette")  # Opens interactive command selector
-```
-
-It is implemented in Janet using the event system and buffer API:
-
-```janet
-(defn command-palette []
-  (def palette-buf (buffer/create "*palette*"))
-  (buffer/insert palette-buf 0 (string/join (command/list) "\n"))
-  ;; Filter-as-you-type, select with enter
-  ...)
-```
+The command line (alt-x) runs the same dispatch from a single
+`"name args…"` input and is the GUI equivalent of `editor/run-command`.
 
 ## Introspection
 
@@ -201,6 +194,24 @@ It is implemented in Janet using the event system and buffer API:
 (command/exists? "save-buffer")
 => true
 ```
+
+## Run-Configuration Commands
+
+Rust-registered commands backing the run toolbar and the config editor
+dialog; callable from Janet via `editor/run-command`.
+
+| Command | Action |
+|---------|--------|
+| `run-config [name]` | Launch a run configuration (default: the active one); with a build-first config, the build runs to completion first and the target only launches on exit 0 |
+| `stop-config [name]` | Kill the running task of a run configuration |
+| `select-config name` | Make a configuration the active one and persist the choice |
+| `debug-config [name]` | Start a debug session from a debuggable run configuration; the adapter is picked from the detected language's candidates by PATH availability |
+| `shell-command command` | Run a shell command in the background; output streams into the `*shell*` buffer as it runs, ending with an exit-status line |
+| `make [target]` | Run make in the background; output streams into the `*make*` buffer and the finished run populates the quickfix list |
+
+Run configurations persist per project in `<root>/.magma/run-configs.json`;
+project detection seeds in-memory defaults (Cargo, npm, Make, Python) when
+no file exists, and the first user edit writes the file.
 
 ## Built-in Commands
 

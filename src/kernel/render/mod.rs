@@ -20,6 +20,8 @@ pub(crate) mod gui_editor_window;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_fonts;
 #[cfg(feature = "gui")]
+pub(crate) mod gui_icons;
+#[cfg(feature = "gui")]
 pub(crate) mod gui_render;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_input;
@@ -33,6 +35,8 @@ pub(crate) mod gui_tabs;
 pub(crate) mod gui_sidebar;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_sidebar_state;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_sidebar_tree;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_shell;
 #[cfg(feature = "gui")]
@@ -49,6 +53,12 @@ pub(crate) mod gui_search_dialog;
 pub(crate) mod gui_settings_dialog;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_goto_dialogs;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_command_line;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_run_config_dialog;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_run_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_fuzzy;
 #[cfg(feature = "gui")]

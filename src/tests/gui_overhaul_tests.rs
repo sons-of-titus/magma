@@ -217,16 +217,16 @@ fn picker_commands_list_registry() {
 }
 
 #[test]
-fn picker_hides_janet_backed_commands() {
+fn picker_lists_janet_defined_commands() {
     let mut ed = make_editor();
-    // A Janet-backed trampoline (as command/define registers) must not
-    // surface in the palette, while Rust-native commands stay listed.
-    ed.commands.register_janet_backed("internal-plumb", "Janet-defined command", vec![],
+    // A Janet-defined trampoline (as command/define registers) is a normal
+    // registry citizen now: the palette lists every command.
+    ed.commands.register("janet-plumb", "Janet-defined command", vec![],
         Box::new(|_ed, _args| Ok(())));
     let entries = collect_entries(&ed, PickerSource::Commands);
-    assert!(entries.iter().all(|e| matches!(e,
-        PickerEntry::Command { name, .. } if name != "internal-plumb")),
-        "Janet-backed commands must not appear in the palette");
+    let entry = entries.iter().find(|e| matches!(e,
+        PickerEntry::Command { name, .. } if name == "janet-plumb"));
+    assert!(entry.is_some(), "Janet-defined commands must appear in the palette");
     assert!(entries.iter().any(|e| matches!(e,
         PickerEntry::Command { name, .. } if name == "goto-line")));
 }
@@ -298,13 +298,14 @@ fn theme_applies_editor_colors() {
 // ── Icon glyph coverage ──────────────────────────────────────────────────────
 
 #[test]
-fn every_theme_icon_glyph_is_covered_by_egui_default_fonts() {
+fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
     use crate::kernel::render::gui_theme::icons;
-    use eframe::egui::epaint::text::{FontDefinitions, FontId, Fonts, TextOptions};
+    use crate::kernel::state::FontConfig;
+    use eframe::egui::epaint::text::{FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
         TextOptions { max_texture_side: 4096, ..Default::default() },
-        FontDefinitions::default(),
+        crate::kernel::render::gui_fonts::font_definitions(&FontConfig::default()),
     );
     let all = [
         ("TERMINAL",  icons::TERMINAL),
@@ -323,8 +324,8 @@ fn every_theme_icon_glyph_is_covered_by_egui_default_fonts() {
         for ch in icon.chars() {
             assert!(
                 fonts.has_glyph(&FontId::proportional(13.0), ch),
-                "icons::{name} contains {ch:?} (U+{:04X}), which is missing from every \
-                 font in egui's default Proportional family and renders as tofu (◻)",
+                "icons::{name} contains {ch:?} (U+{:04X}), which is missing from \
+                 the bundled font chain and renders as tofu (◻)",
                 ch as u32,
             );
         }
@@ -332,31 +333,26 @@ fn every_theme_icon_glyph_is_covered_by_egui_default_fonts() {
 }
 
 #[test]
-fn every_sidebar_glyph_is_covered_by_egui_default_fonts() {
-    use crate::kernel::render::gui_sidebar::{file_icon, ARROW_CLOSED, ARROW_OPEN};
-    use eframe::egui::epaint::text::{FontDefinitions, FontId, Fonts, TextOptions};
+fn every_sidebar_glyph_is_covered_by_bundled_fonts() {
+    use crate::kernel::render::gui_sidebar::{FALLBACK_FILE, ARROW_CLOSED, ARROW_OPEN};
+    use crate::kernel::state::FontConfig;
+    use eframe::egui::epaint::text::{FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
         TextOptions { max_texture_side: 4096, ..Default::default() },
-        FontDefinitions::default(),
+        crate::kernel::render::gui_fonts::font_definitions(&FontConfig::default()),
     );
-    let tree_glyphs = [
+    let glyphs = [
         ("ARROW_OPEN", ARROW_OPEN),
         ("ARROW_CLOSED", ARROW_CLOSED),
+        ("FALLBACK_FILE", FALLBACK_FILE),
     ];
-    let extensions = ["main.rs", "init.janet", "app.py", "Cargo.toml", "README.md",
-                      "data.json", "conf.yaml", "conf.yml", "run.sh", "Cargo.lock",
-                      "LICENSE"];
-    let mut glyphs: Vec<(&str, &str)> = tree_glyphs.to_vec();
-    for ext in extensions {
-        glyphs.push((ext, file_icon(ext)));
-    }
     for (source, glyph) in glyphs {
         for ch in glyph.chars() {
             assert!(
                 fonts.has_glyph(&FontId::proportional(13.0), ch),
-                "sidebar glyph for {source} is {ch:?} (U+{:04X}), which is missing from \
-                 every font in egui's default Proportional family and renders as tofu (◻)",
+                "sidebar glyph {source} is {ch:?} (U+{:04X}), which is missing from \
+                 the bundled font chain and renders as tofu (◻)",
                 ch as u32,
             );
         }
@@ -367,14 +363,14 @@ fn every_sidebar_glyph_is_covered_by_egui_default_fonts() {
 
 #[test]
 fn sidebar_tree_roots_at_the_project_not_the_filesystem() {
-    use crate::kernel::render::gui_sidebar::ProjectTree;
+    use crate::kernel::render::gui_sidebar_tree;
 
     let files = vec![
         "src/main.rs".to_string(),
         "src/kernel/state.rs".to_string(),
         "README.md".to_string(),
     ];
-    let tree = ProjectTree::build_tree(&files);
+    let tree = gui_sidebar_tree::build(&files);
 
     let top: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
     assert_eq!(top, vec!["src", "README.md"],

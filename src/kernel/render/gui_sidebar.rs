@@ -7,38 +7,30 @@
 //! Returns `SidebarAction`s for the shell to apply.
 
 use eframe::egui::{self, FontFamily, FontId, Pos2, CornerRadius, RichText, Sense, Vec2};
+use crate::kernel::icons::IconPack;
 use crate::kernel::state::Editor;
 use super::gui_sidebar_state::{PendingOp, SidebarAction, SidebarState};
 use super::gui_theme::GuiTheme;
+use super::gui_icons;
+
+pub(crate) use super::gui_sidebar_tree::{self, FileNode};
 
 const ROW_H:     f32 = 24.0;
 const INDENT:    f32 = 14.0;
 const FONT_SIZE: f32 = 13.0;
 const ARROW_W:   f32 = 14.0;
-const FOLDER_W:  f32 = 13.0;
+const ICON_W:    f32 = gui_icons::SLOT + 4.0;
 
 /// Collapse/expand arrows — must be covered by egui's default fonts
 /// (enforced by `every_sidebar_glyph_is_covered_by_egui_default_fonts`).
 pub(crate) const ARROW_OPEN:   &str = "⏷";
 pub(crate) const ARROW_CLOSED: &str = "⏵";
 
-pub(crate) fn file_icon(name: &str) -> &'static str {
-    match name.rsplit('.').next().unwrap_or("") {
-        "rs"         => "⚙",
-        "janet"      => "•",
-        "py"         => "λ",
-        "toml"       => "☰",
-        "md"         => "§",
-        "json"       => "∑",
-        "yaml" | "yml" => "☰",
-        "sh"         => "$_",
-        "lock"       => "⊗",
-        _            => "·",
-    }
-}
+/// Pre-init / non-Janet fallback for files when the pack has no entry.
+pub(crate) const FALLBACK_FILE: &str = "\u{EA7B}"; // cod-file
 
-/// Painter-drawn folder glyph — crisp at any DPI and independent of the
-/// bundled fonts' limited symbol coverage.
+/// Painter-drawn folder glyph — fallback for packs that don't theme
+/// folders; crisp at any DPI and independent of the icon font.
 fn draw_folder(p: &egui::Painter, x: f32, cy: f32, open: bool, color: egui::Color32) {
     let color = if open { color.gamma_multiply(0.8) } else { color };
     let (w, h) = (11.0, 8.0);
@@ -70,90 +62,11 @@ fn header_button(ui: &mut egui::Ui, theme: &GuiTheme, glyph: &str, tip: &str) ->
     resp.on_hover_text(tip).clicked()
 }
 
-// ── Tree data ─────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub(crate) struct FileNode {
-    pub(crate) name:     String,
-    pub(crate) path:     String,
-    pub(crate) is_dir:   bool,
-    pub(crate) children: Vec<FileNode>,
-}
-
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 pub struct ProjectTree;
 
 impl ProjectTree {
-    // ── Tree construction ─────────────────────────────────────────────────────
-
-    /// Insert one indexed path (project-relative, `/`-separated) into the
-    /// tree.  Every node's `path` is the joined relative prefix, so node
-    /// identity matches `expanded_dirs` keys and the breadcrumb reveal.
-    fn insert(nodes: &mut Vec<FileNode>, parts: &[&str], prefix: &str) {
-        if parts.is_empty() { return; }
-        let name = parts[0];
-        let is_leaf = parts.len() == 1;
-        let node_path = if prefix.is_empty() {
-            name.to_string()
-        } else {
-            format!("{}/{}", prefix, name)
-        };
-
-        if let Some(existing) = nodes.iter_mut().find(|n| n.name == name) {
-            if !is_leaf {
-                Self::insert(&mut existing.children, &parts[1..], &node_path);
-            }
-        } else if is_leaf {
-            nodes.push(FileNode {
-                name: name.to_string(),
-                path: node_path,
-                is_dir: false,
-                children: vec![],
-            });
-        } else {
-            let mut dir = FileNode {
-                name: name.to_string(),
-                path: node_path.clone(),
-                is_dir: true,
-                children: vec![],
-            };
-            Self::insert(&mut dir.children, &parts[1..], &node_path);
-            nodes.push(dir);
-        }
-    }
-
-    fn sort_nodes(nodes: &mut Vec<FileNode>) {
-        nodes.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _             => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
-        for n in nodes.iter_mut().filter(|n| n.is_dir) {
-            Self::sort_nodes(&mut n.children);
-        }
-    }
-
-    pub(crate) fn build_tree(files: &[String]) -> Vec<FileNode> {
-        let mut roots: Vec<FileNode> = Vec::new();
-        for path in files {
-            let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-            if parts.is_empty() { continue; }
-            Self::insert(&mut roots, &parts, "");
-        }
-        Self::sort_nodes(&mut roots);
-        roots
-    }
-
-    fn collect_dirs(nodes: &[FileNode], out: &mut std::collections::HashSet<String>) {
-        for n in nodes {
-            if n.is_dir {
-                out.insert(n.path.clone());
-                Self::collect_dirs(&n.children, out);
-            }
-        }
-    }
-
     // ── Rendering ─────────────────────────────────────────────────────────────
 
     #[allow(clippy::too_many_arguments)]
@@ -164,6 +77,7 @@ impl ProjectTree {
         state:        &mut SidebarState,
         project_root: &str,
         theme:        &GuiTheme,
+        icons:        &IconPack,
     ) -> Vec<SidebarAction> {
         let font_id = FontId::new(FONT_SIZE, FontFamily::Proportional);
         let mut actions = Vec::new();
@@ -209,20 +123,37 @@ impl ProjectTree {
             }
             x += ARROW_W;
 
-            // Icon — painter-drawn folder for directories, glyph for files.
+            // Icon — pack folder glyph for directories (painter-drawn when
+            // the pack doesn't theme folders), pack file glyph for files.
             if node.is_dir {
-                draw_folder(ui.painter(), x + 1.0, cy, is_exp, theme.lavender);
-                x += FOLDER_W + 4.0;
+                match icons.folder_icon(is_exp) {
+                    Some(kind) => {
+                        gui_icons::draw(ui, kind, Pos2::new(x + gui_icons::SLOT / 2.0, cy),
+                                        gui_icons::SLOT, font_id.clone(), theme.lavender);
+                    }
+                    None => draw_folder(ui.painter(), x + 1.0, cy, is_exp, theme.lavender),
+                }
+                x += ICON_W;
             } else {
-                let icon = file_icon(&node.name);
+                let kind = icons.lookup(&node.name);
                 let icon_w: f32 = ui.fonts_mut(|f| {
-                    f.layout_no_wrap(icon.to_string(), font_id.clone(), theme.text).size().x
+                    let glyph = kind.map_or_else(
+                        || FALLBACK_FILE.to_string(),
+                        |k| match k {
+                            crate::kernel::icons::IconKind::Glyph { glyph, .. } => glyph.to_string(),
+                            crate::kernel::icons::IconKind::Svg { .. } => String::new(),
+                        });
+                    f.layout_no_wrap(glyph, font_id.clone(), theme.text).size().x
                 });
-                ui.painter().text(
-                    Pos2::new(x, cy), egui::Align2::LEFT_CENTER,
-                    icon, font_id.clone(), theme.subtext1,
-                );
-                x += icon_w + 4.0;
+                match kind {
+                    Some(kind) => gui_icons::draw(
+                        ui, kind, Pos2::new(x + gui_icons::SLOT / 2.0, cy),
+                        gui_icons::SLOT, font_id.clone(), theme.subtext1),
+                    None => { ui.painter().text(
+                        Pos2::new(x + gui_icons::SLOT / 2.0, cy), egui::Align2::CENTER_CENTER,
+                        FALLBACK_FILE, font_id.clone(), theme.subtext1); }
+                }
+                x += icon_w.max(gui_icons::SLOT) + 4.0;
             }
 
             // Name
@@ -297,7 +228,7 @@ impl ProjectTree {
             // Recurse
             if node.is_dir && is_exp {
                 actions.extend(Self::render_nodes(
-                    ui, &node.children, depth + 1, state, project_root, theme,
+                    ui, &node.children, depth + 1, state, project_root, theme, icons,
                 ));
             }
         }
@@ -323,7 +254,7 @@ impl ProjectTree {
         let files = &editor.project_manager.project.files;
         let epoch = editor.project_manager.project.files_epoch;
         if state.tree_cache.as_ref().map(|(e, _)| *e) != Some(epoch) {
-            let tree = Self::build_tree(files);
+            let tree = gui_sidebar_tree::build(files);
             state.tree_cache = Some((epoch, std::rc::Rc::new(tree)));
         }
         let tree = state.tree_cache.clone().map(|(_, t)| t)
@@ -341,7 +272,7 @@ impl ProjectTree {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if header_button(ui, theme, "+", "Expand all") {
                     state.expanded_dirs.clear();
-                    Self::collect_dirs(&tree, &mut state.expanded_dirs);
+                    gui_sidebar_tree::collect_dirs(&tree, &mut state.expanded_dirs);
                 }
                 if header_button(ui, theme, "-", "Collapse all") {
                     state.expanded_dirs.clear();
@@ -391,7 +322,7 @@ impl ProjectTree {
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                actions = Self::render_nodes(ui, &tree, 0, state, &project_root, theme);
+                actions = Self::render_nodes(ui, &tree, 0, state, &project_root, theme, &editor.icons);
             });
 
         // Inline new/rename input row.

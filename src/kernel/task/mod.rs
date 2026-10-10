@@ -1,7 +1,5 @@
 pub mod scheduler;
-pub use scheduler::{Task, TaskId, TaskOutput, TaskScheduler, TaskStatus};
-
-use std::process::Command;
+pub use scheduler::{OutputSink, Task, TaskId, TaskOutput, TaskScheduler, TaskStatus};
 
 use crate::kernel::state::Editor;
 
@@ -14,65 +12,78 @@ pub struct QuickfixEntry {
     pub message: String,
 }
 
-/// Run a shell command, capture output, and create a buffer with the result.
-/// Returns the slab key of the output buffer.
+/// Launch a shell command into the `*shell*` buffer, streaming its output
+/// through the TaskScheduler.  Returns immediately; the buffer fills as the
+/// command runs and ends with an exit-status line.
 pub fn run_shell_command(editor: &mut Editor, cmd: &str) -> Result<usize, String> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .output()
-        .map_err(|e| format!("Shell error: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    let combined = if stderr.is_empty() {
-        stdout.to_string()
-    } else if stdout.is_empty() {
-        stderr.to_string()
-    } else {
-        format!("{}\n{}", stdout, stderr)
-    };
-
-    let slab_key = create_output_buffer(editor, "*shell*", &combined, cmd);
-    Ok(slab_key)
+    launch_output_task(editor, &format!("# {}", cmd), cmd, "*shell*", false)
 }
 
-/// Run `make` with optional target, capture output, create buffer,
-/// and parse quickfix entries.
+/// Launch `make` into the `*make*` buffer; on completion the output is
+/// parsed into the quickfix list.
 pub fn run_make(editor: &mut Editor, target: &str) -> Result<usize, String> {
     let cmd_str = if target.is_empty() {
         "make".to_string()
     } else {
         format!("make {}", target)
     };
+    launch_output_task(editor, &format!("# {}", cmd_str), &cmd_str, "*make*", true)
+}
 
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(&cmd_str)
-        .output()
-        .map_err(|e| format!("Make error: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    let combined = if stderr.is_empty() {
-        stdout.to_string()
-    } else if stdout.is_empty() {
-        stderr.to_string()
-    } else {
-        format!("{}\n{}", stdout, stderr)
+/// Create the output buffer and launch the command as a background task.
+fn launch_output_task(
+    editor: &mut Editor,
+    display: &str,
+    cmd: &str,
+    base_name: &str,
+    parse_quickfix: bool,
+) -> Result<usize, String> {
+    let Some(bg) = editor.background.clone() else {
+        return Err("no background runtime".to_string());
     };
+    let buffer_key = create_output_buffer(editor, base_name, "", display);
+    // Output buffers are ephemeral: they are regenerated on every run and
+    // must never trip the quit guard or enter project sessions.
+    if let Some(arc) = editor.buffers.get_mut(buffer_key) {
+        arc.lock().unwrap_or_else(|e| e.into_inner()).ephemeral = true;
+    }
+    // Unique per run so concurrent commands never collide on a task name.
+    let n = editor.task_scheduler.output_sinks.len() + editor.task_scheduler.next_id as usize;
+    let name = format!("{base_name} #{}", n + 1);
+    let id = editor.task_scheduler.define(name, cmd.to_string(), Default::default(), vec![]);
+    editor.task_scheduler.output_sinks.insert(id, OutputSink {
+        buffer_key,
+        parse_quickfix,
+    });
+    editor.task_scheduler.launch(id, &bg)?;
+    Ok(buffer_key)
+}
 
-    // Parse quickfix entries from combined output
-    let quickfix_entries = parse_quickfix(&combined);
+/// Append a streamed line to a task's output buffer (foreground thread).
+pub fn append_output_line(ed: &mut Editor, sink: &OutputSink, line: &str) {
+    if let Some(arc) = ed.buffers.get_mut(sink.buffer_key) {
+        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        let end = buf.len();
+        buf.insert(end, line);
+        let end = buf.len();
+        buf.insert(end, "\n");
+    }
+}
 
-    // Store quickfix list on editor
-    editor.quickfix_list = quickfix_entries;
-    editor.quickfix_index = 0;
-
-    let slab_key = create_output_buffer(editor, "*make*", &combined, &cmd_str);
-    Ok(slab_key)
+/// Close out a finished run: exit-status line, quickfix parse, sink removal.
+pub fn finish_output_task(ed: &mut Editor, id: u64, exit_code: i32, stdout: &str, stderr: &str) {
+    let Some(sink) = ed.task_scheduler.output_sinks.remove(&id) else { return };
+    let status = format!("\n[exit {exit_code}]\n");
+    if let Some(arc) = ed.buffers.get_mut(sink.buffer_key) {
+        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        let end = buf.len();
+        buf.insert(end, &status);
+    }
+    if sink.parse_quickfix {
+        let entries = parse_quickfix(&format!("{stdout}{stderr}"));
+        ed.quickfix_list = entries;
+        ed.quickfix_index = 0;
+    }
 }
 
 /// Jump to the next quickfix entry.

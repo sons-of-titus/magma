@@ -3,6 +3,7 @@
 //! Split from `mod.rs` (file-size gate): queries, the mutation gateway,
 //! transaction undo, persistence state, change publication, and marks.
 
+use super::anchor::Anchor;
 use super::document::Document;
 use super::marks::MarkSet;
 use super::transaction::{EditTransaction, TransactionBuilder, TransactionOrigin};
@@ -15,7 +16,7 @@ pub struct Buffer {
     pub id: BufferId,
     pub name: String,
     pub path: Option<String>,
-    doc: Document,
+    pub(super) doc: Document,
     marks: MarkSet,
     undo: UndoHistory,
     /// Transactions committed since the last change publication.  The event
@@ -33,6 +34,10 @@ pub struct Buffer {
     pub ephemeral: bool,
     /// Pre-rendered text drawn above the buffer content area.
     pub header_line: Option<String>,
+    /// DAP breakpoint anchors (breakpoint id → position).  Transformed
+    /// through every committed transaction so breakpoints track their lines
+    /// as the text edits, like marks do.
+    pub bp_anchors: Vec<(u64, Anchor)>,
 }
 
 impl Buffer {
@@ -52,6 +57,7 @@ impl Buffer {
             read_only: false,
             ephemeral: false,
             header_line: None,
+            bp_anchors: Vec::new(),
         }
     }
 
@@ -171,6 +177,9 @@ impl Buffer {
     ) -> Option<EditTransaction> {
         let txn = self.doc.commit(builder).ok()??;
         self.marks.apply_transaction(&txn);
+        for (_, anchor) in &mut self.bp_anchors {
+            *anchor = txn.transform_anchor(*anchor);
+        }
         self.undo.record(txn.clone(), cursor_before, cursor_after);
         self.pending_changes.push(txn.clone());
         Some(txn)

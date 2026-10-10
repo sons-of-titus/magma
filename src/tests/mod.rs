@@ -57,7 +57,7 @@ test_pairs!(
     semantic_engine, task_system, project_model, debug_system,
     workspace_persist, concurrency_model, extension_capability,
     agent_system, language_ecosystem, mouse, gui_overhaul, quit,
-    status_message
+    status_message, command_surface, run_config, icon_pack, session, e2e_scenarios
 );
 
 #[cfg(feature = "janet")] mod janet_tests;

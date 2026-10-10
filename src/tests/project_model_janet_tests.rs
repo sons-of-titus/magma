@@ -77,15 +77,15 @@ fn detect_project_via_task_api_sets_language() {
         scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
 
         assert_eq!(ed.project_manager.project.language, "rust");
-        assert!(!ed.project_manager.project.build_targets.is_empty());
-        assert!(ed.task_scheduler.task_by_name("build").is_some());
+        assert!(!ed.project_manager.run_configs.configs.is_empty());
+        assert!(ed.project_manager.run_configs.named("build").is_some());
 
         std::fs::remove_dir_all(&tmp).ok();
     });
 }
 
 #[test]
-fn detect_project_populates_tasks_array() {
+fn detect_project_populates_run_configs() {
     janet_test!(ed, {
         let tmp = std::env::temp_dir().join("phase5_janet_tasks_arr");
         std::fs::create_dir_all(&tmp).unwrap();
@@ -93,8 +93,8 @@ fn detect_project_populates_tasks_array() {
 
         scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
 
-        assert_eq!(ed.project_manager.project.tasks.len(), 3,
-            "detect must register 3 tasks (build, test, run)");
+        assert_eq!(ed.project_manager.run_configs.configs.len(), 3,
+            "detect must seed 3 run configs (build, test, run)");
 
         std::fs::remove_dir_all(&tmp).ok();
     });
@@ -128,10 +128,10 @@ fn project_build_test_run_available_as_janet_fns() {
     });
 }
 
-// ── project/current build-targets structure ───────────────────────────────────
+// ── project/current run-configs structure ─────────────────────────────────────
 
 #[test]
-fn project_current_build_targets_after_detect() {
+fn project_current_run_configs_after_detect() {
     janet_test!(ed, {
         let tmp = std::env::temp_dir().join("phase5_janet_bt");
         std::fs::create_dir_all(&tmp).unwrap();
@@ -140,10 +140,13 @@ fn project_current_build_targets_after_detect() {
         scripting::eval(&format!("(project/set-root \"{}\")", tmp.to_string_lossy()));
         scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
 
-        let bt_r = scripting::eval_result("(length (get (project/current) :build-targets))");
-        assert!(bt_r.is_ok());
-        let len: usize = bt_r.unwrap().parse().unwrap_or(0);
-        assert_eq!(len, 3, "detected Rust project must have 3 build targets");
+        let rc_r = scripting::eval_result("(length (get (project/current) :run-configs))");
+        assert!(rc_r.is_ok());
+        let len: usize = rc_r.unwrap().parse().unwrap_or(0);
+        assert_eq!(len, 3, "detected Rust project must have 3 run configs");
+
+        let active_r = scripting::eval_result(r#"(get (project/current) :active-config)"#);
+        assert_eq!(active_r.unwrap(), "\"build\"", "first default config is active");
 
         std::fs::remove_dir_all(&tmp).ok();
     });

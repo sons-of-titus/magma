@@ -1,20 +1,22 @@
 //! Project Model — Phase 5.
 //!
-//! `ProjectManager` is promoted from `kernel/state/project.rs` into its own
-//! kernel subsystem.  A `Project` is a first-class programmable object with
-//! build targets, modules, dependencies, and runtime configuration.
+//! `ProjectManager` owns the active project, the multi-project registry, and
+//! the project's run configurations.  A `Project` is a first-class
+//! programmable object with a detected language and file index; launchable
+//! build/test/run targets are `run_config::RunConfig`s seeded by `detect`.
 //!
 //! Key types:
-//!   `Project`        — first-class project object (replaces old `ProjectState`)
-//!   `ProjectManager` — manages active project + multi-project registry
-//!   `BuildTarget`    — a named compilation target backed by a Task System task
-//!   `Module`         — a logical source unit within a project
-//!   `Dependency`     — an external or internal project dependency
+//!   `Project`         — first-class project object
+//!   `ProjectManager`  — active project + registry + run configurations
+//!   `ProjectMember` / `Workspace` — monorepo grouping
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::kernel::task::{TaskId, TaskScheduler};
+use crate::kernel::run_config::RunConfigManager;
+
+pub mod detect;
+pub mod toolchain;
 
 // ── Supporting types ──────────────────────────────────────────────────────────
 
@@ -55,35 +57,13 @@ pub enum DependencyKind {
     Internal,
 }
 
-/// Whether a build target produces a debug or optimised artifact.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BuildKind {
-    Debug,
-    Release,
-}
-
-/// A named compilation target (build, test, run, …) backed by a Task System task.
-#[derive(Debug, Clone)]
-pub struct BuildTarget {
-    pub name: String,
-    pub kind: BuildKind,
-    pub task_id: Option<TaskId>,
-    pub artifacts: Vec<PathBuf>,
-}
-
-/// Runtime environment configuration attached to a project.
-#[derive(Debug, Clone, Default)]
-pub struct Config {
-    pub env: HashMap<String, String>,
-}
-
 // ── Project ───────────────────────────────────────────────────────────────────
 
-/// First-class project object.  Replaces the old `ProjectState` struct.
+/// First-class project object.
 ///
-/// Carries the legacy identity/index state (root, name, workspace, files,
-/// options, file_index_dirty) and the Phase 5 semantic model (language,
-/// modules, dependencies, build_targets, tasks, runtime_config).
+/// Carries identity/index state (root, name, workspace, files, options,
+/// file_index_dirty) and the detected language; launchable targets live in
+/// `ProjectManager::run_configs`.
 #[derive(Debug, Clone, Default)]
 pub struct Project {
     // ── Identity & index ──────────────────────────────────────────────────
@@ -97,20 +77,17 @@ pub struct Project {
     /// Per-project editor options (e.g. `"tab-width"`, `"lsp-server"`).
     pub options: HashMap<String, String>,
 
-    // ── Phase 5: semantic model ────────────────────────────────────────────
+    // ── Detection ─────────────────────────────────────────────────────────
     /// Detected language identifier: `"rust"`, `"node"`, `"python"`, `"make"`.
     pub language: String,
     pub modules: Vec<Module>,
     pub dependencies: Vec<Dependency>,
-    /// Task IDs registered for this project by `ProjectManager::detect`.
-    pub tasks: Vec<TaskId>,
-    pub build_targets: Vec<BuildTarget>,
-    pub runtime_config: Config,
 }
 
 // ── ProjectManager ────────────────────────────────────────────────────────────
 
-/// Manages the active project and the multi-project registry.
+/// Manages the active project, the multi-project registry, and the active
+/// project's run configurations.
 #[derive(Debug, Clone, Default)]
 pub struct ProjectManager {
     /// The currently active project.
@@ -121,72 +98,74 @@ pub struct ProjectManager {
     /// Maps buffer slab keys to project names.
     pub buffer_projects: HashMap<usize, String>,
     pub recent_projects: Vec<String>,
+    /// Run configurations for the active project.
+    pub run_configs: RunConfigManager,
 }
 
 impl ProjectManager {
-    /// Auto-detect project language from marker files at `root`, define
-    /// `build`/`test`/`run` tasks in `scheduler`, and populate
-    /// `project.language` and `project.build_targets`.
-    ///
-    /// Replaces `TaskScheduler::auto_detect_project_tasks` — detection now
-    /// lives in the Project Model layer and enriches the `Project` struct.
-    pub fn detect(&mut self, root: &str, scheduler: &mut TaskScheduler) {
+    /// Detect the project language from marker files at `root` (table in
+    /// `detect.rs`, first match wins) and seed the project's run
+    /// configurations (saved configs when present, detection defaults
+    /// otherwise).
+    pub fn detect(&mut self, root: &str) {
         let path = std::path::Path::new(root);
-
-        let (language, build_cmd, test_cmd, run_cmd) =
-            if path.join("Cargo.toml").exists() {
-                ("rust", "cargo build", "cargo test", "cargo run")
-            } else if path.join("package.json").exists() {
-                ("node", "npm run build", "npm test", "npm start")
-            } else if path.join("Makefile").exists() {
-                ("make", "make", "make test", "make run")
-            } else if path.join("pyproject.toml").exists()
-                || path.join("setup.py").exists()
-            {
-                ("python", "python -m build", "python -m pytest", "python -m main")
-            } else {
-                return;
-            };
+        let Some(language) = detect::detect_language(path) else { return };
 
         self.project.language = language.to_string();
-
-        let build_id = scheduler.define("build".into(), build_cmd.into(), HashMap::new(), vec![]);
-        let test_id  = scheduler.define("test".into(),  test_cmd.into(),  HashMap::new(), vec![]);
-        let run_id   = scheduler.define("run".into(),   run_cmd.into(),   HashMap::new(), vec![]);
-
-        self.project.build_targets = vec![
-            BuildTarget { name: "build".into(), kind: BuildKind::Debug, task_id: Some(build_id), artifacts: vec![] },
-            BuildTarget { name: "test".into(),  kind: BuildKind::Debug, task_id: Some(test_id),  artifacts: vec![] },
-            BuildTarget { name: "run".into(),   kind: BuildKind::Debug, task_id: Some(run_id),   artifacts: vec![] },
-        ];
-        self.project.tasks = vec![build_id, test_id, run_id];
+        let pb = PathBuf::from(root);
+        self.run_configs.load_or_defaults(&pb, language);
+        self.sync_active_to_registry();
     }
 
-    /// Dispatch the project's `build` target through the Task System.
+    /// Copy the active project's current state into the name-keyed registry
+    /// — the registry snapshot would otherwise go stale the moment
+    /// detection or indexing enriches the active project.
+    pub fn sync_active_to_registry(&mut self) {
+        if let (Some(name), proj) = (self.current_project.clone(), self.project.clone()) {
+            if self.projects.get(&name).is_some() {
+                self.projects.insert(name, proj);
+            }
+        }
+    }
+
+    /// Launch one of the project's run configurations through the Task
+    /// System.
+    pub fn launch_config(
+        &mut self,
+        name: &str,
+        scheduler: &mut crate::kernel::task::TaskScheduler,
+        bg: &crate::kernel::runtime::BackgroundHandle,
+    ) -> Result<u64, String> {
+        let root = self.project.root.clone()
+            .ok_or_else(|| "no project open".to_string())?;
+        self.run_configs.launch(name, scheduler, bg, &root)
+    }
+
+    /// Dispatch the project's `build` config.
     pub fn build(
-        &self,
-        scheduler: &mut TaskScheduler,
+        &mut self,
+        scheduler: &mut crate::kernel::task::TaskScheduler,
         bg: &crate::kernel::runtime::BackgroundHandle,
-    ) -> Result<TaskId, String> {
-        scheduler.run_by_name("build", bg)
+    ) -> Result<u64, String> {
+        self.launch_config("build", scheduler, bg)
     }
 
-    /// Dispatch the project's `test` target through the Task System.
+    /// Dispatch the project's `test` config.
     pub fn test(
-        &self,
-        scheduler: &mut TaskScheduler,
+        &mut self,
+        scheduler: &mut crate::kernel::task::TaskScheduler,
         bg: &crate::kernel::runtime::BackgroundHandle,
-    ) -> Result<TaskId, String> {
-        scheduler.run_by_name("test", bg)
+    ) -> Result<u64, String> {
+        self.launch_config("test", scheduler, bg)
     }
 
-    /// Dispatch the project's `run` target through the Task System.
+    /// Dispatch the project's `run` config.
     pub fn run(
-        &self,
-        scheduler: &mut TaskScheduler,
+        &mut self,
+        scheduler: &mut crate::kernel::task::TaskScheduler,
         bg: &crate::kernel::runtime::BackgroundHandle,
-    ) -> Result<TaskId, String> {
-        scheduler.run_by_name("run", bg)
+    ) -> Result<u64, String> {
+        self.launch_config("run", scheduler, bg)
     }
 
     /// Sync the project's current file list into the Semantic Engine's
@@ -212,7 +191,8 @@ impl ProjectManager {
 /// Set `path` as the active project root, register it, emit `project-opened`,
 /// and record it in the recent-projects list.  Emits `project-closed` first
 /// when a project was already active.  Call `dispatch_events_scoped` after to
-/// run Janet handlers (workspace detection, …).
+/// run Janet handlers (workspace detection, run-config seeding).  The run
+/// configuration store resets here and is re-seeded by `detect`.
 pub fn open_root(editor: &mut crate::kernel::state::Editor, path: &str) {
     use crate::kernel::event::keys;
 
@@ -225,6 +205,11 @@ pub fn open_root(editor: &mut crate::kernel::state::Editor, path: &str) {
     let name = pb.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string());
+    editor.project_manager.run_configs = crate::kernel::run_config::RunConfigManager::default();
+    // Breakpoints and watches are per-project session state: the store
+    // clears with the project and the new project's session file refills it.
+    editor.debug.breakpoints.clear();
+    editor.debug.watches.clear();
     editor.project_manager.project = Project {
         root: Some(pb),
         name: Some(name.clone()),

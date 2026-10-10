@@ -88,20 +88,8 @@ unsafe extern "C-unwind" fn c_editor_run_command(argc: i32, argv: *mut Janet) ->
         } else {
             String::new()
         };
-        let mut args = std::collections::HashMap::new();
-        if let Some(entry) = ed.commands.get_entry(&name) {
-            let parts: Vec<&str> = rest.split_whitespace().collect();
-            for (i, arg) in entry.args.iter().enumerate() {
-                if i < parts.len() {
-                    args.insert(arg.name.clone(), crate::kernel::command::args::ArgValue::String(parts[i].to_string()));
-                } else if let Some(ref default) = arg.default {
-                    args.insert(arg.name.clone(), default.clone());
-                } else if arg.required {
-                    conv::signal_err(&format!("Missing required argument: {}", arg.name));
-                }
-            }
-        }
-        match crate::kernel::command::execute_command(ed, &name, &args) {
+        let line = if rest.is_empty() { name.clone() } else { format!("{name} {rest}") };
+        match crate::kernel::command::execute_command_line(ed, &line) {
             Ok(()) => conv::nil(),
             Err(e) => conv::signal_err(&e),
         }

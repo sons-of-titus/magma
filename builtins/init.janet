@@ -13,6 +13,7 @@
 #   builtins/indent_commands.janet     (uses magma/trim defined above)
 #   builtins/multi_cursor.janet
 #   builtins/major_modes.janet         (language major-mode detection)
+#   builtins/icons.janet               (default file-icon pack + overrides)
 #   builtins/plugin_loader.janet       (defines `require`)
 
 # --- Default faces (Sprint 6) ---------------------------------------------

@@ -12,11 +12,6 @@ pub(crate) struct CommandEntry {
     pub(crate) description: String,
     pub(crate) args: Vec<ArgSpec>,
     pub(crate) handler: Arc<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
-    /// True when the entry is a trampoline into a Janet-defined function
-    /// (`command/define` / `command/redefine`).  The palette surfaces only
-    /// Rust-native commands; Janet commands remain reachable through the
-    /// keymap, colon mode, and run-command.
-    pub(crate) janet_backed: bool,
 }
 
 pub struct CommandRegistry {
@@ -43,34 +38,10 @@ impl CommandRegistry {
         args: Vec<ArgSpec>,
         handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
     ) {
-        self.register_inner(name, description, args, handler, false);
-    }
-
-    /// Register a command that trampolines into Janet — hidden from the
-    /// command palette but executable like any other.
-    pub fn register_janet_backed(
-        &mut self,
-        name: &str,
-        description: &str,
-        args: Vec<ArgSpec>,
-        handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
-    ) {
-        self.register_inner(name, description, args, handler, true);
-    }
-
-    fn register_inner(
-        &mut self,
-        name: &str,
-        description: &str,
-        args: Vec<ArgSpec>,
-        handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
-        janet_backed: bool,
-    ) {
         self.commands.insert(name.to_string(), CommandEntry {
             description: description.to_string(),
             args,
             handler: Arc::from(handler),
-            janet_backed,
         });
     }
 
@@ -95,21 +66,6 @@ impl CommandRegistry {
     /// argument without a default — callers that cannot prompt skip those.
     pub fn list_detailed(&self) -> Vec<(String, String, bool)> {
         let mut out: Vec<(String, String, bool)> = self.commands.iter()
-            .map(|(name, e)| (
-                name.clone(),
-                e.description.clone(),
-                e.args.iter().any(|a| a.required && a.default.is_none()),
-            ))
-            .collect();
-        out.sort_by(|a, b| a.0.cmp(&b.0));
-        out
-    }
-
-    /// Rust-native commands only — the palette's surface.  Janet-defined
-    /// commands stay reachable via the keymap, colon mode, and run-command.
-    pub fn list_rust_commands(&self) -> Vec<(String, String, bool)> {
-        let mut out: Vec<(String, String, bool)> = self.commands.iter()
-            .filter(|(_, e)| !e.janet_backed)
             .map(|(name, e)| (
                 name.clone(),
                 e.description.clone(),
@@ -186,6 +142,57 @@ pub fn execute_command(
     }
 
     result
+}
+
+/// Execute `"name rest of line"` from a single input string — the command
+/// line, the palette's argument prompt, and `editor/run-command` all parse
+/// through here.  Commands with declared argument specs consume the rest
+/// positionally; commands without specs (Janet-defined `(fn [arg] …)`) get
+/// the raw remainder as their single `"arg"` value.
+pub fn execute_command_line(
+    editor: &mut Editor,
+    input: &str,
+) -> CommandResult {
+    let input = input.trim();
+    let Some(space) = input.find(char::is_whitespace) else {
+        return execute_command(editor, input, &HashMap::new());
+    };
+    let (name, rest) = input.split_at(space);
+    let rest = rest.trim();
+
+    let mut args: HashMap<String, ArgValue> = HashMap::new();
+    if let Some(entry) = editor.commands.get_entry(name) {
+        if entry.args.len() == 1 {
+            // A lone argument gets the whole remainder — `shell-command git
+            // status` must not split into two positional values.
+            let arg = &entry.args[0];
+            if rest.is_empty() {
+                if let Some(ref default) = arg.default {
+                    args.insert(arg.name.clone(), default.clone());
+                } else if arg.required {
+                    return Err(format!("Missing required argument: {}", arg.name));
+                }
+            } else {
+                args.insert(arg.name.clone(), ArgValue::String(rest.to_string()));
+            }
+        } else if entry.args.is_empty() {
+            if !rest.is_empty() {
+                args.insert("arg".to_string(), ArgValue::String(rest.to_string()));
+            }
+        } else {
+            let parts: Vec<&str> = rest.split_whitespace().collect();
+            for (i, arg) in entry.args.iter().enumerate() {
+                if i < parts.len() {
+                    args.insert(arg.name.clone(), ArgValue::String(parts[i].to_string()));
+                } else if let Some(ref default) = arg.default {
+                    args.insert(arg.name.clone(), default.clone());
+                } else if arg.required {
+                    return Err(format!("Missing required argument: {}", arg.name));
+                }
+            }
+        }
+    }
+    execute_command(editor, name, &args)
 }
 
 fn is_change_command(name: &str) -> bool {

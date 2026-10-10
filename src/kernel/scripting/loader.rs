@@ -133,6 +133,7 @@ pub fn init_vm() {
         regs.extend(super::mode_api::register());
         regs.extend(super::ecosystem_api::register());
         regs.extend(super::font_api::register());
+        regs.extend(super::icons_api::register());
         regs.extend(super::ui_api::register());
         regs.extend(super::overlay_api::register());
         regs.extend(super::gutter_api::register());
@@ -150,6 +151,7 @@ pub fn init_vm() {
         regs.extend(super::clipboard_api::register());
         regs.extend(super::task_api::register());
         regs.extend(super::debug_api::register());
+        regs.extend(super::toolchain_api::register());
         regs.extend(super::scheduler_api::register());
         regs.extend(super::extension_api::register());
         regs.extend(super::agent_api::register());
@@ -190,6 +192,7 @@ pub fn init_vm() {
     load_builtin("builtins/which_key.janet",       include_str!("../../../builtins/which_key.janet"));
     load_builtin("builtins/grep.janet",            include_str!("../../../builtins/grep.janet"));
     load_builtin("builtins/fonts.janet",           include_str!("../../../builtins/fonts.janet"));
+    load_builtin("builtins/icons.janet",           include_str!("../../../builtins/icons.janet"));
     load_builtin("builtins/ui.janet",              include_str!("../../../builtins/ui.janet"));
     load_builtin("builtins/lsp_inlay.janet",       include_str!("../../../builtins/lsp_inlay.janet"));
     load_builtin("builtins/git_blame.janet",       include_str!("../../../builtins/git_blame.janet"));

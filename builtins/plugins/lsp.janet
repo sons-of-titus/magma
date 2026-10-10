@@ -63,15 +63,36 @@
     (lsp/did-open lang-id buffer-id)
     (put *attached-buffers* buffer-id true)))
 
+(def *missing-reported* @{})
+
+(defn- resolve-command
+  "Command override for a language: the `<lang>-lsp-command` editor option
+  wins (the per-language config packs set these), then the built-in table.
+  A command that is not on PATH reports once and returns nil — a raw spawn
+  failure is the wrong way for a user to learn a server is missing."
+  [lang-id cmd]
+  (def override (option/get (string lang-id "-lsp-command")))
+  (def final-cmd (or override cmd))
+  (unless (toolchain/find final-cmd)
+    (unless (get *missing-reported* final-cmd)
+      (put *missing-reported* final-cmd true)
+      (editor/echo (string "LSP: '" final-cmd
+                           "' not found on PATH — language server disabled for "
+                           lang-id) "error"))
+    nil)
+  final-cmd)
+
 (defn attach-if-supported [buffer-id]
   (def cfg (language-for buffer-id))
   (when cfg
     (def lang-id (get cfg :language-id))
     (put *buffer-languages* buffer-id lang-id)
     (unless (get *lsp-servers* lang-id)
-      (def cmd (get cfg :command)) (def args (get cfg :args))
-      (put *lsp-servers* lang-id :starting)
-      (lsp/start lang-id cmd (splice args)))))
+      (def cmd (resolve-command lang-id (get cfg :command)))
+      (when cmd
+        (def args (get cfg :args))
+        (put *lsp-servers* lang-id :starting)
+        (lsp/start lang-id cmd (splice args))))))
 
 (event/on "lsp-initialized"
   (fn [ev]

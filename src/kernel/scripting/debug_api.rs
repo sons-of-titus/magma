@@ -31,6 +31,15 @@ pub(crate) fn send_dap_command(ed: &mut crate::kernel::state::Editor, session_id
 
 // ── C functions ───────────────────────────────────────────────────────────────
 
+/// The buffer whose path matches `file`, if one is open.
+fn buffer_for_path(ed: &mut crate::kernel::state::Editor, file: &str)
+    -> Option<std::sync::Arc<std::sync::Mutex<crate::kernel::text_engine::Buffer>>>
+{
+    ed.buffers.iter()
+        .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file))
+        .map(|(_, a)| a.clone())
+}
+
 /// (debug/start adapter &opt launch-config-json) → session-id
 /// The initialize handshake runs off the foreground; readiness arrives via
 /// the `DapStarted` background event.
@@ -41,21 +50,10 @@ unsafe extern "C-unwind" fn c_debug_start(argc: i32, argv: *mut Janet) -> Janet 
         let launch_config: Option<serde_json::Value> =
             unsafe { conv::get_str(argc, argv, 1) }
                 .and_then(|c| serde_json::from_str(&c).ok());
-        let bg = match ed.background.clone() {
-            Some(bg) => bg,
-            None => conv::signal_err("debug/start: no background runtime"),
-        };
-        let session_id = ed.debug.new_session(adapter.clone());
-        std::thread::Builder::new()
-            .name(format!("dap-init-{session_id}"))
-            .spawn(move || {
-                let result = crate::kernel::debug::dap_client::DapHandle::start(
-                    &adapter, session_id, launch_config, bg.clone()).map(std::sync::Arc::new);
-                bg.send_event(crate::kernel::runtime::BackgroundEvent::DapStarted { session_id, result });
-            })
-            .map_err(|e| debug!("dap-init thread: {e}"))
-            .ok();
-        conv::integer(session_id as i32)
+        match crate::kernel::debug::spawn_session(ed, &adapter, launch_config) {
+            Ok(id) => conv::integer(id as i32),
+            Err(_) => conv::nil(),
+        }
     })
 }
 
@@ -132,9 +130,14 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
         let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
         if file.is_empty() { return conv::nil(); }
-        ed.debug.add_breakpoint(file.clone(), line);
-        // The :breakpoints GutterProvider reads live from ed.debug.breakpoints —
-        // no gutter state manipulation needed here.
+        let bp_id = ed.debug.add_breakpoint(file.clone(), line);
+        // While a buffer for this file is open, its line tracks edits.
+        if let Some(arc) = buffer_for_path(ed, &file) {
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            let offset = buf.line_start_offset(line.saturating_sub(1)).unwrap_or(0);
+            buf.attach_breakpoint(bp_id, offset);
+        }
+        crate::kernel::debug::sync_breakpoint_lines(ed);
         // Notify the active debug session.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
@@ -155,9 +158,14 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
         let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
         if file.is_empty() { return conv::nil(); }
-        ed.debug.remove_breakpoint(&file, line);
-        // The :breakpoints GutterProvider reads live from ed.debug.breakpoints —
-        // no gutter state manipulation needed here.
+        let removed = ed.debug.remove_breakpoint(&file, line);
+        if let Some(arc) = buffer_for_path(ed, &file) {
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            for id in removed {
+                buf.detach_breakpoint(id);
+            }
+        }
+        // The :breakpoints GutterProvider reads live from ed.debug.breakpoints.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
             send_dap_command(ed, sid, "setBreakpoints", &args);
@@ -168,6 +176,80 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
             action: "remove".to_string(),
         });
         conv::nil()
+    })
+}
+
+/// (debug/set-enabled file line enabled) → nil
+/// Disabled breakpoints stay visible in the UI but are withheld from the
+/// adapter until re-enabled.
+unsafe extern "C-unwind" fn c_debug_set_enabled(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
+        let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
+        let enabled = unsafe { conv::get_bool(argc, argv, 2) }.unwrap_or(true);
+        if file.is_empty() { return conv::nil(); }
+        crate::kernel::debug::set_breakpoint_enabled(ed, &file, line, enabled);
+        conv::nil()
+    })
+}
+
+/// (debug/pause &opt thread-id) → nil
+unsafe extern "C-unwind" fn c_debug_pause(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        let thread_id = unsafe { conv::get_int(argc, argv, 0) }
+            .map(|t| t as u64)
+            .unwrap_or(1);
+        send_dap_command(ed, sid, "pause", &format!(r#"{{"threadId":{thread_id}}}"#));
+        conv::nil()
+    })
+}
+
+/// (debug/restart) → nil
+/// Asks the adapter to restart the debuggee; unsupported adapters report the
+/// failure into the debug console.
+unsafe extern "C-unwind" fn c_debug_restart(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        if let Some(s) = ed.debug.active_session_mut() { s.stopped = false; }
+        send_dap_command(ed, sid, "restart", "{}");
+        conv::nil()
+    })
+}
+
+/// (debug/watch-add expr) → nil
+unsafe extern "C-unwind" fn c_debug_watch_add(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let Some(expr) = (unsafe { conv::get_str(argc, argv, 0) }) else { return conv::nil() };
+        let expr = expr.trim().to_string();
+        if expr.is_empty() { return conv::nil(); }
+        if !ed.debug.watches.contains(&expr) {
+            ed.debug.watches.push(expr);
+        }
+        conv::nil()
+    })
+}
+
+/// (debug/watch-remove expr) → nil
+unsafe extern "C-unwind" fn c_debug_watch_remove(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let Some(expr) = (unsafe { conv::get_str(argc, argv, 0) }) else { return conv::nil() };
+        ed.debug.watches.retain(|w| w != &expr);
+        for session in ed.debug.sessions.values_mut() {
+            session.watch_results = vec![None; ed.debug.watches.len()];
+        }
+        conv::nil()
+    })
+}
+
+/// (debug/watches) → [expr …]
+unsafe extern "C-unwind" fn c_debug_watches(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let arr = janet_array(ed.debug.watches.len() as i32);
+        for w in &ed.debug.watches {
+            janet_array_push(arr, conv::string(w));
+        }
+        janet_wrap_array(arr)
     })
 }
 
@@ -263,6 +345,36 @@ pub fn register() -> Vec<JanetReg> {
             name: c"debug/breakpoints".as_ptr() as *const _,
             cfun: Some(c_debug_breakpoints),
             documentation: c"(debug/breakpoints file) → [line ...] — line numbers of all breakpoints in file".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/set-enabled".as_ptr() as *const _,
+            cfun: Some(c_debug_set_enabled),
+            documentation: c"(debug/set-enabled file line enabled) → nil — enable or disable breakpoints at a location; disabled ones are withheld from the adapter".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/pause".as_ptr() as *const _,
+            cfun: Some(c_debug_pause),
+            documentation: c"(debug/pause &opt thread-id) → nil — pause execution in the active session".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/restart".as_ptr() as *const _,
+            cfun: Some(c_debug_restart),
+            documentation: c"(debug/restart) → nil — ask the adapter to restart the debuggee".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/watch-add".as_ptr() as *const _,
+            cfun: Some(c_debug_watch_add),
+            documentation: c"(debug/watch-add expr) → nil — add a watch expression, evaluated whenever the session stops".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/watch-remove".as_ptr() as *const _,
+            cfun: Some(c_debug_watch_remove),
+            documentation: c"(debug/watch-remove expr) → nil — remove a watch expression".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/watches".as_ptr() as *const _,
+            cfun: Some(c_debug_watches),
+            documentation: c"(debug/watches) → [expr …] — current watch expressions".as_ptr() as *const _,
         },
     ]
 }

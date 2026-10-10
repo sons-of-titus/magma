@@ -32,10 +32,23 @@ pub struct Task {
     pub id: TaskId,
     pub name: String,
     pub command: String,
+    /// When non-empty, `command` spawns directly with these arguments
+    /// instead of through `sh -c`.
+    pub args: Vec<String>,
+    /// Working directory for the child process.
+    pub cwd: Option<std::path::PathBuf>,
     pub environment: HashMap<String, String>,
     pub dependencies: Vec<TaskId>,
     pub status: TaskStatus,
     pub output: Option<TaskOutput>,
+}
+
+/// Where a task's streamed output lands: the buffer that shows the run as
+/// it progresses, and whether finishing it feeds the quickfix list (`make`).
+#[derive(Debug, Clone)]
+pub struct OutputSink {
+    pub buffer_key: usize,
+    pub parse_quickfix: bool,
 }
 
 /// Orchestrates task definitions, dependency resolution, and concurrent execution.
@@ -47,12 +60,14 @@ pub struct TaskScheduler {
     /// Kill handles for running children — `cancel` must actually stop
     /// the process, not only flip a status flag (rework.md §6).
     pub running: HashMap<TaskId, std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>>,
+    /// Tasks whose output streams into a dedicated output buffer.
+    pub output_sinks: HashMap<TaskId, OutputSink>,
     pub next_id: u64,
 }
 
 impl TaskScheduler {
     pub fn new() -> Self {
-        TaskScheduler { tasks: HashMap::new(), named: HashMap::new(), running: HashMap::new(), next_id: 1 }
+        TaskScheduler { tasks: HashMap::new(), named: HashMap::new(), running: HashMap::new(), output_sinks: HashMap::new(), next_id: 1 }
     }
 
     /// Define (or redefine) a named task.  Returns the stable task ID for this name.
@@ -81,7 +96,10 @@ impl TaskScheduler {
         self.next_id += 1;
         self.named.insert(name.clone(), id);
         self.tasks.insert(id, Task {
-            id, name, command, environment, dependencies,
+            id, name, command,
+            args: Vec::new(),
+            cwd: None,
+            environment, dependencies,
             status: TaskStatus::Pending,
             output: None,
         });
@@ -105,8 +123,10 @@ impl TaskScheduler {
         })
     }
 
-    /// Spawn the task on the background thread pool.  Marks it Running immediately.
-    /// The background thread sends `BackgroundEvent::TaskRunCompleted` when done.
+    /// Spawn the task on the background thread pool.  A finished task may be
+    /// launched again (status resets to Pending); only a Running task
+    /// refuses.  The background thread sends `BackgroundEvent::TaskRunCompleted`
+    /// when done.
     pub fn launch(
         &mut self,
         id: TaskId,
@@ -114,12 +134,20 @@ impl TaskScheduler {
     ) -> Result<(), String> {
         let task = self.tasks.get_mut(&id)
             .ok_or_else(|| format!("task {id} not found"))?;
-        if !matches!(task.status, TaskStatus::Pending) {
-            return Err(format!("task {id} is not in Pending state"));
+        match task.status {
+            TaskStatus::Running => {
+                return Err(format!("task {id} is already running"));
+            }
+            _ => {
+                task.status = TaskStatus::Pending;
+                task.output = None;
+            }
         }
         task.status = TaskStatus::Running;
 
         let command = task.command.clone();
+        let args = task.args.clone();
+        let cwd = task.cwd.clone();
         let environment = task.environment.clone();
         let sender = bg.sender.clone();
         let child_slot: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>> =
@@ -129,8 +157,18 @@ impl TaskScheduler {
         bg.spawn_blocking(move || {
             use std::io::BufRead;
             let start = Instant::now();
-            let mut cmd = std::process::Command::new("sh");
-            cmd.arg("-c").arg(&command);
+            let mut cmd = if args.is_empty() {
+                let mut c = std::process::Command::new("sh");
+                c.arg("-c").arg(&command);
+                c
+            } else {
+                let mut c = std::process::Command::new(&command);
+                c.args(&args);
+                c
+            };
+            if let Some(cwd) = cwd {
+                cmd.current_dir(cwd);
+            }
             for (k, v) in &environment {
                 cmd.env(k, v);
             }

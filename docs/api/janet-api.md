@@ -318,7 +318,10 @@ Run `sh -c cmd` synchronously and return combined stdout+stderr. Signals on exec
 
 ### `(editor/run-command name &opt args)` → nil
 
-Execute a registered Rust command by name with optional positional string arguments.
+Execute a registered command by name (Rust or Janet-defined).  `args` maps to
+the command's declared arguments positionally; a command with a single
+argument receives the whole remainder, and a Janet-defined command receives
+it as its one string argument.
 
 ### `(editor/load-file path)` → nil
 
@@ -461,6 +464,34 @@ When true, pre-populate the glyph-width table with width 2 for standard Nerd Fon
 ### `(font/invalidate)` → nil
 
 Mark the GPU glyph atlas as dirty so it is rebuilt on the next frame.
+
+---
+
+## icons/ — Icon Packs
+
+### `(icons/set-pack name spec)` → nil
+
+Install a glyph icon pack named `name`.  `spec` is a table with `:files`
+(extension → icon), `:file-names` (exact file name → icon),
+`:default-file`, `:folder`, and `:folder-open`; an icon is a glyph
+codepoint or `[codepoint [r g b]]`.  Installing a pack named `default`
+also snapshots it so the `icon-pack` option can restore it.
+
+### `(icons/lookup filename)` → string or nil
+
+Return the active pack's glyph for `filename`, or nil when the pack
+entry is not a glyph (e.g. an SVG icon).
+
+### `(icons/current)` → string
+
+Return the name of the active icon pack.
+
+### `(icons/load-pack name-or-path)` → name
+
+Load a VS Code icon-theme pack from a manifest file or a directory
+holding one; bare names are resolved against the icon-pack search dirs.
+Records the pack in the `icon-pack` option so it persists.  Signals an
+error when the pack cannot be read.
 
 ---
 
@@ -1017,32 +1048,33 @@ Return true if a file or directory exists at `path`.
 
 Read a file's content as a string, or nil on failure.
 
-### `(project/current)` → `{:name :root :language :tasks :build-targets}` or nil
+### `(project/current)` → `{:name :root :language :run-configs :active-config}` or nil
 
-Return a table describing the active project.  Returns nil when no project is
-active.
+Return a table describing the active project: `:run-configs` lists the
+configured run-configuration names and `:active-config` is the selected one
+(or nil).  Returns nil when no project is active.
 
 `:name` — project name string  
 `:root` — absolute root path string  
 `:language` — detected language: `"rust"`, `"node"`, `"python"`, `"make"`, or `""`  
-`:tasks` — array of task IDs registered for this project  
-`:build-targets` — array of `{:name :kind :task-id}` tables (`:kind` is `:debug` or `:release`)
+`:run-configs` — array of run-configuration names  
+`:active-config` — the selected run-configuration name, or nil
 
 ### `(project/build)` → task-id
 
-Dispatch the project's `build` target through the Task System.  Emits
-`task-started`.  Signals an error if no `build` task is defined — call
-`(task/detect-project root)` first.
+Launch the project's `build` run configuration through the Task System.
+Emits `task-started`.  Signals an error if no `build` configuration exists —
+call `(task/detect-project root)` first.
 
 ### `(project/test)` → task-id
 
-Dispatch the project's `test` target through the Task System.  Emits
-`task-started`.  Signals an error if no `test` task is defined.
+Launch the project's `test` run configuration.  Emits `task-started`.
+Signals an error if no `test` configuration exists.
 
 ### `(project/run)` → task-id
 
-Dispatch the project's `run` target through the Task System.  Emits
-`task-started`.  Signals an error if no `run` task is defined.
+Launch the project's `run` run configuration.  Emits `task-started`.
+Signals an error if no `run` configuration exists.
 
 ---
 
@@ -1264,6 +1296,38 @@ Evaluate the expression `expr` in the context of frame `frame-id` (defaults to 0
 Return the active session ID, or `nil` if no session is running.
 
 ### `(debug/breakpoints file)` → `[line …]`
+
+The line numbers of all breakpoints in the file.
+
+### `(debug/set-enabled file line enabled)` → nil
+
+Enable or disable the breakpoints at a location; disabled ones stay visible in
+the UI but are withheld from the adapter until re-enabled.
+
+### `(debug/pause &opt thread-id)` → nil
+
+Pause execution in the active session.
+
+### `(debug/restart)` → nil
+
+Ask the adapter to restart the debuggee.
+
+### `(debug/watch-add expr)` → nil
+
+Add a watch expression; it is evaluated whenever the session stops and shown
+in the debug pane's watches section.
+
+### `(debug/watch-remove expr)` → nil
+
+Remove a watch expression.
+
+### `(debug/watches)` → `[expr …]`
+
+The current watch expressions.
+
+### `(toolchain/find name)` → path string or nil
+
+Resolve an executable against `$PATH`; nil when it is not installed.
 
 Return an array of line numbers (integers) for all breakpoints set in `file`.
 

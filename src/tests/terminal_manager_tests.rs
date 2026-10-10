@@ -332,3 +332,26 @@ fn close_all_kills_every_session_and_releases_focus() {
     assert_eq!(mgr.focused, None);
     let _ = rx.try_recv();
 }
+
+#[test]
+fn terminal_exit_reports_the_real_exit_code() {
+    let (mut mgr, tx, mut rx) = manager_with_channel();
+    let id = mgr.spawn("sh", &shell_script("exit 7"), &std::env::temp_dir(), tx)
+        .expect("spawn");
+    drop(mgr);
+
+    // The waiter thread reaps the child and reports its actual code.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut code = None;
+    while std::time::Instant::now() < deadline {
+        match rx.try_recv() {
+            Ok(BackgroundEvent::TerminalExited { terminal_id, exit_code }) if terminal_id == id => {
+                code = Some(exit_code);
+                break;
+            }
+            Ok(_) => {}
+            Err(_) => std::thread::sleep(Duration::from_millis(25)),
+        }
+    }
+    assert_eq!(code, Some(7), "the exit code is reaped from the child, not hardcoded");
+}

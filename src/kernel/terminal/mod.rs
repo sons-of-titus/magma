@@ -66,6 +66,7 @@ impl TerminalManager {
 
         let child = pair.slave.spawn_command(cmd_builder)
             .map_err(|e| format!("Failed to spawn command in PTY: {}", e))?;
+        let killer = child.clone_killer();
         let reader = pair.master.try_clone_reader()
             .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
         let writer = pair.master.take_writer()
@@ -92,11 +93,22 @@ impl TerminalManager {
             screen: screen::TerminalScreen::default(),
             writer: Arc::new(Mutex::new(writer)),
             master: Mutex::new(pair.master),
-            child,
+            child_killer: Mutex::new(killer),
         });
         self.renumber();
 
-        std::thread::spawn(move || read_pipe(reader, id, sender));
+        let reader_sender = sender.clone();
+        std::thread::spawn(move || read_pipe(reader, id, reader_sender));
+        // The waiter owns the child: it blocks on exit and reports the real
+        // exit code (the PTY reader's EOF carries none).
+        std::thread::spawn(move || {
+            let mut child = child;
+            let status = child.wait().ok();
+            let exit_code = status.as_ref()
+                .map(|s| s.exit_code() as i32)
+                .unwrap_or(-1);
+            let _ = sender.send(BackgroundEvent::TerminalExited { terminal_id: id, exit_code });
+        });
         Ok(id)
     }
 
@@ -213,8 +225,8 @@ fn read_pipe(
             }
         }
     }
-    // PTY EOF — the main thread reaps the real exit code from the child.
-    let _ = sender.send(BackgroundEvent::TerminalExited { terminal_id, exit_code: 0 });
+    // PTY EOF.  The exit event comes from the child waiter thread, which
+    // reaps the real exit code.
 }
 
 // ── Editor-level surface ─────────────────────────────────────────────────────

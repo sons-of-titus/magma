@@ -1,11 +1,14 @@
 //! Magma kernel — all core subsystems.
 
 pub mod agent;
+pub mod icons;
 pub mod event;
 pub mod extension;
 pub mod scheduler;
 pub mod debug;
 pub mod project;
+pub mod run_config;
+pub mod session;
 pub mod state;
 pub mod text_engine;
 pub mod index;
@@ -26,7 +29,7 @@ pub mod util;
 pub mod input;
 pub mod server;
 pub mod runtime;
-mod runtime_dap;
+pub mod runtime_dap;
 
 #[cfg(feature = "janet")]
 pub use scripting::JanetRuntime;

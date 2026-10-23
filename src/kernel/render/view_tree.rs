@@ -45,6 +45,11 @@ pub struct Pane {
     pub weight: f32,
     /// When true, scroll_offset is the explicit top line (not cursor-following).
     pub scroll_pinned: bool,
+    /// Buffer `scroll_offset`/`scroll_cursor` were computed for; a mismatch
+    /// (buffer switch) re-derives the viewport from the cursor.
+    pub scroll_buf: Option<usize>,
+    /// Cursor offset at the last sync — a change releases a manual scroll pin.
+    pub scroll_cursor: Option<usize>,
     /// How this pane was created in the layout tree.
     pub layout: LayoutConstraint,
 }
@@ -63,6 +68,8 @@ impl Pane {
             scroll_offset: 0,
             weight: 1.0,
             scroll_pinned: false,
+            scroll_buf: None,
+            scroll_cursor: None,
             layout: LayoutConstraint::default(),
         }
     }
@@ -103,24 +110,38 @@ impl ViewTree {
         }
     }
 
-    /// Recompute pane geometry from weights — horizontal tiling, status-bar row reserved.
+    /// Recompute pane geometry from weights.
+    ///
+    /// Tab panes stack: every `Tab` pane covers the full editor area and
+    /// only the focused one renders.  Split panes tile along one axis among
+    /// themselves.  Mixed Tab+Split overlaps — a documented non-feature
+    /// until the recursive layout pass lands.
     fn redistribute(&mut self) {
         let tw = self.term_width;
         let th = self.term_height.saturating_sub(1);
         if self.panes.is_empty() { return; }
-        if self.panes.len() == 1 {
-            let p = &mut self.panes[0];
+        for pane in self.panes.iter_mut().filter(|p| p.layout == LayoutConstraint::Tab) {
+            pane.x = 0; pane.y = 0; pane.width = tw; pane.height = th;
+        }
+        let split: Vec<usize> = self.panes.iter().enumerate()
+            .filter(|(_, p)| p.layout != LayoutConstraint::Tab)
+            .map(|(i, _)| i).collect();
+        if split.is_empty() { return; }
+        if split.len() == 1 {
+            let p = &mut self.panes[split[0]];
             p.x = 0; p.y = 0; p.width = tw; p.height = th;
             return;
         }
-        let total: f32 = self.panes.iter().map(|p| p.weight.max(0.01)).sum();
-        let n = self.panes.len();
+        let total: f32 = split.iter()
+            .map(|&i| self.panes[i].weight.max(0.01)).sum();
+        let n = split.len();
         match self.layout_axis {
             SplitDirection::Vertical => {
                 let mut y: u16 = 0;
-                for (i, pane) in self.panes.iter_mut().enumerate() {
+                for (k, &i) in split.iter().enumerate() {
+                    let pane = &mut self.panes[i];
                     let frac = pane.weight.max(0.01) / total;
-                    let win_h = if i == n - 1 {
+                    let win_h = if k == n - 1 {
                         th.saturating_sub(y)
                     } else {
                         ((frac * th as f32) as u16).max(1)
@@ -132,9 +153,10 @@ impl ViewTree {
             }
             SplitDirection::Horizontal => {
                 let mut x: u16 = 0;
-                for (i, pane) in self.panes.iter_mut().enumerate() {
+                for (k, &i) in split.iter().enumerate() {
+                    let pane = &mut self.panes[i];
                     let frac = pane.weight.max(0.01) / total;
-                    let win_w = if i == n - 1 {
+                    let win_w = if k == n - 1 {
                         tw.saturating_sub(x)
                     } else {
                         ((frac * tw as f32) as u16).max(1)
@@ -250,6 +272,20 @@ impl ViewTree {
         self.layout_axis = SplitDirection::Vertical;
         let buf_id = self.focused_window().and_then(|id| self.buffer(id));
         Some(self.add_pane(buf_id, LayoutConstraint::Split(SplitDirection::Vertical)))
+    }
+
+    /// Open a new tab: a `Tab`-layout pane showing `buf_id`, stacked over
+    /// the other tabs at full editor size, focused immediately.
+    pub fn open_tab(&mut self, buf_id: Option<usize>) -> WindowId {
+        let new_id = WindowId(self.next_id);
+        self.next_id += 1;
+        let mut new_pane = Pane::new(new_id);
+        new_pane.buffer_id = buf_id;
+        new_pane.layout = LayoutConstraint::Tab;
+        self.panes.push(new_pane);
+        self.focus(new_id);
+        self.redistribute();
+        new_id
     }
 
     pub fn close_window(&mut self, id: WindowId) {

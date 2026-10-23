@@ -22,7 +22,7 @@ pub struct RawMouseEvent {
 /// Collect one frame of egui input into (key strings, raw mouse events).
 ///
 /// `line_h` converts point-unit wheel deltas into scroll lines.
-pub fn collect(ctx: &egui::Context, line_h: f32) -> (Vec<String>, Vec<RawMouseEvent>) {
+pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32) -> (Vec<String>, Vec<RawMouseEvent>) {
     let mut keys = Vec::new();
     let mut mice = Vec::new();
     ctx.input(|i| {
@@ -42,7 +42,7 @@ pub fn collect(ctx: &egui::Context, line_h: f32) -> (Vec<String>, Vec<RawMouseEv
                     let kind = if *pressed { MouseEventKind::Click } else { MouseEventKind::Release };
                     mice.push(RawMouseEvent { px: pos.x, py: pos.y, kind, button: mb, modifiers: mods });
                 }
-                egui::Event::PointerMoved(pos) if i.pointer.any_down() => {
+                egui::Event::PointerMoved(pos) if i.pointer.primary_down() => {
                     mice.push(RawMouseEvent {
                         px: pos.x, py: pos.y,
                         kind: MouseEventKind::Drag,
@@ -51,15 +51,22 @@ pub fn collect(ctx: &egui::Context, line_h: f32) -> (Vec<String>, Vec<RawMouseEv
                     });
                 }
                 egui::Event::MouseWheel { unit, delta, modifiers, .. } => {
-                    let dy = match unit {
-                        egui::MouseWheelUnit::Point => (delta.y / line_h).round() as i32,
-                        egui::MouseWheelUnit::Line  => delta.y.round() as i32,
-                        egui::MouseWheelUnit::Page  => delta.y.round() as i32,
+                    // Fractional wheel deltas accumulate across events: a slow
+                    // two-finger scroll must not stall below one line.
+                    let raw = match unit {
+                        egui::MouseWheelUnit::Point => delta.y / line_h,
+                        egui::MouseWheelUnit::Line  => delta.y,
+                        egui::MouseWheelUnit::Page  => delta.y * 10.0,
                     };
+                    let acc = raw + *wheel_remain;
+                    let dy = acc.trunc() as i32;
+                    *wheel_remain = acc - acc.trunc();
                     if dy != 0 {
                         let mods = format_modifiers(modifiers);
+                        let (px, py) = i.pointer.latest_pos()
+                            .map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
                         mice.push(RawMouseEvent {
-                            px: 0.0, py: 0.0,
+                            px, py,
                             kind: MouseEventKind::Scroll(dy),
                             button: MouseButton::Left,
                             modifiers: mods,

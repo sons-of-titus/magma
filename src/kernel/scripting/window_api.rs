@@ -108,9 +108,17 @@ unsafe extern "C-unwind" fn c_window_set_scroll_top(argc: i32, argv: *mut Janet)
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid {
+            let buf = ed.view_tree.buffer(wid);
+            let cursor = buf
+                .and_then(|b| ed.view_of_buffer(b))
+                .map(|v| v.cursor.offset);
             if let Some(win) = ed.view_tree.window_mut(wid) {
                 win.scroll_offset = top;
                 win.scroll_pinned = true;
+                // Bookkeeping so the viewport sync holds the pin until the
+                // cursor moves, instead of reading it as stale state.
+                win.scroll_buf = buf;
+                win.scroll_cursor = cursor;
             }
         }
         conv::nil()

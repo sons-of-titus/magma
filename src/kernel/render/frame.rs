@@ -7,6 +7,7 @@
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view::{Rect, RenderCtx, View};
+use crate::kernel::render::view_tree::Pane;
 use crate::kernel::render::editor_view::EditorView;
 use super::decorations::render_overlays;
 
@@ -60,19 +61,16 @@ pub fn scroll_state_from_lines(
     ScrollState { scroll_top, cursor_vis_row, cursor_col, cursor_line }
 }
 
-/// Scroll state for a buffer's cursor: O(log n) + one line of cell math.
-/// Caller must not hold another borrow of the view.
-pub fn scroll_state_for_buffer(
+/// (cursor_line, cursor_col in cells) for a cursor offset — O(log n) plus
+/// one line of cell math.
+pub fn cursor_metrics(
     buf: &crate::kernel::text_engine::Buffer,
     cursor_offset: usize,
-    visible_lines: usize,
-    scrolloff: usize,
     glyph_widths: &std::collections::HashMap<char, u8>,
-) -> ScrollState {
+) -> (usize, usize) {
     let total_lines = buf.line_count();
     let cursor_offset = cursor_offset.min(buf.len());
-    let pos = buf.position_of(cursor_offset);
-    let cursor_line = pos.line.min(total_lines.saturating_sub(1));
+    let cursor_line = buf.position_of(cursor_offset).line.min(total_lines.saturating_sub(1));
     let line_start = buf.line_start_offset(cursor_line).unwrap_or(0);
     // Exactly the cursor's line — never the rest of the document.
     let line_end = buf.line_start_offset(cursor_line + 1).unwrap_or(buf.len());
@@ -82,7 +80,20 @@ pub fn scroll_state_for_buffer(
         4,
         glyph_widths,
     );
-    scroll_state_from_lines(cursor_line, cursor_col, total_lines, visible_lines, scrolloff)
+    (cursor_line, cursor_col)
+}
+
+/// Scroll state for a buffer's cursor: O(log n) + one line of cell math.
+/// Caller must not hold another borrow of the view.
+pub fn scroll_state_for_buffer(
+    buf: &crate::kernel::text_engine::Buffer,
+    cursor_offset: usize,
+    visible_lines: usize,
+    scrolloff: usize,
+    glyph_widths: &std::collections::HashMap<char, u8>,
+) -> ScrollState {
+    let (cursor_line, cursor_col) = cursor_metrics(buf, cursor_offset, glyph_widths);
+    scroll_state_from_lines(cursor_line, cursor_col, buf.line_count(), visible_lines, scrolloff)
 }
 
 /// Compute the scroll state for the focused buffer, acquiring the lock internally.
@@ -102,6 +113,111 @@ pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize
     }
 }
 
+/// A pane's effective viewport top line, when the pane has synced state.
+///
+/// `None` means the caller must derive the top itself — importantly WITHOUT
+/// taking the buffer lock, because `EditorView::render` calls this while
+/// already holding it.
+pub fn pane_scroll_top_synced(pane: &Pane, buf_id: usize) -> Option<usize> {
+    (pane.scroll_buf == Some(buf_id) || pane.scroll_pinned).then_some(pane.scroll_offset)
+}
+
+/// A pane's effective viewport top line for callers that do not hold the
+/// buffer lock.  Falls back to the stateless cursor-derived top before the
+/// first sync.
+pub fn pane_scroll_top(ed: &Editor, pane: &Pane, buf_id: usize, visible_lines: usize) -> usize {
+    pane_scroll_top_synced(pane, buf_id)
+        .unwrap_or_else(|| compute_scroll_state(ed, buf_id, visible_lines).scroll_top)
+}
+
+/// Scroll state against a pane's effective viewport top.
+pub fn pane_scroll_state(ed: &Editor, pane: &Pane, buf_id: usize, visible_lines: usize) -> ScrollState {
+    let scroll_top = pane_scroll_top(ed, pane, buf_id, visible_lines);
+    let cursor_offset = ed.view_of_buffer(buf_id)
+        .map(|v| v.cursor.offset)
+        .unwrap_or(0);
+    match ed.buffers.get(buf_id) {
+        Some(arc) => {
+            let buf = arc.lock().unwrap();
+            let (cursor_line, cursor_col) = cursor_metrics(&buf, cursor_offset, &ed.font_config.glyph_widths);
+            ScrollState {
+                scroll_top,
+                cursor_vis_row: cursor_line.saturating_sub(scroll_top),
+                cursor_col,
+                cursor_line,
+            }
+        }
+        None => scroll_state_from_lines(0, 0, 1, visible_lines, int_option(ed, "scrolloff", 0)),
+    }
+}
+
+/// Sticky cursor-following scroll, per pane.
+///
+/// Runs once per frame with `&mut Editor` before `render_frame`.  While the
+/// cursor stays inside the viewport the top line does not move — clicking or
+/// arrowing inside the view must never jump the text.  The viewport snaps by
+/// `scrolloff` only when the cursor leaves it.  A manual scroll (wheel,
+/// scrollbar, `window/set-scroll-top`) pins the offset until the cursor
+/// moves; a buffer switch re-derives the viewport.
+pub fn sync_viewport_scroll(ed: &mut Editor) {
+    let mut scrolloff = int_option(ed, "scrolloff", 0);
+    if scrolloff > 0 {
+        // Cap like vim: a margin of half the viewport or more would
+        // oscillate between the top and bottom snap rules.
+        let tallest = ed.view_tree.panes().iter()
+            .map(|p| p.height as usize).max().unwrap_or(1);
+        scrolloff = scrolloff.min(tallest.saturating_sub(1) / 2);
+    }
+
+    for i in 0..ed.view_tree.len() {
+        let Some(buf_id) = ed.view_tree.panes()[i].buffer_id else { continue };
+        let Some(view) = ed.view_of_buffer(buf_id) else { continue };
+        let cursor_offset = view.cursor.offset;
+        let Some(arc) = ed.buffers.get(buf_id) else { continue };
+        let (total_lines, cursor_line) = {
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            (buf.line_count(), buf.position_of(cursor_offset.min(buf.len())).line)
+        };
+        let cursor_line = cursor_line.min(total_lines.saturating_sub(1));
+        let visible = (ed.view_tree.panes()[i].height as usize).saturating_sub(1).max(1);
+        let pane = &mut ed.view_tree.panes_mut()[i];
+
+        if pane.scroll_buf != Some(buf_id) {
+            pane.scroll_buf = Some(buf_id);
+            pane.scroll_cursor = Some(cursor_offset);
+            pane.scroll_pinned = false;
+            pane.scroll_offset = follow_from_scratch(cursor_line, total_lines, visible, scrolloff);
+            continue;
+        }
+        if pane.scroll_cursor != Some(cursor_offset) {
+            pane.scroll_cursor = Some(cursor_offset);
+            pane.scroll_pinned = false;
+        }
+        if pane.scroll_pinned {
+            pane.scroll_offset = pane.scroll_offset.min(total_lines.saturating_sub(1));
+            continue;
+        }
+        pane.scroll_offset = follow_line(pane.scroll_offset, cursor_line, visible, scrolloff)
+            .min(total_lines.saturating_sub(1));
+    }
+}
+
+/// Viewport top for a cursor entering an unscrolled pane.
+fn follow_from_scratch(cursor_line: usize, total_lines: usize, visible: usize, scrolloff: usize) -> usize {
+    scroll_state_from_lines(cursor_line, 0, total_lines, visible, scrolloff).scroll_top
+}
+
+/// Keep `top` unless the cursor crosses a scrolloff margin at either edge.
+fn follow_line(top: usize, cursor_line: usize, visible: usize, scrolloff: usize) -> usize {
+    if cursor_line < top.saturating_add(scrolloff) {
+        cursor_line.saturating_sub(scrolloff)
+    } else if cursor_line + scrolloff >= top + visible.max(1) {
+        cursor_line + scrolloff + 1 - visible
+    } else {
+        top
+    }
+}
+
 /// Populate `surface` from editor state by traversing the ViewTree.
 ///
 /// The surface contains editor pane content only — tab bar, status bar, and
@@ -110,8 +226,14 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
     surface.clear();
 
     // ── Render each pane through its view ────────────────────────────────
+    let focused = editor.view_tree.focused_window();
     for pane in editor.view_tree.panes() {
         let Some(buf_id) = pane.buffer_id else { continue };
+        // Stacked tabs occupy the same area — only the visible one renders.
+        if pane.layout == crate::kernel::render::view_tree::LayoutConstraint::Tab
+            && focused != Some(pane.id) {
+            continue;
+        }
 
         let area = Rect::new(pane.x, pane.y, pane.width, pane.height);
         let ctx = RenderCtx { editor, area };

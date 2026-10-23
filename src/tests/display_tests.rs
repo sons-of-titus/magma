@@ -1,9 +1,12 @@
 use crate::tests::helpers;
 
 #[test]
-fn default_cursor_shape_is_block() {
+fn default_cursor_shape_is_beam() {
+    // A full-cell block glyph reads as a heavy slab in the GUI; the default
+    // is the thin native beam (cursor_shape_can_be_set_to_beam covers the
+    // option).
     let ed = helpers::make_editor();
-    assert_eq!(ed.cursor_shape, "block");
+    assert_eq!(ed.cursor_shape, "beam");
 }
 
 #[test]

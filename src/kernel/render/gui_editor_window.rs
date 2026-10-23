@@ -14,7 +14,6 @@ use crate::kernel::input;
 use crate::kernel::state::Editor;
 
 use super::gui_breadcrumb::{BreadcrumbAction, BreadcrumbBar};
-use super::gui_dialog::DialogAction;
 use super::gui_editor_pane::{render_editor_pane, EditorPaneAction, PanePaint};
 use super::gui_input;
 use super::gui_run_tool::{RunAction, RunBar};
@@ -30,6 +29,20 @@ impl GuiApp {
     /// The editor shell — every panel, the central editor pane, dialogs and
     /// tool windows — rendered into the main window's viewport.
     pub(crate) fn editor_shell(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        // PTY output repaints: one blocking thread, woken by the terminal
+        // reader — no frame-rate polling while a shell sits idle.
+        if !self.waker_started {
+            self.waker_started = true;
+            if let Some(rx) = self.pty_wake_rx.take() {
+                let ctx = ctx.clone();
+                std::thread::spawn(move || {
+                    while rx.recv().is_ok() {
+                        ctx.request_repaint();
+                    }
+                });
+            }
+        }
+
         let (char_w, line_h) = {
             let font_id = FontId::new(self.font_size, FontFamily::Monospace);
             ctx.fonts_mut(|f| (
@@ -46,7 +59,7 @@ impl GuiApp {
         self.editor.dispatch_events_scoped();
 
         // ── Key + mouse events ──────────────────────────────────────────────
-        let (key_events, mut raw_mouse_events) = gui_input::collect(ctx, line_h);
+        let (key_events, mut raw_mouse_events) = gui_input::collect(ctx, line_h, &mut self.wheel_remain);
         for key in &key_events {
             if gui_shell::dispatch_shell_key(&mut self.editor, key, &mut self.layout, &mut self.dialogs) {
                 continue;
@@ -198,6 +211,18 @@ impl GuiApp {
                             self.tool_windows.active_bottom = super::tool_window::OUTPUT_TOOL;
                         }
                     }
+                    RunAction::Debug => {
+                        if let Err(e) = crate::kernel::command::execute_command(
+                            &mut self.editor, "debug-config", &std::collections::HashMap::new()) {
+                            self.editor.show_message(
+                                crate::kernel::state::MessageKind::Error, e);
+                        } else {
+                            if let Some(entry) = self.tool_windows.entries.get_mut(super::tool_window::DEBUG_TOOL) {
+                                entry.visible = true;
+                            }
+                            self.tool_windows.active_bottom = super::tool_window::DEBUG_TOOL;
+                        }
+                    }
                     RunAction::Select(name) => {
                         let mut args = std::collections::HashMap::new();
                         args.insert("name".to_string(),
@@ -244,6 +269,7 @@ impl GuiApp {
         let mut pane_action: Option<EditorPaneAction> = None;
         let mut paint = PanePaint {
             editor:        &mut self.editor,
+            surface:       &mut self.pane_surface,
             atlas:         &self.atlas,
             use_gpu,
             target_format: target_fmt,
@@ -257,8 +283,22 @@ impl GuiApp {
             });
         drop(paint);
 
-        if let Some(EditorPaneAction::GotoLine(line)) = pane_action.take() {
-            DialogAction::GotoLine(line).apply(&mut self.editor);
+        if let Some(EditorPaneAction::ScrollViewport(line)) = pane_action.take() {
+            // Scrollbar / minimap drags move the viewport, never the cursor.
+            // The pin holds until the cursor moves again.
+            if let Some(wid) = self.editor.view_tree.focused_window() {
+                let buf = self.editor.view_tree.buffer(wid);
+                let cursor = buf
+                    .and_then(|b| self.editor.view_of_buffer(b))
+                    .map(|v| v.cursor.offset);
+                if let Some(pane) = self.editor.view_tree.window_mut(wid) {
+                    pane.scroll_offset = line.saturating_sub(1);
+                    pane.scroll_pinned = true;
+                    pane.scroll_buf = buf;
+                    pane.scroll_cursor = cursor;
+                }
+            }
+            self.editor.frame_dirty = true;
         }
 
         // ── Modal dialogs ─────────────────────────────────────────────────
@@ -290,7 +330,6 @@ impl GuiApp {
 
     pub(crate) fn schedule_repaint(&mut self, ctx: &egui::Context) {
         const BLINK_PERIOD: std::time::Duration = std::time::Duration::from_millis(400);
-        const TERMINAL_FRAME: std::time::Duration = std::time::Duration::from_millis(16);
         let (dirty, blinked) = {
             let mut blinked = false;
             if self.editor.editor_mode.accepts_text && self.last_blink.elapsed() >= BLINK_PERIOD {
@@ -312,15 +351,9 @@ impl GuiApp {
         if repaint_now {
             ctx.request_repaint();
         }
-        if self.editor.io.terminals.sessions.is_empty()
-            || !self.tool_windows.entries.first().is_some_and(|e| e.visible) {
-            ctx.request_repaint_after(BLINK_PERIOD);
-        } else {
-            // A live PTY produces output between frames; poll at frame rate
-            // so keystroke echo and command output land without perceptible
-            // delay instead of waiting out the blink period.
-            ctx.request_repaint_after(TERMINAL_FRAME);
-        }
+        // Terminal output arrives through the PTY waker thread; nothing here
+        // needs frame-rate polling.
+        ctx.request_repaint_after(BLINK_PERIOD);
     }
 
     /// Close the main window and bring the welcome window back.

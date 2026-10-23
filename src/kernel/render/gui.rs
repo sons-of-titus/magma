@@ -59,6 +59,13 @@ pub struct GuiApp {
     pub(crate) shell: ShellRuntime,
     /// True once a project is open and the main window exists.
     pub(crate) editor_open: bool,
+    /// Scratch grid for the central editor pane, reused across frames.
+    pub(crate) pane_surface: crate::kernel::render::surface::Surface,
+    /// PTY output waker; consumed once by the repaint thread.
+    pub(crate) pty_wake_rx: Option<std::sync::mpsc::Receiver<()>>,
+    pub(crate) waker_started: bool,
+    /// Sub-line wheel delta carried between events.
+    pub(crate) wheel_remain: f32,
 }
 
 impl GuiApp {
@@ -89,8 +96,14 @@ impl GuiApp {
         } else {
             false
         };
-        let shell = ShellRuntime::new(&mut editor);
-        Self {
+    // The GUI paints the cursor as a native rect overlay.
+    editor.cursor_overlay = true;
+    let shell = ShellRuntime::new(&mut editor);
+    // PTY output wakes the event loop through this channel instead of a
+    // frame-rate poll in schedule_repaint.
+    let (wake_tx, wake_rx) = std::sync::mpsc::channel();
+    editor.io.terminals.pty_waker = Some(wake_tx);
+    Self {
             editor,
             font_size,
             layout: GuiLayout::default(),
@@ -109,6 +122,10 @@ impl GuiApp {
             last_blink: std::time::Instant::now(),
             shell,
             editor_open: false,
+            pane_surface: crate::kernel::render::surface::Surface::new(1, 1),
+            pty_wake_rx: Some(wake_rx),
+            waker_started: false,
+            wheel_remain: 0.0,
         }
     }
 }

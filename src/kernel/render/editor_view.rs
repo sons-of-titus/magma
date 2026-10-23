@@ -6,7 +6,7 @@ use crate::kernel::state::Editor;
 use crate::kernel::state::id::WindowId;
 use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{View, ViewKind, RenderCtx};
-use crate::kernel::render::frame::{cell_width, int_option, scroll_state_for_buffer};
+use crate::kernel::render::frame::{cell_width, int_option, pane_scroll_top_synced, scroll_state_for_buffer};
 use crate::kernel::render::decorations::{prefix_margin_width, render_decorations};
 use crate::kernel::render::highlight_pass::apply_highlights;
 use crate::kernel::render::gutter::{GutterCtx, GutterRegistry};
@@ -65,13 +65,16 @@ impl View for EditorView {
             &buf, cursor_offset,
             visible_lines, scrolloff, &editor.font_config.glyph_widths,
         );
-        let scroll_top = editor.view_tree.window(self.pane_id)
-            .filter(|p| p.scroll_pinned)
-            .map(|p| p.scroll_offset)
-            .unwrap_or(st.scroll_top);
-        let cursor_vis_row = st.cursor_vis_row;
-        let cursor_col = st.cursor_col;
         let cursor_line = st.cursor_line;
+        // The synced pane state is authoritative; the stateless fallback
+        // comes from the `st` we already computed — never a second buffer
+        // lock (render holds one).
+        let scroll_top = editor.view_tree.window(self.pane_id)
+            .and_then(|p| pane_scroll_top_synced(p, buf_id))
+            .unwrap_or(st.scroll_top);
+        // The cursor may sit above a manually scrolled viewport.
+        let cursor_vis_row = cursor_line.checked_sub(scroll_top);
+        let cursor_col = st.cursor_col;
 
         let max_visible = (total_lines - scroll_top).min(visible_lines);
         let text_style = Style {
@@ -250,8 +253,11 @@ impl View for EditorView {
             scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset);
 
         // ── Cursor + multi-cursor + completion popup (focused pane only) ──
-        if is_focused && editor.cursor_visible {
-            if cursor_vis_row < visible_lines
+        // With `cursor_overlay` the GUI paints a native cursor rect on top;
+        // stamping the full-cell glyph would double-draw.
+        if is_focused && editor.cursor_visible && !editor.cursor_overlay {
+            if let Some(vis_row) = cursor_vis_row
+                && vis_row < visible_lines
                 && cursor_col < area.width.saturating_sub(gutter_width as u16) as usize
             {
                 let cursor_ch = match editor.cursor_shape.as_str() {
@@ -260,7 +266,7 @@ impl View for EditorView {
                     _ => '█',
                 };
                 surface.set_cell(content_x + cursor_col as u16,
-                    row_offset + cursor_vis_row as u16, cursor_ch, None);
+                    row_offset + vis_row as u16, cursor_ch, None);
             }
 
             if editor.multi_cursor.active {
@@ -268,7 +274,7 @@ impl View for EditorView {
                     let ec_off = ec.pos.min(buf.len());
                     let ec_line = buf.position_of(ec_off).line
                         .min(total_lines.saturating_sub(1));
-                    let ec_vis = ec_line.saturating_sub(scroll_top);
+                    let Some(ec_vis) = ec_line.checked_sub(scroll_top) else { continue };
                     if ec_vis < visible_lines {
                         let ec_line_start = buf.line_start_offset(ec_line).unwrap_or(0);
                         let ec_col: usize = buf
@@ -284,7 +290,9 @@ impl View for EditorView {
                 }
             }
 
-            render_insert_completion_popup(editor, surface, row_offset, visible_lines);
+            if !editor.cursor_overlay {
+                render_insert_completion_popup(editor, surface, row_offset, visible_lines);
+            }
         }
     }
 }

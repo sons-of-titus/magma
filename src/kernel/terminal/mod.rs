@@ -29,6 +29,9 @@ pub struct TerminalManager {
     /// `&self` (the editor-level wrapper only has `&Editor`); the dock reads
     /// it to snap a scrolled view back to the live screen on user input.
     pub input_seq: AtomicU64,
+    /// Wakes the GUI event loop when PTY output lands.  The repaint loop
+    /// must not poll at frame rate for a silent shell.
+    pub pty_waker: Option<std::sync::mpsc::Sender<()>>,
 }
 
 impl Default for TerminalManager {
@@ -38,6 +41,7 @@ impl Default for TerminalManager {
             next_id: 1,
             focused: None,
             input_seq: AtomicU64::new(0),
+            pty_waker: None,
         }
     }
 }
@@ -98,7 +102,8 @@ impl TerminalManager {
         self.renumber();
 
         let reader_sender = sender.clone();
-        std::thread::spawn(move || read_pipe(reader, id, reader_sender));
+        let pty_waker = self.pty_waker.clone();
+        std::thread::spawn(move || read_pipe(reader, id, reader_sender, pty_waker));
         // The waiter owns the child: it blocks on exit and reports the real
         // exit code (the PTY reader's EOF carries none).
         std::thread::spawn(move || {
@@ -205,6 +210,7 @@ fn read_pipe(
     mut reader: Box<dyn std::io::Read + Send>,
     terminal_id: usize,
     sender: tokio::sync::mpsc::UnboundedSender<BackgroundEvent>,
+    pty_waker: Option<std::sync::mpsc::Sender<()>>,
 ) {
     use std::io::Read;
     let mut buf = [0u8; 4096];
@@ -216,6 +222,11 @@ fn read_pipe(
                 let data = String::from_utf8_lossy(&buf[..n]).to_string();
                 if sender.send(BackgroundEvent::TerminalOutput { terminal_id, data }).is_err() {
                     break;
+                }
+                // The event channel has no waker of its own; this is what
+                // makes the output visible without a frame-rate poll.
+                if let Some(wake) = &pty_waker {
+                    let _ = wake.send(());
                 }
             }
             Err(e) => {

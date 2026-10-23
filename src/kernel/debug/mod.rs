@@ -185,6 +185,39 @@ pub fn set_breakpoint_enabled(ed: &mut crate::kernel::state::Editor, file: &str,
     }
 }
 
+/// Toggle a breakpoint at a 1-based line — the native path behind gutter
+/// clicks.  Lives in Rust, not Janet: built-in behavior must not depend on
+/// event handlers registered by init-time scripts.
+pub fn toggle_breakpoint_at(ed: &mut crate::kernel::state::Editor, file: &str, line: usize) {
+    let existing = ed.debug.breakpoints_for(file).iter().any(|bp| bp.line == line);
+    if existing {
+        remove_breakpoints_at(ed, file, line);
+        return;
+    }
+    let bp_id = ed.debug.add_breakpoint(file.to_string(), line);
+    if let Some(arc) = ed.buffers.iter()
+        .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file))
+        .map(|(_, a)| a.clone()) {
+        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        let offset = buf.line_start_offset(line.saturating_sub(1)).unwrap_or(0);
+        buf.attach_breakpoint(bp_id, offset);
+    }
+    sync_breakpoint_lines(ed);
+    #[cfg(feature = "janet")]
+    if let Some(sid) = ed.debug.active_session {
+        let args = ed.debug.set_breakpoints_args(file);
+        crate::kernel::scripting::send_dap_command(ed, sid, "setBreakpoints", &args);
+    }
+    ed.events.emit_typed(
+        crate::kernel::event::keys::events::DEBUG_BREAKPOINT_CHANGED,
+        crate::kernel::event::payload::DebugBreakpointChangedPayload {
+            file: file.to_string(),
+            line: line.to_string(),
+            action: "add".to_string(),
+        },
+    );
+}
+
 /// Remove every breakpoint at a location: manager, buffer anchors, adapter.
 pub fn remove_breakpoints_at(ed: &mut crate::kernel::state::Editor, file: &str, line: usize) {
     let removed = ed.debug.remove_breakpoint(file, line);

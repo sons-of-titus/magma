@@ -10,7 +10,9 @@
 
 use evil_janet::*;
 use super::{conv, with_editor};
-use crate::kernel::render::gutter_providers::JanetProvider;
+use crate::kernel::render::gutter_providers::{
+    Breakpoints, Coverage, Diagnostics, Folding, GitSigns, JanetProvider, LineNumbers,
+};
 use crate::kernel::render::surface::Style;
 use crate::kernel::event::keys;
 use crate::kernel::event::payload::GutterProviderUpdatedPayload;
@@ -23,7 +25,20 @@ unsafe extern "C-unwind" fn c_add_provider(argc: i32, argv: *mut Janet) -> Janet
             conv::signal_err("gutter/add-provider: name required")
         };
         let fn_name = conv::get_str(argc, argv, 1);
-        let provider = Box::new(JanetProvider { provider_name: name, fn_name });
+        // Built-in names resolve to their native providers — a bare
+        // (gutter/add-provider ":breakpoints") must render live state, not
+        // an empty Janet cache.  A provider-fn (or an unknown name) stays
+        // a JanetProvider fed via gutter/provider-update.
+        let provider: Box<dyn crate::kernel::render::gutter::GutterProvider> =
+            match (name.as_str(), fn_name.as_ref()) {
+                (":line-numbers", _) => Box::new(LineNumbers),
+                (":folding", _) => Box::new(Folding),
+                (":git-signs", None) => Box::new(GitSigns),
+                (":diagnostics", None) => Box::new(Diagnostics),
+                (":breakpoints", None) => Box::new(Breakpoints),
+                (":coverage", None) => Box::new(Coverage),
+                _ => Box::new(JanetProvider { provider_name: name, fn_name }),
+            };
         ed.gutter.add_provider(provider);
         conv::nil()
     })

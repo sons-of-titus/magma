@@ -88,6 +88,79 @@ fn evaluate_without_session_is_noop() {
     });
 }
 
+// ── Breakpoint line base ──────────────────────────────────────────────────────
+// Stored lines are 1-based (DAP convention, and what the :breakpoints gutter
+// provider matches against); buffer/line-number is 0-based.
+
+#[test]
+fn toggle_breakpoint_stores_one_based_line() {
+    janet_test!(ed, {
+        let key = crate::tests::helpers::focused_key(&ed);
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.insert(0, "alpha\nbeta\ngamma\ndelta\n");
+        }
+        ed.buffers.get_mut(key).unwrap()
+            .lock().unwrap()
+            .path = Some("/tmp/bp_line_base.rs".to_string());
+        // Cursor to line index 2 (third line).
+        let offset = ed.buffers.get(key).unwrap().lock().unwrap()
+            .line_start_offset(2).unwrap();
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.set_cursor(offset);
+        }
+        scripting::eval(r#"(debug/toggle-breakpoint)"#);
+        let bps = ed.debug.breakpoints_for("/tmp/bp_line_base.rs");
+        assert_eq!(bps.len(), 1, "toggle should add one breakpoint");
+        assert_eq!(bps[0].line, 3, "cursor on 0-based line 2 stores 1-based line 3");
+        // Second toggle removes it again — the convention must be symmetric.
+        scripting::eval(r#"(debug/toggle-breakpoint)"#);
+        assert!(ed.debug.breakpoints_for("/tmp/bp_line_base.rs").is_empty());
+    });
+}
+
+#[test]
+fn gutter_click_breakpoint_stores_one_based_line() {
+    janet_test!(ed, {
+        let key = crate::tests::helpers::focused_key(&ed);
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.insert(0, "alpha\nbeta\ngamma\ndelta\necho\nfoxtrot\n");
+        }
+        ed.buffers.get_mut(key).unwrap()
+            .lock().unwrap()
+            .path = Some("/tmp/bp_gutter.rs".to_string());
+        ed.options.insert("mouse-support".to_string(), "true".to_string());
+        // Park the cursor at the top so the synced viewport starts at line 0
+        // (the insert above left it at the end of the inserted text).
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.set_cursor(0);
+        }
+        crate::kernel::render::frame::sync_viewport_scroll(&mut ed);
+
+        // A real gutter click on the :breakpoints column, resolved through
+        // dispatch_mouse exactly like the GUI does.  Providers start after
+        // the prefix margin; the breakpoints column is first, width 2.
+        let pane = ed.view_tree.panes()[0].clone();
+        let click = crate::kernel::input::event::MouseEvent {
+            kind: crate::kernel::input::event::MouseEventKind::Click,
+            x: pane.x + 1,
+            y: pane.y + 4, // viewport row 4 → 0-based line 4
+            button: crate::kernel::input::event::MouseButton::Left,
+            modifiers: String::new(),
+        };
+        let surface = crate::kernel::render::surface::Surface::new(pane.width, pane.height);
+        crate::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
+
+        let bps = ed.debug.breakpoints_for("/tmp/bp_gutter.rs");
+        assert_eq!(bps.len(), 1, "gutter click should add one breakpoint");
+        assert_eq!(bps[0].line, 5, "click on 0-based line 4 stores 1-based line 5");
+
+        // Clicking the same row again toggles it off.
+        crate::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
+        assert!(ed.debug.breakpoints_for("/tmp/bp_gutter.rs").is_empty());
+    });
+}
+
+
 // ── debug/continue / step-in / step-over / step-out without session ───────────
 
 #[test]

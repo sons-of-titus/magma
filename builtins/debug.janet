@@ -40,7 +40,8 @@
   "Toggle a breakpoint at the cursor position in the focused buffer."
   []
   (let [file (buffer/path (editor/focused-buffer))
-        line (buffer/line-number (editor/focused-buffer))]
+        # Breakpoints are stored 1-based (DAP convention); buffer/line-number is 0-based.
+        line (+ 1 (buffer/line-number (editor/focused-buffer)))]
     (when file
       (let [bps (debug/breakpoints file)]
         (if (find |(= $ line) bps)
@@ -54,9 +55,14 @@
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+# Launching needs a run configuration's program/args/cwd; `debug-config`
+# builds the DAP launch request from it.  An explicit adapter overrides
+# detection — otherwise the adapter is chosen from the detected language.
 (command/define "dbg-start"
   (fn [arg]
-    (debug/start (if (empty? arg) "codelldb" arg))))
+    (if (empty? arg)
+      (command/run "debug-config")
+      (command/run "debug-config" "adapter" arg))))
 
 (command/define "dbg-bp"
   (fn [_]

@@ -26,26 +26,28 @@ fn s6_gutter_click_toggles_a_real_breakpoint() {
         open_file_cmd(&mut ed, &path);
         let key = crate::tests::helpers::focused_key(&ed);
 
-        // A click in the breakpoints gutter column — the payload the mouse
-        // layer emits after hit-testing (mouse.rs dispatch_gutter_click).
-        ed.events.emit_typed(keys::events::GUTTER_CLICKED, GutterClickedPayload {
-            column: ":breakpoints".to_string(),
-            line: "4".to_string(),
-            buf: key.to_string(),
-        });
-        ed.events.drain_and_dispatch();
+        // A real click in the breakpoints gutter column (first column,
+        // width 2), routed through the mouse layer exactly like the GUI.
+        // The built-in toggle is native Rust inside dispatch_gutter_click.
+        ed.options.insert("mouse-support".to_string(), "true".to_string());
+        crate::kernel::render::frame::sync_viewport_scroll(&mut ed);
+        let pane = ed.view_tree.panes()[0].clone();
+        let click = crate::kernel::input::event::MouseEvent {
+            kind: crate::kernel::input::event::MouseEventKind::Click,
+            x: pane.x + 1,
+            y: pane.y + 3, // viewport row 3 → 0-based line 3 → stored 4
+            button: crate::kernel::input::event::MouseButton::Left,
+            modifiers: String::new(),
+        };
+        let surface = crate::kernel::render::surface::Surface::new(pane.width, pane.height);
+        crate::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
 
         let bps = ed.debug.breakpoints_for(&path);
-        assert_eq!(bps.len(), 1, "the plugin registered the breakpoint with DAP");
+        assert_eq!(bps.len(), 1, "the gutter click registered the breakpoint");
         assert_eq!(bps[0].line, 4);
 
         // Second click on the same line removes it.
-        ed.events.emit_typed(keys::events::GUTTER_CLICKED, GutterClickedPayload {
-            column: ":breakpoints".to_string(),
-            line: "4".to_string(),
-            buf: key.to_string(),
-        });
-        ed.events.drain_and_dispatch();
+        crate::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
         assert!(ed.debug.breakpoints_for(&path).is_empty(), "the second click clears it");
 
         std::fs::remove_dir_all(&tmp).ok();

@@ -1281,7 +1281,7 @@ Step out of the current function frame.
 
 ### `(debug/add-breakpoint file line)` → nil
 
-Add a breakpoint at line `line` (1-based) of the source file at absolute path `file`.  The `:breakpoints` GutterProvider reads live from `ed.debug.breakpoints` so the gutter updates automatically.  If an active session exists, sends a DAP `setBreakpoints` request.  Emits `debug-breakpoint-changed` with `:action "add"`.
+Add a breakpoint at line `line` (1-based) of the source file at absolute path `file`.  The `:breakpoints` GutterProvider reads live from `ed.debug.breakpoints` so the gutter updates automatically.  If an active session exists, sends a DAP `setBreakpoints` request.  Emits `debug-breakpoint-changed` with `:action "add"`.  Clicking the `:breakpoints` gutter column toggles the breakpoint natively (no event handler required); the `gutter-clicked` event still fires for extension providers.
 
 ### `(debug/remove-breakpoint file line)` → nil
 

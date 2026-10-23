@@ -122,17 +122,16 @@ impl GutterProvider for Breakpoints {
         let bps = ctx.editor.debug.breakpoints_for(path);
         // line in GutterCtx is 0-based; DAP breakpoints store 1-based lines.
         let bp = bps.iter().find(|bp| bp.line == line + 1)?;
-        let verified = ctx.editor.debug.active_session()
-            .map(|s| s.verified_breakpoints.iter()
-                .any(|(v, l)| *v && *l == bp.line))
-            .unwrap_or(false);
         let dim = ctx.editor.theme_color("line-num");
+        let red = ctx.editor.theme_color("diag-error");
+        // Enabled breakpoints read red — verified solid, pending hollow;
+        // disabled stay a dim hollow outline.
         let (text, fg) = if !bp.enabled {
             ("○ ", dim)
-        } else if verified {
-            ("● ", ctx.editor.theme_color("diag-error"))
+        } else if bp.verified {
+            ("● ", red)
         } else {
-            ("○ ", ctx.editor.theme_color("line-num-current"))
+            ("○ ", red)
         };
         let style = ctx.editor.resolve_face_style("gutter-breakpoint")
             .unwrap_or_else(|| Style {

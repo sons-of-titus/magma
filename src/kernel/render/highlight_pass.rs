@@ -24,21 +24,20 @@ pub fn apply_highlights(
     let highlights = view.map(|v| &v.highlights).unwrap_or(&empty_vec);
     let highlight_layers = view.map(|v| &v.highlight_layers).unwrap_or(&empty_map);
 
-    let all_highlights: Vec<(usize, usize, String)> = {
-        let mut items = Vec::new();
-        for (s, e, f) in highlights { items.push((*s, *e, f.clone())); }
-        for layer_name in &layer_order {
-            if let Some(layer) = highlight_layers.get(*layer_name) {
-                for (s, e, f) in layer { items.push((*s, *e, f.clone())); }
-            }
+    // Borrowed, in layer order.  No per-frame clones: syntax layers can hold
+    // thousands of ranges, and this runs every repaint.
+    let mut all_highlights: Vec<(usize, usize, &str)> = Vec::new();
+    for (s, e, f) in highlights { all_highlights.push((*s, *e, f)); }
+    for layer_name in &layer_order {
+        if let Some(layer) = highlight_layers.get(*layer_name) {
+            for (s, e, f) in layer { all_highlights.push((*s, *e, f)); }
         }
-        for (layer_name, layer) in highlight_layers {
-            if !layer_order.contains(&layer_name.as_str()) {
-                for (s, e, f) in layer { items.push((*s, *e, f.clone())); }
-            }
+    }
+    for (layer_name, layer) in highlight_layers {
+        if !layer_order.contains(&layer_name.as_str()) {
+            for (s, e, f) in layer { all_highlights.push((*s, *e, f)); }
         }
-        items
-    };
+    }
 
     if !all_highlights.is_empty() {
         let row_ranges: Vec<(usize, usize)> =
@@ -52,20 +51,20 @@ pub fn apply_highlights(
             ..Default::default()
         };
 
-        for (hl_start, hl_end, face_name) in &all_highlights {
-            if *hl_end <= visible_byte_start || *hl_start >= visible_byte_end { continue; }
+        for &(hl_start, hl_end, face_name) in &all_highlights {
+            if hl_end <= visible_byte_start || hl_start >= visible_byte_end { continue; }
             let style = editor.resolve_face_style(face_name).unwrap_or(fallback_style);
 
             for (vis_row, (line_start, line_end)) in row_ranges.iter().enumerate() {
-                if *hl_end <= *line_start { break; }
-                if *hl_start >= *line_end { continue; }
+                if hl_end <= *line_start { break; }
+                if hl_start >= *line_end { continue; }
                 let surf_row = row_offset + vis_row as u16;
                 let Some((_, _, line_text)) = rows.get(vis_row) else { continue };
                 let line_text: &str = line_text;
                 let mut byte = *line_start;
                 for (col, ch) in line_text.chars().enumerate() {
-                    if byte >= *hl_end { break; }
-                    if byte >= *hl_start {
+                    if byte >= hl_end { break; }
+                    if byte >= hl_start {
                         let sx = content_x + col as u16;
                         if sx < surface.width {
                             surface.set_cell(sx, surf_row, ch, Some(style));

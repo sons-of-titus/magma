@@ -52,8 +52,35 @@ fn index_project_without_project_errors() {
     assert!(err.contains("No project open"), "got: {err}");
 }
 
-// ── Index contract: project-relative paths ───────────────────────────────────
+#[test]
+fn closed_project_can_be_reopened() {
+    let dir = std::env::temp_dir().join(format!("magma-reopen-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
+    let path = dir.to_str().unwrap();
 
+    let (mut ed, _rx) = editor_with_background();
+    run(&mut ed, "open-project", path).unwrap();
+    assert_eq!(ed.project_manager.project.root.as_deref(), Some(dir.as_path()));
+
+    crate::kernel::render::gui_shell::close_editor_session(&mut ed);
+    assert!(ed.project_manager.project.root.is_none(), "close must clear the root");
+    assert!(ed.project_manager.recent_projects.iter().any(|p| p == path),
+        "a closed project stays in recents: {:?}", ed.project_manager.recent_projects);
+
+    // Quitting is what drives the close: it flips `running` off and the shell
+    // returns to the welcome window.
+    ed.running = false;
+    run(&mut ed, "open-project", path).unwrap();
+    assert_eq!(ed.project_manager.project.root.as_deref(), Some(dir.as_path()),
+        "a closed project must reopen");
+    assert!(ed.running,
+        "reopening re-arms the session, or the editor window closes straight back to welcome");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+// ── Index contract: project-relative paths ───────────────────────────────────
 fn editor_with_background()
     -> (Editor, tokio::sync::mpsc::UnboundedReceiver<crate::kernel::runtime::BackgroundEvent>) {
     let mut ed = editor();
@@ -88,6 +115,21 @@ fn open_project_indexes_files_relative_to_root() {
         "indexed paths must be project-relative, got: {files:?}");
     assert!(files.iter().all(|f| !f.starts_with('/')),
         "absolute paths would root the explorer at the filesystem root: {files:?}");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn most_recent_existing_project_skips_missing_directories() {
+    let dir = std::env::temp_dir().join(format!("magma-mru-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let recents = vec!["/nonexistent/magma/project".to_string(), dir.to_string_lossy().into_owned()];
+    assert_eq!(
+        crate::kernel::state::persist::most_recent_existing_project(&recents).as_deref(),
+        Some(dir.to_str().unwrap()),
+        "a vanished most-recent project must fall through to the next live one");
+    assert_eq!(crate::kernel::state::persist::most_recent_existing_project(&[]), None);
 
     std::fs::remove_dir_all(&dir).ok();
 }

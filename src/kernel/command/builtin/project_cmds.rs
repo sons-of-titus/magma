@@ -32,6 +32,10 @@ pub(super) fn register(editor: &mut Editor) {
             crate::kernel::project::open_root(editor, &path);
             crate::kernel::project::spawn_file_index(editor);
             crate::kernel::session::restore(editor, std::path::Path::new(&path));
+            // An active project implies a live session: reopening from the
+            // welcome window must re-arm `running`, which a prior quit left
+            // off and would otherwise bounce the editor straight back.
+            editor.running = true;
             Ok(())
         },
     );

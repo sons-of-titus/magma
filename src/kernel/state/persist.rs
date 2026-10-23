@@ -131,3 +131,11 @@ pub fn save_recent_projects(projects: &[String]) {
     let path = state_dir().join(RECENT_PROJECTS_FILE);
     let _ = std::fs::write(&path, projects.join("\n"));
 }
+
+/// The most recently opened project that still exists on disk — the one to
+/// reopen at startup, skipping any paths that have since been moved or deleted.
+pub fn most_recent_existing_project(projects: &[String]) -> Option<String> {
+    projects.iter()
+        .find(|p| std::path::Path::new(p).is_dir())
+        .cloned()
+}

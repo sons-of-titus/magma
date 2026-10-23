@@ -37,7 +37,7 @@ impl ToolWindow for DebugToolWindow {
         // ── Session toolbar ───────────────────────────────────────────────
         ui.horizontal(|ui| {
             let state = match (&session, stopped) {
-                (None, _) => "no session — :dbg-start <adapter>".to_string(),
+                (None, _) => "no session — :dbg-start or :debug-config".to_string(),
                 (Some(s), false) => format!("{} · RUNNING", s.adapter),
                 (Some(s), true) => format!("{} · STOPPED", s.adapter),
             };

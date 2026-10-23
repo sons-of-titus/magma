@@ -9,6 +9,7 @@ use super::gui_theme::GuiTheme;
 
 pub enum RunAction {
     Run,
+    Debug,
     Stop,
     Select(String),
     Edit,
@@ -41,6 +42,19 @@ impl RunBar {
                 .on_hover_text(if running { "Stop" } else { "Nothing running" })
                 .clicked() {
                 actions.push(RunAction::Stop);
+            }
+            let debuggable = active.as_deref()
+                .and_then(|n| ed.project_manager.run_configs.named(n))
+                .map(|c| c.debuggable)
+                .unwrap_or(false);
+            let debug_resp = ui.add_enabled(debuggable,
+                egui::Button::new(RichText::new("🐞 Debug").size(12.0)));
+            if debug_resp.on_hover_text(match &active {
+                Some(n) if debuggable => format!("Debug '{n}'"),
+                Some(_) => "Configuration is not debuggable".to_string(),
+                None => "No run configuration".to_string(),
+            }).clicked() {
+                actions.push(RunAction::Debug);
             }
             let run_resp = ui.add_enabled(active.is_some(),
                 egui::Button::new(RichText::new("▶ Run").size(12.0)));

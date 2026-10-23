@@ -85,6 +85,11 @@ while True:
     if msg.get("command") == "initialize":
         send({"type": "response", "request_seq": msg["seq"], "success": True,
               "command": "initialize", "body": {}})
+    elif msg.get("command") == "threads":
+        send({"type": "response", "request_seq": msg["seq"], "success": True,
+              "command": "threads",
+              "body": {"threads": [{"id": 1, "name": "main"},
+                                   {"id": 2, "name": "worker"}]}})
 "#;
 
 pub fn python3_available() -> bool {

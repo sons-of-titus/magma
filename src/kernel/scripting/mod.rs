@@ -368,7 +368,7 @@ pub fn call_janet_command(
 #[cfg(feature = "janet")]
 pub fn call_janet_command_scoped(
     name: &str,
-    _args: &std::collections::HashMap<String, crate::kernel::command::args::ArgValue>,
+    args: &std::collections::HashMap<String, crate::kernel::command::args::ArgValue>,
 ) -> crate::kernel::command::CommandResult {
     unsafe {
         let env = janet_core_env(std::ptr::null_mut());
@@ -386,13 +386,9 @@ pub fn call_janet_command_scoped(
             return Err(format!("Unknown command: {name}"));
         }
         let func = janet_unwrap_function(func_val);
-        let mut out: Janet = std::mem::zeroed();
-        let sig = janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
-        if sig != JanetSignal_JANET_SIGNAL_OK {
-            return Err(format!("Janet command '{name}' signaled error"));
-        }
+        let raw = args.get("arg").and_then(|v| v.as_string().map(|s| s.to_string()));
+        command_api::invoke_janet_command(func, raw.as_deref())
     }
-    Ok(())
 }
 
 /// Load a Janet file from disk.

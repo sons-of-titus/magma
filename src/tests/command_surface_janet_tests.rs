@@ -47,3 +47,27 @@ fn janet_command_without_args_still_callable() {
         assert_eq!(msg.kind, MessageKind::Info);
     });
 }
+
+#[test]
+fn janet_command_with_fixed_arity_runs_without_args() {
+    // A one-parameter command invoked with no argument (the GUI/colon path)
+    // must still run: the dispatcher supplies the argument slot, it does not
+    // call with zero arguments.
+    janet_test!(ed, {
+        scripting::eval(r#"(command/define "surface-fixed-arity" (fn [_] (editor/echo "fixed-ran")))"#);
+        execute_command_line(&mut ed, "surface-fixed-arity").unwrap();
+        let msg = ed.status_message.as_ref()
+            .expect("fixed-arity command must run when dispatched with no argument");
+        assert_eq!(msg.text, "fixed-ran");
+    });
+}
+
+#[test]
+fn janet_command_errors_are_surfaced() {
+    janet_test!(ed, {
+        scripting::eval(r#"(command/define "surface-failing" (fn [_] (error "boom")))"#);
+        let result = execute_command_line(&mut ed, "surface-failing");
+        assert!(result.is_err(),
+            "a signaling Janet command must surface an error, not fail silently");
+    });
+}

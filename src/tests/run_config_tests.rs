@@ -69,6 +69,26 @@ fn save_then_load_round_trips_configs_and_active() {
 }
 
 #[test]
+fn to_launch_args_maps_program_args_name_and_cwd() {
+    let root = PathBuf::from("/proj");
+    let mut cfg = make_config("run", "/bin/echo", &["hi"]);
+    cfg.cwd = Some("subdir".to_string());
+
+    let args = cfg.to_launch_args(&root);
+
+    assert_eq!(args["request"], "launch");
+    assert_eq!(args["program"], "/bin/echo");
+    assert_eq!(args["args"][0], "hi");
+    assert_eq!(args["name"], "run");
+    assert_eq!(args["cwd"], "/proj/subdir",
+        "a relative cwd resolves against the project root");
+
+    cfg.cwd = Some("/abs/dir".to_string());
+    assert_eq!(cfg.to_launch_args(&root)["cwd"], "/abs/dir",
+        "an absolute cwd is not re-rooted under the project");
+}
+
+#[test]
 fn load_missing_file_returns_false() {
     let root = temp_root("missing");
     let mut store = RunConfigManager::default();

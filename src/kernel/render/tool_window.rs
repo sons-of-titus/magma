@@ -46,6 +46,8 @@ pub trait ToolWindow: Send {
 pub const TERMINAL_TOOL: usize = 0;
 /// The output window's index.
 pub const OUTPUT_TOOL: usize = 2;
+/// The debug window's index.
+pub const DEBUG_TOOL: usize = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DockPosition {

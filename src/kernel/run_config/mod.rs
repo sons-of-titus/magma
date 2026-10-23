@@ -39,6 +39,20 @@ pub struct RunConfig {
     pub debuggable: bool,
 }
 
+impl RunConfig {
+    /// The DAP `launch` request arguments for this configuration, with a
+    /// relative `cwd` resolved against the project `root`.
+    pub fn to_launch_args(&self, root: &Path) -> serde_json::Value {
+        serde_json::json!({
+            "request": "launch",
+            "program": self.command,
+            "args": self.args,
+            "cwd": resolve_cwd(self, root).to_string_lossy(),
+            "name": self.name,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RunConfigManager {
     pub configs: Vec<RunConfig>,

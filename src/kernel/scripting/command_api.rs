@@ -78,6 +78,33 @@ fn store_janet_command(name: &str, fn_val: Janet) {
     }
 }
 
+/// Call a stored Janet command function with the argument count its arity
+/// accepts: a function that can take an argument receives the raw command
+/// argument (empty when none was supplied); a zero-arity function is called
+/// with none.  A signaling call is returned as `Err` — never swallowed.
+pub(crate) fn invoke_janet_command(
+    func: *mut JanetFunction,
+    raw: Option<&str>,
+) -> Result<(), String> {
+    unsafe {
+        // A command may declare zero arity (`(fn [] …)`) or one parameter
+        // (`(fn [arg] …)`, `(fn [&] …)`); dispatch must match, or the call
+        // fails at the arity check before any body runs.
+        let max_arity = (*(*func).def).max_arity;
+        let mut out: Janet = std::mem::zeroed();
+        let sig = if max_arity >= 1 {
+            let cargs = [conv::string(raw.unwrap_or(""))];
+            janet_pcall(func, 1, cargs.as_ptr(), &mut out, std::ptr::null_mut())
+        } else {
+            janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut())
+        };
+        if sig != JanetSignal_JANET_SIGNAL_OK {
+            return Err("Janet command failed".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &str) {
     let lookup_name = name.to_string();
     ed.commands.register(name, "Janet-defined command", vec![], Box::new(move |ed, args| {
@@ -99,21 +126,10 @@ fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &
                     return Ok(());
                 }
                 let func = janet_unwrap_function(func_val);
-                let mut out: Janet = std::mem::zeroed();
-                // Janet commands take one raw string argument (`(fn [arg] …)`);
-                // execute_command_line delivers it under the "arg" key.
+                // execute_command_line delivers the raw remainder under "arg".
                 let raw = args.get("arg").and_then(|v| v.as_string().map(|s| s.to_string()));
-                match raw {
-                    Some(s) => {
-                        let cargs = [conv::string(&s)];
-                        janet_pcall(func, 1, cargs.as_ptr(), &mut out, std::ptr::null_mut());
-                    }
-                    None => {
-                        janet_pcall(func, 0, std::ptr::null(), &mut out, std::ptr::null_mut());
-                    }
-                }
+                invoke_janet_command(func, raw.as_deref())
             }
-            Ok(())
         })
     }));
 }

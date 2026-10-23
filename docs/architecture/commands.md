@@ -205,7 +205,7 @@ dialog; callable from Janet via `editor/run-command`.
 | `run-config [name]` | Launch a run configuration (default: the active one); with a build-first config, the build runs to completion first and the target only launches on exit 0 |
 | `stop-config [name]` | Kill the running task of a run configuration |
 | `select-config name` | Make a configuration the active one and persist the choice |
-| `debug-config [name]` | Start a debug session from a debuggable run configuration; the adapter is picked from the detected language's candidates by PATH availability |
+| `debug-config [name] [adapter]` | Start a debug session from a debuggable run configuration, sending its program/args/cwd as the DAP `launch`; the adapter is picked from the detected language's candidates by PATH availability, or overridden by `adapter` |
 | `shell-command command` | Run a shell command in the background; output streams into the `*shell*` buffer as it runs, ending with an exit-status line |
 | `make [target]` | Run make in the background; output streams into the `*make*` buffer and the finished run populates the quickfix list |
 

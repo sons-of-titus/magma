@@ -110,3 +110,51 @@ fn run_config_launches_the_named_config_process() {
         std::fs::remove_dir_all(&tmp).ok();
     });
 }
+
+#[test]
+fn dbg_start_launches_the_active_run_config() {
+    if !crate::tests::helpers::python3_available() { return; }
+    janet_bg_test!(ed, {
+        let tmp = std::env::temp_dir().join("run_config_janet_dbg_start");
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("Cargo.toml"), "[package]").unwrap();
+        let _ = std::fs::remove_file(tmp.join(".magma/run-configs.json"));
+        let fake = crate::tests::helpers::spawn_fake_dap("janet_dbg_start");
+
+        scripting::eval(&format!("(project/set-root \"{}\")", tmp.to_string_lossy()));
+        scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
+        ed.project_manager.run_configs.upsert(crate::kernel::run_config::RunConfig {
+            name: "run".to_string(),
+            command: "/bin/echo".to_string(),
+            args: vec!["hi".to_string()],
+            cwd: None,
+            env: Default::default(),
+            build_before_run: None,
+            debuggable: true,
+        });
+        ed.project_manager.run_configs.active = Some("run".to_string());
+
+        let r = scripting::eval_result(&format!(
+            r#"(editor/run-command "dbg-start" "{}")"#,
+            fake.script.to_string_lossy()));
+        assert!(r.is_ok(), "dbg-start must reach debug-config: {r:?}");
+
+        // The active config's program must arrive at the adapter as the launch.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let lines = loop {
+            let lines = crate::tests::helpers::dap_log_lines(&fake.log);
+            if lines.iter().any(|l| l == "launch") || std::time::Instant::now() >= deadline {
+                break lines;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        };
+        let idx = lines.iter().position(|l| l == "launch")
+            .unwrap_or_else(|| panic!("dbg-start never sent launch: {lines:?}"));
+        let args_line = lines.get(idx + 1).map(String::as_str).unwrap_or("");
+        assert!(args_line.contains("/bin/echo"),
+            "active config program must be the debuggee: {args_line:?}");
+
+        ed.debug.disconnect_all();
+        std::fs::remove_dir_all(&tmp).ok();
+    });
+}

@@ -557,6 +557,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             crate::kernel::scripting::send_dap_command(
                 ed, session_id, "stackTrace", &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
             );
+            // The thread list changes across stops; refresh it for the pane.
+            #[cfg(feature = "janet")]
+            crate::kernel::scripting::send_dap_command(ed, session_id, "threads", "{}");
             ed.events.emit_typed(keys::events::DEBUG_STOPPED, crate::kernel::event::payload::DebugStoppedPayload {
                 session_id: session_id.to_string(),
                 reason,

@@ -227,6 +227,58 @@ fn s5_debug_config_launches_the_configured_program() {
     ed.debug.disconnect_all();
 }
 
+// ── Scenario 6: the Threads pane is fed by a `threads` request on stop ───────
+
+#[test]
+fn s6_stop_requests_threads_and_populates_the_thread_list() {
+    if !python3_available() { return; }
+    let root = temp_root("s6");
+    std::fs::write(root.join("Cargo.toml"), "[package]").unwrap();
+    let fake = spawn_fake_dap("s6");
+
+    let (mut ed, _bg, mut rx) = editor_with_background();
+    open_project(&mut ed, &root);
+    let launch = serde_json::json!({
+        "request": "launch", "program": "/bin/echo", "args": [],
+        "cwd": root.to_string_lossy(), "name": "run",
+    });
+    let sid = crate::kernel::debug::spawn_session(
+        &mut ed, fake.script.to_string_lossy().as_ref(), Some(launch)).unwrap();
+
+    // The connection registers when DapStarted lands; only then can a stop's
+    // follow-up requests reach the adapter.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !ed.debug.connections.contains_key(&sid) {
+        while let Ok(ev) = rx.try_recv() {
+            crate::kernel::runtime::process_background_event(&mut ed, ev);
+        }
+        assert!(std::time::Instant::now() < deadline, "adapter never came up");
+        std::thread::sleep(Duration::from_millis(15));
+    }
+
+    // A stop must ask the adapter for its thread list — otherwise the Threads
+    // pane is permanently empty.
+    crate::kernel::runtime::process_background_event(&mut ed, BackgroundEvent::DapStopped {
+        session_id: sid, reason: "breakpoint".into(), thread_id: 1,
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        while let Ok(ev) = rx.try_recv() {
+            crate::kernel::runtime::process_background_event(&mut ed, ev);
+        }
+        let listed = ed.debug.sessions.get(&sid)
+            .map(|s| s.threads.iter().any(|t| t.name == "main")).unwrap_or(false);
+        if listed || std::time::Instant::now() >= deadline { break; }
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert!(dap_log_lines(&fake.log).iter().any(|l| l == "threads"),
+        "stop must send a `threads` request");
+    let threads = &ed.debug.sessions.get(&sid).unwrap().threads;
+    assert!(threads.iter().any(|t| t.name == "main"),
+        "the adapter's threads populate the session: {threads:?}");
+    ed.debug.disconnect_all();
+}
+
 // ── Scenario 7/8: hit a breakpoint → jump + highlight; inspect frames/vars ───
 
 #[test]

@@ -70,6 +70,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         editor.dispatch_events_scoped();
     }
 
+    // Reopen the last project in interactive mode: JetBrains restores the
+    // working set rather than dropping you on a blank scratch buffer.
+    if !server_mode && !connect_mode
+        && let Some(path) = persist::most_recent_existing_project(&editor.project_manager.recent_projects) {
+            let mut args = std::collections::HashMap::new();
+            args.insert("path".to_string(),
+                magma::kernel::command::args::ArgValue::Path(path));
+            if let Err(e) = magma::kernel::command::execute_command(&mut editor, "open-project", &args) {
+                eprintln!("Could not reopen last project: {e}");
+            }
+    }
+
     if server_mode {
         let addr = args.iter()
             .skip_while(|a| a != &"--server")

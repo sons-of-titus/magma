@@ -63,10 +63,16 @@ pub(super) fn register(editor: &mut Editor) {
 
     cmds.register_fn("debug-config",
         "Start a debug session from a run configuration (default: the active one)",
-        vec![crate::kernel::command::args::ArgSpec::optional(
-            "name", crate::kernel::command::args::ArgType::String,
-            crate::kernel::command::args::ArgValue::String(String::new()),
-        )],
+        vec![
+            crate::kernel::command::args::ArgSpec::optional(
+                "name", crate::kernel::command::args::ArgType::String,
+                crate::kernel::command::args::ArgValue::String(String::new()),
+            ),
+            crate::kernel::command::args::ArgSpec::optional(
+                "adapter", crate::kernel::command::args::ArgType::String,
+                crate::kernel::command::args::ArgValue::String(String::new()),
+            ),
+        ],
         |editor, args| {
             use crate::kernel::project::{detect, toolchain};
 
@@ -81,30 +87,22 @@ pub(super) fn register(editor: &mut Editor) {
             if !cfg.debuggable {
                 return Err(format!("run configuration '{name}' is not marked debuggable"));
             }
+            let override_adapter = args.get("adapter").and_then(|a| a.as_string())
+                .filter(|a| !a.is_empty());
             let language = editor.project_manager.project.language.clone();
-            let adapter = detect::adapter_candidates(&language).iter()
-                .map(|candidate| (candidate, toolchain::find(candidate)))
-                .find(|(_, found)| found.is_some())
-                .map(|(candidate, _)| candidate.to_string())
-                .ok_or_else(|| format!(
-                    "no debug adapter for {language}: tried {} — install one or run :dbg-start <adapter>",
-                    detect::adapter_candidates(&language).join(", ")))?;
+            let adapter = match override_adapter {
+                Some(a) => a.to_string(),
+                None => detect::adapter_candidates(&language).iter()
+                    .find(|candidate| toolchain::find(candidate).is_some())
+                    .map(|candidate| candidate.to_string())
+                    .ok_or_else(|| format!(
+                        "no debug adapter for {language}: tried {} — install one or run :dbg-start <adapter>",
+                        detect::adapter_candidates(&language).join(", ")))?,
+            };
 
             let root = editor.project_manager.project.root.clone()
                 .ok_or_else(|| "no project open".to_string())?;
-            let cwd = match cfg.cwd.as_deref().map(str::trim) {
-                None | Some("") => root.clone(),
-                Some(rel) if std::path::Path::new(rel).is_absolute() => root.join(rel),
-                Some(rel) => root.join(rel),
-            };
-            let launch = serde_json::json!({
-                "request": "launch",
-                "program": cfg.command,
-                "args": cfg.args,
-                "cwd": cwd.to_string_lossy(),
-                "name": cfg.name,
-            });
-            crate::kernel::debug::spawn_session(editor, &adapter, Some(launch))?;
+            crate::kernel::debug::spawn_session(editor, &adapter, Some(cfg.to_launch_args(&root)))?;
             editor.show_message(
                 crate::kernel::state::MessageKind::Info,
                 format!("Debugging '{name}' with {adapter}"),

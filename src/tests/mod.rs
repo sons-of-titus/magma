@@ -66,3 +66,4 @@ test_pairs!(
 #[cfg(feature = "janet")] mod builtin_parse_tests;
 mod scratch_probe_tests;
 mod memory_budget_tests;
+mod viewport_scroll_tests;

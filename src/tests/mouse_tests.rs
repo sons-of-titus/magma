@@ -83,8 +83,13 @@ fn resolve_text_click_out_of_bounds() {
     let ed = make_editor_with_buffer("short");
     let buf_id = helpers::focused_key(&ed);
     let pane = ed.view_tree.panes()[0].clone();
+    // Clicking the empty space below a short buffer lands on its last line —
+    // the GUI convention — instead of dropping the click.
     let offset = mouse::resolve_click_to_offset(&ed, buf_id, &pane, 0, 100);
-    assert!(offset.is_none(), "click below buffer should not resolve");
+    let last_line_start = ed.buffers.get(buf_id).unwrap().lock().unwrap()
+        .line_start_offset(0).unwrap();
+    assert_eq!(offset, Some(last_line_start),
+        "click below the buffer clamps to the last line");
 }
 
 #[test]
@@ -127,6 +132,8 @@ fn click_at(ed: &mut Editor, _buf_id: usize, pane: &crate::kernel::render::view_
         last_x: 0,
         last_y: 0,
         drag_active: false,
+        last_click: None,
+        click_count: 0,
     };
 }
 

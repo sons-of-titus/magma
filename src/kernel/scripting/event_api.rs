@@ -42,6 +42,12 @@ unsafe fn call_janet_fn_with_arg(fn_val: Janet, arg: Janet) { unsafe {
     }
     let mut out: Janet = std::mem::zeroed();
     janet_continue(fiber, janet_wrap_nil(), &mut out);
+    // A handler that errors must not vanish: a fault leaves the fiber in an
+    // error state with the message on the return slot.
+    let status = janet_fiber_status(fiber);
+    if status != 0 && let Some(text) = janet_to_string(out) {
+        eprintln!("janet event handler error (status {status}): {text}");
+    }
 }}
 
 /// Build a Janet table from a `HashMap<String, String>`.

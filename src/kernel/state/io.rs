@@ -12,6 +12,9 @@ pub struct IoState {
     /// pool but not yet confirmed on disk.  A buffer stays "dirty" for the
     /// quit guard until its write lands.
     pub saves_in_flight: std::collections::HashMap<usize, u64>,
+    /// This run's crash-recovery snapshot directory (R-16).  `None` in
+    /// tests and embedded runs that never set it.
+    pub crash_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for IoState {
@@ -26,6 +29,7 @@ impl Default for IoState {
             net_servers: std::collections::HashMap::new(),
             next_net_id: 1,
             saves_in_flight: std::collections::HashMap::new(),
+            crash_dir: None,
         }
     }
 }

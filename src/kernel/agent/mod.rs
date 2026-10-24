@@ -42,6 +42,17 @@ impl AgentStatus {
     }
 }
 
+/// One entry in a session's transcript — what the agent panel renders.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TranscriptEntry {
+    /// A reasoning/plan step.
+    Thought(String),
+    /// A command the agent dispatched.
+    Action { command: String, description: String },
+    /// The outcome of a foreground-executed step.
+    StepOutput(String),
+}
+
 /// State for a single agent session.
 #[derive(Debug, Clone)]
 pub struct AgentSession {
@@ -50,6 +61,7 @@ pub struct AgentSession {
     pub status: AgentStatus,
     pub result: Option<String>,
     pub error: Option<String>,
+    pub transcript: Vec<TranscriptEntry>,
 }
 
 /// Tracks all active and completed agent sessions.
@@ -72,8 +84,33 @@ impl AgentManager {
             status: AgentStatus::Running,
             result: None,
             error: None,
+            transcript: Vec::new(),
         });
         id
+    }
+
+    /// Append a transcript entry when the session is still live.  Entries
+    /// arriving after completion (a stray background send) are dropped.
+    pub fn note_transcript(&mut self, id: u64, entry: TranscriptEntry) {
+        if let Some(s) = self.sessions.get_mut(&id)
+            && s.status == AgentStatus::Running {
+                s.transcript.push(entry);
+            }
+    }
+
+    pub fn note_thought(&mut self, id: u64, thought: &str) {
+        self.note_transcript(id, TranscriptEntry::Thought(thought.to_string()));
+    }
+
+    pub fn note_action(&mut self, id: u64, command: &str, description: &str) {
+        self.note_transcript(id, TranscriptEntry::Action {
+            command: command.to_string(),
+            description: description.to_string(),
+        });
+    }
+
+    pub fn note_step_output(&mut self, id: u64, output: &str) {
+        self.note_transcript(id, TranscriptEntry::StepOutput(output.to_string()));
     }
 
     /// Mark a session as successfully completed.

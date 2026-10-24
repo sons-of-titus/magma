@@ -45,6 +45,7 @@ pub trait AsyncFileSystem: Send + Sync {
     fn dir_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, FsError>> + Send>>;
 }
 
+pub mod crash_recovery;
 pub mod disk;
 pub mod reload;
 pub mod watcher;

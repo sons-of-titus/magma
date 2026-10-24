@@ -129,8 +129,8 @@
 (command/define "lsp-hover"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/hover lang-id))))
 
-(event/on "lsp-hover"
-  (fn [ev] (def contents (get ev :contents)) (when contents (editor/log-message (string "[hover] " contents)))))
+# Hover text lands in the pointer-dwell card (or a status message when no
+# card is showing) via the kernel; no handler is needed here.
 
 (command/define "lsp-code-actions"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/code-actions lang-id))))

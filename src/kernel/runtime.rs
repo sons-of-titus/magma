@@ -512,8 +512,10 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             }
         }
         BackgroundEvent::LspHover { path, contents, buf_key, revision } => {
-            if revision_current(ed, buf_key, revision) {
-                ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
+            if revision_current(ed, buf_key, revision) && !contents.trim().is_empty()
+                && let Some(buf_key) = buf_key {
+                    crate::kernel::state::overlay::attach_lsp_hover(ed, buf_key, &contents);
+                    ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
             }
         }
         BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col, buf_key, revision } => {

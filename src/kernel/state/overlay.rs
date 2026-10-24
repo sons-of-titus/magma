@@ -28,3 +28,26 @@ pub struct LayoutSnapshot {
     /// Number of content rows rendered (excluding status bar).
     pub visible_lines: usize,
 }
+
+/// Splice server hover text into the visible hover card (server text
+/// first), or surface it as a status message when no card is showing —
+/// that is the manual `lsp-hover` path.  Called from the event pump.
+pub fn attach_lsp_hover(ed: &mut crate::kernel::state::Editor, buf_key: usize, contents: &str) {
+    let focused = ed.view_tree.focused_window()
+        .and_then(|wid| ed.view_tree.buffer(wid));
+    if focused == Some(buf_key)
+        && let Some(card) = ed.hover.as_mut()
+    {
+        let mut lines: Vec<String> = contents.lines()
+            .map(str::trim_end)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect();
+        lines.append(&mut card.lines);
+        card.lines = lines;
+        return;
+    }
+    let first = contents.lines().find(|l| !l.trim().is_empty()).unwrap_or(contents);
+    ed.show_message(crate::kernel::state::MessageKind::Info,
+        first.chars().take(160).collect::<String>());
+}

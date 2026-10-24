@@ -76,19 +76,16 @@ fn lsp_notify_registered() {
     });
 }
 
-// ── lsp-hover event dispatch ─────────────────────────────────────────────
+// ── lsp-hover ────────────────────────────────────────────────────────────
 
 #[test]
-fn lsp_hover_event_dispatches_from_rust() {
+fn lsp_hover_command_stays_registered() {
+    // Hover text is consumed by the kernel (dwell card / status message);
+    // the manual trigger command remains for explicit invocation.
     janet_test!(ed, {
-        let mut data = std::collections::HashMap::new();
-        data.insert("path".into(), "test".into());
-        data.insert("contents".into(), "hover result".into());
-        ed.events.emit("lsp-hover", data);
-        ed.events.drain_and_dispatch();
-
-        let sub_count = ed.events.subscriber_count("lsp-hover");
-        assert!(sub_count > 0, "lsp-hover should have subscribers from lsp.janet");
+        let described = ed.commands.list().into_iter()
+            .any(|name| name == "lsp-hover");
+        assert!(described, "lsp-hover command must stay registered");
     });
 }
 

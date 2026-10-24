@@ -225,3 +225,81 @@ fn test_initialize_params_shape() {
     let params = lsp_proto::initialize_params(None);
     assert!(params["rootUri"].is_null());
 }
+
+// ── Server hover text reaches the hover card ─────────────────────────
+
+#[test]
+fn lsp_hover_splices_into_visible_card() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::kernel::state::{HoverCard, MessageKind};
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("fn foo() {}");
+    let key = helpers::focused_key(&ed);
+    ed.hover = Some(HoverCard {
+        word: "foo".into(), px: 10.0, py: 10.0,
+        since: std::time::Instant::now(),
+        lines: vec!["function foo  ·  lib.rs:1".into()],
+    });
+    let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
+
+    process_background_event(&mut ed, BackgroundEvent::LspHover {
+        path: "rust".into(),
+        contents: "```rust\nfn foo()\n```\ndoes a thing".into(),
+        buf_key: Some(key),
+        revision: rev,
+    });
+
+    let card = ed.hover.as_ref().expect("card survives the splice");
+    assert!(card.lines.iter().take(2).any(|l| l.contains("fn foo()")),
+        "server text leads the card: {:?}", card.lines);
+    assert!(card.lines.iter().any(|l| l.contains("lib.rs:1")),
+        "index lines follow: {:?}", card.lines);
+    assert!(ed.status_message.is_none(), "no status spam while a card is up");
+    let _ = MessageKind::Info;
+}
+
+#[test]
+fn lsp_hover_without_card_becomes_a_status_message() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("fn foo() {}");
+    let key = helpers::focused_key(&ed);
+    ed.hover = None; // manual lsp-hover with no pointer dwell
+    let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
+
+    process_background_event(&mut ed, BackgroundEvent::LspHover {
+        path: "rust".into(),
+        contents: "fn foo() — does a thing".into(),
+        buf_key: Some(key),
+        revision: rev,
+    });
+    let msg = ed.status_message.as_ref().expect("manual hover surfaces");
+    assert!(msg.text.contains("does a thing"));
+}
+
+#[test]
+fn stale_lsp_hover_is_dropped() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::kernel::state::HoverCard;
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("fn foo() {}");
+    let key = helpers::focused_key(&ed);
+    ed.hover = Some(HoverCard {
+        word: "foo".into(), px: 0.0, py: 0.0,
+        since: std::time::Instant::now(),
+        lines: vec!["index only".into()],
+    });
+
+    process_background_event(&mut ed, BackgroundEvent::LspHover {
+        path: "rust".into(),
+        contents: "stale!".into(),
+        buf_key: Some(key),
+        revision: 999_999, // buffer has moved on
+    });
+    let card = ed.hover.as_ref().unwrap();
+    assert!(card.lines.iter().all(|l| !l.contains("stale")),
+        "responses for superseded revisions never render");
+}

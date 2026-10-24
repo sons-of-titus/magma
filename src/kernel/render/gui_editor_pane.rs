@@ -338,19 +338,43 @@ fn update_hover_card(ui: &egui::Ui, ed: &mut Editor, rect: Rect, char_w: f32, li
             let diag = buf.diagnostics.iter()
                 .find(|d| d.line == diag_line)
                 .map(|d| d.display());
-            Some((buf.slice(ws, we), diag))
+            Some((buf.slice(ws, we), diag, offset, buf_id))
         });
+
+    // Ask the attached language server for hover at the dwell position; the
+    // response event splices its text into the visible card.
+    if let Some((_, _, offset, buf_id)) = &target {
+        request_lsp_hover(ed, *buf_id, *offset);
+    }
 
     let new_card = match (&target, ed.hover.as_ref()) {
         (None, _) => None,
         (Some(_), Some(card)) if Some(&card.word) == target.as_ref().map(|t| &t.0) => None,
-        (Some((w, diag)), _) => Some(build_hover_card(ed, w.clone(), diag.clone(), p.x, p.y)),
+        (Some((w, diag, _, _)), _) => Some(build_hover_card(ed, w.clone(), diag.clone(), p.x, p.y)),
     };
     if target.is_none() {
         ed.hover = None;
     } else if let Some(card) = new_card {
         ed.hover = Some(card);
     }
+}
+
+/// Ask the buffer's language server for hover text at `offset`.  Silent
+/// when no server is attached; the response lands via `attach_lsp_hover`.
+fn request_lsp_hover(ed: &Editor, buf_id: usize, offset: usize) {
+    let Some(lang) = ed.lsp.language_for_buffer(buf_id) else { return };
+    let Some(server) = ed.lsp.get(&lang) else { return };
+    let Some(arc) = ed.buffers.get(buf_id) else { return };
+    let (uri, position, revision) = {
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(path) = buf.path.as_deref() else { return };
+        (format!("file://{path}"), buf.lsp_position(offset.min(buf.len())), buf.revision())
+    };
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": position.0, "character": position.1 },
+    });
+    server.request("textDocument/hover", params, buf_id, revision);
 }
 
 fn build_hover_card(ed: &mut Editor, word: String, diag: Option<String>, px: f32, py: f32) -> crate::kernel::state::HoverCard {

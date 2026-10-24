@@ -301,7 +301,8 @@ fn render_insert_completion_popup(editor: &Editor, surface: &mut Surface, row_of
     }
     let popup_lines = editor.completion.items.len().min(10);
     let popup_start = visible_lines.saturating_sub(popup_lines + 1);
-    let popup_width = editor.completion.items.iter().map(|s| s.len()).max().unwrap_or(20).min(60);
+    let popup_width = editor.completion.items.iter()
+        .map(|i| i.label.len() + i.kind.len() + 1).max().unwrap_or(20).min(60);
     let popup_x = surface.width.saturating_sub(popup_width as u16 + 2);
     for i in 0..popup_lines {
         let abs_row = popup_start + i;
@@ -316,6 +317,11 @@ fn render_insert_completion_popup(editor: &Editor, surface: &mut Surface, row_of
             let sx = popup_x + x as u16;
             if sx < surface.width { surface.set_cell(sx, surf_row, ' ', Some(s)); }
         }
-        surface.set_text(popup_x + 1, surf_row, item, Some(s));
+        let text = if item.kind.is_empty() {
+            item.label.clone()
+        } else {
+            format!("{} {}", item.label, item.kind)
+        };
+        surface.set_text(popup_x + 1, surf_row, &text, Some(s));
     }
 }

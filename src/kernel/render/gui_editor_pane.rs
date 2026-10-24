@@ -268,7 +268,8 @@ fn draw_completion_popup(
     let font = FontId::new(line_h * 0.8, FontFamily::Monospace);
     let row_h = line_h * 1.15;
     let item_w = items.iter().take(shown)
-        .map(|s| ui.fonts_mut(|f| f.layout_no_wrap(s.clone(), font.clone(), theme.text).size().x))
+        .map(|i| ui.fonts_mut(|f| f.layout_no_wrap(
+            format!("{}  {}", i.label, i.kind), font.clone(), theme.text).size().x))
         .fold(48.0, f32::max);
     let w = (item_w + 22.0).min(rect.width() * 0.6).max(80.0);
     let h = row_h * shown as f32 + 8.0;
@@ -295,10 +296,19 @@ fn draw_completion_popup(
         painter.text(
             Pos2::new(row.left() + 10.0, row.center().y),
             Align2::LEFT_CENTER,
-            item,
+            &item.label,
             font.clone(),
             if is_sel { theme.text } else { theme.subtext1 },
         );
+        if !item.kind.is_empty() {
+            painter.text(
+                Pos2::new(row.right() - 8.0, row.center().y),
+                Align2::RIGHT_CENTER,
+                &item.kind,
+                FontId::new(line_h * 0.62, FontFamily::Monospace),
+                theme.subtext0,
+            );
+        }
     }
 }
 

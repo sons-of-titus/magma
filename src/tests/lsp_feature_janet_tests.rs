@@ -115,10 +115,13 @@ fn lsp_code_actions_event_has_subscribers() {
 // ── lsp-completion-items event dispatch ──────────────────────────────────
 
 #[test]
-fn lsp_completion_items_event_has_subscribers() {
+fn lsp_completion_command_is_defined() {
+    // Completion results are consumed by the kernel popup merge now; the
+    // manual trigger command remains for explicit use.
     janet_test!(ed, {
-        let count = ed.events.subscriber_count("lsp-completion-items");
-        assert!(count > 0, "lsp-completion-items should be subscribed in lsp.janet");
+        let described = ed.commands.list().into_iter()
+            .any(|name| name == "lsp-completion");
+        assert!(described, "lsp-completion command must stay registered");
     });
 }
 

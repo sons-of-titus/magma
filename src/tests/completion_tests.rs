@@ -29,7 +29,7 @@ fn typing_two_word_chars_opens_the_popup() {
     type_key(&mut ed, "o");
     assert!(ed.completion.visible, "two word chars must open the popup");
     assert_eq!(ed.completion.prefix, "do");
-    assert_eq!(ed.completion.items, vec!["done", "door", "dormant"]);
+    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["done", "door", "dormant"]);
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn typing_refilters_the_popup_in_place() {
     type_key(&mut ed, "o");
     type_key(&mut ed, "n");
     assert!(ed.completion.visible);
-    assert_eq!(ed.completion.items, vec!["done"]);
+    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["done"]);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn popup_navigation_and_accept() {
     let mut ed = editor_with("dog done\n");
     type_key(&mut ed, "d");
     type_key(&mut ed, "o");
-    assert_eq!(ed.completion.items, vec!["dog", "done"]);
+    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["dog", "done"]);
     assert_eq!(ed.completion.idx, 0);
 
     type_key(&mut ed, "down");
@@ -116,7 +116,7 @@ fn ctrl_space_triggers_at_any_prefix_length() {
     r.unwrap();
     assert!(ed.completion.visible, "completion-trigger must open the popup");
     assert_eq!(ed.completion.prefix, "d");
-    assert_eq!(ed.completion.items, vec!["done", "door"]);
+    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["done", "door"]);
 }
 
 #[test]
@@ -180,4 +180,91 @@ fn stale_background_word_results_are_discarded() {
         crate::kernel::runtime::BackgroundEvent::BufferWords {
             buf_key: key, revision: rev, words: vec!["fresh".into()] });
     assert!(ed.completion.word_cache.contains_key(&key));
+}
+
+// ── LSP-driven completion ────────────────────────────────────────────
+
+use crate::kernel::completion::{accept, dismiss, merge_lsp_items, parse_lsp_completion_items};
+use crate::kernel::state::completion::CompletionItem;
+
+#[test]
+fn lsp_items_parse_from_array_and_list() {
+    let arr = parse_lsp_completion_items(
+        r#"[{"label":"dog","kind":3,"insertText":"doggo","detail":"fn(dog)"}]"#);
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0].label, "dog");
+    assert_eq!(arr[0].insert, "doggo");
+    assert_eq!(arr[0].kind, "fn");
+    assert_eq!(arr[0].detail, "fn(dog)");
+
+    let list = parse_lsp_completion_items(
+        r#"{"isIncomplete":false,"items":[{"label":"door","kind":6}]}"#);
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].insert, "door", "no insertText: insert = label");
+    assert_eq!(list[0].kind, "var");
+
+    assert!(parse_lsp_completion_items("not json").is_empty());
+}
+
+#[test]
+fn lsp_items_lead_the_popup_and_drop_duplicates() {
+    let mut ed = editor_with("done\n");
+    input::dispatch_key(&mut ed, "d");
+    input::dispatch_key(&mut ed, "o");
+    assert!(ed.completion.visible);
+
+    merge_lsp_items(&mut ed, vec![
+        CompletionItem { label: "dog".into(), insert: "dog".into(), kind: "fn".into(), detail: String::new() },
+        CompletionItem { label: "done".into(), insert: "done".into(), kind: "var".into(), detail: String::new() },
+    ]);
+    let labels: Vec<&str> = ed.completion.items.iter().map(|i| i.label.as_str()).collect();
+    assert_eq!(labels.first(), Some(&"dog"), "server items keep their order and lead");
+    assert_eq!(labels.iter().filter(|l| **l == "done").count(), 1, "word duplicate dropped");
+    assert_eq!(ed.completion.idx, 0);
+    dismiss(&mut ed);
+}
+
+#[test]
+fn merge_rejects_items_that_no_longer_match_the_prefix() {
+    let mut ed = editor_with("done\n");
+    input::dispatch_key(&mut ed, "d");
+    input::dispatch_key(&mut ed, "o");
+    merge_lsp_items(&mut ed, vec![
+        CompletionItem { label: "zebra".into(), ..Default::default() },
+    ]);
+    assert!(ed.completion.items.iter().all(|i| i.label.starts_with("do")),
+        "stale-prefix items are filtered on merge");
+    dismiss(&mut ed);
+}
+
+#[test]
+fn accept_types_the_server_insert_text() {
+    let mut ed = editor_with("done\n");
+    input::dispatch_key(&mut ed, "d");
+    input::dispatch_key(&mut ed, "o");
+    merge_lsp_items(&mut ed, vec![
+        CompletionItem { label: "document".into(), insert: "document_changes".into(),
+                         kind: "fn".into(), detail: String::new() },
+    ]);
+    ed.completion.idx = 0;
+    accept(&mut ed);
+    assert_eq!(ed.buffers.get(crate::tests::helpers::focused_key(&ed)).unwrap()
+        .lock().unwrap().slice(0, 32), "done\ndocument_changes",
+        "accept inserts insertText, not the label");
+}
+
+#[test]
+fn accept_replaces_prefix_when_insert_does_not_extend_it() {
+    let mut ed = editor_with("done\n");
+    input::dispatch_key(&mut ed, "d");
+    input::dispatch_key(&mut ed, "o");
+    merge_lsp_items(&mut ed, vec![
+        CompletionItem { label: "do_thing()".into(), insert: "do_thing($0)".into(),
+                         kind: "snip".into(), detail: String::new() },
+    ]);
+    ed.completion.idx = 0;
+    accept(&mut ed);
+    assert_eq!(ed.buffers.get(crate::tests::helpers::focused_key(&ed)).unwrap()
+        .lock().unwrap().slice(0, 32), "done\ndo_thing($0)",
+        "a snippet insert replaces the typed prefix wholesale");
 }

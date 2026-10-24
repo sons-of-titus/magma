@@ -535,6 +535,13 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::LspCompletionItems { path, items, buf_key, revision } => {
             if revision_current(ed, buf_key, revision) {
+                // The popup is the primary consumer: merge server items in
+                // (they lead, duplicates drop).  The event stays available
+                // to Janet observers.
+                let parsed = crate::kernel::completion::parse_lsp_completion_items(&items);
+                if !parsed.is_empty() {
+                    crate::kernel::completion::merge_lsp_items(ed, parsed);
+                }
                 ed.events.emit_typed(keys::events::LSP_COMPLETION_ITEMS, LspCompletionItemsPayload { path, items });
             }
         }

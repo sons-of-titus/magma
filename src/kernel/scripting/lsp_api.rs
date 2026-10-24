@@ -55,10 +55,16 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
 /// Sends the full buffer text with its current revision as the version.
 unsafe extern "C-unwind" fn c_lsp_did_open(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        with_server_and_doc(ed, argc, argv, |server, _buf_key, arc, uri| {
+        let mut attached: Option<(usize, String)> = None;
+        with_server_and_doc(ed, argc, argv, |server, buf_key, arc, uri| {
             let buf = arc.lock().unwrap();
             server.did_open(&uri, &buf.slice(0, buf.len()), buf.revision());
+            attached = Some((buf_key, server.language_id().to_string()));
         });
+        // Rust-side completion/hover requests key off this mapping.
+        if let Some((buf_key, lang)) = attached {
+            ed.lsp.note_buffer_language(buf_key, &lang);
+        }
         conv::nil()
     })
 }

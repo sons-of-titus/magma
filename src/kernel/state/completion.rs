@@ -1,7 +1,27 @@
+/// One completion candidate.  `label` is what the popup shows; `insert` is
+/// what accept types (LSP `insertText` when the server provides one, the
+/// label otherwise); `kind`/`detail` are display metadata.
+#[derive(Debug, Clone, Default)]
+pub struct CompletionItem {
+    pub label: String,
+    pub kind: String,
+    pub detail: String,
+    pub insert: String,
+}
+
+impl CompletionItem {
+    /// A plain word/symbol candidate: everything is the label.
+    pub fn word(label: impl Into<String>) -> Self {
+        let label = label.into();
+        let insert = label.clone();
+        CompletionItem { label, insert, ..Default::default() }
+    }
+}
+
 /// Completion popup state.
 #[derive(Debug, Clone, Default)]
 pub struct CompletionState {
-    pub items: Vec<String>,
+    pub items: Vec<CompletionItem>,
     pub idx: usize,
     pub visible: bool,
     pub prefix: String,

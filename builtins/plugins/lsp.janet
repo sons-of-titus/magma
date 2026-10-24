@@ -143,10 +143,8 @@
 (command/define "lsp-completion"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/completion lang-id))))
 
-(event/on "lsp-completion-items"
-  (fn [ev]
-    (def items (get ev :items))
-    (when (and items (> (length items) 0)) (editor/log-message (string "[completion] " items)))))
+# lsp-completion-items results are merged into the completion popup by the
+# kernel (server items lead, duplicates drop); no handler is needed here.
 
 (command/define "lsp-rename"
   (fn [& new-name]

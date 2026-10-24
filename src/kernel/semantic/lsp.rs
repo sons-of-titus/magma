@@ -508,11 +508,22 @@ pub struct LspRegistry {
     /// Restart attempts per language — bounded so a crash-looping server
     /// cannot spin forever.
     restarts: HashMap<String, u32>,
+    /// Buffers with an attached server (buffer slab key → language id).
+    /// Recorded at didOpen; drives Rust-side completion/hover requests.
+    buffer_languages: HashMap<usize, String>,
 }
 
 impl LspRegistry {
     pub fn get(&self, language_id: &str) -> Option<&Arc<LspHandle>> {
         self.servers.get(language_id)
+    }
+
+    pub fn note_buffer_language(&mut self, buf_key: usize, language_id: &str) {
+        self.buffer_languages.insert(buf_key, language_id.to_string());
+    }
+
+    pub fn language_for_buffer(&self, buf_key: usize) -> Option<String> {
+        self.buffer_languages.get(&buf_key).cloned()
     }
 
     pub fn insert(&mut self, language_id: &str, handle: Arc<LspHandle>) {

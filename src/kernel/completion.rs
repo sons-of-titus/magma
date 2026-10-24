@@ -14,7 +14,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::kernel::state::completion::WordCache;
+use crate::kernel::state::completion::{CompletionItem, WordCache};
 use crate::kernel::state::Editor;
 
 /// Minimum typed prefix for the automatic popup (ctrl-space triggers at 1).
@@ -170,12 +170,12 @@ pub fn trigger(editor: &mut Editor) {
 
     // Words from the buffer (cached / backgrounded), filtered by prefix
     // range — never a full-set copy.
-    let mut items: Vec<String> = Vec::new();
+    let mut items: Vec<CompletionItem> = Vec::new();
     if let Some(words) = candidate_words(editor, buf_id) {
         for w in words.range(prefix.clone()..) {
             if !w.starts_with(prefix.as_str()) { break; }
             if w != &prefix && items.len() < MAX_ITEMS {
-                items.push(w.clone());
+                items.push(CompletionItem::word(w.clone()));
             }
             if items.len() >= MAX_ITEMS { break; }
         }
@@ -184,17 +184,19 @@ pub fn trigger(editor: &mut Editor) {
     // Augment with symbols from the semantic engine's symbol index, then
     // the project index (workspace-wide, from the persistent store).
     for sym in editor.semantic.completions_for_prefix(&prefix) {
-        if sym != prefix && !items.contains(&sym) && items.len() < MAX_ITEMS {
-            items.push(sym);
+        if sym != prefix && !items.iter().any(|i| i.label == sym) && items.len() < MAX_ITEMS {
+            items.push(CompletionItem::word(sym));
         }
     }
     for (_path, sym) in editor.index.symbols_with_prefix(&prefix) {
-        if sym.name != prefix && !items.contains(&sym.name) && items.len() < MAX_ITEMS {
-            items.push(sym.name.clone());
+        if sym.name != prefix && !items.iter().any(|i| i.label == sym.name)
+            && items.len() < MAX_ITEMS {
+            items.push(CompletionItem { label: sym.name.clone(), insert: sym.name.clone(),
+                                        kind: sym.kind.as_str().to_string(), detail: _path.clone() });
         }
     }
 
-    if items.is_empty() {
+    if items.is_empty() && !request_lsp_completion(editor, buf_id, &prefix) {
         dismiss(editor);
         return;
     }
@@ -202,6 +204,103 @@ pub fn trigger(editor: &mut Editor) {
     editor.completion.items = items;
     editor.completion.idx = 0;
     editor.completion.visible = true;
+}
+
+/// Ask the attached language server for completions at the cursor.  The
+/// response event carries the buffer + revision; the merge on arrival
+/// discards results for superseded keystrokes.
+fn request_lsp_completion(editor: &Editor, buf_id: usize, prefix: &str) -> bool {
+    if prefix.is_empty() { return false; }
+    let Some(lang) = editor.lsp.language_for_buffer(buf_id) else { return false };
+    let Some(server) = editor.lsp.get(&lang) else { return false };
+    let Some(arc) = editor.buffers.get(buf_id) else { return false };
+    let (uri, position, revision) = {
+        let buf = arc.lock().unwrap();
+        let uri = match buf.path.as_deref() {
+            Some(p) => format!("file://{p}"),
+            None => return false,
+        };
+        let cursor = editor.view_of_buffer(buf_id)
+            .map(|v| v.cursor.offset)
+            .unwrap_or(0);
+        (uri, buf.lsp_position(cursor.min(buf.len())), buf.revision())
+    };
+    let params = serde_json::json!({
+        "textDocument": { "uri": uri },
+        "position": { "line": position.0, "character": position.1 },
+    });
+    server.request("textDocument/completion", params, buf_id, revision);
+    true
+}
+
+/// LSP `CompletionItemKind` → popup tag.
+fn lsp_kind_name(kind: u64) -> &'static str {
+    match kind {
+        1 => "text",
+        2 => "method",
+        3 => "fn",
+        4 => "ctor",
+        5 => "field",
+        6 => "var",
+        7 => "class",
+        8 => "iface",
+        9 => "mod",
+        10 => "prop",
+        13 => "enum",
+        14 => "kw",
+        15 => "snip",
+        20 => "member",
+        21 => "const",
+        22 => "struct",
+        25 => "tparam",
+        _ => "",
+    }
+}
+
+/// Parse a `textDocument/completion` result (array or CompletionList)
+/// into popup items.
+pub fn parse_lsp_completion_items(json: &str) -> Vec<CompletionItem> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let arr = v.as_array().cloned()
+        .or_else(|| v.get("items").and_then(|i| i.as_array()).cloned())
+        .unwrap_or_default();
+    arr.iter().filter_map(|item| {
+        let label = item.get("label")?.as_str()?.to_string();
+        let insert = item.get("insertText").and_then(|t| t.as_str())
+            .unwrap_or(&label).to_string();
+        Some(CompletionItem {
+            label,
+            insert,
+            kind: item.get("kind").and_then(|k| k.as_u64())
+                .map(lsp_kind_name).unwrap_or_default().to_string(),
+            detail: item.get("detail").and_then(|d| d.as_str())
+                .unwrap_or_default().to_string(),
+        })
+    }).collect()
+}
+
+/// Fold server completions (already prefix-filtered by the caller) into the
+/// visible popup: server items keep their order and lead; word/index items
+/// that the server also returned are dropped as duplicates.
+pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
+    if !editor.completion.visible || items.is_empty() {
+        return;
+    }
+    let prefix = editor.completion.prefix.clone();
+    let mut merged: Vec<CompletionItem> = items.into_iter()
+        .filter(|i| i.label.starts_with(prefix.as_str()) && i.label != prefix)
+        .collect();
+    for existing in editor.completion.items.drain(..) {
+        if !merged.iter().any(|i| i.label == existing.label) {
+            merged.push(existing);
+        }
+        if merged.len() >= MAX_ITEMS { break; }
+    }
+    merged.truncate(MAX_ITEMS);
+    editor.completion.items = merged;
+    editor.completion.idx = 0;
 }
 
 /// The automatic popup: only after a word prefix long enough to be useful.
@@ -236,11 +335,19 @@ pub fn accept(editor: &mut Editor) {
     let Some(buf_id) = editor.view_tree.focused_window()
         .and_then(|wid| editor.view_tree.buffer(wid)) else { return };
     let item = editor.completion.items[editor.completion.idx].clone();
-    let suffix = item[editor.completion.prefix.len()..].to_string();
+    let prefix = editor.completion.prefix.clone();
 
     if let Some(view) = editor.view_of_buffer_mut(buf_id) {
         let pos = view.cursor_offset();
-        view.insert(pos, &suffix);
+        let start = pos.saturating_sub(prefix.len().min(pos));
+        if item.insert.starts_with(prefix.as_str()) {
+            let suffix = item.insert[prefix.len()..].to_string();
+            view.insert(pos, &suffix);
+        } else {
+            // The server's insert text does not extend the typed prefix
+            // (e.g. a snippet): replace the prefix wholesale.
+            view.replace(start, pos, &item.insert);
+        }
     }
     dismiss(editor);
 }

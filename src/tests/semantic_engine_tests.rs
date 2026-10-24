@@ -232,7 +232,7 @@ fn completion_trigger_uses_semantic_index() {
     crate::kernel::command::execute_command(&mut ed, "completion-trigger", &Default::default()).unwrap();
     assert!(ed.completion.visible, "completion should be visible");
     assert!(
-        ed.completion.items.iter().any(|i| i.starts_with("buffer")),
+        ed.completion.items.iter().any(|i| i.label.starts_with("buffer")),
         "semantic symbols should appear in completions: {:?}", ed.completion.items
     );
 }

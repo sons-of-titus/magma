@@ -14,6 +14,7 @@ mod registers;
 mod window;
 mod file;
 pub mod vcs;
+pub(crate) mod vc_ops;
 mod completion;
 mod misc;
 mod project_cmds;

@@ -6,6 +6,11 @@ use crate::kernel::state::Editor;
 
 use super::helpers::*;
 
+/// Scratch-buffer names for the F-23 list surfaces.
+pub(crate) const VC_BRANCHES_BUF: &str = "*vc-branches*";
+pub(crate) const VC_HUNKS_BUF: &str = "*vc-hunks*";
+pub(crate) const VC_STASH_BUF: &str = "*vc-stash*";
+
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
@@ -154,10 +159,18 @@ pub(super) fn register(editor: &mut Editor) {
     editor.keymaps.set_layer("vc", "u",      "vc-unstage");
     editor.keymaps.set_layer("vc", "d",      "vc-diff-cursor");
     editor.keymaps.set_layer("vc", "D",      "vc-diff");
+    editor.keymaps.set_layer("vc", "h",      "vc-hunks");
     editor.keymaps.set_layer("vc", "c",      "vc-commit");
+    editor.keymaps.set_layer("vc", "A",      "vc-amend");
     editor.keymaps.set_layer("vc", "p",      "vc-push");
     editor.keymaps.set_layer("vc", "l",      "vc-log");
+    editor.keymaps.set_layer("vc", "S",      "vc-stash");
+    editor.keymaps.set_layer("vc", "b",      "vc-branches");
+    editor.keymaps.set_layer("vc", "R",      "vc-resolve");
     editor.keymaps.set_layer("vc", "q",      "vc-close");
+
+    // Branch / hunk / stash surfaces (F-23).
+    super::vc_ops::register(editor);
 }
 
 enum VcOp { Stage, Unstage, Diff }
@@ -175,7 +188,7 @@ fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
 }
 
 /// Return the 0-indexed line the VC buffer cursor is on.
-fn vc_cursor_line(editor: &Editor) -> usize {
+pub(crate) fn vc_cursor_line(editor: &Editor) -> usize {
     let Some(key) = editor.vc.buf_key else { return 0 };
     let cursor = editor.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
     let Some(arc) = editor.buffers.get(key) else { return 0 };
@@ -310,7 +323,7 @@ fn vc_file_op(editor: &mut Editor, op: VcOp) -> CommandResult {
 /// Dispatch a repository operation on the maintenance lane; the
 /// `VcOpDone` event writes the scratch buffer and refreshes status from
 /// the foreground (rework.md §1: no blocking IO on the interactive path).
-fn vc_spawn_op(
+pub(crate) fn vc_spawn_op(
     editor: &mut Editor,
     op: crate::kernel::vc::VcRemoteOp,
     scratch: Option<&str>,
@@ -372,7 +385,7 @@ fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
 }
 
 /// Write `text` into a named scratch buffer and display it.
-fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
+pub(crate) fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
     let key = editor.buffers.iter()
         .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).name == name)
         .map(|(k, _)| k)
@@ -425,7 +438,24 @@ fn vc_read_commit_buf(editor: &mut Editor) -> Result<String, String> {
     Ok(msg)
 }
 
-/// Commit with the given message and refresh the VC buffer.
+/// Commit — or amend, when a previous `vc-amend` armed it — with the
+/// given message and refresh the VC buffer.  An empty message in amend
+/// mode keeps the previous one (`--no-edit`).
 fn vc_commit(editor: &mut Editor, message: &str) -> CommandResult {
+    if editor.vc.amend_pending {
+        editor.vc.amend_pending = false;
+        let msg = if message.trim().is_empty() { None } else { Some(message.to_string()) };
+        return vc_spawn_op(editor, crate::kernel::vc::VcRemoteOp::Amend(msg), None, true);
+    }
     vc_spawn_op(editor, crate::kernel::vc::VcRemoteOp::Commit(message.to_string()), None, true)
+}
+
+/// Open the `*vc-commit*` buffer in amend mode (armed by `vc-amend`).
+pub(crate) fn vc_open_commit_buf_amend(editor: &mut Editor) -> CommandResult {
+    vc_output_buf(editor, "*vc-commit*",
+        "# Amend mode: edit the message above, then :VCcommit-save.\n# An empty message keeps the previous one.\n")?;
+    editor.editor_mode = crate::kernel::state::mode::EditorMode::new("insert", true);
+    editor.keymaps.pop_layer("editor");
+    editor.keymaps.push_layer("insert");
+    Ok(())
 }

@@ -80,6 +80,7 @@ fn vc_status_construct() {
         staged: vec![],
         unstaged: vec![],
         untracked: vec![],
+            conflicts: vec![],
     };
     assert_eq!(s.branch, "main");
     assert!(s.has_staging);
@@ -99,6 +100,7 @@ fn build_display_clean() {
         staged: vec![],
         unstaged: vec![],
         untracked: vec![],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(out.contains("## main  [git]  /repo"));
@@ -114,6 +116,7 @@ fn build_display_staged() {
         staged: vec![FileStatus { code: 'M', path: "src/main.rs".to_string() }],
         unstaged: vec![],
         untracked: vec![],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(out.contains("Staged:"));
@@ -131,6 +134,7 @@ fn build_display_unstaged() {
         staged: vec![],
         unstaged: vec![FileStatus { code: 'M', path: "src/lib.rs".to_string() }],
         untracked: vec![],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(out.contains("Unstaged:"));
@@ -146,6 +150,7 @@ fn build_display_untracked() {
         staged: vec![],
         unstaged: vec![],
         untracked: vec!["new_file.txt".to_string()],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(out.contains("Untracked:"));
@@ -161,6 +166,7 @@ fn build_display_mixed() {
         staged: vec![FileStatus { code: 'A', path: "new.rs".to_string() }],
         unstaged: vec![FileStatus { code: 'M', path: "old.rs".to_string() }],
         untracked: vec!["ignored.log".to_string()],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(out.contains("Staged:"));
@@ -182,6 +188,7 @@ fn build_display_no_staging_footer_omits_stage_commands() {
         staged: vec![],
         unstaged: vec![FileStatus { code: 'M', path: "file.txt".to_string() }],
         untracked: vec![],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(!out.contains("s stage"));
@@ -199,6 +206,7 @@ fn build_display_no_staging_uses_changed_label() {
         staged: vec![],
         unstaged: vec![FileStatus { code: 'M', path: "file.txt".to_string() }],
         untracked: vec![],
+            conflicts: vec![],
     };
     let out = build_display(Path::new("/repo"), &status);
     assert!(out.contains("Changed:"));
@@ -216,6 +224,7 @@ fn path_at_line_header_lines_return_none() {
         staged: vec![],
         unstaged: vec![],
         untracked: vec![],
+            conflicts: vec![],
     };
     // Clean tree: no file lines exist at all.
     for line in 0..10 {
@@ -233,6 +242,7 @@ fn path_at_line_beyond_end_returns_none() {
         staged: vec![],
         unstaged: vec![],
         untracked: vec![],
+            conflicts: vec![],
     };
     assert!(path_at_line(&status, 100).is_none());
 }
@@ -249,6 +259,7 @@ fn path_at_line_maps_every_rendered_entry() {
         ],
         unstaged: vec![FileStatus { code: 'M', path: "unstaged.rs".to_string() }],
         untracked: vec!["untracked.txt".to_string()],
+            conflicts: vec![],
     };
     // The mapping must agree with the actually rendered text: each entry's
     // display line maps back to its own path, and no other line does.

@@ -19,18 +19,43 @@ pub struct RawMouseEvent {
     pub modifiers: String,
 }
 
-/// Collect one frame of egui input into (key strings, raw mouse events).
+/// IME composition input (R-15): the preedit string updates or a commit.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImeInput {
+    /// Composition updated; an empty text clears the preedit.
+    Preedit { text: String, cursor_char: Option<usize> },
+    /// Composition committed — insert the text.
+    Commit(String),
+}
+
+/// Collect one frame of egui input into (key strings, raw mouse events, IME
+/// events).
 ///
 /// `line_h` converts point-unit wheel deltas into scroll lines.
-pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32) -> (Vec<String>, Vec<RawMouseEvent>) {
+pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32)
+    -> (Vec<String>, Vec<RawMouseEvent>, Vec<ImeInput>)
+{
     let mut keys = Vec::new();
     let mut mice = Vec::new();
+    let mut ime = Vec::new();
     ctx.input(|i| {
         for ev in &i.events {
             if let Some(s) = translate_event(ev) {
                 keys.push(s);
             }
             match ev {
+                egui::Event::Ime(ime_ev) => match ime_ev {
+                    egui::ImeEvent::Preedit { text, active_range_chars } => {
+                        ime.push(ImeInput::Preedit {
+                            text: text.clone(),
+                            cursor_char: active_range_chars.as_ref().map(|r| r.start),
+                        });
+                    }
+                    egui::ImeEvent::Commit(text) if !text.is_empty() => {
+                        ime.push(ImeInput::Commit(text.clone()));
+                    }
+                    _ => {}
+                },
                 egui::Event::PointerButton { pos, button, pressed, modifiers } => {
                     let mb = match button {
                         egui::PointerButton::Primary   => MouseButton::Left,
@@ -77,7 +102,7 @@ pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32) -> (Vec
             }
         }
     });
-    (keys, mice)
+    (keys, mice, ime)
 }
 
 fn format_modifiers(mods: &egui::Modifiers) -> String {

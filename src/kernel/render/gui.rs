@@ -66,6 +66,9 @@ pub struct GuiApp {
     pub(crate) waker_started: bool,
     /// Sub-line wheel delta carried between events.
     pub(crate) wheel_remain: f32,
+    /// Active IME composition (R-15); rendered inline at the cursor and
+    /// cleared when the IME commits or cancels.
+    pub(crate) preedit: Option<super::gui_editor_pane::PreeditOverlay>,
 }
 
 impl GuiApp {
@@ -126,6 +129,7 @@ impl GuiApp {
             pty_wake_rx: Some(wake_rx),
             waker_started: false,
             wheel_remain: 0.0,
+            preedit: None,
         }
     }
 }

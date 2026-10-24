@@ -48,6 +48,8 @@ mod view_layout_tests;
 mod gui_repaint_tests;
 #[cfg(feature = "gui")]
 mod gui_welcome_tests;
+#[cfg(feature = "gui")]
+mod ime_tests;
 
 test_pairs!(
     extension_foundation, special_buffers, process_async, project_api,

@@ -35,6 +35,18 @@ pub struct PanePaint<'a> {
     /// Atlas pixels to re-upload this frame, if dirty.
     pub atlas_pixels:  Option<Vec<u8>>,
     pub theme:         &'a GuiTheme,
+    /// IME composition text drawn inline at the cursor (R-15); `None`
+    /// while no composition is active.
+    pub preedit:       Option<PreeditOverlay>,
+}
+
+/// Composed-but-uncommitted IME text.
+#[derive(Debug, Clone)]
+pub struct PreeditOverlay {
+    pub text: String,
+    /// Composition cursor as a char offset into `text`, when the IME
+    /// reports one.
+    pub cursor_char: Option<usize>,
 }
 
 /// Action produced by pane chrome, applied by the caller after the frame.
@@ -154,6 +166,33 @@ pub fn render_editor_pane(
                     }
                 };
                 ui.painter().rect_filled(rect, 1.0, color);
+            }
+
+            // IME preedit — composition renders inline at the cursor with
+            // an underline, exactly where the committed text will land.
+            if is_focused
+                && let Some(pre) = paint.preedit.as_ref()
+                && !pre.text.is_empty()
+                && let Some((x, y)) = cursor_px {
+                    let (fr, fg, fb) = paint.editor.theme_color("fg");
+                    let color = egui::Color32::from_rgb(fr, fg, fb);
+                    let font = FontId::new(line_h * 0.8, FontFamily::Monospace);
+                    ui.painter().text(
+                        Pos2::new(x, y + line_h * 0.5),
+                        egui::Align2::LEFT_CENTER,
+                        &pre.text,
+                        font,
+                        color,
+                    );
+                    let text_w = pre.text.chars().count() as f32 * char_w;
+                    ui.painter().rect_filled(
+                        Rect::from_min_size(
+                            Pos2::new(x, y + line_h - 2.0),
+                            Vec2::new(text_w.max(2.0), 1.5),
+                        ),
+                        0.5,
+                        color,
+                    );
             }
 
             if is_focused {

@@ -58,8 +58,25 @@ impl GuiApp {
         // unlike key input, nothing else would drain them this frame.
         self.editor.dispatch_events_scoped();
 
-        // ── Key + mouse events ──────────────────────────────────────────────
-        let (key_events, mut raw_mouse_events) = gui_input::collect(ctx, line_h, &mut self.wheel_remain);
+        // ── Key + mouse + IME events ───────────────────────────────────────
+        let (key_events, mut raw_mouse_events, ime_events) =
+            gui_input::collect(ctx, line_h, &mut self.wheel_remain);
+        for ime in ime_events {
+            match ime {
+                gui_input::ImeInput::Preedit { text, cursor_char } => {
+                    self.preedit = if text.is_empty() {
+                        None
+                    } else {
+                        Some(super::gui_editor_pane::PreeditOverlay { text, cursor_char })
+                    };
+                    self.editor.frame_dirty = true;
+                }
+                gui_input::ImeInput::Commit(text) => {
+                    self.preedit = None;
+                    input::dispatch_key(&mut self.editor, &text);
+                }
+            }
+        }
         for key in &key_events {
             if gui_shell::dispatch_shell_key(&mut self.editor, key, &mut self.layout, &mut self.dialogs) {
                 continue;
@@ -275,6 +292,7 @@ impl GuiApp {
             target_format: target_fmt,
             atlas_pixels:  atlas_pixels_upload,
             theme:         &self.theme,
+            preedit:       self.preedit.clone(),
         };
         egui::containers::CentralPanel::no_frame()
             .frame(egui::Frame::NONE.fill(self.theme.base))

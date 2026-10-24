@@ -21,8 +21,11 @@ use crate::kernel::state::Editor;
 const AUTO_TRIGGER_PREFIX: usize = 2;
 const MAX_ITEMS: usize = 50;
 /// Buffers up to this size build their word set inline on the foreground;
-/// larger ones go to the background pool.
-const INLINE_WORD_SCAN_LIMIT: usize = 256 * 1024;
+/// larger ones go to the background pool.  The limit stays tiny: every
+/// keystroke changes the revision, so anything scanned inline re-scans on
+/// every keystroke — the source of the "typing slows down" degradation
+/// when this limit covered 256 KB documents.
+const INLINE_WORD_SCAN_LIMIT: usize = 16 * 1024;
 /// Background scan chunk: one buffer lock per chunk, so the interactive
 /// path never waits behind a whole-document scan.
 const WORD_SCAN_CHUNK: usize = 1 << 20;
@@ -355,4 +358,56 @@ pub fn accept(editor: &mut Editor) {
 pub fn dismiss(editor: &mut Editor) {
     editor.completion.visible = false;
     editor.completion.items.clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kernel::command::builtin;
+    use crate::kernel::storage::disk::DiskFileSystem;
+
+    #[test]
+    fn midsize_buffers_never_scan_words_inline_on_the_keystroke_path() {
+        // The regression: buffers under the old 256 KB inline limit rebuilt
+        // the whole word set on the foreground for every keystroke.  A
+        // 100 KB buffer must take the coalesced/background path instead.
+        let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
+        builtin::register_builtin_commands(&mut ed);
+        let body = "fn alpha() {}\nuse beta_widget;\n".repeat(100_000 / 26);
+        let key = ed.create_buffer_from_str("big", &body);
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
+        }
+
+        let mut prefix_hit = false;
+        // Drive the trigger through the same entry the insert path uses.
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.set_cursor(4); // inside "alpha"
+        }
+        trigger(&mut ed);
+        prefix_hit = ed.completion.visible;
+
+        assert!(!ed.completion.word_cache.contains_key(&key),
+            "a mid-size buffer must not build its word set inline");
+        assert!(!prefix_hit,
+            "without a background pool the big-buffer path serves no candidates yet");
+    }
+
+    #[test]
+    fn tiny_buffers_still_build_their_word_set_inline() {
+        let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
+        builtin::register_builtin_commands(&mut ed);
+        let key = ed.create_buffer_from_str("small", "alpha beta gamma\n");
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
+        }
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.set_cursor(2); // inside "alpha"
+        }
+        trigger(&mut ed);
+        assert!(ed.completion.visible, "the popup opens from the inline scan");
+        assert!(ed.completion.word_cache.contains_key(&key));
+        let labels: Vec<&str> = ed.completion.items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"alpha"), "prefix-matched words surface: {labels:?}");
+    }
 }

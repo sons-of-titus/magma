@@ -313,16 +313,23 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    let text = buf.slice(0, pos);
-                    let lines: Vec<&str> = text.split('\n').collect();
+                    // Rope walk: one line fetched at a time, no document copy.
+                    let cursor_line = buf.line_col_bytes(pos).0;
                     let mut found_content = false;
                     let mut result = None;
-                    for (i, line) in lines.iter().enumerate().rev() {
-                        if line.trim().is_empty() && found_content {
-                            let offset: usize = lines[..=i].iter().map(|l| l.len() + 1).sum();
-                            result = Some(offset.max(1) - 1);
-                            break;
-                        } else if !line.trim().is_empty() {
+                    for k in (0..=cursor_line).rev() {
+                        let line_text = buf.line(k).unwrap_or_default();
+                        if line_text.trim().is_empty() {
+                            if found_content {
+                                let s = if k == cursor_line {
+                                    pos
+                                } else {
+                                    buf.line_start_offset(k + 1).unwrap_or(pos)
+                                };
+                                result = Some(s.max(1) - 1);
+                                break;
+                            }
+                        } else {
                             found_content = true;
                         }
                     }
@@ -343,13 +350,14 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    let text = buf.slice(pos, buf.len());
-                    text.find(['.', '!', '?']).map(|idx| {
-                        let after = &text[idx..];
-                        let end = after.find(|c: char| c != '.' && c != '!' && c != '?' && c != ' ' && c != '\t')
-                            .unwrap_or(after.len());
-                        pos + idx + end
-                    })
+                    // Rope scans: find the terminator, then skip the run of
+                    // terminators/whitespace after it.
+                    buf.find_char_from(pos, |c| c == '.' || c == '!' || c == '?')
+                        .map(|term| {
+                            buf.find_char_from(term,
+                                |c| c != '.' && c != '!' && c != '?' && c != ' ' && c != '\t')
+                                .unwrap_or(buf.len())
+                        })
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
@@ -367,27 +375,14 @@ pub(super) fn register(editor: &mut Editor) {
                 if pos == 0 { return Ok(()); }
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    let text = buf.slice(0, pos);
-                    let mut result = None;
-                    let mut i = pos;
-                    while i > 0 {
-                        let c = text[i.saturating_sub(1)..].chars().next().unwrap_or(' ');
-                        i -= c.len_utf8();
-                        let check = text[i..].chars().next().unwrap_or(' ');
-                        if check == '.' || check == '!' || check == '?' {
-                            let mut j = i + check.len_utf8();
-                            while j < pos {
-                                let c2 = text[j..].chars().next().unwrap_or(' ');
-                                if c2 != ' ' && c2 != '\t' && c2 != '.' && c2 != '!' && c2 != '?' {
-                                    break;
-                                }
-                                j += c2.len_utf8();
-                            }
-                            result = Some(j);
-                            break;
-                        }
-                    }
-                    result
+                    // Rope scans: the closest sentence terminator before the
+                    // cursor, then past its trailing punctuation/space run.
+                    buf.rfind_char_before(pos, |c| c == '.' || c == '!' || c == '?')
+                        .map(|term| {
+                            buf.find_char_from(term,
+                                |c| c != '.' && c != '!' && c != '?' && c != ' ' && c != '\t')
+                                .unwrap_or(pos)
+                        })
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }

@@ -99,6 +99,11 @@ pub fn grapheme_iter(text: &str) -> impl Iterator<Item = &str> {
     text.graphemes(true)
 }
 
+/// Iterate grapheme clusters with their byte offsets.
+pub fn grapheme_indices(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    text.grapheme_indices(true)
+}
+
 /// Total cell width of a line slice.
 pub fn line_cells(
     text: &str,

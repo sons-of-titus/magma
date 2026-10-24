@@ -188,6 +188,9 @@ pub(crate) fn sync_gpu_and_fonts(
     let changed = ed.font_changed;
     ed.font_changed = false;
     if changed {
+        // Glyph metrics feed the row-layout cache; drop it so rows re-lay
+        // out against the new widths (R-12).
+        ed.row_layouts.clear();
         let font_config = ed.font_config.clone();
         super::gui_fonts::apply_fonts_to_egui(ctx, &font_config);
         if let Some(bytes) = font_config.loaded_fonts.values().next() {

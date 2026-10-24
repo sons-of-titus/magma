@@ -63,11 +63,13 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 if pos > 0 {
-                    let text = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(0, pos);
-                    if let Some(ch) = text.chars().last() {
-                        let start = pos - ch.len_utf8();
-                        view.delete(start, pos);
-                    }
+                    let start = {
+                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+                        // Rope scan: the start of the char before the cursor,
+                        // no document-prefix copy.
+                        buf.rfind_char_before(pos, |_| true).unwrap_or(pos.saturating_sub(1))
+                    };
+                    view.delete(start, pos);
                 }
             }
             Ok(())
@@ -193,16 +195,25 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 if pos == 0 { return Ok(()); }
-                let text = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(0, pos);
-                let trimmed = text.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
-                if trimmed.is_empty() {
-                    let last = text.chars().last().map(|c| c.len_utf8()).unwrap_or(0);
-                    view.delete(pos - last, pos);
-                    return Ok(());
+                let word_start = {
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+                    // Rope scans: skip the trailing non-word run, then the
+                    // word run before it.
+                    match buf.rfind_char_before(pos, |c| is_word_char(c)) {
+                        None => {
+                            // Nothing but non-word chars: one char goes.
+                            buf.rfind_char_before(pos, |_| true).unwrap_or(pos)
+                        }
+                        Some(last_word) => {
+                            buf.rfind_char_before(last_word, |c| !is_word_char(c))
+                                .map(|i| i + 1)
+                                .unwrap_or(0)
+                        }
+                    }
+                };
+                if word_start < pos {
+                    view.delete(word_start, pos);
                 }
-                let word_start = trimmed.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .map(|i| i + 1).unwrap_or(0);
-                view.delete(word_start, pos);
             }
             Ok(())
         },
@@ -355,15 +366,19 @@ fn adjust_number(editor: &mut Editor, delta: isize) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
     if let Some(view) = editor.view_of_buffer(buf_id) {
         let pos = view.cursor.offset;
-        let text = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
-        // Find start of number at/around cursor
-        let before = &text[..pos];
-        let num_start = before.rfind(|c: char| !c.is_ascii_digit() && c != '-').map(|i| i + 1).unwrap_or(0);
-        if num_start > before.len() { return Ok(()); }
-        let num_text = &text[num_start..];
-        let num_len = num_text.find(|c: char| !c.is_ascii_digit()).unwrap_or(num_text.len());
+        // Rope scans: locate the number at/around the cursor without a
+        // document copy.
+        let (num_start, num_text) = {
+            let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            let num_start = b.rfind_char_before(pos, |c| !(c.is_ascii_digit() || c == '-'))
+                .map(|i| i + 1).unwrap_or(0);
+            let num_end = b.find_char_from(num_start, |c| !c.is_ascii_digit())
+                .unwrap_or(b.len()).min(pos.max(num_start));
+            (num_start, b.slice(num_start, num_end))
+        };
+        let num_len = num_text.len();
         if num_len == 0 { return Ok(()); }
-        let num_str = &text[num_start..num_start + num_len];
+        let num_str = num_text;
         if let Ok(n) = num_str.parse::<isize>() {
             let new_val = n + delta;
             let new_str = new_val.to_string();

@@ -53,19 +53,27 @@ pub fn schedule_tree_update(ed: &mut crate::kernel::state::Editor, buf_key: usiz
 }
 
 /// Move any parsed tree matching a live buffer revision into the
-/// editor's tree cache.
+/// editor's tree cache.  A `ts-tree-updated` event follows so Janet can
+/// re-highlight from the fresh tree — once per completed parse batch,
+/// never per keystroke (the buffer-changed handler must not re-highlight
+/// synchronously; that was the TAB/typing stall).
 pub fn take_ready_tree(ed: &mut crate::kernel::state::Editor, buf_key: usize, revision: u64) {
     let mut handoff = HANDOFF.lock().unwrap_or_else(|e| e.into_inner());
     let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
-    let mut picked: Vec<(usize, VecDeque<u64>)> = Vec::new();
-    let _ = &mut picked;
+    let mut picked_tree = false;
     let mut kept = VecDeque::new();
     while let Some((k, rev, tree)) = handoff.pop_front() {
         if k == buf_key && rev == revision && current == Some(revision) {
             ed.ts_trees.insert(buf_key, TsTreeState { tree, revision });
+            picked_tree = true;
         } else {
             kept.push_back((k, rev, tree));
         }
     }
     *handoff = kept;
+    if picked_tree {
+        let mut data = std::collections::HashMap::new();
+        data.insert("buffer-id".to_string(), buf_key.to_string());
+        ed.events.emit("ts-tree-updated", data);
+    }
 }

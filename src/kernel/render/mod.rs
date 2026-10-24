@@ -9,6 +9,7 @@ pub mod editor_view;
 pub mod gutter;
 pub mod gutter_providers;
 pub(crate) mod highlight_pass;
+pub mod row_layout;
 pub mod gpu_atlas;
 pub mod decorations;
 #[cfg(feature = "gui")]

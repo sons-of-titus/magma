@@ -6,7 +6,9 @@
   (fn [& args]
     (def buf (buffer/current))
     (when buf
-      (def count (if (> (length args) 0) (args 0) 1))
+      # The count must be a number: a caller-passed string here would make
+      # `for` iterate unboundedly (the TAB hang).
+      (def count (if (and (> (length args) 0) (number? (args 0))) (args 0) 1))
       (def line (buffer/line-number buf))
       (for i 0 count
         (def start (buffer/line-start-offset buf line))
@@ -16,7 +18,7 @@
   (fn [& args]
     (def buf (buffer/current))
     (when buf
-      (def count (if (> (length args) 0) (args 0) 1))
+      (def count (if (and (> (length args) 0) (number? (args 0))) (args 0) 1))
       (def line (buffer/line-number buf))
       (for i 0 count
         (def start (buffer/line-start-offset buf line))

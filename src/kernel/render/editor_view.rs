@@ -94,6 +94,7 @@ impl View for EditorView {
         }
 
         let buf_path_owned: Option<String> = buf.path.clone();
+        let tab_w = int_option(editor, "tab-width", 4);
 
         // ── Pass 1: gutter + text (fold-aware) ───────────────────────────────
         let empty_folds = Vec::new();
@@ -175,18 +176,25 @@ impl View for EditorView {
             }
 
             // Grapheme clusters fill their cell width (CJK = 2 cells,
-            // combining marks = 0), so wide glyphs align (§10).
+            // combining marks = 0), so wide glyphs align (§10).  The
+            // grapheme→cell mapping comes from the row-layout cache (R-12):
+            // one segmentation per (line, revision), reused by the
+            // highlight passes.  Fold rows render synthetic text and stay
+            // uncached — their key would collide with the real line.
             let max_col = area.width.saturating_sub(gutter_width as u16) as usize;
-            let tab_w = int_option(editor, "tab-width", 4);
             {
-                let mut col = 0usize;
-                for g in crate::kernel::text_engine::text_layout::grapheme_iter(line_text) {
-                    let w = crate::kernel::text_engine::text_layout::grapheme_cell_width(
-                        g, tab_w, col, &editor.font_config.glyph_widths,
-                    );
+                let layout = if is_fold_start {
+                    std::sync::Arc::new(crate::kernel::render::row_layout::RowLayout::build(
+                        line_text, 0, tab_w, &editor.font_config.glyph_widths))
+                } else {
+                    crate::kernel::render::row_layout::row_layout(
+                        editor, buf_id, line_start, line_text, buf.revision(), tab_w)
+                };
+                for i in 0..layout.widths.len() {
+                    let col = layout.cols[i] as usize;
                     if col >= max_col { break; }
-                    let lead = g.chars().next().unwrap_or(' ');
-                    surface.set_cell(content_x + col as u16, surf_row, lead, None);
+                    let w = layout.widths[i] as usize;
+                    surface.set_cell(content_x + col as u16, surf_row, layout.leads[i], None);
                     // Zero-width trailing marks stay on the lead cell; wide
                     // glyphs blank their second cell so highlights look right.
                     for k in 1..w {
@@ -194,7 +202,6 @@ impl View for EditorView {
                             surface.set_cell(content_x + (col + k) as u16, surf_row, ' ', None);
                         }
                     }
-                    col += w;
                 }
             }
             display_row += 1;
@@ -205,8 +212,18 @@ impl View for EditorView {
         // ── Pass 2: highlights + visual selection ─────────────────────────
         let row_refs: Vec<(usize, usize, &str)> =
             rows.iter().map(|r| (r.start, r.end, r.text.as_str())).collect();
-        apply_highlights(editor, view, surface, &row_refs, scroll_top, max_visible,
-                         content_x, row_offset, cursor_offset);
+        let row_layouts: Vec<std::sync::Arc<crate::kernel::render::row_layout::RowLayout>> =
+            rows.iter().map(|r| {
+                if r.fold {
+                    std::sync::Arc::new(crate::kernel::render::row_layout::RowLayout::build(
+                        &r.text, 0, tab_w, &editor.font_config.glyph_widths))
+                } else {
+                    crate::kernel::render::row_layout::row_layout(
+                        editor, buf_id, r.start, &r.text, buf.revision(), tab_w)
+                }
+            }).collect();
+        apply_highlights(editor, view, surface, &row_refs, &row_layouts,
+                         scroll_top, max_visible, content_x, row_offset, cursor_offset);
 
         // ── Current execution line — the stopped debuggee's location ──────
         if let Some((path, line)) = editor.debug.active_session()

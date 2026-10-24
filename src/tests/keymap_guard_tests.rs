@@ -57,3 +57,26 @@ fn ctrl_o_still_means_jump_back_in_normal_mode() {
         assert_eq!(ed.keymaps.resolve("ctrl-i").as_deref(), Some("mark-ring-jump-forward"));
     });
 }
+
+// ── Variadic command dispatch must not fabricate arguments ──────────────────
+
+#[test]
+fn variadic_janet_command_from_keymap_gets_zero_args() {
+    use crate::kernel::scripting;
+    // The regression: `(fn [& args] …)` commands received one empty-string
+    // argument, so `(length args)` was 1 with `(args 0)` a string — and
+    // commands reading a count from it (indent-line's `(for i 0 count)`)
+    // looped forever on every keymap press of tab.
+    janet_test!(ed, {
+        let r = scripting::eval_result(r#"
+            (do
+              (var arg-len nil)
+              (command/define "bisect-variadic" (fn [& args]
+                (set arg-len (length args))))
+              (editor/run-command "bisect-variadic")
+              (string arg-len))
+        "#).unwrap_or_default();
+        assert_eq!(r, "\"0\"",
+            "a variadic command invoked without arguments must see an empty args tuple");
+    });
+}

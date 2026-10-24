@@ -71,6 +71,10 @@ harness = false
 name = "editor_workloads"
 harness = false
 
+[[bench]]
+name = "perf_gates"
+harness = false
+
 [features]
 default = ["janet", "gui"]
 janet = ["dep:evil-janet"]

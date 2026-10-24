@@ -211,6 +211,9 @@ pub struct Editor {
     pub default_icons: crate::kernel::icons::IconPack,
     /// Minimap sampled-line caches keyed by buffer slab key (rework.md §7).
     pub minimap_cache: std::collections::HashMap<usize, crate::kernel::state::minimap::MinimapCache>,
+    /// Per-row grapheme→cell layouts, keyed by (buffer, line start, tab
+    /// width) and versioned by buffer revision (R-12).
+    pub row_layouts: crate::kernel::render::row_layout::RowLayoutCache,
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
     pub scheduler: WorkScheduler,
@@ -315,6 +318,7 @@ impl Editor {
             icons: crate::kernel::icons::IconPack::empty("default"),
             default_icons: crate::kernel::icons::IconPack::empty("default"),
             minimap_cache: std::collections::HashMap::new(),
+            row_layouts: crate::kernel::render::row_layout::RowLayoutCache::default(),
             task_scheduler: TaskScheduler::new(),
             debug: DebugManager::new(),
             scheduler: WorkScheduler::new(),

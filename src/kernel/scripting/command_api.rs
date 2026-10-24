@@ -87,12 +87,16 @@ pub(crate) fn invoke_janet_command(
     raw: Option<&str>,
 ) -> Result<(), String> {
     unsafe {
-        // A command may declare zero arity (`(fn [] …)`) or one parameter
-        // (`(fn [arg] …)`, `(fn [&] …)`); dispatch must match, or the call
-        // fails at the arity check before any body runs.
-        let max_arity = (*(*func).def).max_arity;
+        // A command may declare zero arity (`(fn [] …)`), one parameter
+        // (`(fn [arg] …)`), or be variadic (`(fn [& args] …)`).  Only a
+        // command that REQUIRES an argument (min_arity >= 1) receives one:
+        // handing a variadic command an empty-string argument made
+        // `(length args)` 1 with `(args 0)` a string — and commands that
+        // read a count from it (indent-line's `(for i 0 count)`) looped
+        // forever on every keymap invocation.
+        let min_arity = (*(*func).def).min_arity;
         let mut out: Janet = std::mem::zeroed();
-        let sig = if max_arity >= 1 {
+        let sig = if min_arity >= 1 {
             let cargs = [conv::string(raw.unwrap_or(""))];
             janet_pcall(func, 1, cargs.as_ptr(), &mut out, std::ptr::null_mut())
         } else {

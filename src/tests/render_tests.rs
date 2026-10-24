@@ -378,7 +378,11 @@ fn selection_paints_tab_expanded_cell_columns() {
     let line = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 2);
     let rows: Vec<(usize, usize, &str)> = vec![(0, 2, line.as_str())];
     let mut surface = Surface::new(20, 1);
-    apply_highlights(&ed, Some(&view), &mut surface, &rows, 0, 1, 0, 0, 2);
+    let layouts: Vec<std::sync::Arc<crate::kernel::render::row_layout::RowLayout>> =
+        rows.iter().map(|(s, e, t)| std::sync::Arc::new(
+            crate::kernel::render::row_layout::RowLayout::build(t, 0, 4, &ed.font_config.glyph_widths)))
+        .collect();
+    apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 2);
 
     // 'x' is painted at cell 4 (tab stop), so the selection must reach
     // cells 0..5 — before the fix the selection style stopped at cell 1
@@ -410,7 +414,11 @@ fn highlight_layer_covers_wide_glyph_trailing_cell() {
     let line = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 4);
     let rows: Vec<(usize, usize, &str)> = vec![(0, 4, line.as_str())];
     let mut surface = Surface::new(20, 1);
-    apply_highlights(&ed, Some(&view), &mut surface, &rows, 0, 1, 0, 0, 0);
+    let layouts: Vec<std::sync::Arc<crate::kernel::render::row_layout::RowLayout>> =
+        rows.iter().map(|(s, e, t)| std::sync::Arc::new(
+            crate::kernel::render::row_layout::RowLayout::build(t, 0, 4, &ed.font_config.glyph_widths)))
+        .collect();
+    apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 0);
 
     let default_style = crate::kernel::render::surface::Style::default();
     let lead = surface.cell(0, 0).unwrap();

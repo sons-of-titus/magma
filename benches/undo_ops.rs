@@ -1,24 +1,29 @@
-use magma::kernel::text_engine::undo::UndoTree;
-use magma::kernel::state::id::MarkId;
+use magma::kernel::text_engine::edit::Edit;
+use magma::kernel::text_engine::revision::Revision;
+use magma::kernel::text_engine::transaction::{
+    CommittedEdit, EditTransaction, TransactionOrigin,
+};
+use magma::kernel::text_engine::undo::UndoHistory;
 
-fn make_marks(n: usize) -> Vec<(MarkId, usize)> {
-    (0..n).map(|i| (MarkId(i as u64), i * 100)).collect()
+fn insert_txn(rev: u64, offset: usize, text: &str) -> EditTransaction {
+    EditTransaction {
+        revision_before: Revision(rev),
+        revision_after: Revision(rev + 1),
+        edits: vec![CommittedEdit {
+            edit: Edit::insert(offset, text),
+            old_text: String::new(),
+        }],
+        origin: TransactionOrigin::User,
+    }
 }
 
 fn main() {
-    // Benchmark: record single ops
+    // Benchmark: record single ops (each its own undo step)
     {
-        let mut tree = UndoTree::new(1000);
-        let marks = make_marks(10);
+        let mut tree = UndoHistory::new();
         let start = std::time::Instant::now();
-        for i in 0..10_000 {
-            tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: i,
-                    text: "x".into(),
-                },
-                marks.clone(),
-            );
+        for i in 0..10_000u64 {
+            tree.record(insert_txn(i, i as usize, "x"), i as usize, i as usize + 1);
         }
         let elapsed = start.elapsed();
         println!(
@@ -28,23 +33,17 @@ fn main() {
         );
     }
 
-    // Benchmark: record ops that merge (within 200ms window)
+    // Benchmark: record ops inside one explicit group (one undo step)
     {
-        let mut tree = UndoTree::new(1000);
-        let marks = make_marks(10);
+        let mut tree = UndoHistory::new();
+        tree.open_group();
         let start = std::time::Instant::now();
-        for i in 0..10_000 {
-            tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: i,
-                    text: "x".into(),
-                },
-                marks.clone(),
-            );
+        for i in 0..10_000u64 {
+            tree.record(insert_txn(i, i as usize, "x"), i as usize, i as usize + 1);
         }
         let elapsed = start.elapsed();
         println!(
-            "record 10000 merging ops: {:?} ({:.3} µs/op)",
+            "record 10000 grouped ops: {:?} ({:.3} µs/op)",
             elapsed,
             elapsed.as_micros() as f64 / 10_000.0
         );
@@ -52,23 +51,20 @@ fn main() {
 
     // Benchmark: undo + redo cycle
     {
-        let mut tree = UndoTree::new(1000);
-        let marks = make_marks(10);
-        for i in 0..500 {
-            tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: i,
-                    text: "hello".into(),
-                },
-                marks.clone(),
-            );
+        let mut tree = UndoHistory::new();
+        for i in 0..500u64 {
+            tree.record(insert_txn(i, i as usize, "hello"), i as usize, i as usize + 5);
         }
         let start = std::time::Instant::now();
         for _ in 0..500 {
-            let _ = tree.undo();
+            if let Some((start_idx, _, _)) = tree.undo_step() {
+                tree.finish_undo(start_idx);
+            }
         }
         for _ in 0..500 {
-            let _ = tree.redo();
+            if let Some((_, end_idx, _)) = tree.redo_step() {
+                tree.finish_redo(end_idx);
+            }
         }
         let elapsed = start.elapsed();
         println!(
@@ -78,46 +74,47 @@ fn main() {
         );
     }
 
-    // Benchmark: open_session + close_session
+    // Benchmark: open_group + close_group
     {
-        let mut tree = UndoTree::new(1000);
-        let marks = make_marks(10);
+        let mut tree = UndoHistory::new();
         let start = std::time::Instant::now();
         for _ in 0..1_000 {
-            tree.open_session(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: 0,
-                    text: "x".into(),
-                },
-                marks.clone(),
-            );
-            tree.close_session();
+            tree.open_group();
+            tree.close_group();
         }
         let elapsed = start.elapsed();
         println!(
-            "open+close session x1000: {:?} ({:.1} µs/op)",
+            "open+close group x1000: {:?} ({:.1} µs/op)",
             elapsed,
             elapsed.as_micros() as f64 / 1000.0
         );
     }
 
-    // Benchmark: record with large mark sets
+    // Benchmark: record with large edit sets
     {
-        let mut tree = UndoTree::new(1000);
-        let big_marks = make_marks(1000);
+        let mut tree = UndoHistory::new();
+        let big: Vec<CommittedEdit> = (0..1_000)
+            .map(|i| CommittedEdit {
+                edit: Edit::delete(i * 20..i * 20 + 18),
+                old_text: "deleted text here".to_string(),
+            })
+            .collect();
         let start = std::time::Instant::now();
-        for _ in 0..1_000 {
+        for i in 0..1_000u64 {
             tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Delete {
-                    offset: 0,
-                    text: "deleted text here".into(),
+                EditTransaction {
+                    revision_before: Revision(i),
+                    revision_after: Revision(i + 1),
+                    edits: big.clone(),
+                    origin: TransactionOrigin::User,
                 },
-                big_marks.clone(),
+                0,
+                0,
             );
         }
         let elapsed = start.elapsed();
         println!(
-            "record 1000 ops with 1000 marks each: {:?} ({:.1} µs/op)",
+            "record 1000 ops with 1000 edits each: {:?} ({:.1} µs/op)",
             elapsed,
             elapsed.as_micros() as f64 / 1000.0
         );
@@ -125,15 +122,9 @@ fn main() {
 
     // Benchmark: can_undo / can_redo
     {
-        let mut tree = UndoTree::new(100);
-        let marks = make_marks(5);
-        for i in 0..50 {
-            tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: i, text: "x".into(),
-                },
-                marks.clone(),
-            );
+        let mut tree = UndoHistory::new();
+        for i in 0..50u64 {
+            tree.record(insert_txn(i, i as usize, "x"), i as usize, i as usize + 1);
         }
         let start = std::time::Instant::now();
         for _ in 0..100_000 {
@@ -148,26 +139,20 @@ fn main() {
         );
     }
 
-    // Benchmark: mark_saved + is_modified_since_save
+    // Benchmark: mark_saved_at_cursor + is_modified
     {
-        let mut tree = UndoTree::new(100);
-        let marks = make_marks(5);
-        for i in 0..10 {
-            tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: i, text: "x".into(),
-                },
-                marks.clone(),
-            );
+        let mut tree = UndoHistory::new();
+        for i in 0..10u64 {
+            tree.record(insert_txn(i, i as usize, "x"), i as usize, i as usize + 1);
         }
-        tree.mark_saved();
+        tree.mark_saved_at_cursor(tree.cursor_pos());
         let start = std::time::Instant::now();
         for _ in 0..100_000 {
-            let _ = tree.is_modified_since_save();
+            let _ = tree.is_modified();
         }
         let elapsed = start.elapsed();
         println!(
-            "is_modified_since_save x100000: {:?} ({:.3} µs/op)",
+            "is_modified x100000: {:?} ({:.3} µs/op)",
             elapsed,
             elapsed.as_micros() as f64 / 100_000.0
         );
@@ -175,15 +160,9 @@ fn main() {
 
     // Benchmark: clear
     {
-        let mut tree = UndoTree::new(100);
-        let marks = make_marks(5);
-        for i in 0..100 {
-            tree.record(
-                magma::kernel::text_engine::undo::UndoOp::Insert {
-                    offset: i, text: "x".into(),
-                },
-                marks.clone(),
-            );
+        let mut tree = UndoHistory::new();
+        for i in 0..100u64 {
+            tree.record(insert_txn(i, i as usize, "x"), i as usize, i as usize + 1);
         }
         let start = std::time::Instant::now();
         for _ in 0..10_000 {
@@ -197,26 +176,20 @@ fn main() {
         );
     }
 
-    // Benchmark: max_groups eviction
+    // Benchmark: entry eviction at the 10000-entry cap
     {
-        let marks = make_marks(5);
         let start = std::time::Instant::now();
         {
-            let mut tree = UndoTree::new(50);
-            for i in 0..10_000 {
-                tree.record(
-                    magma::kernel::text_engine::undo::UndoOp::Insert {
-                        offset: i, text: "x".into(),
-                    },
-                    marks.clone(),
-                );
+            let mut tree = UndoHistory::new();
+            for i in 0..20_000u64 {
+                tree.record(insert_txn(i, i as usize, "x"), i as usize, i as usize + 1);
             }
         }
         let elapsed = start.elapsed();
         println!(
-            "record 10000 ops with max 50 groups (eviction): {:?} ({:.3} µs/op)",
+            "record 20000 ops (cap 10000, eviction): {:?} ({:.3} µs/op)",
             elapsed,
-            elapsed.as_micros() as f64 / 10_000.0
+            elapsed.as_micros() as f64 / 20_000.0
         );
     }
 }

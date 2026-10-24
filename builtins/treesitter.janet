@@ -308,14 +308,20 @@
       (array/push ranges [(r 0) (r 1) (r 2)]))
     (buffer/set-highlights-layer buf-id "syntax" ranges)))
 
-# Event handler — incremental reparse on buffer change; the Rust side
-# reuses the cached tree and applies only the edits since its revision.
+# Event handlers.
+#
+# buffer-changed must NOT re-highlight synchronously: ts/highlight runs a
+# full-tree query, so per keystroke that is O(document) on the interactive
+# path — typing degraded and tab blocked completely on large files.  The
+# Rust lane parses off-thread, coalesced per buffer, and emits
+# ts-tree-updated when a fresh tree lands; highlighting follows that.
 (event/on "buffer-changed"
+  (fn [_] nil))
+
+(event/on "ts-tree-updated"
   (fn [data]
-    (def raw (get data :buffer-id))
-    (when raw
-      (def buf-id (scan-number raw))
-      (when buf-id
+    (when-let [raw (get data "buffer-id")]
+      (when-let [buf-id (scan-number raw)]
         (ts/highlight-buffer buf-id)))))
 
 (print "tree-sitter loaded")

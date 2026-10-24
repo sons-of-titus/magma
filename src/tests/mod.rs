@@ -69,5 +69,7 @@ test_pairs!(
 #[cfg(feature = "janet")] mod keymap_guard_tests;
 #[cfg(feature = "janet")] mod builtin_parse_tests;
 mod scratch_probe_tests;
+#[cfg(feature = "janet")]
+mod perf_probe_tests;
 mod memory_budget_tests;
 mod viewport_scroll_tests;

@@ -106,7 +106,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    run_gui(editor, bg_receiver)
+    let result = run_gui(editor, bg_receiver);
+
+    // A lane-starved blocking task can block the runtime's destructor
+    // forever; shut down with a deadline instead of hanging at exit.
+    drop(result);
+    match std::sync::Arc::try_unwrap(runtime) {
+        Ok(rt) => {
+            rt.shutdown_timeout(std::time::Duration::from_secs(2));
+        }
+        Err(rt) => {
+            // Handles still alive (embedded editor not yet dropped):
+            // signal the workers and let the Arc teardown finish it.
+            let _ = rt;
+        }
+    }
+    Ok(())
 }
 
 async fn client_connect(addr: &str) -> Result<(), Box<dyn std::error::Error>> {

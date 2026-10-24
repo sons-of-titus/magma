@@ -1,5 +1,10 @@
 # Deliverable C — Detailed Findings Register
 
+> **Status authority:** fix/status tracking for every finding lives in
+> the root `PROGRESS.md` (updated per wave). This file records the
+> original evidence, root causes, and acceptance criteria; its
+> "Open findings" list below is historical.
+
 Severity: P0 critical, P1 major, P2 significant, P3 minor.
 Confidence: H high (read the code / reproduced), M medium (strong
 inference). "FIXED" entries were repaired in this audit with regression

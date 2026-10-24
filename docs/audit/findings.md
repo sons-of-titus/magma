@@ -83,6 +83,18 @@ tests (`improvements.md`).
 - Test: `vc_backend_tests.rs::template_values_are_shell_quoted_not_executed`
   (sentinel file proves no execution).
 
+## Closed by the "Close the Semantic Loops" wave (follow-up commits)
+
+- **F-26 closed** — typed diagnostics end-to-end; zero display-string parsers.
+- **F-17 closed** — goto-definition converts UTF-16 in both directions.
+- **F-16 (a/b/c) closed** — LSP completion drives the popup, hover feeds the
+  dwell card, code actions open a quick-fix picker that applies edits.
+- **F-19 closed** — `workspace/applyEdit` is forwarded to the foreground,
+  applied, and answered truthfully.
+- **F-20/F-21 closed** — all finished tasks parse tool output (rustc spans,
+  warnings, test panics, generic file:line:col) into diagnostics + quickfix;
+  severity is preserved; a live cargo-build e2e test pins it.
+
 ## Open findings
 
 ### Editor core

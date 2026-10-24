@@ -74,12 +74,18 @@ unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
         let fn_val = *argv.add(1);
         let fn_idx = register_handler(fn_val);
         let sub_id = ed.events.on(&name, move |data: &HashMap<String, String>| {
-            if let Ok(handlers) = JANET_HANDLERS.lock()
-                && let Some(Some(JanetSend(fn_ref))) = handlers.get(fn_idx) {
-                    let tbl = data_to_table(data);
-                    let arg = janet_wrap_table(tbl);
-                    call_janet_fn_with_arg(*fn_ref, arg);
-                }
+            // Copy the function value out and drop the lock before entering
+            // the VM: a handler that registers or removes handlers
+            // (event/on, event/off) re-locks this mutex on the same thread,
+            // and a held std Mutex would deadlock the editor.
+            let fn_val = JANET_HANDLERS.lock()
+                .ok()
+                .and_then(|handlers| handlers.get(fn_idx).and_then(|s| s.map(|JanetSend(f)| f)));
+            if let Some(fn_val) = fn_val {
+                let tbl = data_to_table(data);
+                let arg = janet_wrap_table(tbl);
+                call_janet_fn_with_arg(fn_val, arg);
+            }
             None
         });
         conv::integer(sub_id as i32)
@@ -99,12 +105,14 @@ unsafe extern "C-unwind" fn c_event_once(argc: i32, argv: *mut Janet) -> Janet {
         let fn_val = *argv.add(1);
         let fn_idx = register_handler(fn_val);
         let sub_id = ed.events.once(&name, move |data: &HashMap<String, String>| {
-            if let Ok(handlers) = JANET_HANDLERS.lock()
-                && let Some(Some(JanetSend(fn_ref))) = handlers.get(fn_idx) {
-                    let tbl = data_to_table(data);
-                    let arg = janet_wrap_table(tbl);
-                    call_janet_fn_with_arg(*fn_ref, arg);
-                }
+            let fn_val = JANET_HANDLERS.lock()
+                .ok()
+                .and_then(|handlers| handlers.get(fn_idx).and_then(|s| s.map(|JanetSend(f)| f)));
+            if let Some(fn_val) = fn_val {
+                let tbl = data_to_table(data);
+                let arg = janet_wrap_table(tbl);
+                call_janet_fn_with_arg(fn_val, arg);
+            }
             None
         });
         conv::integer(sub_id as i32)

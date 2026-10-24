@@ -177,3 +177,38 @@ fn quit_sets_running_false() {
     helpers::run(&mut ed, "quit");
     assert!(!ed.running);
 }
+
+// ── goto-matching-brace ──────────────────────────────────────────────
+
+#[test]
+fn goto_matching_brace_survives_non_boundary_cursor() {
+    // é is two bytes; a cursor landed mid-codepoint (possible after a
+    // UTF-16 → byte conversion) used to panic the slice.  Snapping down
+    // lands on é itself — not a bracket — so the cursor must stay put.
+    let mut ed = helpers::make_editor_with_buffer("(println \"héllo\")");
+    let key = helpers::focused_key(&ed);
+    let mid_char = "(println \"h".len() + 1; // inside é
+    ed.views.get_mut(&key).unwrap().set_cursor(mid_char);
+    helpers::run(&mut ed, "goto-matching-brace");
+    assert_eq!(helpers::cursor(&ed), mid_char, "no bracket at the snapped char: cursor stays");
+}
+
+#[test]
+fn goto_matching_brace_from_mid_char_after_opener() {
+    let mut ed = helpers::make_editor_with_buffer("(é)");
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(2); // second byte of é
+    helpers::run(&mut ed, "goto-matching-brace");
+    assert_eq!(helpers::cursor(&ed), 2, "snap lands on é, not a bracket: cursor stays");
+}
+
+#[test]
+fn goto_matching_brace_backward_from_end_of_buffer() {
+    // The bracket candidate behind a cursor at end-of-buffer used to slice
+    // past the last byte.
+    let mut ed = helpers::make_editor_with_buffer("(é)");
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor("(é)".len());
+    helpers::run(&mut ed, "goto-matching-brace");
+    assert_eq!(helpers::cursor(&ed), 0, "closing paren at EOB jumps to its opener");
+}

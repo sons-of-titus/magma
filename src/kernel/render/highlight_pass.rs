@@ -3,7 +3,37 @@
 use crate::kernel::text_engine::BufferView;
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::{Style, Surface};
+use crate::kernel::text_engine::text_layout::{grapheme_cell_width, grapheme_iter};
 
+/// One row's cell-mapping state: advance over graphemes exactly the way
+/// the text pass places them (tabs to stops, wide glyphs two cells), so a
+/// highlight column can never disagree with the painted glyph column.
+struct CellWalk {
+    byte: usize,
+    col: usize,
+}
+
+fn advance(walk: &mut CellWalk, g: &str, tab_w: usize,
+           glyph_widths: &std::collections::HashMap<char, u8>) -> usize {
+    let w = grapheme_cell_width(g, tab_w, walk.col, glyph_widths);
+    walk.col += w;
+    walk.byte += g.len();
+    w
+}
+
+/// Restyle `w` cells starting at column `col` with `style`, stamping the
+/// grapheme's lead char on the first cell (already there from the text
+/// pass, but the restyle must not drop it) and blanks on trailing cells.
+fn paint_cells(surface: &mut Surface, content_x: u16, surf_row: u16, col: usize, w: usize,
+               lead: char, style: Style) {
+    for k in 0..w {
+        let sx = content_x + (col + k) as u16;
+        if sx < surface.width {
+            let ch = if k == 0 { lead } else { ' ' };
+            surface.set_cell(sx, surf_row, ch, Some(style));
+        }
+    }
+}
 
 /// Apply all highlight layers (base → syntax → semantic → search → custom) and
 /// the visual selection highlight onto `surface`.
@@ -39,6 +69,9 @@ pub fn apply_highlights(
         }
     }
 
+    let tab_w = super::frame::int_option(editor, "tab-width", 4);
+    let glyph_widths = &editor.font_config.glyph_widths;
+
     if !all_highlights.is_empty() {
         let row_ranges: Vec<(usize, usize)> =
             rows.iter().map(|(s, e, _)| (*s, *e)).collect();
@@ -61,16 +94,17 @@ pub fn apply_highlights(
                 let surf_row = row_offset + vis_row as u16;
                 let Some((_, _, line_text)) = rows.get(vis_row) else { continue };
                 let line_text: &str = line_text;
-                let mut byte = *line_start;
-                for (col, ch) in line_text.chars().enumerate() {
-                    if byte >= hl_end { break; }
-                    if byte >= hl_start {
-                        let sx = content_x + col as u16;
-                        if sx < surface.width {
-                            surface.set_cell(sx, surf_row, ch, Some(style));
-                        }
+                let mut walk = CellWalk { byte: *line_start, col: 0 };
+                for g in grapheme_iter(line_text) {
+                    if walk.byte >= hl_end { break; }
+                    let col = walk.col;
+                    if walk.byte >= hl_start {
+                        let lead = g.chars().next().unwrap_or(' ');
+                        paint_cells(surface, content_x, surf_row, col,
+                            advance(&mut walk, g, tab_w, glyph_widths), lead, style);
+                    } else {
+                        advance(&mut walk, g, tab_w, glyph_widths);
                     }
-                    byte += ch.len_utf8();
                 }
             }
         }
@@ -80,23 +114,22 @@ pub fn apply_highlights(
     // so the byte cursor advances exactly once per row terminator.
     let sel = editor.selection_range(cursor_offset);
     if let Some((sel_start, sel_end)) = sel {
-        let mut byte = rows.first().map(|(s, _, _)| *s).unwrap_or(0);
-        for (vis_row, (line_start, _, line_text)) in rows.iter().enumerate() {
+        let sel_fg = editor.theme_color("selection-fg");
+        let sel_bg = editor.theme_color("selection-bg");
+        let sel_style = Style { fg: sel_fg, bg: sel_bg, ..Default::default() };
+        let mut walk = CellWalk { byte: rows.first().map(|(s, _, _)| *s).unwrap_or(0), col: 0 };
+        for (vis_row, (_line_start, _, line_text)) in rows.iter().enumerate() {
             let surf_row = row_offset + vis_row as u16;
-            for (col, ch) in line_text.chars().enumerate() {
-                if byte >= sel_start && byte < sel_end {
-                    let sx = content_x + col as u16;
-                    if sx < surface.width {
-                        let sel_fg = editor.theme_color("selection-fg");
-                        let sel_bg = editor.theme_color("selection-bg");
-                        surface.set_cell(sx, surf_row, ch,
-                            Some(Style { fg: sel_fg, bg: sel_bg, ..Default::default() }));
-                    }
+            for g in grapheme_iter(line_text) {
+                let start_byte = walk.byte;
+                let col = walk.col;
+                let w = advance(&mut walk, g, tab_w, glyph_widths);
+                if start_byte >= sel_start && start_byte < sel_end {
+                    let lead = g.chars().next().unwrap_or(' ');
+                    paint_cells(surface, content_x, surf_row, col, w, lead, sel_style);
                 }
-                byte += ch.len_utf8();
             }
-            let _ = line_start;
-            if byte > sel_end { break; }
+            if walk.byte > sel_end { break; }
         }
     }
 }

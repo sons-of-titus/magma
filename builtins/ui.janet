@@ -80,12 +80,5 @@
     (editor/echo (string "Indexed " count " files in " name))))
 
 # ── External change notice ────────────────────────────────────────────────────
-# Open files are reloaded by the kernel; surface the fact so a rewritten
-# buffer never changes silently behind the user's back.
-
-(event/on "file-changed"
-  (fn [data]
-    (def path (get data :path ""))
-    (def kind (get data :kind ""))
-    (when (= kind "removed")
-      (editor/echo (string "File removed on disk: " path) "error"))))
+# Open files are reloaded by the kernel (unmodified buffers auto-revert,
+# modified ones warn); the kernel also reports removed files.

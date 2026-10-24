@@ -42,6 +42,11 @@ pub struct EventBus {
     pending: VecDeque<Event>,
     next_sub_id: u64,
     next_hook_id: u64,
+    /// Event names currently being dispatched.  A handler that re-emits the
+    /// event it is handling would otherwise grow the queue forever — the
+    /// drain loop pops one and the handler pushes one back, endlessly, on
+    /// the UI thread.  Re-entrant emits of an in-flight name are dropped.
+    dispatching: Vec<String>,
 }
 
 impl Default for EventBus {
@@ -58,6 +63,7 @@ impl EventBus {
             pending: VecDeque::new(),
             next_sub_id: 1,
             next_hook_id: 1,
+            dispatching: Vec::new(),
         }
     }
 
@@ -95,7 +101,13 @@ impl EventBus {
     }
 
     /// Queue an event for later dispatch via `drain_and_dispatch`.
+    /// An emit of an event name that is already being dispatched is
+    /// dropped: it can only be a handler's self-recursion.
     pub fn emit(&mut self, event_name: &str, data: EventData) {
+        if self.dispatching.iter().any(|n| n == event_name) {
+            debug!("event bus: dropped re-entrant emit of '{}'", event_name);
+            return;
+        }
         self.pending.push_back(Event {
             name: event_name.to_string(),
             data,
@@ -138,6 +150,7 @@ impl EventBus {
 
     pub fn dispatch_all(&mut self, event: &Event) {
         debug!("DA: event={}, hooks_before={}", event.name, self.hooks.len());
+        self.dispatching.push(event.name.clone());
         let data = self.run_hooks(&event.name, HookPhase::Before, &event.data)
             .unwrap_or_else(|| event.data.clone());
 
@@ -162,6 +175,7 @@ impl EventBus {
         }
 
         self.run_hooks(&event.name, HookPhase::After, &data);
+        self.dispatching.pop();
         debug!("DA: event={} complete", event.name);
     }
 

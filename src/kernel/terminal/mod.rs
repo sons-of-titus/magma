@@ -206,6 +206,43 @@ impl TerminalManager {
     }
 }
 
+/// Decode `chunk` appended to `pending` incomplete-trailing-bytes state.
+///
+/// PTY reads split UTF-8 sequences across chunk boundaries; decoding each
+/// chunk in isolation would replace the head of a split character with
+/// U+FFFD.  Returns the decoded text; an incomplete trailing sequence
+/// stays in `pending` for the next chunk, genuinely invalid bytes are
+/// dropped (as U+FFFD at their position).
+pub(crate) fn decode_chunk(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
+    pending.extend_from_slice(chunk);
+    let mut out = String::new();
+    loop {
+        match std::str::from_utf8(pending) {
+            Ok(s) => {
+                out.push_str(s);
+                pending.clear();
+                return out;
+            }
+            Err(e) => {
+                let valid = e.valid_up_to();
+                out.push_str(&String::from_utf8_lossy(&pending[..valid]));
+                match e.error_len() {
+                    None => {
+                        // Incomplete sequence at the end: carry it over.
+                        let carried = pending[valid..].to_vec();
+                        *pending = carried;
+                        return out;
+                    }
+                    Some(bad) => {
+                        out.push('\u{fffd}');
+                        pending.drain(..valid + bad);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn read_pipe(
     mut reader: Box<dyn std::io::Read + Send>,
     terminal_id: usize,
@@ -214,12 +251,14 @@ fn read_pipe(
 ) {
     use std::io::Read;
     let mut buf = [0u8; 4096];
+    let mut utf8_pending: Vec<u8> = Vec::new();
     loop {
         match reader.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => {
-                // Raw bytes: the emulator on the foreground parses ANSI.
-                let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                // Raw bytes: the emulator on the foreground parses ANSI;
+                // UTF-8 sequences split across reads are reassembled first.
+                let data = decode_chunk(&mut utf8_pending, &buf[..n]);
                 if sender.send(BackgroundEvent::TerminalOutput { terminal_id, data }).is_err() {
                     break;
                 }

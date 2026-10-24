@@ -318,7 +318,7 @@ mod render_damage {
         let buf = arc.lock().unwrap();
         let st1 = {
             let cursor = ed.views.get(&key).unwrap().cursor_offset();
-            scroll_state_for_buffer(&buf, cursor, 3, 0, &Default::default())
+            scroll_state_for_buffer(&buf, cursor, 3, 0, 4, &Default::default())
         };
         let st2 = scroll_state_from_lines(0, 0, buf.line_count(), 3, 0);
         assert_eq!(st1.scroll_top, st2.scroll_top);
@@ -359,4 +359,68 @@ fn cursor_respects_blink_flag() {
         !without.iter().any(|ch| *ch == '█' || *ch == '▔' || *ch == '▏'),
         "no cursor glyphs while blink phase is off"
     );
+}
+
+// ── Highlight/selection cell columns (tabs and wide glyphs) ──────────
+
+#[test]
+fn selection_paints_tab_expanded_cell_columns() {
+    use crate::kernel::render::highlight_pass::apply_highlights;
+    use crate::kernel::render::surface::Surface;
+
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("\tx");
+    let key = crate::tests::helpers::focused_key(&ed);
+    // Select the whole line (anchor 0, cursor at end).
+    ed.selection = Some(crate::kernel::state::Selection::char(0));
+    ed.views.get_mut(&key).unwrap().set_cursor(2);
+
+    let view = ed.views.get(&key).unwrap().clone();
+    let line = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 2);
+    let rows: Vec<(usize, usize, &str)> = vec![(0, 2, line.as_str())];
+    let mut surface = Surface::new(20, 1);
+    apply_highlights(&ed, Some(&view), &mut surface, &rows, 0, 1, 0, 0, 2);
+
+    // 'x' is painted at cell 4 (tab stop), so the selection must reach
+    // cells 0..5 — before the fix the selection style stopped at cell 1
+    // because columns were char indices.
+    let default_style = crate::kernel::render::surface::Style::default();
+    for col in 0..5u16 {
+        let styled = surface.cell(col, 0)
+            .map(|c| c.style != default_style)
+            .unwrap_or(false);
+        assert!(styled, "selection must cover expanded cell {col}");
+    }
+    let x_cell = surface.cell(4, 0).unwrap();
+    assert_eq!(x_cell.ch, 'x', "the 'x' glyph keeps its char under the selection");
+    let beyond = surface.cell(5, 0).map(|c| c.style != default_style).unwrap_or(false);
+    assert!(!beyond, "selection stops after the painted glyphs");
+}
+
+#[test]
+fn highlight_layer_covers_wide_glyph_trailing_cell() {
+    use crate::kernel::render::highlight_pass::apply_highlights;
+    use crate::kernel::render::surface::Surface;
+
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("字x");
+    let key = crate::tests::helpers::focused_key(&ed);
+    let mut view = ed.views.get(&key).unwrap().clone();
+    // Highlight just the wide glyph.
+    view.set_highlights_layer("search", vec![(0, 3, "search".to_string())]);
+
+    let line = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 4);
+    let rows: Vec<(usize, usize, &str)> = vec![(0, 4, line.as_str())];
+    let mut surface = Surface::new(20, 1);
+    apply_highlights(&ed, Some(&view), &mut surface, &rows, 0, 1, 0, 0, 0);
+
+    let default_style = crate::kernel::render::surface::Style::default();
+    let lead = surface.cell(0, 0).unwrap();
+    assert_eq!(lead.ch, '字');
+    assert!(lead.style != default_style, "lead cell styled");
+    let trailing = surface.cell(1, 0).unwrap();
+    assert!(trailing.style != default_style,
+        "the wide glyph's second cell must carry the highlight too");
+    // 'x' sits at cell 2, outside the range: apply_highlights only restyles,
+    // so the cell keeps its default (unstyled) state.
+    let after = surface.cell(2, 0).unwrap();
+    assert!(after.style == default_style, "'x' is outside the highlight range");
 }

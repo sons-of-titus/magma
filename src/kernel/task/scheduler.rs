@@ -155,7 +155,6 @@ impl TaskScheduler {
         self.running.insert(id, child_slot.clone());
 
         bg.spawn_blocking(move || {
-            use std::io::BufRead;
             let start = Instant::now();
             let mut cmd = if args.is_empty() {
                 let mut c = std::process::Command::new("sh");
@@ -178,18 +177,20 @@ impl TaskScheduler {
             let (exit_code, stdout, stderr) = match cmd.spawn() {
                 Ok(child) => {
                     *child_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
-                    let mut out = String::new();
-                    let mut err = String::new();
                     // Stream output line by line — long builds show
                     // progress as they run instead of at completion.
-                    fn stream_lines<R: std::io::Read>(
+                    fn stream_lines<R: std::io::Read + Send + 'static>(
                         stream: Option<R>,
-                        sink: &mut String,
-                        stream_name: &str,
+                        stream_name: &'static str,
                         id: u64,
-                        sender: &tokio::sync::mpsc::UnboundedSender<crate::kernel::runtime::BackgroundEvent>,
-                    ) {
-                        if let Some(s) = stream {
+                        sender: tokio::sync::mpsc::UnboundedSender<crate::kernel::runtime::BackgroundEvent>,
+                    ) -> std::thread::JoinHandle<String> {
+                        let Some(s) = stream else {
+                            return std::thread::spawn(|| String::new());
+                        };
+                        std::thread::spawn(move || {
+                            use std::io::BufRead;
+                            let mut sink = String::new();
                             for line in std::io::BufReader::new(s).lines().map_while(Result::ok) {
                                 sink.push_str(&line);
                                 sink.push('\n');
@@ -197,24 +198,30 @@ impl TaskScheduler {
                                     id, stream: stream_name.into(), line,
                                 });
                             }
-                        }
+                            sink
+                        })
                     }
+                    // Both pipes drain concurrently: reading stdout to EOF
+                    // first deadlocks against a child that fills its stderr
+                    // pipe (the OS buffer is ~64 KiB) while producing no
+                    // stdout.
                     let mut slot = child_slot.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(child) = slot.as_mut() {
-                        let stdout = child.stdout.take();
-                        let stderr = child.stderr.take();
-                        drop(slot);
-                        stream_lines(stdout, &mut out, "stdout", id, &sender);
-                        stream_lines(stderr, &mut err, "stderr", id, &sender);
-                        let code = child_slot.lock().unwrap_or_else(|e| e.into_inner())
-                            .as_mut()
-                            .and_then(|c| c.wait().ok())
-                            .and_then(|s| s.code())
-                            .unwrap_or(-1);
-                        (code, out, err)
+                    let (out, err) = if let Some(child) = slot.as_mut() {
+                        (child.stdout.take(), child.stderr.take())
                     } else {
-                        (-1, out, err)
-                    }
+                        (None, None)
+                    };
+                    drop(slot);
+                    let out_handle = stream_lines(out, "stdout", id, sender.clone());
+                    let err_handle = stream_lines(err, "stderr", id, sender.clone());
+                    let out = out_handle.join().unwrap_or_default();
+                    let err = err_handle.join().unwrap_or_default();
+                    let code = child_slot.lock().unwrap_or_else(|e| e.into_inner())
+                        .as_mut()
+                        .and_then(|c| c.wait().ok())
+                        .and_then(|s| s.code())
+                        .unwrap_or(-1);
+                    (code, out, err)
                 }
                 Err(e) => (-1, String::new(), e.to_string()),
             };

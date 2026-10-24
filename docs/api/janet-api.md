@@ -1137,7 +1137,7 @@ Parse the buffer with tree-sitter and run a query. Returns byte-range tuples, or
 
 ### `(vc/register-backend table)` → nil
 
-Register a custom VCS backend via shell-command templates. The table must include `:name`, `:detect-marker`, and command-template keys for diff/status/log operations.
+Register a custom VCS backend via shell-command templates. The table must include `:name`, `:detect-marker`, and command-template keys for diff/status/log operations. The `{file}`, `{dir}` and `{msg}` placeholders are substituted as shell-quoted values — templates must not add their own quotes around them.
 
 ---
 

@@ -46,6 +46,7 @@ pub trait AsyncFileSystem: Send + Sync {
 }
 
 pub mod disk;
+pub mod reload;
 pub mod watcher;
 pub mod workspace;
 

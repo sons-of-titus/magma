@@ -271,3 +271,36 @@ fn shell_template_blame_errors_when_no_cmd() {
     assert!(r.is_err());
     assert!(r.unwrap_err().contains("no blame-cmd"));
 }
+
+#[test]
+fn template_values_are_shell_quoted_not_executed() {
+    // A commit message containing command-substitution syntax must arrive
+    // at the child as literal data.  Before quoting, this ran `touch`
+    // as a side effect of the commit.
+    let dir = std::env::temp_dir().join("magma_vc_inject");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let sentinel = dir.join("pwned");
+    let backend = ShellTemplateBackend {
+        name: "test".to_string(),
+        detect_marker: ".marker".to_string(),
+        root_cmd: None,
+        status_cmd: None,
+        diff_cmd: None,
+        log_cmd: None,
+        stage_cmd: None,
+        unstage_cmd: None,
+        commit_cmd: Some(format!("echo {{msg}} > {}/out", dir.to_string_lossy())),
+        push_cmd: None,
+        blame_cmd: None,
+        has_staging: false,
+    };
+    let hostile = format!("$(touch {}); `id` | grep root", sentinel.to_string_lossy());
+    backend.commit(&dir, &hostile).unwrap();
+
+    let out = std::fs::read_to_string(dir.join("out")).unwrap();
+    assert_eq!(out.trim(), hostile,
+        "the message must be echoed verbatim, never interpreted");
+    assert!(!sentinel.exists(), "command substitution must not execute");
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -13,7 +13,7 @@ use crate::kernel::input::event::MouseEvent;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::render::gutter::GutterRegistry;
 use crate::kernel::render::decorations::prefix_margin_width;
-use crate::kernel::render::frame::{cell_width, pane_scroll_top};
+use crate::kernel::render::frame::pane_scroll_top;
 use crate::kernel::render::view_tree::Pane;
 use crate::kernel::event::payload::*;
 use crate::kernel::event::keys;
@@ -304,14 +304,18 @@ pub(crate) fn resolve_click_to_offset(
     let line_end = buf.line_start_offset(abs_line + 1).unwrap_or(buf.len());
     let line_text = &buf.slice(line_start, line_end);
 
-    // Walk characters accumulating display width.
+    // Walk graphemes accumulating display width, with tabs advancing to
+    // their stops — the same placement walk the renderer uses, so clicks
+    // land on the glyph they point at in tab-indented files.
+    let tab_w = crate::kernel::render::frame::int_option(ed, "tab-width", 4);
     let mut display = 0usize;
     let mut byte_offset = line_start;
-    for ch in line_text.chars() {
-        let w = cell_width(ch, &ed.font_config.glyph_widths);
+    for g in crate::kernel::text_engine::text_layout::grapheme_iter(line_text) {
+        let w = crate::kernel::text_engine::text_layout::grapheme_cell_width(
+            g, tab_w, display, &ed.font_config.glyph_widths);
         if display + w > click_col { break; }
         display += w;
-        byte_offset += ch.len_utf8();
+        byte_offset += g.len();
     }
     // Clicks past end-of-line clamp to the newline, not past it — otherwise
     // the cursor lands on the next line.

@@ -339,7 +339,9 @@ impl VcBackend for JjBackend {
 // ── Shell-template backend (registered from Janet) ────────────────────────────
 
 /// A backend whose operations are specified as shell-command template strings.
-/// Placeholders: `{dir}`, `{file}`, `{msg}`, `{limit}`.
+/// Placeholders: `{dir}`, `{file}`, `{msg}`, `{limit}`.  Substituted values
+/// are single-quoted by the renderer — templates must not add their own
+/// quotes around placeholders.
 pub struct ShellTemplateBackend {
     pub name: String,
     /// Filename or directory name whose presence (walking ancestors) signals
@@ -357,12 +359,31 @@ pub struct ShellTemplateBackend {
     pub has_staging: bool,
 }
 
+/// POSIX single-quote a value so it can never become executable syntax
+/// inside a rendered template line.
+fn shell_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        if c == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
+}
+
 impl ShellTemplateBackend {
     fn render(&self, tmpl: &str, dir: &Path, file: Option<&str>, msg: Option<&str>, limit: Option<usize>) -> String {
-        let dir_s = dir.to_string_lossy();
+        // Values are single-quoted into the shell line: a filename or
+        // commit message containing shell metacharacters must never become
+        // executable syntax.  Template authors keep their own quoting.
+        let dir_s = shell_quote(&dir.to_string_lossy());
         let mut s = tmpl.replace("{dir}", &dir_s);
-        s = s.replace("{file}", file.unwrap_or(""));
-        s = s.replace("{msg}", msg.unwrap_or(""));
+        s = s.replace("{file}", &file.map(shell_quote).unwrap_or_default());
+        s = s.replace("{msg}", &msg.map(shell_quote).unwrap_or_default());
         s = s.replace("{limit}", &limit.unwrap_or(20).to_string());
         s
     }

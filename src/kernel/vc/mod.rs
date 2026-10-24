@@ -59,8 +59,9 @@ pub trait VcBackend: Send + Sync {
 
 // ── Editor state ──────────────────────────────────────────────────────────────
 
-/// Number of display lines above the first file entry in the VC buffer.
-pub const VC_HEADER_LINES: usize = 5;
+/// Number of display lines above the first file entry in the VC buffer
+/// when any section has entries: header line, blank, section label.
+pub const VC_HEADER_LINES: usize = 3;
 
 /// Mutable VC session state that lives on the `Editor`.
 pub struct VcState {
@@ -176,19 +177,23 @@ pub fn build_display(root: &Path, status: &VcStatus) -> String {
 }
 
 /// Return the file path on display line `line` (0-indexed) in the VC buffer.
+///
+/// Mirrors `build_display`'s layout exactly: header line, blank, then each
+/// non-empty section as label line + entry lines + trailing blank.
 pub fn path_at_line(status: &VcStatus, line: usize) -> Option<String> {
-    if line < VC_HEADER_LINES { return None; }
-    let mut row = VC_HEADER_LINES;
-    // iterate sections in the same order as build_display
-    let sections: [&[FileStatus]; 2] = [&status.staged, &status.unstaged];
-    for section in sections {
+    if status.staged.is_empty() && status.unstaged.is_empty() && status.untracked.is_empty() {
+        return None;
+    }
+    let mut row = VC_HEADER_LINES - 1; // "## …" + blank; next line is a label
+    for section in [&status.staged, &status.unstaged] {
+        if section.is_empty() { continue; }
+        row += 1; // section label ("Staged:" / "Unstaged:" / "Changed:")
         for f in section {
             if row == line { return Some(f.path.clone()); }
             row += 1;
         }
-        if !section.is_empty() { row += 1; } // blank line after section
+        row += 1; // blank line after the section
     }
-    // untracked section header
     if !status.untracked.is_empty() {
         row += 1; // "Untracked:" label
         for f in &status.untracked {

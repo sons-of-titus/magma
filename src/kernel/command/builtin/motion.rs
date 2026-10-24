@@ -236,27 +236,33 @@ pub(super) fn register(editor: &mut Editor) {
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
                     let text = buf.slice(0, buf.len());
-                    let ch = text[pos..].chars().next()
-                        .or_else(|| text[..pos].chars().next_back());
-                    if let Some(c) = ch {
+                    // The cursor can sit on a non-boundary byte after a
+                    // UTF-16 → byte conversion; snap down before slicing.
+                    let mut pos = pos.min(text.len());
+                    while pos > 0 && !text.is_char_boundary(pos) {
+                        pos -= 1;
+                    }
+                    // (byte index, char) of the bracket candidate at/behind
+                    // the cursor, so slice ends are always boundaries.
+                    let at = text[pos..].chars().next().map(|c| (pos, c))
+                        .or_else(|| text[..pos].char_indices().next_back());
+                    if let Some((at, c)) = at {
                         let pairs = [('(', ')'), ('[', ']'), ('{', '}')];
                         let mut found = None;
                         for &(open, close) in &pairs {
                             if c == open {
-                                let remaining = &text[pos..];
                                 let mut depth = 0;
-                                for (i, ch) in remaining.char_indices() {
+                                for (i, ch) in text[at..].char_indices() {
                                     if ch == open { depth += 1; }
                                     if ch == close { depth -= 1; }
                                     if depth == 0 {
-                                        found = Some(pos + i);
+                                        found = Some(at + i);
                                         break;
                                     }
                                 }
                             } else if c == close {
-                                let before = &text[..=pos];
                                 let mut depth = 0;
-                                for (i, ch) in before.char_indices().rev() {
+                                for (i, ch) in text[..at + c.len_utf8()].char_indices().rev() {
                                     if ch == close { depth += 1; }
                                     if ch == open { depth -= 1; }
                                     if depth == 0 {

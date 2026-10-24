@@ -147,3 +147,32 @@ fn resolve_text_col(
     let cx = content_start_x(ed, buf_id, pane.x);
     mouse::resolve_click_to_offset(ed, buf_id, pane, cx + col, row)
 }
+
+#[test]
+fn resolve_text_click_after_tab_lands_on_rendered_column() {
+    // A tab renders to its stop (default 4): "\tx" paints x at cell 4, not 1.
+    // Clicking cell 4 must land on 'x' (byte 1), not past it.
+    let ed = make_editor_with_buffer("\tx");
+    let buf_id = helpers::focused_key(&ed);
+    let pane = ed.view_tree.panes()[0].clone();
+    let cx = content_start_x(&ed, buf_id, pane.x);
+    let offset = mouse::resolve_click_to_offset(&ed, buf_id, &pane, cx + 4, 0);
+    assert_eq!(offset, Some(1), "cell 4 is where the renderer paints 'x'");
+
+    // Clicking inside the tab (cells 0..3) clamps to the tab's own start.
+    let offset = mouse::resolve_click_to_offset(&ed, buf_id, &pane, cx + 2, 0);
+    assert_eq!(offset, Some(0), "cells inside the tab still resolve to its start");
+}
+
+#[test]
+fn resolve_text_click_after_wide_char_uses_two_cells() {
+    // CJK 字 occupies two cells: clicking cell 2 lands after it.
+    let ed = make_editor_with_buffer("字x");
+    let buf_id = helpers::focused_key(&ed);
+    let pane = ed.view_tree.panes()[0].clone();
+    let cx = content_start_x(&ed, buf_id, pane.x);
+    let offset = mouse::resolve_click_to_offset(&ed, buf_id, &pane, cx + 2, 0);
+    assert_eq!(offset, Some("字".len()), "cell 2 = first cell after the wide glyph");
+    let offset = mouse::resolve_click_to_offset(&ed, buf_id, &pane, cx + 1, 0);
+    assert_eq!(offset, Some(0), "cell 1 is the wide glyph's second cell — its start");
+}

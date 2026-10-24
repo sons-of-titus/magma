@@ -119,3 +119,20 @@ fn event_data_passes_through_correctly() {
     b.drain_and_dispatch();
     assert_eq!(&*val.lock().unwrap(), "Magma");
 }
+
+
+// Re-entrancy (a handler emitting the event it is handling) is only
+// reachable through the editor's bus, because subscribers get no bus
+// reference — see the Janet-level regression in janet_tests.rs.
+
+#[test]
+fn emit_during_dispatch_of_same_name_is_dropped() {
+    let mut b = bus();
+    // dispatch_all marks the name in-flight; an emit through a hook that
+    // re-enters dispatch must not grow the queue.
+    b.add_hook("loop", HookPhase::Before, |data| Some(data.clone()));
+    b.emit("loop", HashMap::new());
+    assert_eq!(b.pending_len(), 1);
+    b.drain_and_dispatch();
+    assert_eq!(b.pending_len(), 0, "drain must leave nothing pending");
+}

@@ -66,6 +66,7 @@ pub fn scroll_state_from_lines(
 pub fn cursor_metrics(
     buf: &crate::kernel::text_engine::Buffer,
     cursor_offset: usize,
+    tab_width: usize,
     glyph_widths: &std::collections::HashMap<char, u8>,
 ) -> (usize, usize) {
     let total_lines = buf.line_count();
@@ -77,7 +78,7 @@ pub fn cursor_metrics(
     let cursor_col = crate::kernel::text_engine::text_layout::cell_column(
         &buf.slice(line_start, line_end),
         cursor_offset.saturating_sub(line_start),
-        4,
+        tab_width,
         glyph_widths,
     );
     (cursor_line, cursor_col)
@@ -90,9 +91,10 @@ pub fn scroll_state_for_buffer(
     cursor_offset: usize,
     visible_lines: usize,
     scrolloff: usize,
+    tab_width: usize,
     glyph_widths: &std::collections::HashMap<char, u8>,
 ) -> ScrollState {
-    let (cursor_line, cursor_col) = cursor_metrics(buf, cursor_offset, glyph_widths);
+    let (cursor_line, cursor_col) = cursor_metrics(buf, cursor_offset, tab_width, glyph_widths);
     scroll_state_from_lines(cursor_line, cursor_col, buf.line_count(), visible_lines, scrolloff)
 }
 
@@ -100,13 +102,14 @@ pub fn scroll_state_for_buffer(
 /// Do NOT call while holding the buffer lock.
 pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize) -> ScrollState {
     let scrolloff = int_option(editor, "scrolloff", 0);
+    let tab_width = int_option(editor, "tab-width", 4);
     let cursor_offset = editor.view_of_buffer(buf_id)
         .map(|v| v.cursor.offset)
         .unwrap_or(0);
     match editor.buffers.get(buf_id) {
         Some(arc) => {
             let buf = arc.lock().unwrap();
-            scroll_state_for_buffer(&buf, cursor_offset, visible_lines, scrolloff,
+            scroll_state_for_buffer(&buf, cursor_offset, visible_lines, scrolloff, tab_width,
                                     &editor.font_config.glyph_widths)
         }
         None => scroll_state_from_lines(0, 0, 1, visible_lines, scrolloff),
@@ -139,7 +142,8 @@ pub fn pane_scroll_state(ed: &Editor, pane: &Pane, buf_id: usize, visible_lines:
     match ed.buffers.get(buf_id) {
         Some(arc) => {
             let buf = arc.lock().unwrap();
-            let (cursor_line, cursor_col) = cursor_metrics(&buf, cursor_offset, &ed.font_config.glyph_widths);
+            let (cursor_line, cursor_col) = cursor_metrics(&buf, cursor_offset,
+                int_option(ed, "tab-width", 4), &ed.font_config.glyph_widths);
             ScrollState {
                 scroll_top,
                 cursor_vis_row: cursor_line.saturating_sub(scroll_top),

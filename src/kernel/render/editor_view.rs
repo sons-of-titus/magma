@@ -6,7 +6,7 @@ use crate::kernel::state::Editor;
 use crate::kernel::state::id::WindowId;
 use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{View, ViewKind, RenderCtx};
-use crate::kernel::render::frame::{cell_width, int_option, pane_scroll_top_synced, scroll_state_for_buffer};
+use crate::kernel::render::frame::{int_option, pane_scroll_top_synced, scroll_state_for_buffer};
 use crate::kernel::render::decorations::{prefix_margin_width, render_decorations};
 use crate::kernel::render::highlight_pass::apply_highlights;
 use crate::kernel::render::gutter::{GutterCtx, GutterRegistry};
@@ -63,7 +63,8 @@ impl View for EditorView {
         let is_focused = editor.view_tree.focused_window() == Some(self.pane_id);
         let st = scroll_state_for_buffer(
             &buf, cursor_offset,
-            visible_lines, scrolloff, &editor.font_config.glyph_widths,
+            visible_lines, scrolloff, int_option(editor, "tab-width", 4),
+            &editor.font_config.glyph_widths,
         );
         let cursor_line = st.cursor_line;
         // The synced pane state is authoritative; the stateless fallback
@@ -270,6 +271,7 @@ impl View for EditorView {
             }
 
             if editor.multi_cursor.active {
+                let tab_w = int_option(editor, "tab-width", 4);
                 for ec in &editor.multi_cursor.extra_cursors {
                     let ec_off = ec.pos.min(buf.len());
                     let ec_line = buf.position_of(ec_off).line
@@ -277,11 +279,13 @@ impl View for EditorView {
                     let Some(ec_vis) = ec_line.checked_sub(scroll_top) else { continue };
                     if ec_vis < visible_lines {
                         let ec_line_start = buf.line_start_offset(ec_line).unwrap_or(0);
-                        let ec_col: usize = buf
-                            .slice(ec_line_start, ec_off)
-                            .chars()
-                            .map(|c| cell_width(c, &editor.font_config.glyph_widths))
-                            .sum();
+                        let ec_line_end = buf.line_start_offset(ec_line + 1).unwrap_or(buf.len());
+                        let ec_col = crate::kernel::text_engine::text_layout::cell_column(
+                            &buf.slice(ec_line_start, ec_line_end),
+                            ec_off.saturating_sub(ec_line_start),
+                            tab_w,
+                            &editor.font_config.glyph_widths,
+                        );
                         if ec_col < area.width.saturating_sub(gutter_width as u16) as usize {
                             surface.set_cell(content_x + ec_col as u16,
                                 row_offset + ec_vis as u16, '▌', None);

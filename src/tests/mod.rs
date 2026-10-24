@@ -23,6 +23,7 @@ macro_rules! test_pairs { ($($base:ident),+ $(,)?) => {
 mod command_tests;
 mod completion_tests;
 mod event_tests;
+mod file_reload_tests;
 mod mode_tests;
 mod insertable_tests;
 mod terminal_tests;

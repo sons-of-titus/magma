@@ -17,7 +17,9 @@
 //! ```
 //!
 //! All `:*-cmd` keys are optional. A missing command returns an error when called.
-//! `{file}`, `{dir}`, `{msg}`, `{limit}` are substituted at call time.
+//! `{file}`, `{dir}`, `{msg}`, `{limit}` are substituted at call time;
+//! `{file}`, `{dir}` and `{msg}` are single-quoted automatically, so
+//! templates must not add their own quotes around them.
 
 use evil_janet::*;
 use super::conv;

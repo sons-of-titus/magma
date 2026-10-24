@@ -98,3 +98,38 @@ fn tail_is_what_the_dock_paints() {
     assert_eq!(tail[0], "line4", "the newest content line");
     assert_eq!(s.tail(3)[0], "line3");
 }
+
+// ── UTF-8 chunk-split reassembly ─────────────────────────────────────
+
+#[test]
+fn utf8_sequence_split_across_chunks_is_reassembled() {
+    use crate::kernel::terminal::decode_chunk;
+    // "héllo" — é is a 2-byte sequence split at the read boundary.
+    let mut pending = Vec::new();
+    let a = decode_chunk(&mut pending, b"h\xc3");
+    let b = decode_chunk(&mut pending, b"\xa9llo");
+    assert_eq!(format!("{a}{b}"), "héllo");
+    assert!(pending.is_empty());
+}
+
+#[test]
+fn utf8_codepoint_split_three_ways_survives() {
+    use crate::kernel::terminal::decode_chunk;
+    // 😀 U+1F600 is 4 bytes; split one byte per read.
+    let mut pending = Vec::new();
+    let a = decode_chunk(&mut pending, b"\xf0");
+    let b = decode_chunk(&mut pending, b"\x9f");
+    let c = decode_chunk(&mut pending, b"\x98");
+    let d = decode_chunk(&mut pending, b"\x80!");
+    assert_eq!(format!("{a}{b}{c}{d}"), "\u{1f600}!");
+    assert!(pending.is_empty());
+}
+
+#[test]
+fn invalid_bytes_become_replacement_and_decoding_resumes() {
+    use crate::kernel::terminal::decode_chunk;
+    let mut pending = Vec::new();
+    let out = decode_chunk(&mut pending, b"ok\xff\xfemax");
+    assert_eq!(out, "ok\u{fffd}\u{fffd}max");
+    assert!(pending.is_empty());
+}

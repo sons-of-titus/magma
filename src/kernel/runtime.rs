@@ -170,6 +170,8 @@ pub enum BackgroundEvent {
         then_refresh: bool,
         result: Result<String, String>,
     },
+    /// An external-change reload read finished off the foreground thread.
+    BufferReloaded { buf_key: usize, content: Result<String, String> },
 }
 
 /// Handle for spawning background tasks and sending events to the main thread.
@@ -324,7 +326,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     &canonical, &path, &kind, &ed.project_manager.project.files) {
                     ed.project_manager.project.file_index_dirty = true;
                 }
+            crate::kernel::storage::reload::handle_file_changed(ed, &path, &kind);
             ed.events.emit_typed(keys::events::FILE_CHANGED, FileChangedPayload { path, kind });
+        }
+        BackgroundEvent::BufferReloaded { buf_key, content } => {
+            crate::kernel::storage::reload::apply_reload(ed, buf_key, content);
         }
         BackgroundEvent::ProcessOutput { id, line, stream } => {
             ed.events.emit_typed(keys::events::PROCESS_OUTPUT, ProcessOutputPayload {

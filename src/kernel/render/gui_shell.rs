@@ -302,6 +302,21 @@ impl ShellRuntime {
     /// Watch the project root on first sight and rescan the index when the
     /// file watcher marks it dirty (debounced).
     pub(crate) fn maintain_project(&mut self, ed: &mut Editor) {
+        // Files opened from outside the project root have no recursive
+        // watch covering them — keep every open buffer path watched so
+        // external changes still reach the reload path.
+        if let Some(w) = self.file_watcher.as_mut() {
+            let paths: Vec<String> = ed.buffers.iter()
+                .filter_map(|(_, arc)| {
+                    arc.lock().unwrap_or_else(|e| e.into_inner()).path.clone()
+                })
+                .collect();
+            for path in paths {
+                if !w.is_watched(&path) {
+                    w.watch(&path);
+                }
+            }
+        }
         let Some(root) = ed.project_manager.project.root.clone() else {
             self.watched_project = None;
             return;

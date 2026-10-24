@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::kernel::vc::backends::{GitBackend, HgBackend, JjBackend, SvnBackend};
-use crate::kernel::vc::{build_display, path_at_line, run_cmd, FileStatus, VcBackend, VcState, VcStatus, VC_HEADER_LINES};
+use crate::kernel::vc::{build_display, path_at_line, run_cmd, FileStatus, VcBackend, VcState, VcStatus};
 
 // ── VcState ────────────────────────────────────────────────────────────────
 
@@ -217,9 +217,10 @@ fn path_at_line_header_lines_return_none() {
         unstaged: vec![],
         untracked: vec![],
     };
-    for line in 0..VC_HEADER_LINES {
+    // Clean tree: no file lines exist at all.
+    for line in 0..10 {
         assert!(path_at_line(&status, line).is_none(),
-            "line {} should be header", line);
+            "line {} in a clean tree has no file", line);
     }
 }
 
@@ -237,20 +238,40 @@ fn path_at_line_beyond_end_returns_none() {
 }
 
 #[test]
-fn path_at_line_returns_path_for_valid_line() {
+fn path_at_line_maps_every_rendered_entry() {
     let status = VcStatus {
         backend_name: "git".to_string(),
         branch: "main".to_string(),
         has_staging: true,
-        staged: vec![FileStatus { code: 'M', path: "staged.rs".to_string() }],
+        staged: vec![
+            FileStatus { code: 'M', path: "staged_a.rs".to_string() },
+            FileStatus { code: 'A', path: "staged_b.rs".to_string() },
+        ],
         unstaged: vec![FileStatus { code: 'M', path: "unstaged.rs".to_string() }],
         untracked: vec!["untracked.txt".to_string()],
     };
-    // path_at_line maps files starting from VC_HEADER_LINES (5):
-    // staged at 5, unstaged at 7 (after staged + blank), untracked after that
-    let staged_line = VC_HEADER_LINES;
-    let got = path_at_line(&status, staged_line);
-    assert_eq!(got.as_deref(), Some("staged.rs"));
+    // The mapping must agree with the actually rendered text: each entry's
+    // display line maps back to its own path, and no other line does.
+    let display = build_display(Path::new("/repo"), &status);
+    let expected: Vec<(usize, &str)> = display.lines().enumerate()
+        .filter_map(|(i, l)| {
+            let path = ["staged_a.rs", "staged_b.rs", "unstaged.rs", "untracked.txt"]
+                .iter().find(|p| l.ends_with(*p))?;
+            Some((i, *path))
+        })
+        .collect();
+    assert_eq!(expected.len(), 4, "display must render all four entries");
+    for (line, path) in expected {
+        assert_eq!(path_at_line(&status, line).as_deref(), Some(path),
+            "display line {line} should map to {path}");
+    }
+    // Section labels and blanks map to nothing.
+    for (i, l) in display.lines().enumerate() {
+        if !l.ends_with(".rs") && !l.ends_with(".txt") {
+            assert!(path_at_line(&status, i).is_none(),
+                "non-entry line {i} ({l:?}) must not map to a file");
+        }
+    }
 }
 
 // ── run_cmd ────────────────────────────────────────────────────────────────

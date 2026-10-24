@@ -221,3 +221,50 @@ fn auto_detect_no_markers_defines_nothing() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+// ── Concurrent stdout/stderr drain ───────────────────────────────────
+
+#[test]
+fn stderr_heavy_task_with_no_stdout_completes() {
+    // A child that floods stderr while never writing stdout used to
+    // deadlock: stdout was read to EOF first, the ~64 KiB stderr pipe
+    // filled, and the child blocked forever.  Before the fix this test
+    // hangs instead of failing.
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use std::time::{Duration, Instant};
+
+    let (mut ed, bg, mut rx) = crate::tests::helpers::editor_with_background();
+    // ~1 MB of stderr, no stdout at all.
+    let script = "i=0; while [ $i -lt 2000 ]; do echo \"err line $i\" >&2; i=$((i+1)); done";
+    let task = crate::kernel::task::Task {
+        id: 0,
+        name: "stderr-flood".to_string(),
+        command: script.to_string(),
+        args: vec![],
+        cwd: None,
+        environment: Default::default(),
+        dependencies: vec![],
+        status: crate::kernel::task::TaskStatus::Pending,
+        output: None,
+    };
+    ed.task_scheduler.tasks.insert(0, task);
+
+    ed.task_scheduler.launch(0, &bg).unwrap();
+
+    let mut completed = false;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            if let BackgroundEvent::TaskRunCompleted { id: 0, exit_code, stderr, .. } = &ev {
+                assert_eq!(*exit_code, 0);
+                assert!(stderr.lines().count() >= 2000,
+                    "all stderr must be captured, got {}", stderr.lines().count());
+                completed = true;
+            }
+            process_background_event(&mut ed, ev);
+        }
+        if completed { break; }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(completed, "task must complete instead of deadlocking on full stderr");
+}

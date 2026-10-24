@@ -187,3 +187,31 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
         std::fs::remove_dir_all(&dir).ok();
     });
 }
+
+#[test]
+fn self_emitting_handler_terminates() {
+    // A handler that re-emits its own event used to grow the pending queue
+    // forever — the drain loop never ended.  The bus now drops re-entrant
+    // emits; this test hangs instead of passing if the guard regresses.
+    janet_test!(ed, {
+        scripting::eval(
+            r#"(event/on "magma-loop-test" (fn [ev] (event/emit "magma-loop-test" {})))"#);
+        scripting::eval(r#"(event/emit "magma-loop-test" {})"#);
+        ed.dispatch_events_scoped();
+        assert_eq!(ed.events.pending_len(), 0, "self-emit must be dropped, not queued");
+    });
+}
+
+#[test]
+fn handler_can_subscribe_from_inside_a_handler() {
+    // event/on used to hold the handler-table mutex across the Janet call:
+    // a handler that subscribed again deadlocked the editor on the spot.
+    janet_test!(ed, {
+        scripting::eval(
+            r#"(event/on "magma-reg-outer" (fn [ev] (event/on "magma-reg-inner" (fn [e2] nil))))"#);
+        scripting::eval(r#"(event/emit "magma-reg-outer" {})"#);
+        ed.dispatch_events_scoped();
+        assert_eq!(ed.events.subscriber_count("magma-reg-inner"), 1,
+            "the nested subscription must have registered");
+    });
+}

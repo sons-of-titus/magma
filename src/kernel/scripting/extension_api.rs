@@ -29,7 +29,9 @@ thread_local! {
 pub(crate) enum ExecContext {
     Core,
     Extension(String),
-    Revoked(String),
+    /// The payload name is kept for debugging/inspection; the variant
+    /// itself is what fails every capability check.
+    Revoked(#[allow(dead_code)] String),
 }
 
 pub(crate) fn current_context() -> ExecContext {

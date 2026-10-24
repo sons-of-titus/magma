@@ -117,9 +117,17 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
     let path = qf.filename.clone();
 
     // Collect all diagnostics for this file from the quickfix list
-    let diags: Vec<String> = editor.quickfix_list.iter()
+    let diags: Vec<crate::kernel::semantic::provider::Diagnostic> =
+        editor.quickfix_list.iter()
         .filter(|e| e.filename == path)
-        .map(|e| format!("[E] line {}:{}: {}", e.line, e.col, e.message))
+        .map(|e| {
+            let (line, col) = (e.line.saturating_sub(1), e.col.saturating_sub(1));
+            crate::kernel::semantic::provider::Diagnostic {
+                message: e.message.clone(),
+                severity: crate::kernel::semantic::provider::DiagnosticSeverity::Error,
+                line, column: col, end_line: line, end_column: col,
+            }
+        })
         .collect();
 
     // Try to find an existing buffer for this file

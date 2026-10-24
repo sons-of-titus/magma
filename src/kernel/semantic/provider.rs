@@ -76,14 +76,13 @@ impl DiagnosticSeverity {
         }
     }
 
-    /// Parse from the single-char severity code used in `buffer.diagnostics` strings.
-    pub fn from_code(code: char) -> Self {
-        match code {
-            'E' => DiagnosticSeverity::Error,
-            'W' => DiagnosticSeverity::Warning,
-            'I' => DiagnosticSeverity::Info,
-            'H' => DiagnosticSeverity::Hint,
-            _   => DiagnosticSeverity::Error,
+    /// Single-char severity code for gutter marks and display strings.
+    pub fn code(&self) -> char {
+        match self {
+            DiagnosticSeverity::Error   => 'E',
+            DiagnosticSeverity::Warning => 'W',
+            DiagnosticSeverity::Info    => 'I',
+            DiagnosticSeverity::Hint    => 'H',
         }
     }
 }
@@ -103,29 +102,12 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// Parse a diagnostic from the formatted string stored in `buffer.diagnostics`.
-    /// Expected format: `"[E] line L:C message"` where L and C are 1-based.
-    pub fn from_formatted(s: &str) -> Option<Self> {
-        let s = s.trim();
-        let s = s.strip_prefix('[')?;
-        let sev_char = s.chars().next()?;
-        let severity = DiagnosticSeverity::from_code(sev_char);
-        // Skip past the severity char to get "] line L:C message".
-        let s = s.get(1..)?.strip_prefix("] line ")?;
-        let colon = s.find(':')?;
-        let line: usize = s[..colon].trim().parse().ok()?;
-        let rest = &s[colon + 1..];
-        let space = rest.find(' ')?;
-        let column: usize = rest[..space].trim().parse().ok()?;
-        let message = rest[space + 1..].to_string();
-        Some(Diagnostic {
-            message,
-            severity,
-            line: line.saturating_sub(1),
-            column: column.saturating_sub(1),
-            end_line: line.saturating_sub(1),
-            end_column: column.saturating_sub(1),
-        })
+    /// The one display rendering of a diagnostic.  Every consumer that
+    /// shows diagnostics as text goes through here — buffers, Janet
+    /// queries, and event payloads carry this format.
+    pub fn display(&self) -> String {
+        format!("[{}] line {}:{} {}",
+            self.severity.code(), self.line + 1, self.column + 1, self.message)
     }
 }
 
@@ -205,26 +187,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn diagnostic_from_formatted_error() {
-        let d = Diagnostic::from_formatted("[E] line 1:5 some error").unwrap();
-        assert_eq!(d.severity, DiagnosticSeverity::Error);
-        assert_eq!(d.line, 0);
-        assert_eq!(d.column, 4);
-        assert_eq!(d.message, "some error");
+    fn diagnostic_display_is_the_one_rendering() {
+        let d = Diagnostic {
+            message: "some error".into(),
+            severity: DiagnosticSeverity::Error,
+            line: 0, column: 4, end_line: 0, end_column: 9,
+        };
+        assert_eq!(d.display(), "[E] line 1:5 some error");
     }
 
     #[test]
-    fn diagnostic_from_formatted_warning() {
-        let d = Diagnostic::from_formatted("[W] line 3:12 unused variable").unwrap();
-        assert_eq!(d.severity, DiagnosticSeverity::Warning);
-        assert_eq!(d.line, 2);
-        assert_eq!(d.column, 11);
-    }
-
-    #[test]
-    fn diagnostic_from_formatted_malformed() {
-        assert!(Diagnostic::from_formatted("not a diagnostic").is_none());
-        assert!(Diagnostic::from_formatted("[E] no line prefix").is_none());
+    fn severity_codes_round_trip_the_display_prefix() {
+        for (sev, code) in [
+            (DiagnosticSeverity::Error, 'E'),
+            (DiagnosticSeverity::Warning, 'W'),
+            (DiagnosticSeverity::Info, 'I'),
+            (DiagnosticSeverity::Hint, 'H'),
+        ] {
+            assert_eq!(sev.code(), code);
+        }
     }
 
     #[test]

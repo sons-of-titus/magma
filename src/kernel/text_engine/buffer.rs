@@ -24,8 +24,9 @@ pub struct Buffer {
     pending_changes: Vec<EditTransaction>,
     pub major_mode: MajorMode,
     pub encoding: String,
-    /// LSP diagnostics for this buffer (formatted strings).
-    pub diagnostics: Vec<String>,
+    /// LSP/tool diagnostics for this buffer, typed.  Render through
+    /// `Diagnostic::display` — nothing parses display strings back apart.
+    pub diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
     /// Per-buffer options that shadow global `editor.options`.
     pub local_options: std::collections::HashMap<String, String>,
     /// When true, `buffer/insert` and `buffer/delete` are no-ops via the Janet API.
@@ -399,12 +400,20 @@ impl Buffer {
 
     // ── Diagnostics ──
 
-    pub fn set_diagnostics(&mut self, diagnostics: Vec<String>) {
+    pub fn set_diagnostics(
+        &mut self,
+        diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+    ) {
         self.diagnostics = diagnostics;
     }
 
-    pub fn get_diagnostics(&self) -> &[String] {
+    pub fn get_diagnostics(&self) -> &[crate::kernel::semantic::provider::Diagnostic] {
         &self.diagnostics
+    }
+
+    /// Display strings through the single formatter (Janet queries, logs).
+    pub fn diagnostic_strings(&self) -> Vec<String> {
+        self.diagnostics.iter().map(|d| d.display()).collect()
     }
 
     // ── Marks (anchors, §2.3) ──

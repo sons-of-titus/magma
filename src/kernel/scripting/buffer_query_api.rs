@@ -159,7 +159,7 @@ unsafe extern "C-unwind" fn c_buffer_diagnostics(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let diags = match ed.buffers.get(key) {
-            Some(arc) => arc.lock().unwrap().get_diagnostics().to_vec(),
+            Some(arc) => arc.lock().unwrap().diagnostic_strings(),
             None => Vec::new(),
         };
         let arr_ptr = janet_array(diags.len() as i32);

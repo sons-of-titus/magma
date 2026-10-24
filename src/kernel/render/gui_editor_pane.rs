@@ -326,8 +326,8 @@ fn update_hover_card(ui: &egui::Ui, ed: &mut Editor, rect: Rect, char_w: f32, li
             let (ws, we) = crate::kernel::input::mouse::word_range_at(&buf, offset)?;
             let diag_line = buf.position_of(offset).line;
             let diag = buf.diagnostics.iter()
-                .find(|d| diagnostic_line(d) == Some(diag_line))
-                .cloned();
+                .find(|d| d.line == diag_line)
+                .map(|d| d.display());
             Some((buf.slice(ws, we), diag))
         });
 
@@ -341,16 +341,6 @@ fn update_hover_card(ui: &egui::Ui, ed: &mut Editor, rect: Rect, char_w: f32, li
     } else if let Some(card) = new_card {
         ed.hover = Some(card);
     }
-}
-
-/// `"[E] line 12:3 message"` — the buffer's display format for diagnostics.
-fn diagnostic_line(d: &str) -> Option<usize> {
-    let rest = d.strip_prefix('[')?;
-    let line_part = rest.strip_prefix(|c: char| c != ']')?;
-    line_part.trim_start_matches("] line ")
-        .split(':').next()?
-        .parse::<usize>().ok()
-        .map(|l| l.saturating_sub(1))
 }
 
 fn build_hover_card(ed: &mut Editor, word: String, diag: Option<String>, px: f32, py: f32) -> crate::kernel::state::HoverCard {

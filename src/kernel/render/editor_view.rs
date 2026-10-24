@@ -87,17 +87,10 @@ impl View for EditorView {
             }
         }
 
-        // Pre-compute diagnostic severity per line from buf.diagnostics strings.
+        // Highest severity per line, from the typed diagnostics.
         let mut diag_lines: HashMap<usize, char> = HashMap::new();
         for d in &buf.diagnostics {
-            if let Some(rest) = d.strip_prefix('[') {
-                let sev = rest.chars().next().unwrap_or('?');
-                if let Some(line_part) = rest.strip_prefix(|c: char| c != ']')
-                    && let Some(line_str) = line_part.trim_start_matches("] line ").split(':').next()
-                    && let Ok(line) = line_str.parse::<usize>() {
-                        diag_lines.entry(line.saturating_sub(1)).or_insert(sev);
-                    }
-            }
+            diag_lines.entry(d.line).or_insert(d.severity.code());
         }
 
         let buf_path_owned: Option<String> = buf.path.clone();

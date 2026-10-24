@@ -23,36 +23,40 @@ fn lsp_provider_debug_adapter_contains_lang() {
     assert_eq!(p.debug_adapter(), Some("lsp:go".to_string()));
 }
 
-// ── Diagnostic parsing ────────────────────────────────────────────────────────
+// ── Diagnostic rendering (single formatter) ───────────────────────────────────
 
-#[test]
-fn diagnostic_parse_error_severity() {
-    let d = Diagnostic::from_formatted("[E] line 1:1 missing semicolon").unwrap();
-    assert_eq!(d.severity, DiagnosticSeverity::Error);
-    assert_eq!(d.line, 0);
-    assert_eq!(d.column, 0);
-    assert!(d.message.contains("missing semicolon"));
+fn diag(sev: DiagnosticSeverity, line: usize, col: usize, msg: &str) -> Diagnostic {
+    Diagnostic { message: msg.to_string(), severity: sev,
+                 line, column: col, end_line: line, end_column: col }
 }
 
 #[test]
-fn diagnostic_parse_warning_severity() {
-    let d = Diagnostic::from_formatted("[W] line 5:10 unused import").unwrap();
-    assert_eq!(d.severity, DiagnosticSeverity::Warning);
-    assert_eq!(d.line, 4);
-    assert_eq!(d.column, 9);
+fn diagnostic_display_carries_severity_and_1based_position() {
+    assert_eq!(diag(DiagnosticSeverity::Error, 0, 0, "missing semicolon").display(),
+        "[E] line 1:1 missing semicolon");
+    assert_eq!(diag(DiagnosticSeverity::Warning, 4, 9, "unused import").display(),
+        "[W] line 5:10 unused import");
+    assert_eq!(diag(DiagnosticSeverity::Hint, 1, 2, "consider renaming").display(),
+        "[H] line 2:3 consider renaming");
 }
 
 #[test]
-fn diagnostic_parse_hint() {
-    let d = Diagnostic::from_formatted("[H] line 2:3 consider renaming").unwrap();
-    assert_eq!(d.severity, DiagnosticSeverity::Hint);
-}
-
-#[test]
-fn diagnostic_parse_malformed_returns_none() {
-    assert!(Diagnostic::from_formatted("").is_none());
-    assert!(Diagnostic::from_formatted("no brackets").is_none());
-    assert!(Diagnostic::from_formatted("[E] no line prefix").is_none());
+fn buffers_hold_typed_diagnostics() {
+    let mut ed = helpers::make_editor();
+    let key = crate::tests::helpers::focused_key(&ed);
+    if let Some(arc) = ed.buffers.get_mut(key) {
+        arc.lock().unwrap().set_diagnostics(vec![
+            diag(DiagnosticSeverity::Error, 2, 0, "broken"),
+            diag(DiagnosticSeverity::Warning, 2, 5, "also warn"),
+        ]);
+    }
+    let arc = ed.buffers.get(key).unwrap();
+    let buf = arc.lock().unwrap();
+    let ds = buf.get_diagnostics();
+    assert_eq!(ds.len(), 2);
+    assert_eq!(ds[0].line, 2);
+    assert_eq!(buf.diagnostic_strings(),
+        vec!["[E] line 3:1 broken".to_string(), "[W] line 3:6 also warn".to_string()]);
 }
 
 // ── SymbolIndex ───────────────────────────────────────────────────────────────
@@ -182,22 +186,11 @@ fn engine_index_buffer_lsp_no_symbols() {
 }
 
 #[test]
-fn engine_update_diagnostics_from_strings() {
+fn engine_update_diagnostics_replaces_entries() {
     let mut engine = SemanticEngine::new();
-    engine.update_diagnostics_from_strings("/a.rs", &[
-        "[E] line 1:1 error message".to_string(),
-        "[W] line 2:5 warning message".to_string(),
-    ]);
+    engine.update_diagnostics("/a.rs", vec![diag(DiagnosticSeverity::Error, 0, 0, "err")]);
     assert_eq!(engine.error_count("/a.rs"), 1);
-    assert_eq!(engine.warning_count("/a.rs"), 1);
-}
-
-#[test]
-fn engine_diagnostics_empty_removes_path() {
-    let mut engine = SemanticEngine::new();
-    engine.update_diagnostics_from_strings("/b.rs", &["[E] line 1:1 err".to_string()]);
-    assert_eq!(engine.diagnostics.len(), 1);
-    engine.update_diagnostics("/b.rs", vec![]);
+    engine.update_diagnostics("/a.rs", vec![]);
     assert_eq!(engine.diagnostics.len(), 0);
 }
 

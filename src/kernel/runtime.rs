@@ -272,21 +272,17 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             // Typed diagnostics live in the semantic engine (canonical);
             // the buffer keeps display strings only.  URI vs path is
             // normalized so servers sending file:// URIs still land.
-            let display: Vec<String> = diagnostics.iter()
-                .map(|d| format!("[{}] line {}:{} {}",
-                    d.severity.as_str()[..1].to_uppercase(), d.line + 1, d.column + 1, d.message))
-                .collect();
-            let typed = diagnostics.clone();
+            let display: Vec<String> = diagnostics.iter().map(|d| d.display()).collect();
             let mut buffer_id: Option<usize> = None;
             for (key, arc) in ed.buffers.iter_mut() {
                 let mut buf = arc.lock().unwrap();
                 if lsp_path_matches(buf.path.as_deref(), &path) {
-                    buf.set_diagnostics(display.clone());
+                    buf.set_diagnostics(diagnostics.clone());
                     buffer_id = Some(key);
                     break;
                 }
             }
-            ed.semantic.update_diagnostics(&path, typed);
+            ed.semantic.update_diagnostics(&path, diagnostics);
             ed.events.emit_typed(keys::events::LSP_DIAGNOSTICS, LspDiagnosticsPayload {
                 buffer_id: buffer_id.map(|k| k.to_string()).unwrap_or_default(),
                 path,

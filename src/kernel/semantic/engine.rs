@@ -106,15 +106,6 @@ impl SemanticEngine {
         }
     }
 
-    /// Parse the formatted diagnostic strings stored in `buffer.diagnostics` and
-    /// update the typed diagnostic cache for `path`.
-    pub fn update_diagnostics_from_strings(&mut self, path: &str, strings: &[String]) {
-        let typed: Vec<Diagnostic> = strings.iter()
-            .filter_map(|s| Diagnostic::from_formatted(s))
-            .collect();
-        self.update_diagnostics(path, typed);
-    }
-
     /// Return the typed diagnostics for a file.
     pub fn diagnostics_for_path(&self, path: &str) -> Vec<Diagnostic> {
         self.diagnostics.get(path).cloned().unwrap_or_default()
@@ -173,21 +164,12 @@ mod tests {
     }
 
     #[test]
-    fn update_diagnostics_from_strings() {
-        let mut engine = SemanticEngine::new();
-        let strings = vec![
-            "[E] line 1:1 missing semicolon".to_string(),
-            "[W] line 2:5 unused variable".to_string(),
-        ];
-        engine.update_diagnostics_from_strings("/b.rs", &strings);
-        assert_eq!(engine.error_count("/b.rs"), 1);
-        assert_eq!(engine.warning_count("/b.rs"), 1);
-    }
-
-    #[test]
     fn update_diagnostics_empty_removes_entry() {
         let mut engine = SemanticEngine::new();
-        engine.update_diagnostics_from_strings("/c.rs", &["[E] line 1:1 err".to_string()]);
+        engine.update_diagnostics("/c.rs", vec![Diagnostic {
+            message: "err".into(), severity: DiagnosticSeverity::Error,
+            line: 0, column: 0, end_line: 0, end_column: 0,
+        }]);
         assert_eq!(engine.diagnostics.len(), 1);
         engine.update_diagnostics("/c.rs", vec![]);
         assert_eq!(engine.diagnostics.len(), 0);

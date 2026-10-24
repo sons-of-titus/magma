@@ -73,6 +73,7 @@ pub(crate) mod gui_find_tool;
 pub(crate) mod gui_output_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_debug_tool;
+mod gui_agent_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_terminal_tool;
 #[cfg(feature = "gui")]

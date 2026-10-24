@@ -32,6 +32,10 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 data
             });
         }
+        BackgroundEvent::AgentLlmReply { session_id, content, tool_calls_json, error } => {
+            crate::kernel::agent::loop_::handle_reply(
+                ed, session_id, content, &tool_calls_json, error);
+        }
         BackgroundEvent::AgentResult { session_id, result } => {
             ed.agent.complete_session(session_id, result.clone());
             ed.events.emit_typed(keys::events::AGENT_RESULT, crate::kernel::event::payload::AgentResultPayload {

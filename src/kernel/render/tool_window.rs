@@ -23,6 +23,10 @@ pub enum ToolAction {
     TerminalResize { id: usize, cols: u16, rows: u16 },
     /// Invoke a debug command (`dbg-continue`, `dbg-step-over`, …).
     DebugCmd(&'static str),
+    /// Submit a prompt to the built-in agent.
+    AgentSubmit(String),
+    /// Ask a running agent session to stop.
+    AgentStop(u64),
     /// Evaluate an expression in the debug console.
     DebugEval(String),
     /// Fetch the children of a variables reference.
@@ -48,6 +52,8 @@ pub const TERMINAL_TOOL: usize = 0;
 pub const OUTPUT_TOOL: usize = 2;
 /// The debug window's index.
 pub const DEBUG_TOOL: usize = 3;
+/// The agent window's index.
+pub const AGENT_TOOL: usize = 4;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DockPosition {
@@ -92,6 +98,11 @@ impl ToolWindowManager {
                 },
                 ToolWindowEntry {
                     window:  Box::new(super::gui_debug_tool::DebugToolWindow::new()),
+                    visible: false,
+                    dock:    DockPosition::Bottom,
+                },
+                ToolWindowEntry {
+                    window:  Box::new(super::gui_agent_tool::AgentToolWindow::new()),
                     visible: false,
                     dock:    DockPosition::Bottom,
                 },

@@ -9,10 +9,10 @@
 //!   (agent/list)                  → array of {:id :prompt :status :result}
 
 use evil_janet::*;
-use super::conv;
-use super::with_editor;
 use crate::kernel::agent::{BuiltinPlanner, EditorContextProvider};
 use crate::kernel::agent::types::{ContextProvider, Planner};
+use super::conv;
+use super::with_editor;
 
 /// (agent/ask prompt) → session-id
 ///
@@ -26,44 +26,10 @@ unsafe extern "C-unwind" fn c_agent_ask(argc: i32, argv: *mut Janet) -> Janet {
             None => conv::signal_err("agent/ask: prompt string required"),
         };
 
-        let bg = match ed.background.as_ref() {
-            Some(bg) => bg.clone(),
-            None => conv::signal_err("agent/ask: no background runtime available"),
-        };
-
-        let ctx = EditorContextProvider.gather(ed);
-        let session_id = ed.agent.create_session(&prompt);
-        let sender = bg.sender.clone();
-
-        bg.spawn_blocking(move || {
-            let plan = BuiltinPlanner.plan(&prompt, &ctx);
-
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::AgentThought {
-                session_id,
-                thought: plan.rationale.clone(),
-            });
-
-            for step in &plan.steps {
-                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::AgentAction {
-                    session_id,
-                    command: step.command.clone(),
-                    description: step.description.clone(),
-                });
-            }
-
-            let result = if plan.steps.is_empty() {
-                plan.rationale.clone()
-            } else {
-                format!("{} step(s) planned", plan.steps.len())
-            };
-
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::AgentResult {
-                session_id,
-                result,
-            });
-        });
-
-        conv::integer(session_id as i32)
+        match crate::kernel::agent::loop_::start_session(ed, &prompt) {
+            Ok(session_id) => conv::integer(session_id as i32),
+            Err(e) => conv::signal_err(&e),
+        }
     })
 }
 

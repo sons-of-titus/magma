@@ -114,6 +114,21 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
             ToolAction::TerminalResize { id, cols, rows } => {
                 let _ = ed.io.terminals.resize(id, cols, rows);
             }
+            ToolAction::AgentSubmit(prompt) => {
+                match crate::kernel::agent::loop_::start_session(ed, &prompt) {
+                    Ok(id) => {
+                        ed.show_message(MessageKind::Info,
+                            format!("agent session {id} started"));
+                    }
+                    Err(e) => ed.show_message(MessageKind::Error, e),
+                }
+            }
+            ToolAction::AgentStop(id) => {
+                if ed.agent.request_stop(id) {
+                    ed.show_message(MessageKind::Info,
+                        "agent will stop after its current step");
+                }
+            }
             ToolAction::DebugCmd(cmd) => {
                 if let Err(e) = execute_command(ed, cmd, &std::collections::HashMap::new()) {
                     ed.show_message(MessageKind::Error, e);

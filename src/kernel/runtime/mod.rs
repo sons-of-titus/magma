@@ -137,6 +137,14 @@ pub enum BackgroundEvent {
     /// A foreground-executed agent step reported its outcome; the output
     /// feeds the next LLM turn.
     AgentStepResult { session_id: u64, output: String },
+    /// A model reply landed: assistant text + tool calls (or the error).
+    /// Drives the agent turn loop on the foreground.
+    AgentLlmReply {
+        session_id: u64,
+        content: String,
+        tool_calls_json: String,
+        error: Option<String>,
+    },
     /// Agent completed a session successfully.
     AgentResult { session_id: u64, result: String },
     /// Agent session failed.

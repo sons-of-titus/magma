@@ -14,6 +14,9 @@ pub mod types;
 pub mod context;
 pub mod planner;
 pub mod executor;
+pub mod llm;
+#[path = "loop.rs"]
+pub mod loop_;
 
 pub use types::{
     AgentContext, ContextProvider, Plan, PlanStep, Planner, ExecutionResult, Executor,
@@ -62,6 +65,10 @@ pub struct AgentSession {
     pub result: Option<String>,
     pub error: Option<String>,
     pub transcript: Vec<TranscriptEntry>,
+    /// LLM chat transcript (OpenAI message objects) for live sessions.
+    pub messages: Vec<serde_json::Value>,
+    /// Remaining model turns before the loop must stop.
+    pub turns_left: u8,
 }
 
 /// Tracks all active and completed agent sessions.
@@ -85,8 +92,56 @@ impl AgentManager {
             result: None,
             error: None,
             transcript: Vec::new(),
+            messages: Vec::new(),
+            turns_left: loop_::MAX_TURNS,
         });
         id
+    }
+
+    // ── LLM loop bookkeeping ───────────────────────────────────────────
+
+    /// Seed the chat transcript of a live session.
+    pub fn begin_messages(&mut self, id: u64, messages: Vec<serde_json::Value>) {
+        if let Some(s) = self.sessions.get_mut(&id) {
+            s.messages = messages;
+        }
+    }
+
+    /// Append tool results (or any later turns) to the chat transcript.
+    pub fn append_messages(&mut self, id: u64, messages: Vec<serde_json::Value>) {
+        if let Some(s) = self.sessions.get_mut(&id) {
+            s.messages.extend(messages);
+        }
+    }
+
+    /// Clone of the chat transcript, for the background call.
+    pub fn messages_of(&self, id: u64) -> Option<Vec<serde_json::Value>> {
+        self.sessions.get(&id).map(|s| s.messages.clone())
+    }
+
+    pub fn turns_left_of(&self, id: u64) -> Option<u8> {
+        self.sessions.get(&id).map(|s| s.turns_left)
+    }
+
+    /// Consume one turn of the budget; `None` when the session is gone.
+    pub fn spend_turn(&mut self, id: u64) -> Option<u8> {
+        self.sessions.get_mut(&id).map(|s| {
+            s.turns_left = s.turns_left.saturating_sub(1);
+            s.turns_left
+        })
+    }
+
+    /// Ask a running session to stop; the in-flight model call completes
+    /// and the loop then finishes with "stopped by user".
+    pub fn request_stop(&mut self, id: u64) -> bool {
+        self.sessions.get_mut(&id).map(|s| {
+            if s.status == AgentStatus::Running {
+                s.turns_left = 0;
+                true
+            } else {
+                false
+            }
+        }).unwrap_or(false)
     }
 
     /// Append a transcript entry when the session is still live.  Entries

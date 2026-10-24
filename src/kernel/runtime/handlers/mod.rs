@@ -91,6 +91,7 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::AgentThought { .. }
         | BackgroundEvent::AgentAction { .. }
         | BackgroundEvent::AgentStepResult { .. }
+        | BackgroundEvent::AgentLlmReply { .. }
         | BackgroundEvent::AgentResult { .. }
         | BackgroundEvent::AgentError { .. } => agent::handle(ed, event),
 

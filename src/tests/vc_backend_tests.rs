@@ -304,3 +304,27 @@ fn template_values_are_shell_quoted_not_executed() {
     assert!(!sentinel.exists(), "command substitution must not execute");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn porcelain_z_handles_renames_and_unicode() {
+    use crate::kernel::vc::backends::parse_porcelain_z;
+    // -z records: `XY <path>\0`; renames follow with the ORIGINAL path as
+    // its own NUL field, which must be consumed, not treated as a record.
+    let raw = "R  new_name.rs\0old_name.rs\0 M src/ünicode.rs\0?? scratch dir\0";
+    let (staged, unstaged, untracked) = parse_porcelain_z(raw);
+    assert_eq!(staged.len(), 1);
+    assert_eq!(staged[0].code, 'R');
+    assert_eq!(staged[0].path, "new_name.rs", "rename entries carry the destination path");
+    assert_eq!(unstaged.len(), 1);
+    assert_eq!(unstaged[0].path, "src/ünicode.rs", "unicode paths pass through unquoted");
+    assert_eq!(untracked, vec!["scratch dir".to_string()]);
+}
+
+#[test]
+fn porcelain_z_ignores_empty_trailing_record() {
+    use crate::kernel::vc::backends::parse_porcelain_z;
+    let (staged, _u, _t) = parse_porcelain_z("A  ok.rs\0");
+    assert_eq!(staged.len(), 1);
+    let (staged, _u, _t) = parse_porcelain_z("A  ok.rs\0\0");
+    assert_eq!(staged.len(), 1, "trailing NUL never becomes a phantom entry");
+}

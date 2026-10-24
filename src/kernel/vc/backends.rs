@@ -8,6 +8,39 @@ use super::{FileStatus, VcBackend, VcStatus, run_cmd};
 
 // ── Git ───────────────────────────────────────────────────────────────────────
 
+/// Parse `git status --porcelain -z` output: NUL-separated records,
+/// paths never C-quoted, and rename/copy records carry the original path
+/// as the NUL field after the destination — which is the path `git add`
+/// and friends want.
+pub(crate) fn parse_porcelain_z(raw: &str) -> (Vec<FileStatus>, Vec<FileStatus>, Vec<String>) {
+    let mut staged = Vec::new();
+    let mut unstaged = Vec::new();
+    let mut untracked = Vec::new();
+    let mut fields = raw.split('\0');
+    while let Some(rec) = fields.next() {
+        if rec.len() < 3 { continue; }
+        let mut chars = rec.chars();
+        let x = chars.next().unwrap_or(' ');
+        let y = chars.next().unwrap_or(' ');
+        let path = rec[3..].to_string();
+        if matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C') {
+            let _original = fields.next();
+        }
+        match (x, y) {
+            ('?', '?') => untracked.push(path),
+            _ => {
+                if x != ' ' && x != '?' {
+                    staged.push(FileStatus { code: x, path: path.clone() });
+                }
+                if y != ' ' && y != '?' {
+                    unstaged.push(FileStatus { code: y, path });
+                }
+            }
+        }
+    }
+    (staged, unstaged, untracked)
+}
+
 pub struct GitBackend;
 
 impl VcBackend for GitBackend {
@@ -34,29 +67,8 @@ impl VcBackend for GitBackend {
             .unwrap_or_else(|_| "HEAD".into())
             .trim().to_string();
 
-        let raw = run_cmd(root, "git", &["status", "--porcelain"])?;
-
-        let mut staged = Vec::new();
-        let mut unstaged = Vec::new();
-        let mut untracked = Vec::new();
-
-        for line in raw.lines() {
-            if line.len() < 4 { continue; }
-            let x = line.chars().next().unwrap_or(' ');
-            let y = line.chars().nth(1).unwrap_or(' ');
-            let path = line[3..].to_string();
-            match (x, y) {
-                ('?', '?') => untracked.push(path),
-                _ => {
-                    if x != ' ' && x != '?' {
-                        staged.push(FileStatus { code: x, path: path.clone() });
-                    }
-                    if y != ' ' && y != '?' {
-                        unstaged.push(FileStatus { code: y, path });
-                    }
-                }
-            }
-        }
+        let raw = run_cmd(root, "git", &["status", "--porcelain", "-z"])?;
+        let (staged, unstaged, untracked) = parse_porcelain_z(&raw);
 
         Ok(VcStatus { backend_name: "git".into(), branch, has_staging: true, staged, unstaged, untracked })
     }

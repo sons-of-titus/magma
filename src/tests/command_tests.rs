@@ -212,3 +212,65 @@ fn goto_matching_brace_backward_from_end_of_buffer() {
     helpers::run(&mut ed, "goto-matching-brace");
     assert_eq!(helpers::cursor(&ed), 0, "closing paren at EOB jumps to its opener");
 }
+
+// ── Word motions on the chunk-scan path ──────────────────────────────
+
+#[test]
+fn word_motions_walk_boundaries() {
+    let mut ed = helpers::make_editor_with_buffer("foo bar  baz qux");
+    let key = helpers::focused_key(&ed);
+
+    // w from 0 → start of "bar" (4)
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
+    helpers::run(&mut ed, "move-word-forward");
+    assert_eq!(helpers::cursor(&ed), 4);
+
+    // w again → start of "baz" (9, past the double space)
+    helpers::run(&mut ed, "move-word-forward");
+    assert_eq!(helpers::cursor(&ed), 9);
+
+    // b → back to "bar"
+    helpers::run(&mut ed, "move-word-back");
+    assert_eq!(helpers::cursor(&ed), 4);
+
+    // e on "foo" → its end (3)
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
+    helpers::run(&mut ed, "move-word-end");
+    assert_eq!(helpers::cursor(&ed), 3);
+}
+
+#[test]
+fn word_motions_handle_multibyte_words() {
+    let mut ed = helpers::make_editor_with_buffer("héllo wörld");
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().set_cursor(0);
+    helpers::run(&mut ed, "move-word-forward");
+    assert_eq!(helpers::cursor(&ed), 7, "wörld starts after 'héllo ' (é is 2 bytes)");
+    helpers::run(&mut ed, "move-word-back");
+    assert_eq!(helpers::cursor(&ed), 0);
+}
+
+#[test]
+fn search_repeat_wraps_in_both_directions() {
+    let mut ed = helpers::make_editor_with_buffer("x ay x ay x");
+    let key = helpers::focused_key(&ed);
+
+    ed.search_pattern = Some("ay".to_string());
+    ed.search_forward = true;
+    helpers::run(&mut ed, "repeat-search");
+    assert_eq!(helpers::cursor(&ed), 2);
+    helpers::run(&mut ed, "repeat-search");
+    assert_eq!(helpers::cursor(&ed), 7);
+    helpers::run(&mut ed, "repeat-search");
+    assert_eq!(helpers::cursor(&ed), 2, "forward search wraps to the first match");
+
+    helpers::run(&mut ed, "reverse-search");
+    assert_eq!(helpers::cursor(&ed), 7, "backward wraps to the last match");
+
+    let highlights = {
+        let v = ed.views.get(&key).unwrap();
+        v.highlights.len()
+    };
+    assert_eq!(highlights, 2, "all occurrences highlight");
+    let _ = &key;
+}

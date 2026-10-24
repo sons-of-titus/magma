@@ -16,16 +16,13 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let (new_pos, buf_len) = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(pos, buf.len());
-                    let word_start = text.find(|c: char| c.is_alphanumeric() || c == '_');
-                    let np = if let Some(ws) = word_start {
-                        let after = &text[ws..];
-                        let word_end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
-                        let after_word = &after[word_end..];
-                        let next_start = after_word.find(|c: char| c.is_alphanumeric() || c == '_').unwrap_or(after_word.len());
-                        pos + ws + word_end + next_start
-                    } else {
-                        buf.len()
+                    let np = match buf.find_char_from(pos, is_word_char) {
+                        Some(ws) => {
+                            let we = buf.find_char_from(ws, |c| !is_word_char(c))
+                                .unwrap_or(buf.len());
+                            buf.find_char_from(we, is_word_char).unwrap_or(buf.len())
+                        }
+                        None => buf.len(),
                     };
                     (np, buf.len())
                 };
@@ -45,10 +42,10 @@ pub(super) fn register(editor: &mut Editor) {
                 if pos == 0 { return Ok(()); }
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(0, pos);
-                    let trimmed = text.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
-                    if trimmed.is_empty() { return Ok(()); }
-                    trimmed.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    let Some(last_word) = buf.rfind_char_before(pos, is_word_char) else {
+                        return Ok(());
+                    };
+                    buf.rfind_char_before(last_word + 1, |c| !is_word_char(c))
                         .map(|i| i + 1)
                         .unwrap_or(0)
                 };
@@ -67,15 +64,9 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(pos, buf.len());
-                    let word_start = text.find(|c: char| c.is_alphanumeric() || c == '_');
-                    if let Some(ws) = word_start {
-                        let after = &text[ws..];
-                        let word_end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
-                        pos + ws + word_end
-                    } else {
-                        pos
-                    }
+                    buf.find_char_from(pos, is_word_char)
+                        .and_then(|ws| buf.find_char_from(ws, |c| !is_word_char(c)))
+                        .unwrap_or(pos)
                 };
                 view.set_cursor(new_pos);
             }
@@ -97,8 +88,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(pos, buf.len());
-                    text.find(ch).map(|offset| pos + offset)
+                    buf.find_char_from(pos, |c| c == ch)
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
@@ -121,8 +111,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(0, pos);
-                    text.rfind(ch)
+                    buf.rfind_char_before(pos, |c| c == ch)
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
@@ -145,10 +134,11 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(pos, buf.len());
-                    if let Some(offset) = text.find(ch) {
-                        if offset > 0 { Some(pos + offset - 1) } else { None }
-                    } else { None }
+                    // Stop one char before the target: back up over the
+                    // preceding char (which may be multibyte).
+                    buf.find_char_from(pos.saturating_sub(0), |c| c == ch)
+                        .filter(|&at| at > pos)
+                        .and_then(|at| buf.rfind_char_before(at, |_| true))
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
@@ -171,11 +161,10 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(0, pos);
-                    text.rfind(ch).and_then(|offset| {
-                        let next_char = offset + ch.len_utf8();
-                        if next_char < pos { Some(next_char) } else { None }
-                    })
+                    // Stop one char after the target (multibyte-aware).
+                    buf.rfind_char_before(pos, |c| c == ch)
+                        .map(|at| at + ch.len_utf8())
+                        .filter(|next| *next < pos)
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
@@ -235,39 +224,43 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap();
-                    let text = buf.slice(0, buf.len());
                     // The cursor can sit on a non-boundary byte after a
-                    // UTF-16 → byte conversion; snap down before slicing.
-                    let mut pos = pos.min(text.len());
-                    while pos > 0 && !text.is_char_boundary(pos) {
+                    // UTF-16 → byte conversion; snap down first.
+                    let mut pos = pos.min(buf.len());
+                    while pos > 0 && buf.char_at(pos).is_none() {
                         pos -= 1;
                     }
                     // (byte index, char) of the bracket candidate at/behind
-                    // the cursor, so slice ends are always boundaries.
-                    let at = text[pos..].chars().next().map(|c| (pos, c))
-                        .or_else(|| text[..pos].char_indices().next_back());
+                    // the cursor — a chunk-fed scan, no document copy.
+                    let at = buf.char_at(pos).map(|c| (pos, c))
+                        .or_else(|| pos.checked_sub(1).and_then(|p| buf.char_at(p).map(|c| (p, c))));
                     if let Some((at, c)) = at {
                         let pairs = [('(', ')'), ('[', ']'), ('{', '}')];
                         let mut found = None;
                         for &(open, close) in &pairs {
                             if c == open {
                                 let mut depth = 0;
-                                for (i, ch) in text[at..].char_indices() {
+                                for (i, ch) in buf.char_span(at, buf.len()) {
                                     if ch == open { depth += 1; }
                                     if ch == close { depth -= 1; }
                                     if depth == 0 {
-                                        found = Some(at + i);
+                                        found = Some(i);
                                         break;
                                     }
                                 }
                             } else if c == close {
-                                let mut depth = 0;
-                                for (i, ch) in text[..at + c.len_utf8()].char_indices().rev() {
-                                    if ch == close { depth += 1; }
-                                    if ch == open { depth -= 1; }
-                                    if depth == 0 {
-                                        found = Some(i);
-                                        break;
+                                // A stack of open positions: the target's
+                                // match pops when we reach the close at `at`.
+                                let mut stack = Vec::new();
+                                for (i, ch) in buf.char_span(0, at + c.len_utf8()) {
+                                    if ch == open {
+                                        stack.push(i);
+                                    } else if ch == close {
+                                        let popped = stack.pop();
+                                        if i == at {
+                                            found = popped;
+                                            break;
+                                        }
                                     }
                                 }
                             }

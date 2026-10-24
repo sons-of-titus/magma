@@ -58,3 +58,8 @@ pub(super) fn move_cursor(editor: &mut Editor, delta: isize) {
     }
     emit_cursor_moved(editor);
 }
+
+/// The word-character class shared by motions and word search.
+pub(super) fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}

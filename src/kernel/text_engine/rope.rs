@@ -120,6 +120,17 @@ impl Rope {
         self.inner.chunks()
     }
 
+    /// Forward chunk cursor starting at `byte_offset`: the remaining
+    /// chunks plus the absolute byte offset of the first one.  Mid-char
+    /// offsets snap down to the chunk's content start (char_indices walks
+    /// from the chunk start; callers skipping to `from` is their call).
+    pub(crate) fn chunks_from(&self, byte_offset: usize)
+        -> (ropey::iter::Chunks<'_>, usize) {
+        let off = byte_offset.min(self.inner.len_bytes());
+        let (chunks, byte_start, _, _) = self.inner.chunks_at_byte(off);
+        (chunks, byte_start)
+    }
+
     /// Number of chars in `[start, end)` — O(log n), no scan.
     pub fn chars_between(&self, start: usize, end: usize) -> usize {
         let end = end.min(self.inner.len_bytes());

@@ -1,9 +1,12 @@
 //! Search commands — n/N repetition and word-under-cursor jumps.
 //!
 //! There is no modal `/` prompt in the shipped editor: search lives in the
-//! GUI dialog (ctrl-shift-f), which sets `search_pattern`, making these
-//! repeat commands work against its last query.  Community keymaps can bind
+//! GUI dialog (ctrl-f), which sets `search_pattern`, making these repeat
+//! commands work against its last query.  Community keymaps can bind
 //! them to any chord.
+//!
+//! All matching runs over rope chunk scans — no document-sized copies
+//! per keypress.
 
 use crate::kernel::command::CommandResult;
 use crate::kernel::state::Editor;
@@ -39,34 +42,13 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let (pos, text, word_start, word_end) = {
-                let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
-                let pos = view.cursor_offset();
-                let buf = view.buffer.lock().unwrap();
-                let text = buf.slice(0, buf.len());
-                let before = text[..pos].to_string();
-                let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .map(|i| i + 1).unwrap_or(0);
-                let word_slice = &text[word_start..];
-                let word_end = word_slice.find(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .unwrap_or(word_slice.len());
-                (pos, text, word_start, word_start + word_end)
-            };
-            if word_start < word_end {
-                let word = text[word_start..word_end].to_string();
-                if !word.is_empty() {
-                    editor.search_pattern = Some(word.clone());
-                    editor.search_forward = true;
-                    let search_from = pos + 1;
-                    let found = if search_from < text.len() {
-                        text[search_from..].find(&word[..]).map(|idx| search_from + idx)
-                    } else {
-                        None
-                    };
-                    if let Some(new_pos) = found {
-                        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                            view.set_cursor(new_pos);
-                        }
+            let found = word_and_next(editor, buf_id, true);
+            if let Some((word, next)) = found {
+                editor.search_pattern = Some(word);
+                editor.search_forward = true;
+                if let Some(np) = next {
+                    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+                        view.set_cursor(np);
                     }
                 }
             }
@@ -79,30 +61,13 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let (pos, text, word_start, word_end) = {
-                let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
-                let pos = view.cursor_offset();
-                let buf = view.buffer.lock().unwrap();
-                let text = buf.slice(0, buf.len());
-                let before = text[..pos].to_string();
-                let word_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .map(|i| i + 1).unwrap_or(0);
-                let word_slice = &text[word_start..];
-                let word_end = word_slice.find(|c: char| !(c.is_alphanumeric() || c == '_'))
-                    .unwrap_or(word_slice.len());
-                (pos, text, word_start, word_start + word_end)
-            };
-            if word_start < word_end {
-                let word = text[word_start..word_end].to_string();
-                if !word.is_empty() {
-                    editor.search_pattern = Some(word.clone());
-                    editor.search_forward = false;
-                    let search_text = &text[..pos.saturating_sub(1)];
-                    let found = search_text.rfind(&word[..]);
-                    if let Some(idx) = found {
-                        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                            view.set_cursor(idx);
-                        }
+            let found = word_and_next(editor, buf_id, false);
+            if let Some((word, prev)) = found {
+                editor.search_pattern = Some(word);
+                editor.search_forward = false;
+                if let Some(np) = prev {
+                    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+                        view.set_cursor(np);
                     }
                 }
             }
@@ -159,23 +124,44 @@ pub(super) fn register(editor: &mut Editor) {
     );
 }
 
-fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
-    let text = {
-        let Some(view) = editor.view_of_buffer(buf_id) else { return; };
-        let buf = view.buffer.lock().unwrap();
-        buf.slice(0, buf.len())
+/// The word around the cursor plus the next/previous occurrence's offset.
+fn word_and_next(editor: &Editor, buf_id: usize, forward: bool) -> Option<(String, Option<usize>)> {
+    let view = editor.view_of_buffer(buf_id)?;
+    let pos = view.cursor_offset();
+    let buf = view.buffer.lock().unwrap();
+    let word_start = buf.rfind_char_before(pos, |c| !is_word_char(c))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let word_end = buf.find_char_from(word_start, |c| !is_word_char(c))
+        .unwrap_or(buf.len());
+    if word_start >= word_end {
+        return None;
+    }
+    let word = buf.slice(word_start, word_end);
+    let occurrence = if forward {
+        buf.find_sub_from(pos + 1, &word)
+    } else {
+        // The word itself starts at word_start; look for an earlier one.
+        buf.rfind_sub_before(pos.saturating_sub(1), &word)
+            .filter(|&at| at < word_start || at + word.len() <= word_start)
     };
-    if text.is_empty() || pattern.is_empty() {
-        return;
-    }
-    let mut ranges = Vec::new();
-    let mut offset = 0usize;
-    while let Some(idx) = text[offset..].find(pattern) {
-        let start = offset + idx;
-        let end = start + pattern.len();
-        ranges.push((start, end, "search".to_string()));
-        offset = end;
-    }
+    Some((word, occurrence))
+}
+
+fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
+    let ranges = {
+        let Some(arc) = editor.buffers.get(buf_id) else { return };
+        let buf = arc.lock().unwrap();
+        let mut ranges = Vec::new();
+        let mut from = 0usize;
+        let plen = pattern.len();
+        while let Some(at) = buf.find_sub_from(from, pattern) {
+            ranges.push((at, at + plen, "search".to_string()));
+            from = at + 1;
+            if ranges.len() > 10_000 { break; } // sanity cap
+        }
+        ranges
+    };
     if let Some(view) = editor.view_of_buffer_mut(buf_id) {
         view.set_highlights(ranges);
     }
@@ -183,52 +169,47 @@ fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
 
 fn execute_search(editor: &mut Editor, pattern: &str, forward: bool) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
-    let (pos, text) = {
-        let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
-        let pos = view.cursor_offset();
-        let buf = view.buffer.lock().unwrap();
-        let text = buf.slice(0, buf.len());
-        (pos, text)
-    };
-    if text.is_empty() || pattern.is_empty() {
+    let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
+    let pos = view.cursor_offset();
+    drop(view);
+
+    if pattern.is_empty() {
         if let Some(view) = editor.view_of_buffer_mut(buf_id) {
             view.clear_highlights();
         }
         return Ok(());
     }
-    // Highlight all matches
+
     highlight_all_matches(editor, buf_id, pattern);
-    if forward {
-        let start = (pos + 1).min(text.len());
-        if let Some(idx) = text[start..].find(pattern) {
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                view.set_cursor(start + idx);
-            }
-            emit_cursor_moved(editor);
-            return Ok(());
+
+    let found = {
+        let Some(arc) = editor.buffers.get(buf_id) else { return Ok(()); };
+        let buf = arc.lock().unwrap();
+        if forward {
+            let start = (pos + 1).min(buf.len());
+            buf.find_sub_from(start, pattern).or_else(|| {
+                // Wrap: the first match that ends before the restart point.
+                buf.find_sub_from(0, pattern)
+                    .filter(|at| at + pattern.len() < start)
+            })
+        } else {
+            buf.rfind_sub_before(pos, pattern).or_else(|| {
+                // Wrap: the last match at/after the cursor.
+                let mut last = None;
+                let mut from = pos;
+                while let Some(at) = buf.find_sub_from(from, pattern) {
+                    last = Some(at);
+                    from = at + 1;
+                }
+                last
+            })
         }
-        if let Some(idx) = text[..start.saturating_sub(1)].find(pattern) {
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                view.set_cursor(idx);
-            }
-            emit_cursor_moved(editor);
-            return Ok(());
+    };
+    if let Some(np) = found {
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            view.set_cursor(np);
         }
-    } else {
-        if let Some(idx) = text[..pos].rfind(pattern) {
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                view.set_cursor(idx);
-            }
-            emit_cursor_moved(editor);
-            return Ok(());
-        }
-        if let Some(idx) = text[pos..].rfind(pattern) {
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                view.set_cursor(pos + idx);
-            }
-            emit_cursor_moved(editor);
-            return Ok(());
-        }
+        emit_cursor_moved(editor);
     }
     Ok(())
 }

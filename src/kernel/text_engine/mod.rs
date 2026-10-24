@@ -5,6 +5,7 @@
 //! transactions grouped explicitly; save state is revision-based.
 
 pub mod rope;
+pub mod scan;
 pub mod undo;
 pub mod marks;
 pub mod decoration;

@@ -159,6 +159,8 @@ pub fn render_editor_pane(
             if is_focused {
                 draw_completion_popup(ui, paint.editor, paint.theme,
                     cursor_px, editor_rect, char_w, line_h);
+                draw_quickfix_menu(ui, paint.editor, paint.theme,
+                    cursor_px, editor_rect, line_h);
             }
         }
 
@@ -482,5 +484,66 @@ fn draw_context_menu(ui: &egui::Ui, ed: &mut Editor) {
     }
     if close {
         ctx.data_mut(|d| d.remove::<egui::Pos2>(state_id));
+    }
+}
+
+/// The quick-fix picker — server code actions at the cursor, one row per
+/// action, navigated with up/down and applied with return.
+fn draw_quickfix_menu(
+    ui: &egui::Ui,
+    ed: &Editor,
+    theme: &GuiTheme,
+    cursor_px: Option<(f32, f32)>,
+    rect: Rect,
+    line_h: f32,
+) {
+    let Some(menu) = &ed.quickfix_menu else { return };
+    if menu.items.is_empty() { return }
+    let Some((cx, cy)) = cursor_px else { return };
+
+    let font = FontId::new(line_h * 0.8, FontFamily::Monospace);
+    let row_h = line_h * 1.15;
+    let shown = menu.items.len().min(12);
+    let item_w = menu.items.iter().take(shown)
+        .map(|a| ui.fonts_mut(|f| f.layout_no_wrap(
+            format!("{}  {}", a.title, a.kind), font.clone(), theme.text).size().x))
+        .fold(60.0, f32::max);
+    let w = (item_w + 26.0).min(rect.width() * 0.7).max(120.0);
+    let h = row_h * shown as f32 + 10.0;
+    let below = cy + line_h + 4.0;
+    let y = if below + h <= rect.bottom() { below } else { (cy - h - 4.0).max(rect.top() + 2.0) };
+    let x = cx.min(rect.right() - w - 4.0).max(rect.left() + 2.0);
+    let area = Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h));
+
+    let painter = ui.painter_at(area);
+    painter.rect_filled(area, 6.0, theme.crust);
+    painter.rect_stroke(area, 6.0, egui::Stroke::new(1.0, theme.blue), egui::StrokeKind::Inside);
+    for (i, action) in menu.items.iter().take(shown).enumerate() {
+        let row = Rect::from_min_size(
+            Pos2::new(x + 3.0, y + 5.0 + i as f32 * row_h),
+            Vec2::new(w - 6.0, row_h),
+        );
+        let is_sel = i == menu.idx;
+        if is_sel {
+            painter.rect_filled(row, 4.0, theme.surface1);
+            painter.rect_filled(
+                Rect::from_min_size(row.min, Vec2::new(2.5, row_h)), 1.0, theme.blue);
+        }
+        painter.text(
+            Pos2::new(row.left() + 10.0, row.center().y),
+            Align2::LEFT_CENTER,
+            &action.title,
+            font.clone(),
+            if is_sel { theme.text } else { theme.subtext1 },
+        );
+        if !action.kind.is_empty() {
+            painter.text(
+                Pos2::new(row.right() - 8.0, row.center().y),
+                Align2::RIGHT_CENTER,
+                &action.kind.rsplit('.').next().unwrap_or(&action.kind),
+                FontId::new(line_h * 0.62, FontFamily::Monospace),
+                theme.subtext0,
+            );
+        }
     }
 }

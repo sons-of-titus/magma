@@ -92,6 +92,36 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
         return;
     }
 
+    // ── Quick-fix picker keys ───────────────────────────────────────
+    if ed.quickfix_menu.is_some() {
+        // A menu left over from a buffer switch closes on any key.
+        let stale = ed.quickfix_menu.as_ref().map(|m| m.buf_key)
+            != Some(focused_buffer_id(ed));
+        let handled = match key {
+            "down" if !stale => {
+                crate::kernel::state::overlay::quickfix_menu_next(ed); true
+            }
+            "up" if !stale => {
+                crate::kernel::state::overlay::quickfix_menu_prev(ed); true
+            }
+            "return" | "tab" if !stale => {
+                crate::kernel::state::overlay::quickfix_menu_accept(ed); true
+            }
+            _ => {
+                // Escape, or any typing key: the menu closes and typing
+                // falls through to the normal pipeline.
+                crate::kernel::state::overlay::quickfix_menu_close(ed);
+                key == "esc"
+            }
+        };
+        ed.frame_dirty = true;
+        if handled {
+            ed.publish_buffer_changes();
+            ed.dispatch_events_scoped();
+            return;
+        }
+    }
+
     // ── Completion popup keys ───────────────────────────────────────
     if ed.completion.visible {
         let mut consumed = true;

@@ -303,3 +303,102 @@ fn stale_lsp_hover_is_dropped() {
     assert!(card.lines.iter().all(|l| !l.contains("stale")),
         "responses for superseded revisions never render");
 }
+
+// ── Code actions → quick-fix picker ──────────────────────────────────
+
+#[test]
+fn code_actions_response_opens_the_picker() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("let x = 1;");
+    let key = helpers::focused_key(&ed);
+    let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
+
+    process_background_event(&mut ed, BackgroundEvent::LspCodeActions {
+        path: "rust".into(),
+        actions: r#"[
+            {"title":"Qualify `x`","kind":"quickfix","edit":{"changes":{}}},
+            {"title":"Inline variable","kind":"refactor.inline"}
+        ]"#.into(),
+        buf_key: Some(key),
+        revision: rev,
+    });
+
+    let menu = ed.quickfix_menu.as_ref().expect("picker opened");
+    assert_eq!(menu.buf_key, key);
+    assert_eq!(menu.items.len(), 2);
+    assert_eq!(menu.items[0].title, "Qualify `x`");
+    assert!(menu.items[0].edit_json.is_some());
+    assert!(menu.items[1].edit_json.is_none());
+}
+
+#[test]
+fn picker_accept_applies_the_workspace_edit() {
+    use crate::kernel::input::dispatch_key;
+    use crate::kernel::state::overlay::{parse_code_actions, QuickfixMenu};
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("let x = 1;");
+    let key = helpers::focused_key(&ed);
+    // Rewrite the line via a full-range edit on this untitled buffer: the
+    // applier matches buffers by path, so give the buffer a path first.
+    {
+        let arc = ed.buffers.get_mut(key).unwrap();
+        arc.lock().unwrap().path = Some("/tmp/qf_action.rs".to_string());
+    }
+    let actions = parse_code_actions(r#"[{"title":"Rename","kind":"quickfix","edit":{
+        "changes":{"/tmp/qf_action.rs":[{"range":{
+            "start":{"line":0,"character":0},"end":{"line":0,"character":10}},
+            "newText":"let y = 2;"}]}}}]"#);
+    ed.quickfix_menu = Some(QuickfixMenu { buf_key: key, items: actions, idx: 0 });
+
+    dispatch_key(&mut ed, "down"); // no-op wrap on a 1-item menu
+    dispatch_key(&mut ed, "return");
+
+    assert!(ed.quickfix_menu.is_none(), "accept closes the picker");
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
+    assert_eq!(text, "let y = 2;", "the workspace edit was applied");
+}
+
+#[test]
+fn server_apply_edit_request_applies_and_answers() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("let x = 1;");
+    let key = helpers::focused_key(&ed);
+    {
+        let arc = ed.buffers.get_mut(key).unwrap();
+        arc.lock().unwrap().path = Some("/tmp/qf_apply_edit.rs".to_string());
+    }
+
+    process_background_event(&mut ed, BackgroundEvent::LspApplyEdit {
+        language: "rust".into(),
+        request_id: 7,
+        edit_json: r#"{"changes":{"/tmp/qf_apply_edit.rs":[{"range":{
+            "start":{"line":0,"character":0},"end":{"line":0,"character":10}},
+            "newText":"let z = 3;"}]}}"#.into(),
+    });
+
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
+    assert_eq!(text, "let z = 3;", "server-pushed edit applied");
+    // No server for "rust" in this editor: respond() must be a no-op.
+    assert!(ed.status_message.is_none());
+}
+
+#[test]
+fn stale_code_actions_never_open_the_picker() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::tests::helpers;
+
+    let mut ed = helpers::make_editor_with_buffer("let x = 1;");
+    let key = helpers::focused_key(&ed);
+    process_background_event(&mut ed, BackgroundEvent::LspCodeActions {
+        path: "rust".into(),
+        actions: r#"[{"title":"stale","kind":"quickfix"}]"#.into(),
+        buf_key: Some(key),
+        revision: 999_999,
+    });
+    assert!(ed.quickfix_menu.is_none(), "superseded responses are dropped");
+}

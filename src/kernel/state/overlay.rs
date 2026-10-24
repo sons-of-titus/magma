@@ -51,3 +51,73 @@ pub fn attach_lsp_hover(ed: &mut crate::kernel::state::Editor, buf_key: usize, c
     ed.show_message(crate::kernel::state::MessageKind::Info,
         first.chars().take(160).collect::<String>());
 }
+
+/// One code action from the language server.
+#[derive(Debug, Clone)]
+pub struct CodeAction {
+    pub title: String,
+    pub kind: String,
+    /// The action's `edit` (WorkspaceEdit JSON) when the server sent it
+    /// inline; actions that only carry a `command` apply nothing yet.
+    pub edit_json: Option<String>,
+}
+
+/// The quick-fix picker: server code actions for one buffer, navigated
+/// with up/down, applied with return, dismissed with escape.
+#[derive(Debug, Clone)]
+pub struct QuickfixMenu {
+    pub buf_key: usize,
+    pub items: Vec<CodeAction>,
+    pub idx: usize,
+}
+
+/// Parse a `textDocument/codeAction` result into picker items.
+pub fn parse_code_actions(json: &str) -> Vec<CodeAction> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_array() else { return Vec::new() };
+    arr.iter().filter_map(|a| {
+        let title = a.get("title")?.as_str()?.to_string();
+        let kind = a.get("kind").and_then(|k| k.as_str()).unwrap_or_default().to_string();
+        let edit_json = a.get("edit").map(|e| e.to_string());
+        Some(CodeAction { title, kind, edit_json })
+    }).collect()
+}
+
+/// Quickfix-menu operations shared by the input layer and tests.
+pub fn quickfix_menu_next(ed: &mut crate::kernel::state::Editor) {
+    if let Some(menu) = ed.quickfix_menu.as_mut()
+        && !menu.items.is_empty() {
+            menu.idx = (menu.idx + 1) % menu.items.len();
+    }
+}
+
+pub fn quickfix_menu_prev(ed: &mut crate::kernel::state::Editor) {
+    if let Some(menu) = ed.quickfix_menu.as_mut()
+        && !menu.items.is_empty() {
+            menu.idx = if menu.idx == 0 { menu.items.len() - 1 } else { menu.idx - 1 };
+    }
+}
+
+/// Apply the selected action's workspace edit and close the menu.
+pub fn quickfix_menu_accept(ed: &mut crate::kernel::state::Editor) {
+    let Some(menu) = ed.quickfix_menu.take() else { return };
+    let Some(action) = menu.items.get(menu.idx) else { return };
+    match &action.edit_json {
+        Some(json) => {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+                crate::kernel::semantic::edit_apply::apply_workspace_edit(ed, &v);
+                ed.frame_dirty = true;
+            }
+        }
+        None => {
+            ed.show_message(crate::kernel::state::MessageKind::Info,
+                format!("'{}' has no edit to apply", action.title));
+        }
+    }
+}
+
+pub fn quickfix_menu_close(ed: &mut crate::kernel::state::Editor) {
+    ed.quickfix_menu = None;
+}

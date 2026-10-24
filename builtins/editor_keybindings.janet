@@ -122,6 +122,7 @@
 # Navigation
 (keymap/set "ctrl-]" "goto-definition" :editor)
 (keymap/set "shift-k" "lsp-hover"      :editor)
+(keymap/set "alt-return" "lsp-code-actions" :editor)
 (keymap/set "ctrl-o" "mark-ring-jump-back"    :editor)
 (keymap/set "ctrl-i" "mark-ring-jump-forward" :editor)
 

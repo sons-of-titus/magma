@@ -191,6 +191,8 @@ pub struct Editor {
     /// Snapshot of the most recently finished task: (name, combined output).
     /// The output panel renders this; `quickfix_list` carries the errors.
     pub last_task: Option<(String, String)>,
+    /// Quick-fix picker over server code actions (None while closed).
+    pub quickfix_menu: Option<crate::kernel::state::overlay::QuickfixMenu>,
 
     // ── Sub-structs ─────────────────────────────────────────────────
     pub snippet: SnippetState,
@@ -295,6 +297,7 @@ impl Editor {
             input_consumed: false,
             status_message: None,
             last_task: None,
+            quickfix_menu: None,
             module_paths: {
                 let home = std::env::var("HOME").unwrap_or_default();
                 if home.is_empty() { vec![] }

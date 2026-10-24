@@ -24,6 +24,8 @@ pub use provider::{
     CompletionItem, CompletionKind, Diagnostic, DiagnosticSeverity,
     LanguageProvider, ParseResult, Symbol, SymbolKind,
 };
+pub mod edit_apply;
+pub use edit_apply::{apply_workspace_edit, offset_of_lsp_position};
 pub use lsp_provider::LspLanguageProvider;
 pub use treesitter_provider::TreesitterLanguageProvider;
 pub use symbol_index::{SymbolIndex, SymbolRef};

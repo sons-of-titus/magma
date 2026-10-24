@@ -172,6 +172,9 @@ pub enum BackgroundEvent {
     },
     /// An external-change reload read finished off the foreground thread.
     BufferReloaded { buf_key: usize, content: Result<String, String> },
+    /// The server asked us to apply a workspace edit (applyEdit); the
+    /// foreground applies it and answers the request.
+    LspApplyEdit { language: String, request_id: u64, edit_json: String },
 }
 
 /// Handle for spawning background tasks and sending events to the main thread.
@@ -327,6 +330,18 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::BufferReloaded { buf_key, content } => {
             crate::kernel::storage::reload::apply_reload(ed, buf_key, content);
+        }
+        BackgroundEvent::LspApplyEdit { language, request_id, edit_json } => {
+            let applied = match serde_json::from_str::<serde_json::Value>(&edit_json) {
+                Ok(v) => {
+                    crate::kernel::semantic::edit_apply::apply_workspace_edit(ed, &v);
+                    true
+                }
+                Err(_) => false,
+            };
+            if let Some(server) = ed.lsp.get(&language) {
+                server.respond(request_id, serde_json::json!({ "applied": applied }));
+            }
         }
         BackgroundEvent::ProcessOutput { id, line, stream } => {
             ed.events.emit_typed(keys::events::PROCESS_OUTPUT, ProcessOutputPayload {
@@ -532,6 +547,20 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::LspCodeActions { path, actions, buf_key, revision } => {
             if revision_current(ed, buf_key, revision) {
+                // The quick-fix picker is the primary consumer: open it on
+                // the focused buffer when there is anything to choose.
+                let parsed = crate::kernel::state::overlay::parse_code_actions(&actions);
+                let focused = ed.view_tree.focused_window()
+                    .and_then(|wid| ed.view_tree.buffer(wid));
+                if !parsed.is_empty() && focused == buf_key {
+                    ed.quickfix_menu = Some(crate::kernel::state::overlay::QuickfixMenu {
+                        buf_key: buf_key.unwrap_or(0),
+                        items: parsed,
+                        idx: 0,
+                    });
+                } else if parsed.is_empty() {
+                    ed.show_message(crate::kernel::state::MessageKind::Info, "no code actions here");
+                }
                 ed.events.emit_typed(keys::events::LSP_CODE_ACTIONS, LspCodeActionsPayload { path, actions });
             }
         }

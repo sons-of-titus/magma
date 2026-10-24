@@ -190,6 +190,14 @@ impl LspHandle {
         let _ = self.core.outbound.send(lsp_proto::notification(method, params));
     }
 
+    /// Answer a server→client request after the foreground handled it
+    /// (e.g. `workspace/applyEdit` answered once the edit is applied).
+    pub fn respond(&self, id: u64, result: Value) {
+        let _ = self.core.outbound.send(json!({
+            "jsonrpc": "2.0", "id": id, "result": result,
+        }));
+    }
+
     /// `textDocument/didOpen` — version is the document revision.
     pub fn did_open(&self, uri: &str, text: &str, version: u64) {
         self.notify("textDocument/didOpen", json!({
@@ -342,9 +350,20 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
             }
             _ => {}
         },
-        Inbound::Request { id, method: _method, params: _ } => {
-            // Server→client requests (workspace/configuration, …) get an
-            // empty response so the server does not stall waiting.
+        Inbound::Request { id, method, params } => {
+            if method == "workspace/applyEdit" {
+                // The foreground applies the edit and answers with the
+                // truth; the reader thread must not pre-empt it.
+                let edit = params.get("edit").cloned().unwrap_or(Value::Null);
+                bg.send_event(BackgroundEvent::LspApplyEdit {
+                    language: language_id.to_string(),
+                    request_id: id,
+                    edit_json: edit.to_string(),
+                });
+                return;
+            }
+            // Other server→client requests (workspace/configuration, …)
+            // get an empty response so the server does not stall waiting.
             let _ = core.outbound.send(json!({
                 "jsonrpc": "2.0", "id": id, "result": Value::Null,
             }));

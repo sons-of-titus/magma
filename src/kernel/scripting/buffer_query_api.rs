@@ -195,7 +195,7 @@ unsafe extern "C-unwind" fn c_buffer_offset_of_lsp_position(argc: i32, argv: *mu
         let col = conv::get_int(argc, argv, 2).unwrap_or(0).max(0) as usize;
         let offset = ed.buffers.get(key).map(|a| {
             let buf = a.lock().unwrap();
-            crate::kernel::scripting::lsp_edit_api::offset_of_lsp_position(&buf, line, col)
+            crate::kernel::semantic::edit_apply::offset_of_lsp_position(&buf, line, col)
         }).unwrap_or(0);
         conv::integer(offset as i32)
     })

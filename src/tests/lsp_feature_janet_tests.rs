@@ -102,10 +102,13 @@ fn lsp_definition_event_has_subscribers() {
 // ── lsp-code-actions event dispatch ──────────────────────────────────────
 
 #[test]
-fn lsp_code_actions_event_has_subscribers() {
+fn lsp_code_actions_command_stays_registered() {
+    // Actions open the kernel's quick-fix picker on arrival; the trigger
+    // command (alt-return) remains.
     janet_test!(ed, {
-        let count = ed.events.subscriber_count("lsp-code-actions");
-        assert!(count > 0, "lsp-code-actions should be subscribed in lsp.janet");
+        let described = ed.commands.list().into_iter()
+            .any(|name| name == "lsp-code-actions");
+        assert!(described, "lsp-code-actions command must stay registered");
     });
 }
 

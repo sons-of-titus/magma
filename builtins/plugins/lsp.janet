@@ -135,10 +135,8 @@
 (command/define "lsp-code-actions"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/code-actions lang-id))))
 
-(event/on "lsp-code-actions"
-  (fn [ev]
-    (def actions (get ev :actions))
-    (when (and actions (> (length actions) 0)) (editor/log-message (string "[code-actions] " actions)))))
+# Code-action results open the kernel's quick-fix picker; applying an
+# action routes through the shared workspace-edit applier.
 
 (command/define "lsp-completion"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/completion lang-id))))

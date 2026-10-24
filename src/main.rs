@@ -128,8 +128,24 @@ async fn client_connect(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::net::TcpStream;
 
+    let token = std::env::var("MAGMA_SERVER_TOKEN").map_err(|_| {
+        "set MAGMA_SERVER_TOKEN to the token the server printed at startup"
+            .to_string()
+    })?;
     let stream = TcpStream::connect(addr).await?;
-    let (reader, mut writer) = stream.into_split();
+    let (mut reader, mut writer) = stream.into_split();
+
+    // Auth handshake before any op.
+    writer.write_all(format!("auth {token}\n").as_bytes()).await?;
+    {
+        use tokio::io::AsyncReadExt as _;
+        let mut handshake = vec![0u8; 256];
+        let n = reader.read(&mut handshake).await?;
+        let greeting = String::from_utf8_lossy(&handshake[..n]);
+        if greeting.contains("unauthorized") {
+            return Err(format!("server rejected the token: {greeting}").into());
+        }
+    }
     let mut stdout = tokio::io::stdout();
     let mut stdin = BufReader::new(tokio::io::stdin()).lines();
     let mut server_lines = BufReader::new(reader).lines();

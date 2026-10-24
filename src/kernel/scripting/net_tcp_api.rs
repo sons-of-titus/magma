@@ -127,10 +127,12 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
         });
         debug!("net/tcp-listen server_id={server_id} port={port}");
         let sender = bg.sender.clone();
+        let host = ed.options.get("tcp-listen-host").cloned()
+            .unwrap_or_else(|| "127.0.0.1".to_string());
         bg.spawn(async move {
             use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
             use std::time::Duration;
-            let listener = match tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
+            let listener = match tokio::net::TcpListener::bind((host.as_str(), port)).await {
                 Ok(l)  => l,
                 Err(e) => {
                     debug!("tcp-listen bind error server_id={server_id} port={port}: {e}");

@@ -41,6 +41,20 @@ pub async fn run_server(
     addr: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(addr).await?;
+    // Every op — eval executes arbitrary Janet — requires the bearer
+    // token.  It is random per run (or MAGMA_SERVER_TOKEN when set) and
+    // printed once to stderr for the client side.
+    let token = std::env::var("MAGMA_SERVER_TOKEN").unwrap_or_else(|_| {
+        use std::fmt::Write as _;
+        let mut buf = [0u8; 24];
+        getrandom_fill(&mut buf);
+        let mut token = String::with_capacity(48);
+        for b in buf {
+            let _ = write!(token, "{b:02x}");
+        }
+        token
+    });
+    eprintln!("Magma server token: {token}");
     debug!("Magma server listening on {addr}");
 
     let (op_tx, op_rx) = mpsc::unbounded_channel::<(ServerOp, Responder)>();
@@ -52,8 +66,9 @@ pub async fn run_server(
         let (stream, peer) = listener.accept().await?;
         debug!("Connection from {peer}");
         let op_tx = op_tx.clone();
+        let token = token.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_client(op_tx, stream).await {
+            if let Err(e) = handle_client(op_tx, stream, &token).await {
                 debug!("Client {peer} error: {e}");
             }
         });
@@ -217,9 +232,24 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
 async fn handle_client(
     op_tx: mpsc::UnboundedSender<(ServerOp, Responder)>,
     stream: TcpStream,
+    token: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use tokio::time::{timeout, Duration};
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
+
+    // First line must be the auth handshake; no ops before it.
+    let first = timeout(Duration::from_secs(10), lines.next_line()).await??;
+    match first {
+        Some(l) if l.trim() == format!("auth {token}") => {}
+        _ => {
+            writer.write_all(
+                Response::error("unauthorized: expected 'auth <token>' handshake", 0)
+                    .to_json().as_bytes()).await?;
+            writer.write_all(b"\n").await?;
+            return Ok(());
+        }
+    }
 
     while let Some(raw) = lines.next_line().await? {
         let line = raw.trim().to_string();
@@ -343,5 +373,22 @@ impl Response {
 
     fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| r#"{"ok":false,"error":"serialization error","id":0}"#.to_string())
+    }
+}
+
+fn getrandom_fill(buf: &mut [u8]) {
+    // getentropy(2) never blocks and cannot fail for ≤256 bytes.
+    unsafe {
+        let ptr = buf.as_mut_ptr();
+        let len = buf.len();
+        if libc::getentropy(ptr as *mut libc::c_void, len) != 0 {
+            // Unreachable on any supported platform; fall back to a
+            // time-address mix rather than a constant token.
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+            for (i, b) in buf.iter_mut().enumerate() {
+                *b = ((seed >> ((i % 16) * 8)) & 0xff) as u8 ^ (i as u8);
+            }
+        }
     }
 }

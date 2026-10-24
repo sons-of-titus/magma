@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use crate::kernel::run_config::RunConfigManager;
 
 pub mod detect;
+pub mod gitignore;
 pub mod toolchain;
 
 // ── Supporting types ──────────────────────────────────────────────────────────
@@ -273,26 +274,59 @@ pub fn index_change_marks_dirty(root: &std::path::Path, path: &str, kind: &str, 
 /// identity everywhere (sidebar tree, quick-open, project graph).
 fn walk_dir(dir: &std::path::Path, root: &std::path::Path) -> std::io::Result<Vec<String>> {
     let mut files = Vec::new();
-    if dir.is_dir() {
+    let mut stack = gitignore::IgnoreStack::default();
+    walk_inner(dir, root, &mut stack, &mut files, 0)?;
+    Ok(files)
+}
+
+/// Recursion depth cap: a pathological tree (or a bug in the symlink
+/// guard) must never overflow the stack mid-walk.
+const MAX_WALK_DEPTH: usize = 128;
+
+fn walk_inner(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    stack: &mut gitignore::IgnoreStack,
+    files: &mut Vec<String>,
+    depth: usize,
+) -> std::io::Result<()> {
+    if depth > MAX_WALK_DEPTH {
+        return Ok(());
+    }
+    let pushed_ignore = gitignore::parse_file(&dir.join(".gitignore"))
+        .map(|gi| { stack.push(gi); true })
+        .unwrap_or(false);
+    let result = (|| -> std::io::Result<()> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_dir() {
+            // file_type() does not follow symlinks: a repo-planted link
+            // can neither loop the walk nor pull outside trees in.
+            let ft = entry.file_type()?;
+            if ft.is_symlink() {
+                continue;
+            }
+            let is_dir = ft.is_dir();
+            if stack.ignored(&path, is_dir) {
+                continue;
+            }
+            if is_dir {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
                 if index_ignored_dir(&name) {
                     continue;
                 }
-                if let Ok(mut sub) = walk_dir(&path, root) {
-                    files.append(&mut sub);
-                }
-            } else if path.is_file()
-                && let Some(rel) = path.strip_prefix(root).ok().and_then(|p| p.to_str()) {
-                    files.push(rel.to_string());
-                }
+                walk_inner(&path, root, stack, files, depth + 1)?;
+            } else if let Some(rel) = path.strip_prefix(root).ok().and_then(|p| p.to_str()) {
+                files.push(rel.to_string());
+            }
         }
+        Ok(())
+    })();
+    if pushed_ignore {
+        stack.pop();
     }
-    Ok(files)
+    result
 }
 
 /// Enqueue an async walk of the active project's files.  Results arrive as
@@ -312,4 +346,10 @@ pub fn spawn_file_index(ed: &mut crate::kernel::state::Editor) -> bool {
         });
     });
     true
+}
+
+/// Test entry point: the index walk over `root`.
+#[cfg(test)]
+pub fn walk_files_for_test(root: &std::path::Path) -> Vec<String> {
+    walk_dir(root, root).unwrap_or_default()
 }

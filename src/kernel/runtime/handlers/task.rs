@@ -31,13 +31,13 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             });
         }
         BackgroundEvent::GrepResultsBatch { generation, entries } => {
-            if generation == ed.search_generation {
+            if generation == ed.search.generation {
                 ed.quickfix_list.extend(entries);
                 ed.quickfix_list.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
             }
         }
         BackgroundEvent::GrepDone { generation } => {
-            if generation == ed.search_generation {
+            if generation == ed.search.generation {
                 ed.quickfix_index = 0;
             }
         }

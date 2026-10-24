@@ -82,7 +82,7 @@ fn clipboard_set_and_get() {
 fn search_set_and_get_pattern() {
     janet_test!(ed, {
         scripting::eval(r#"(search/set-pattern "foo")"#);
-        assert_eq!(ed.search_pattern.as_deref(), Some("foo"));
+        assert_eq!(ed.search.pattern.as_deref(), Some("foo"));
         let r = scripting::eval(r#"(= "foo" (search/pattern))"#);
         assert_eq!(r, "ok");
     });

@@ -81,7 +81,7 @@ fn snapshot_captures_command_history() {
 #[test]
 fn snapshot_captures_search_pattern() {
     let mut ed = bare_editor();
-    ed.search_pattern = Some("foo".to_string());
+    ed.search.pattern = Some("foo".to_string());
     let state = WorkspaceManager::snapshot(&ed);
     assert_eq!(state.search_pattern.as_deref(), Some("foo"));
 }
@@ -187,7 +187,7 @@ fn apply_restores_search_pattern() {
         ..Default::default()
     };
     WorkspaceManager::apply(&mut ed, &state).unwrap();
-    assert_eq!(ed.search_pattern.as_deref(), Some("needle"));
+    assert_eq!(ed.search.pattern.as_deref(), Some("needle"));
 }
 
 #[test]

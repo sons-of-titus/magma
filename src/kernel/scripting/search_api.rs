@@ -5,7 +5,7 @@ use super::conv;
 use super::with_editor;
 
 unsafe extern "C-unwind" fn c_search_pattern(_argc: i32, _argv: *mut Janet) -> Janet {
-    with_editor(|ed| match &ed.search_pattern {
+    with_editor(|ed| match &ed.search.pattern {
         Some(p) => conv::string(p),
         None => conv::nil(),
     })
@@ -16,13 +16,13 @@ unsafe extern "C-unwind" fn c_search_set_pattern(argc: i32, argv: *mut Janet) ->
         let Some(pattern) = conv::get_str(argc, argv, 0) else {
             conv::signal_err("search/set-pattern requires a pattern")
         };
-        ed.search_pattern = Some(pattern);
+        ed.search.pattern = Some(pattern);
         conv::nil()
     })
 }
 
 unsafe extern "C-unwind" fn c_search_forward(_argc: i32, _argv: *mut Janet) -> Janet {
-    with_editor(|ed| conv::boolean(ed.search_forward))
+    with_editor(|ed| conv::boolean(ed.search.forward))
 }
 
 unsafe extern "C-unwind" fn c_search_last_find(_argc: i32, _argv: *mut Janet) -> Janet {

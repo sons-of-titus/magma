@@ -40,8 +40,8 @@ fn document_history_is_capped_and_old_revisions_report_none() {
 #[test]
 fn quickfix_list_truncates_at_five_hundred() {
     let mut ed = make_editor();
-    ed.search_generation += 1;
-    let generation = ed.search_generation;
+    ed.search.generation += 1;
+    let generation = ed.search.generation;
     let entries: Vec<crate::kernel::task::QuickfixEntry> = (0..900)
         .map(|i| crate::kernel::task::QuickfixEntry {
             filename: format!("f{i}.rs"), line: i, col: 1, message: "m".into(),

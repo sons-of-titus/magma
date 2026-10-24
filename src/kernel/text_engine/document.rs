@@ -1,11 +1,11 @@
 //! Kernel document — rope + revision + change history behind one mutation
 //! gateway.
 //!
-//! Phase 1 (docs/core-redesign.md): the kernel is exercised only by tests;
-//! `Buffer` still runs the old path until Phase 2 integration.  The gateway
-//! contract is already final: every mutation is a `commit`, validation
-//! happens before any rope mutation, and one commit is exactly one revision
-//! transition.
+//! Phase 2 done (R-23/F-25 closed): the live `Buffer` is a facade over this
+//! type — every mutation is a `commit`, validation happens before any rope
+//! mutation, and one commit is exactly one revision transition.  Consumers
+//! sync through `changes_since` (tree-sitter, the Janet change API) or the
+//! buffer's pending-change pump.
 
 use super::line_index::LineIndex;
 use super::revision::Revision;

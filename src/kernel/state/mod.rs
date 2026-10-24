@@ -14,6 +14,7 @@ pub mod io;
 pub mod gutter;
 pub mod overlay;
 pub mod minimap;
+pub mod search;
 
 use std::sync::{Arc, Mutex};
 
@@ -45,6 +46,7 @@ pub use crate::kernel::project::{
 pub use io::IoState;
 pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
 pub use overlay::{Overlay, LayoutSnapshot};
+pub use search::SearchState;
 pub use crate::kernel::input::event::{MouseButton, MouseEventKind};
 
 /// Tracks mouse press/drag state across frames.
@@ -138,8 +140,8 @@ pub struct Editor {
     pub last_insert_pos: usize,
     pub command_history: Vec<String>,
     pub last_find: Option<(char, bool, bool)>,
-    pub search_pattern: Option<String>,
-    pub search_forward: bool,
+    /// Search dialog / repeat-search / grep pipeline state (R-24).
+    pub search: SearchState,
     pub recording_macro: Option<String>,
     pub macros: std::collections::HashMap<String, Vec<String>>,
     pub insert_pending_register: bool,
@@ -152,9 +154,6 @@ pub struct Editor {
     pub theme: std::collections::HashMap<String, (u8, u8, u8)>,
     pub quickfix_list: Vec<crate::kernel::task::QuickfixEntry>,
     pub quickfix_index: usize,
-    /// Search generation: each new find-in-files supersedes the last, and
-    /// results from stale generations are dropped on arrival.
-    pub search_generation: u64,
     pub vc: crate::kernel::vc::VcState,
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
@@ -261,8 +260,7 @@ impl Editor {
             last_insert_pos: 0,
             command_history: Vec::new(),
             last_find: None,
-            search_pattern: None,
-            search_forward: true,
+            search: crate::kernel::state::search::SearchState { pattern: None, forward: true, generation: 0 },
             recording_macro: None,
             macros: std::collections::HashMap::new(),
             insert_pending_register: false,
@@ -275,7 +273,6 @@ impl Editor {
             theme,
             quickfix_list: Vec::new(),
             quickfix_index: 0,
-            search_generation: 0,
             vc: crate::kernel::vc::VcState::new(),
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),

@@ -18,8 +18,8 @@ fn editor() -> Editor {
 #[test]
 fn grep_results_replace_the_quickfix_list() {
     let mut ed = editor();
-    ed.search_generation += 1;
-    let generation = ed.search_generation;
+    ed.search.generation += 1;
+    let generation = ed.search.generation;
     process_background_event(&mut ed, BackgroundEvent::GrepDone { generation });
     process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch { generation, entries: Vec::new() });
     process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
@@ -87,7 +87,7 @@ fn open_file_twice_focuses_instead_of_forking() {
 #[test]
 fn stale_search_generations_are_dropped() {
     let mut ed = editor();
-    ed.search_generation = 5;
+    ed.search.generation = 5;
     let entry = QuickfixEntry {
         filename: "old.rs".into(),
         line: 1,

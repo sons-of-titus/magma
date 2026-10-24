@@ -1,7 +1,7 @@
 //! Search commands — n/N repetition and word-under-cursor jumps.
 //!
 //! There is no modal `/` prompt in the shipped editor: search lives in the
-//! GUI dialog (ctrl-f), which sets `search_pattern`, making these repeat
+//! GUI dialog (ctrl-f), which sets `editor.search.pattern`, making these repeat
 //! commands work against its last query.  Community keymaps can bind
 //! them to any chord.
 //!
@@ -19,8 +19,8 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("repeat-search", "Jump to the next match of the last search (n)",
         vec![],
         |editor, _args| {
-            if let Some(ref pattern) = editor.search_pattern.clone() {
-                execute_search(editor, pattern, editor.search_forward)
+            if let Some(ref pattern) = editor.search.pattern.clone() {
+                execute_search(editor, pattern, editor.search.forward)
             } else {
                 Ok(())
             }
@@ -30,8 +30,8 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("reverse-search", "Jump to the previous match of the last search (N)",
         vec![],
         |editor, _args| {
-            if let Some(ref pattern) = editor.search_pattern.clone() {
-                execute_search(editor, pattern, !editor.search_forward)
+            if let Some(ref pattern) = editor.search.pattern.clone() {
+                execute_search(editor, pattern, !editor.search.forward)
             } else {
                 Ok(())
             }
@@ -44,8 +44,8 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             let found = word_and_next(editor, buf_id, true);
             if let Some((word, next)) = found {
-                editor.search_pattern = Some(word);
-                editor.search_forward = true;
+                editor.search.pattern = Some(word);
+                editor.search.forward = true;
                 if let Some(np) = next {
                     if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                         view.set_cursor(np);
@@ -63,8 +63,8 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             let found = word_and_next(editor, buf_id, false);
             if let Some((word, prev)) = found {
-                editor.search_pattern = Some(word);
-                editor.search_forward = false;
+                editor.search.pattern = Some(word);
+                editor.search.forward = false;
                 if let Some(np) = prev {
                     if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                         view.set_cursor(np);

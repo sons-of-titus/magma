@@ -91,8 +91,8 @@ impl FindInFilesToolWindow {
                 let _ = child.kill();
                 let _ = child.wait();
             }
-        editor.search_generation += 1;
-        let generation = editor.search_generation;
+        editor.search.generation += 1;
+        let generation = editor.search.generation;
         editor.quickfix_list.clear();
 
         let sender = bg.sender.clone();

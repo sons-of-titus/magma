@@ -255,8 +255,8 @@ fn search_repeat_wraps_in_both_directions() {
     let mut ed = helpers::make_editor_with_buffer("x ay x ay x");
     let key = helpers::focused_key(&ed);
 
-    ed.search_pattern = Some("ay".to_string());
-    ed.search_forward = true;
+    ed.search.pattern = Some("ay".to_string());
+    ed.search.forward = true;
     helpers::run(&mut ed, "repeat-search");
     assert_eq!(helpers::cursor(&ed), 2);
     helpers::run(&mut ed, "repeat-search");

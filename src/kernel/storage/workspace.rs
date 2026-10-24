@@ -77,7 +77,7 @@ impl WorkspaceManager {
             buffers,
             focused_buffer,
             command_history: editor.command_history.clone(),
-            search_pattern: editor.search_pattern.clone(),
+            search_pattern: editor.search.pattern.clone(),
             options: editor.options.clone(),
             registers: editor.registers.clone(),
             plugin_state: editor.plugin_state.clone(),
@@ -107,7 +107,7 @@ impl WorkspaceManager {
         }
         editor.command_history = state.command_history.clone();
         if state.search_pattern.is_some() {
-            editor.search_pattern = state.search_pattern.clone();
+            editor.search.pattern = state.search_pattern.clone();
         }
         for (k, v) in &state.options {
             editor.options.insert(k.clone(), v.clone());

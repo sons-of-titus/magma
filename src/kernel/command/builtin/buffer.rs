@@ -64,46 +64,82 @@ pub(super) fn register(editor: &mut Editor) {
                 }
                 return Ok(());
             }
+            // The read stays synchronous by design: open-file's callers
+            // (session restore, navigation, scripts) position cursors in
+            // the opened buffer immediately, and single-file reads are
+            // sub-millisecond — the UI-thread stall that mattered was the
+            // find-files tree walk, which runs on the pool.
             let content = editor.fs.read(path)
                 .map_err(|e| format!("Read failed: {path}: {e}"))?;
-            let name = std::path::Path::new(path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "untitled".to_string());
-            let key = editor.create_buffer_from_str(&name, &content);
-            let buf_id = key as u64;
-            if let Some(arc) = editor.buffers.get(key) {
-                arc.lock().unwrap().path = Some(path.to_string());
-            }
-            // A newly opened file opens its own tab — never over the file
-            // already on screen.  The one exception is an untouched scratch
-            // tab, which the open replaces (JetBrains Untitled behavior).
-            let reusable = editor.view_tree.focused_window().and_then(|wid| {
-                let pane = editor.view_tree.window(wid)?;
-                let buf_key = pane.buffer_id?;
-                let arc = editor.buffers.get(buf_key)?.lock().unwrap();
-                (arc.path.is_none() && !arc.modified() && arc.slice(0, arc.len()).is_empty())
-                    .then(|| (wid, buf_key))
-            });
-            match reusable {
-                Some((wid, old_key)) => {
-                    editor.view_tree.set_buffer(wid, key);
-                    editor.view_tree.focus(wid);
-                    let _ = old_key;
-                }
-                None => {
-                    editor.view_tree.open_tab(Some(key));
-                }
-            }
-            editor.events.emit_typed(keys::events::BUFFER_CREATED, BufferCreatedPayload {
-                buffer_id: buf_id.to_string(),
-                name,
-                path: path.to_string(),
-            });
+            open_loaded_file(editor, path, &content);
             Ok(())
         },
     );
 
+}
+
+/// Build the buffer/view/tab for file content that finished loading —
+/// the async open event's sink and the sync path share this.
+pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
+    let name = std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "untitled".to_string());
+    let key = editor.create_buffer_from_str(&name, content);
+    let buf_id = key as u64;
+    if let Some(arc) = editor.buffers.get(key) {
+        arc.lock().unwrap().path = Some(path.to_string());
+    }
+    // A newly opened file opens its own tab — never over the file
+    // already on screen.  The one exception is an untouched scratch
+    // tab, which the open replaces (JetBrains Untitled behavior).
+    let reusable = editor.view_tree.focused_window().and_then(|wid| {
+        let pane = editor.view_tree.window(wid)?;
+        let buf_key = pane.buffer_id?;
+        let arc = editor.buffers.get(buf_key)?.lock().unwrap();
+        (arc.path.is_none() && !arc.modified() && arc.slice(0, arc.len()).is_empty())
+            .then(|| (wid, buf_key))
+    });
+    match reusable {
+        Some((wid, old_key)) => {
+            editor.view_tree.set_buffer(wid, key);
+            editor.view_tree.focus(wid);
+            let _ = old_key;
+        }
+        None => {
+            editor.view_tree.open_tab(Some(key));
+        }
+    }
+    editor.events.emit_typed(keys::events::BUFFER_CREATED, BufferCreatedPayload {
+        buffer_id: buf_id.to_string(),
+        name,
+        path: path.to_string(),
+    });
+}
+
+/// Present find-files results (the async event's sink and the sync path
+/// share this).
+pub fn present_file_search(editor: &mut Editor, pattern: &str, files: Vec<String>) {
+    if files.is_empty() {
+        editor.show_message(crate::kernel::state::MessageKind::Info,
+            format!("No files match '{pattern}'"));
+        return;
+    }
+    let content = files.join("\n") + "\n";
+    let name = format!("*finder:{pattern}*");
+    let key = editor.create_buffer_from_str(&name, &content);
+    let buf_id = key as u64;
+    if let Some(win) = editor.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    editor.events.emit_typed(keys::events::FINDER_RESULTS, FinderResultsPayload {
+        buffer_id: buf_id.to_string(),
+        count: files.len().to_string(),
+        pattern: pattern.to_string(),
+    });
+}
+
+pub(super) fn find_files_register(cmds: &mut crate::kernel::command::CommandRegistry) {
     cmds.register_fn("find-files", "Search files recursively by pattern",
         vec![
             ArgSpec::optional("pattern", ArgType::String, ArgValue::String("".to_string())),
@@ -114,62 +150,32 @@ pub(super) fn register(editor: &mut Editor) {
                 .unwrap_or("");
             let pattern = raw_pattern.to_lowercase();
 
-            let cwd = std::env::current_dir()
-                .map_err(|e| format!("Can't get cwd: {}", e))?;
-            let mut files: Vec<String> = Vec::new();
-            let mut dirs = vec![cwd.clone()];
-            let ignore = [".git", "node_modules", "target", ".DS_Store", ".zig-cache", ".cache"];
+            // Project-scoped like every IDE file search: walk the open
+            // project's root, falling back to the process cwd.
+            let cwd = editor.project_manager.project.root.clone()
+                .or_else(|| std::env::current_dir().ok())
+                .ok_or_else(|| "no project open and no cwd".to_string())?;
 
-            while let Some(dir) = dirs.pop() {
-                let entries = match std::fs::read_dir(&dir) {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if ignore.iter().any(|i| path.to_string_lossy().contains(i)) {
-                        continue;
-                    }
-                    if path.is_dir() {
-                        dirs.push(path);
-                    } else if path.is_file() {
-                        let rel = path.strip_prefix(&cwd)
-                            .unwrap_or(&path)
-                            .to_string_lossy()
-                            .to_string();
-                        if pattern.is_empty() || rel.to_lowercase().contains(&pattern) {
-                            files.push(rel);
-                        }
-                    }
-                }
+            // The walk runs on the pool when one exists; a big tree must
+            // never stall a frame.
+            if let Some(bg) = editor.background.clone() {
+                let sender = bg.sender.clone();
+                bg.spawn_blocking(move || {
+                    let files = walk_matching(&cwd, &pattern);
+                    let _ = sender.send(
+                        crate::kernel::runtime::BackgroundEvent::FileSearchListed {
+                            pattern, files,
+                        });
+                });
+                return Ok(());
             }
-
-            files.sort();
-            files.dedup();
-
-            if files.is_empty() {
-                return Err(format!("No files match '{}'", pattern));
-            }
-
-            let content = files.join("\n") + "\n";
-            let name = format!("*finder:{}*", pattern);
-            let key = editor.create_buffer_from_str(&name, &content);
-            let buf_id = key as u64;
-
-            if let Some(win) = editor.view_tree.focused_window_mut() {
-                win.buffer_id = Some(key);
-            }
-
-            editor.events.emit_typed(keys::events::FINDER_RESULTS, FinderResultsPayload {
-                buffer_id: buf_id.to_string(),
-                count: files.len().to_string(),
-                pattern,
-            });
-
+            present_file_search(editor, &pattern, walk_matching(&cwd, &pattern));
             Ok(())
         },
     );
+}
 
+pub(super) fn close_buffer_register(cmds: &mut crate::kernel::command::CommandRegistry) {
     cmds.register_fn("close-buffer",
         "Close a buffer and emit buffer-closed (defaults to focused buffer)",
         vec![
@@ -302,4 +308,38 @@ fn save_buffer_common(
         }
     });
     Ok(())
+}
+
+
+/// Substring file search under `cwd`, skipping VCS/build directories.
+fn walk_matching(cwd: &std::path::Path, pattern: &str) -> Vec<String> {
+    let mut files: Vec<String> = Vec::new();
+    let mut dirs = vec![cwd.to_path_buf()];
+    let ignore = [".git", "node_modules", "target", ".DS_Store", ".zig-cache", ".cache"];
+    while let Some(dir) = dirs.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if ignore.iter().any(|i| path.to_string_lossy().contains(i)) {
+                continue;
+            }
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.is_file() {
+                let rel = path.strip_prefix(cwd)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                if pattern.is_empty() || rel.to_lowercase().contains(pattern) {
+                    files.push(rel);
+                }
+            }
+        }
+    }
+    files.sort();
+    files.dedup();
+    files
 }

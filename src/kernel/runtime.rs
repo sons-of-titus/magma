@@ -177,6 +177,8 @@ pub enum BackgroundEvent {
     SaveWritten { buf_key: usize, path: String, saved_rev: u64 },
     /// An explicit save's disk write failed.
     SaveFailed { buf_key: usize, error: String },
+    /// A find-files walk finished off the foreground thread.
+    FileSearchListed { pattern: String, files: Vec<String> },
     /// The server asked us to apply a workspace edit (applyEdit); the
     /// foreground applies it and answers the request.
     LspApplyEdit { language: String, request_id: u64, edit_json: String },
@@ -349,6 +351,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             ed.io.saves_in_flight.remove(&buf_key);
             ed.show_message(crate::kernel::state::MessageKind::Error,
                 format!("save failed: {error}"));
+        }
+        BackgroundEvent::FileSearchListed { pattern, files } => {
+            crate::kernel::command::builtin::buffer::present_file_search(ed, &pattern, files);
         }
         BackgroundEvent::LspApplyEdit { language, request_id, edit_json } => {
             let applied = match serde_json::from_str::<serde_json::Value>(&edit_json) {

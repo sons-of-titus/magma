@@ -3,7 +3,7 @@
 //! This file is a thin coordinator that delegates to focused submodules in
 //! `src/command/builtin/`.
 
-mod buffer;
+pub mod buffer;
 mod navigation;
 mod motion;
 mod editing;
@@ -25,6 +25,8 @@ use crate::kernel::state::Editor;
 /// Register all built-in commands.
 pub fn register_builtin_commands(editor: &mut Editor) {
     buffer::register(editor);
+    buffer::find_files_register(&mut editor.commands);
+    buffer::close_buffer_register(&mut editor.commands);
     navigation::register(editor);
     motion::register(editor);
     editing::register(editor);

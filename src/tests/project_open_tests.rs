@@ -187,3 +187,56 @@ fn walk_respects_gitignore_symlinks_and_cycles() {
     assert!(!files.iter().any(|f| f.contains("etc-link")), "escape symlinks skipped");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ── find-files off the UI thread ─────────────────────────────────────
+
+#[test]
+fn find_files_walks_on_the_pool_and_presents_results() {
+    use crate::kernel::command::{execute_command, args::ArgValue};
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use std::time::{Duration, Instant};
+
+    let root = std::env::temp_dir().join("magma_find_files_async");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src/deep")).unwrap();
+    std::fs::create_dir_all(root.join("target")).unwrap();
+    std::fs::write(root.join("src/main.rs"), "").unwrap();
+    std::fs::write(root.join("src/deep/util.rs"), "").unwrap();
+    std::fs::write(root.join("target/artifact.o"), "").unwrap();
+
+    let (mut ed, _bg, mut rx) = crate::tests::helpers::editor_with_background();
+    // Search is project-scoped: the walk starts at the open project root.
+    let mut open_args = std::collections::HashMap::new();
+    open_args.insert("path".to_string(),
+        crate::kernel::command::args::ArgValue::Path(root.to_string_lossy().into_owned()));
+    execute_command(&mut ed, "open-project", &open_args).unwrap();
+
+    let mut args = std::collections::HashMap::new();
+    args.insert("pattern".to_string(), ArgValue::String("util".to_string()));
+    execute_command(&mut ed, "find-files", &args).unwrap();
+
+    // The command returns before the walk finishes; the results land as
+    // a finder buffer from the FileSearchListed event.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut presented = false;
+    while Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            if let BackgroundEvent::FileSearchListed { files, .. } = &ev
+                && files.iter().any(|f| f.ends_with("util.rs")) {
+                presented = true;
+            }
+            process_background_event(&mut ed, ev);
+        }
+        if presented { break; }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(presented, "the walk must complete off-thread and land the results");
+
+    let finder = ed.buffers.iter()
+        .find(|(_, a)| a.lock().unwrap().name.starts_with("*finder:"));
+    assert!(finder.is_some(), "a finder buffer was presented");
+    let text = finder.unwrap().1.lock().unwrap().slice(0, 40);
+    assert!(text.contains("src/deep/util.rs"), "results carry relative paths");
+    assert!(!text.contains("target"), "ignored dirs are skipped");
+    let _ = std::fs::remove_dir_all(&root);
+}

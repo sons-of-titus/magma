@@ -358,3 +358,53 @@ impl RunConfigManager {
         self.launch(&name, scheduler, bg, root)
     }
 }
+
+// ── Build output → diagnostics ───────────────────────────────────────
+
+#[test]
+fn failing_cargo_build_lands_as_clickable_diagnostics() {
+    use crate::kernel::runtime::BackgroundEvent;
+    use std::time::{Duration, Instant};
+
+    // A real tiny crate with a type error: the actual rustc output shape
+    // (error[...] + ` -->` span) must round-trip into quickfix + buffer
+    // diagnostics through the real task pipeline.
+    let root = std::env::temp_dir().join("magma_diag_e2e");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("Cargo.toml"),
+        "[package]\nname = \"diag_e2e\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+    std::fs::write(root.join("src/main.rs"),
+        "fn main() { let x: u8 = \"text\"; }\n").unwrap();
+
+    let (mut ed, bg, mut rx) = crate::tests::helpers::editor_with_background();
+    let id = ed.task_scheduler.define(
+        "diag-build".to_string(),
+        "cargo build".to_string(),
+        Default::default(), vec![]);
+    ed.task_scheduler.tasks.get_mut(&id).unwrap().cwd = Some(root.clone());
+    ed.task_scheduler.launch(id, &bg).unwrap();
+
+    let mut done = false;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            if let BackgroundEvent::TaskRunCompleted { id: fid, exit_code, .. } = &ev {
+                if *fid == id {
+                    assert_ne!(*exit_code, 0, "the fixture crate must fail to build");
+                    done = true;
+                }
+            }
+            crate::kernel::runtime::process_background_event(&mut ed, ev);
+        }
+        if done { break; }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(done, "cargo build must complete");
+
+    assert!(!ed.quickfix_list.is_empty(), "compiler errors become quickfix entries");
+    let entry = &ed.quickfix_list[0];
+    assert!(entry.filename.ends_with("src/main.rs"), "entry points at the source: {}", entry.filename);
+    assert_eq!(entry.line, 1);
+    assert!(!entry.message.is_empty());
+}

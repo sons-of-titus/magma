@@ -49,6 +49,9 @@ pub struct Task {
 pub struct OutputSink {
     pub buffer_key: usize,
     pub parse_quickfix: bool,
+    /// The command that produced this output — input to the tool-output
+    /// diagnostic parser.
+    pub command: String,
 }
 
 /// Orchestrates task definitions, dependency resolution, and concurrent execution.

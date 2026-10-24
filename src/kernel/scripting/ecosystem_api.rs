@@ -206,7 +206,7 @@ unsafe fn parse_qf_entry(item: Janet) -> Option<QuickfixEntry> { unsafe {
     let line = ds_get_int(item, "line").unwrap_or(1).max(1) as usize;
     let col = ds_get_int(item, "col").unwrap_or(1).max(1) as usize;
     let message = ds_get_str(item, "message").unwrap_or_default();
-    Some(QuickfixEntry { filename, line, col, message })
+    Some(QuickfixEntry { filename, line, col, message, ..Default::default() })
 }}
 
 // ── magma/time-now ─────────────────────────────────────────────────────────

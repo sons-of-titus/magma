@@ -1,3 +1,4 @@
+pub mod diag_parse;
 pub mod scheduler;
 pub use scheduler::{OutputSink, Task, TaskId, TaskOutput, TaskScheduler, TaskStatus};
 
@@ -10,6 +11,19 @@ pub struct QuickfixEntry {
     pub line: usize,
     pub col: usize,
     pub message: String,
+    pub severity: crate::kernel::semantic::provider::DiagnosticSeverity,
+}
+
+impl Default for QuickfixEntry {
+    fn default() -> Self {
+        QuickfixEntry {
+            filename: String::new(),
+            line: 0,
+            col: 0,
+            message: String::new(),
+            severity: crate::kernel::semantic::provider::DiagnosticSeverity::Error,
+        }
+    }
 }
 
 /// Launch a shell command into the `*shell*` buffer, streaming its output
@@ -54,6 +68,7 @@ fn launch_output_task(
     editor.task_scheduler.output_sinks.insert(id, OutputSink {
         buffer_key,
         parse_quickfix,
+        command: cmd.to_string(),
     });
     editor.task_scheduler.launch(id, &bg)?;
     Ok(buffer_key)
@@ -70,9 +85,11 @@ pub fn append_output_line(ed: &mut Editor, sink: &OutputSink, line: &str) {
     }
 }
 
-/// Close out a finished run: exit-status line, quickfix parse, sink removal.
-pub fn finish_output_task(ed: &mut Editor, id: u64, exit_code: i32, stdout: &str, stderr: &str) {
-    let Some(sink) = ed.task_scheduler.output_sinks.remove(&id) else { return };
+/// Close out a finished run: exit-status line, quickfix parse, sink
+/// removal.  Returns false when no sink existed (run-config launches
+/// stream to the output pane instead) so the caller can parse those.
+pub fn finish_output_task(ed: &mut Editor, id: u64, exit_code: i32, stdout: &str, stderr: &str) -> bool {
+    let Some(sink) = ed.task_scheduler.output_sinks.remove(&id) else { return false };
     let status = format!("\n[exit {exit_code}]\n");
     if let Some(arc) = ed.buffers.get_mut(sink.buffer_key) {
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
@@ -80,10 +97,36 @@ pub fn finish_output_task(ed: &mut Editor, id: u64, exit_code: i32, stdout: &str
         buf.insert(end, &status);
     }
     if sink.parse_quickfix {
-        let entries = parse_quickfix(&format!("{stdout}{stderr}"));
-        ed.quickfix_list = entries;
-        ed.quickfix_index = 0;
+        let cwd = ed.task_scheduler.tasks.get(&id)
+            .and_then(|t| t.cwd.clone())
+            .or_else(|| ed.project_manager.project.root.clone())
+            .unwrap_or_default();
+        apply_tool_diagnostics(ed, &sink.command, &format!("{stdout}{stderr}"), &cwd);
     }
+    true
+}
+
+/// Parse finished tool output into the quickfix list and typed
+/// diagnostics on every open buffer it mentions.  One failed build
+/// becomes clickable errors and gutter marks.
+pub fn apply_tool_diagnostics(ed: &mut Editor, command: &str, output: &str, cwd: &std::path::Path) {
+    let findings = diag_parse::parse_tool_output(command, output, cwd);
+    ed.quickfix_list = findings.iter().map(|f| f.quickfix()).collect();
+    ed.quickfix_index = 0;
+
+    let mut by_path: std::collections::HashMap<String, Vec<crate::kernel::semantic::provider::Diagnostic>> =
+        std::collections::HashMap::new();
+    for f in &findings {
+        by_path.entry(f.path.clone()).or_default().push(f.diag.clone());
+    }
+    for (_, arc) in ed.buffers.iter_mut() {
+        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(path) = buf.path.as_deref()
+            && let Some(diags) = by_path.remove(path) {
+                buf.set_diagnostics(diags);
+            }
+    }
+    ed.frame_dirty = true;
 }
 
 /// Jump to the next quickfix entry.
@@ -205,113 +248,89 @@ fn create_output_buffer(editor: &mut Editor, base_name: &str, content: &str, cmd
     key
 }
 
-/// Parse common compiler/linter error formats:
-///   file:line:col: message
-///   file:line: message
-///   file(line,col): message
-fn parse_quickfix(output: &str) -> Vec<QuickfixEntry> {
-    let mut entries = Vec::new();
-    for line in output.lines() {
-        if let Some(entry) = parse_quickfix_line(line) {
-            entries.push(entry);
-        }
-    }
-    entries
-}
-
-fn parse_quickfix_line(line: &str) -> Option<QuickfixEntry> {
-    // Pattern 1: file:line:col: message
-    // Pattern 2: file:line: message
-    if let Some(rest) = line.strip_prefix('/') {
-        // Absolute path starting with /
-        let full_path = format!("/{}", rest);
-        return parse_colon_line(&full_path, line);
-    }
-    parse_colon_line(line, line)
-}
-
-fn parse_colon_line(path_part: &str, _original: &str) -> Option<QuickfixEntry> {
-    // Match: path:line:col: message  or  path:line: message
-    let parts: Vec<&str> = path_part.splitn(4, ':').collect();
-    if parts.len() >= 3 {
-        let filename = parts[0].trim().to_string();
-        let line: usize = parts[1].parse().ok()?;
-        // Check if parts[2] looks like a column number (digits only)
-        if let Ok(col) = parts[2].parse::<usize>() {
-            let message = if parts.len() > 3 { parts[3].trim().to_string() } else { String::new() };
-            if !message.is_empty() {
-                return Some(QuickfixEntry { filename, line, col, message });
-            }
-        } else {
-            // It's file:line: message format (no column)
-            let message = parts[2..].join(":").trim().to_string();
-            if !message.is_empty() {
-                return Some(QuickfixEntry { filename, line, col: 1, message });
-            }
-        }
-    }
-
-    // Pattern: file(line,col): message
-    if let Some(rest) = path_part.find('(') {
-        let filename = path_part[..rest].trim().to_string();
-        let rest = &path_part[rest + 1..];
-        if let Some(close) = rest.find(')') {
-            let loc = &rest[..close];
-            if let Some((line_str, col_str)) = loc.split_once(',')
-                && let (Ok(line), Ok(col)) = (line_str.trim().parse::<usize>(), col_str.trim().parse::<usize>()) {
-                    let msg_start = rest[close + 1..].trim();
-                    // Skip leading colon
-                    let message = msg_start.strip_prefix(':').unwrap_or(msg_start).trim().to_string();
-                    if !message.is_empty() {
-                        return Some(QuickfixEntry { filename, line, col, message });
-                    }
-                }
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_colon_format() {
-        let e = parse_quickfix_line("src/main.rs:42:10: unexpected token").unwrap();
-        assert_eq!(e.filename, "src/main.rs");
-        assert_eq!(e.line, 42);
-        assert_eq!(e.col, 10);
-        assert_eq!(e.message, "unexpected token");
+    mod test_support {
+        pub fn make_editor_with_buffer(text: &str) -> crate::kernel::state::Editor {
+            let mut ed = crate::kernel::state::Editor::new(
+                Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
+            crate::kernel::command::builtin::register_builtin_commands(&mut ed);
+            let key = ed.create_buffer_from_str("test", text);
+            if let Some(win) = ed.view_tree.focused_window_mut() {
+                win.buffer_id = Some(key);
+            }
+            ed
+        }
+
+        pub fn focused_key(ed: &crate::kernel::state::Editor) -> usize {
+            ed.view_tree.focused_window()
+                .and_then(|wid| ed.view_tree.buffer(wid))
+                .unwrap_or(0)
+        }
+    }
+
+    // The parser's own behavioral tests live in diag_parse.rs; these cover
+    // the editor-level application of parsed output.
+
+    fn ed_with_main() -> (crate::kernel::state::Editor, usize) {
+        let mut ed = test_support::make_editor_with_buffer("fn main() {}\n");
+        let key = test_support::focused_key(&ed);
+        ed.buffers.get_mut(key).unwrap().lock().unwrap().path =
+            Some("/repo/src/main.rs".to_string());
+        (ed, key)
     }
 
     #[test]
-    fn test_parse_no_col() {
-        let e = parse_quickfix_line("src/main.rs:42: error: something").unwrap();
-        assert_eq!(e.filename, "src/main.rs");
-        assert_eq!(e.line, 42);
-        assert_eq!(e.col, 1);
-        assert!(e.message.contains("error: something"));
+    fn apply_tool_diagnostics_fills_quickfix_and_buffer() {
+        let (mut ed, key) = ed_with_main();
+        apply_tool_diagnostics(&mut ed, "cargo build",
+            "error[E0308]: mismatched types\n --> src/main.rs:4:9\n",
+            std::path::Path::new("/repo"));
+
+        assert_eq!(ed.quickfix_list.len(), 1);
+        let qf = &ed.quickfix_list[0];
+        assert_eq!(qf.filename, "/repo/src/main.rs");
+        assert_eq!(qf.line, 4);
+        assert_eq!(qf.col, 9);
+
+        let buf = ed.buffers.get(key).unwrap().lock().unwrap();
+        let ds = buf.get_diagnostics();
+        assert_eq!(ds.len(), 1);
+        assert_eq!(ds[0].message, "mismatched types");
+        assert_eq!(ds[0].severity,
+            crate::kernel::semantic::provider::DiagnosticSeverity::Error);
     }
 
     #[test]
-    fn test_parse_paren_format() {
-        let e = parse_quickfix_line("src/main.rs(42,10): expected `;`").unwrap();
-        assert_eq!(e.filename, "src/main.rs");
-        assert_eq!(e.line, 42);
-        assert_eq!(e.col, 10);
-        assert_eq!(e.message, "expected `;`");
+    fn apply_tool_diagnostics_clean_run_clears_quickfix() {
+        let (mut ed, _key) = ed_with_main();
+        apply_tool_diagnostics(&mut ed, "cargo build",
+            "error: broken\n --> src/main.rs:4:9\n", std::path::Path::new("/repo"));
+        assert_eq!(ed.quickfix_list.len(), 1);
+
+        apply_tool_diagnostics(&mut ed, "cargo build",
+            "   Compiling repo v0.1.0\n    Finished dev profile", std::path::Path::new("/repo"));
+        assert!(ed.quickfix_list.is_empty(), "a clean run clears the list");
     }
 
     #[test]
-    fn test_parse_absolute_path() {
-        let e = parse_quickfix_line("/home/user/proj/src/main.rs:42:10: error").unwrap();
-        assert_eq!(e.filename, "/home/user/proj/src/main.rs");
+    fn generic_colon_formats_still_parse() {
+        let d = diag_parse::parse_tool_output("make",
+            "src/main.rs:42:10: unexpected token\nsrc/lib.rs:7: error: something",
+            std::path::Path::new("/repo"));
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[0].quickfix().col, 10);
+        assert_eq!(d[1].quickfix().col, 1, "file:line: message defaults to col 1");
+        assert!(d[0].path.ends_with("src/main.rs"));
     }
 
     #[test]
-    fn test_non_matching_line() {
-        assert!(parse_quickfix_line("Compilation finished successfully").is_none());
-        assert!(parse_quickfix_line("  hello world").is_none());
+    fn prose_lines_do_not_become_diagnostics() {
+        let d = diag_parse::parse_tool_output("x",
+            "Compilation finished successfully\n  hello world",
+            std::path::Path::new("/repo"));
+        assert!(d.is_empty());
     }
 }

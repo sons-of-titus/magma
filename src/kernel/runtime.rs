@@ -764,7 +764,22 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::TaskRunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
             use crate::kernel::task::TaskOutput;
             let output = TaskOutput { stdout, stderr, exit_code, duration_ms };
-            crate::kernel::task::finish_output_task(ed, id, exit_code, &output.stdout, &output.stderr);
+            let handled = crate::kernel::task::finish_output_task(
+                ed, id, exit_code, &output.stdout, &output.stderr);
+            let (task_cmd, task_cwd) = ed.task_scheduler.tasks.get(&id)
+                .map(|t| (t.command.clone(), t.cwd.clone()))
+                .unwrap_or_default();
+            // Run-config launches stream to the output pane, not a sink
+            // buffer: parse their tool output here so build/test results —
+            // errors, warnings, or a clean run clearing the list — always
+            // reach the editor.
+            if !handled {
+                let cwd = task_cwd
+                    .or_else(|| ed.project_manager.project.root.clone())
+                    .unwrap_or_default();
+                crate::kernel::task::apply_tool_diagnostics(
+                    ed, &task_cmd, &format!("{}{}", output.stdout, output.stderr), &cwd);
+            }
             let task_name = ed.task_scheduler.tasks.get(&id)
                 .map(|t| t.name.clone())
                 .unwrap_or_default();

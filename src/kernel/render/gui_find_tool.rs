@@ -21,7 +21,7 @@ fn parse_vimgrep(line: &str) -> Option<crate::kernel::task::QuickfixEntry> {
     let line_no: usize = parts.next()?.parse().ok()?;
     let col: usize = parts.next()?.parse().ok()?;
     let message = parts.next().unwrap_or("").to_string();
-    Some(crate::kernel::task::QuickfixEntry { filename, line: line_no, col, message })
+    Some(crate::kernel::task::QuickfixEntry { filename, line: line_no, col, message, ..Default::default() })
 }
 
 /// The shared results renderer for every quickfix consumer (find-in-files,

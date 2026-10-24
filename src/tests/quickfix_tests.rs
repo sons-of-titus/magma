@@ -30,7 +30,7 @@ fn grep_results_replace_the_quickfix_list() {
                 line: 12,
                 col: 1,
                 message: "let x = todo!".into(),
-            },
+            ..Default::default() },
         ],
     });
     assert_eq!(ed.quickfix_list.len(), 1);
@@ -93,7 +93,7 @@ fn stale_search_generations_are_dropped() {
         line: 1,
         col: 1,
         message: "stale".into(),
-    };
+    ..Default::default() };
     // A result from generation 3 lands after the search moved to 5: gone.
     process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
         generation: 3,
@@ -106,7 +106,7 @@ fn stale_search_generations_are_dropped() {
         line: 2,
         col: 1,
         message: "fresh".into(),
-    };
+    ..Default::default() };
     process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
         generation: 5,
         entries: vec![fresh],

@@ -45,6 +45,7 @@ fn quickfix_list_truncates_at_five_hundred() {
     let entries: Vec<crate::kernel::task::QuickfixEntry> = (0..900)
         .map(|i| crate::kernel::task::QuickfixEntry {
             filename: format!("f{i}.rs"), line: i, col: 1, message: "m".into(),
+            ..Default::default()
         })
         .collect();
     crate::kernel::runtime::process_background_event(&mut ed,

@@ -68,8 +68,8 @@ fn quickfix_list_starts_empty() {
 fn quickfix_list_can_be_set() {
     let mut ed = helpers::make_editor();
     ed.quickfix_list = vec![
-        QuickfixEntry { filename: "src/main.rs".into(), line: 10, col: 5, message: "error".into() },
-        QuickfixEntry { filename: "src/lib.rs".into(), line: 20, col: 1, message: "warning".into() },
+        QuickfixEntry { filename: "src/main.rs".into(), line: 10, col: 5, message: "error".into() , ..Default::default() },
+        QuickfixEntry { filename: "src/lib.rs".into(), line: 20, col: 1, message: "warning".into() , ..Default::default() },
     ];
     assert_eq!(ed.quickfix_list.len(), 2);
     assert_eq!(ed.quickfix_list[0].filename, "src/main.rs");
@@ -81,7 +81,7 @@ fn quickfix_index_resets_to_zero() {
     let mut ed = helpers::make_editor();
     ed.quickfix_index = 5;
     ed.quickfix_list = vec![
-        QuickfixEntry { filename: "a.rs".into(), line: 1, col: 1, message: "x".into() },
+        QuickfixEntry { filename: "a.rs".into(), line: 1, col: 1, message: "x".into() , ..Default::default() },
     ];
     ed.quickfix_index = 0;
     assert_eq!(ed.quickfix_index, 0);

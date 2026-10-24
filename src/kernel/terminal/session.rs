@@ -21,6 +21,9 @@ pub struct TerminalSession {
     /// Mutex, not bare: `dyn MasterPty` is Send but not Sync, and `Editor`
     /// must stay Sync (it is shared across threads via `Arc<RwLock<Editor>>`).
     pub(crate) master: Mutex<Box<dyn MasterPty + Send>>,
+    /// PTY child pid, for whole-group kills.  The PTY shell is a session
+    /// leader, so signaling -pid covers its entire subtree.
+    pub(crate) pid: Option<i32>,
     /// Kill handle only: the child itself moved to the waiter thread, which
     /// reaps the real exit code when it exits.
     pub(crate) child_killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
@@ -49,6 +52,11 @@ impl TerminalSession {
     }
 
     pub fn kill(&mut self) {
+        // The PTY shell is a session leader; the group signal takes its
+        // whole subtree (vim, make, ...) down with it.
+        if let Some(pid) = self.pid {
+            crate::kernel::util::proctree::kill_tree_hard(pid);
+        }
         if let Ok(mut killer) = self.child_killer.lock() {
             let _ = killer.kill();
         }

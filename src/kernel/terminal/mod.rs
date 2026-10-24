@@ -71,6 +71,7 @@ impl TerminalManager {
         let child = pair.slave.spawn_command(cmd_builder)
             .map_err(|e| format!("Failed to spawn command in PTY: {}", e))?;
         let killer = child.clone_killer();
+        let pid = child.process_id().map(|p| p as i32);
         let reader = pair.master.try_clone_reader()
             .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
         let writer = pair.master.take_writer()
@@ -98,6 +99,7 @@ impl TerminalManager {
             writer: Arc::new(Mutex::new(writer)),
             master: Mutex::new(pair.master),
             child_killer: Mutex::new(killer),
+            pid,
         });
         self.renumber();
 

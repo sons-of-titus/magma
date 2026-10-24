@@ -58,6 +58,7 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
         }
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::piped());
+        crate::kernel::util::proctree::own_process_group(&mut command);
         command.stdin(std::process::Stdio::piped());
 
         let mut child = match command.spawn() {
@@ -132,10 +133,8 @@ unsafe extern "C-unwind" fn c_process_kill(argc: i32, argv: *mut Janet) -> Janet
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         if let Some(state) = ed.io.processes.get_mut(&id) {
             state.running = false;
-            // Send SIGTERM via the kill command
-            let _ = std::process::Command::new("kill")
-                .arg(state.pid.to_string())
-                .spawn();
+            // The child owns its process group: one signal ends the tree.
+            crate::kernel::util::proctree::kill_tree(state.pid as i32);
         }
         conv::nil()
     })

@@ -176,6 +176,9 @@ impl TaskScheduler {
             }
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::piped());
+            // Fresh process group: cancelling a task takes its whole
+            // subtree (sh -c children, make grandchildren) down with it.
+            crate::kernel::util::proctree::own_process_group(&mut cmd);
 
             let (exit_code, stdout, stderr) = match cmd.spawn() {
                 Ok(child) => {
@@ -272,6 +275,7 @@ impl TaskScheduler {
         if let Some(slot) = self.running.get(&id)
             && let Ok(mut guard) = slot.lock()
             && let Some(child) = guard.as_mut() {
+                crate::kernel::util::proctree::kill_tree_hard(child.id() as i32);
                 let _ = child.kill();
             }
         self.running.remove(&id);

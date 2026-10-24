@@ -268,3 +268,62 @@ fn stderr_heavy_task_with_no_stdout_completes() {
     }
     assert!(completed, "task must complete instead of deadlocking on full stderr");
 }
+
+#[test]
+fn cancelling_a_task_kills_its_grandchildren() {
+    // The task runs `sh -c` which backgrounds a long-lived child with a
+    // unique marker; before process groups, killing the task orphaned
+    // that child.  pgrep proves the marker process is gone after cancel.
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use std::time::{Duration, Instant};
+
+    let dir = std::env::temp_dir().join("magma_proctree");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let marker_script = dir.join("marker_8841.sh");
+    std::fs::write(&marker_script, "sleep 30\n").unwrap();
+    let marker = marker_script.to_string_lossy().into_owned();
+    let (mut ed, bg, mut rx) = crate::tests::helpers::editor_with_background();
+    let cmd = format!("sh '{marker}' & sleep 30");
+    #[allow(clippy::redundant_clone)]
+    let marker_for_checks = marker.clone();
+    let task = crate::kernel::task::Task {
+        id: 0, name: "proctree".to_string(), command: cmd, args: vec![],
+        cwd: None, environment: Default::default(), dependencies: vec![],
+        status: crate::kernel::task::TaskStatus::Pending, output: None,
+    };
+    ed.task_scheduler.tasks.insert(0, task);
+    ed.task_scheduler.launch(0, &bg).unwrap();
+
+    // The grandchild must be alive before the cancel for the test to mean
+    // anything; retry until pgrep sees it (or fail loudly).
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut spawned = false;
+    while Instant::now() < deadline {
+        let out = std::process::Command::new("pgrep").arg("-f").arg(&marker_for_checks).output().unwrap();
+        if out.status.success() {
+            spawned = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(spawned, "grandchild never spawned — test fixture broken");
+
+    ed.task_scheduler.cancel(0);
+
+    let mut gone = false;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            process_background_event(&mut ed, ev);
+        }
+        let out = std::process::Command::new("pgrep").arg("-f").arg(&marker_for_checks).output().unwrap();
+        if !out.status.success() {
+            gone = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(gone, "grandchild survived the task cancel — process group kill failed");
+    let _ = std::fs::remove_dir_all(&dir);
+}

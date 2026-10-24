@@ -50,8 +50,20 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::SaveWritten { buf_key, path, saved_rev } => {
             ed.io.saves_in_flight.remove(&buf_key);
+            let name = ed.buffers.get(buf_key).map(|a| {
+                a.lock().unwrap_or_else(|e| e.into_inner()).name.clone()
+            });
             if let Some(arc) = ed.buffers.get(buf_key) {
                 arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(saved_rev);
+            }
+            // The content reached disk — its crash snapshot is obsolete.
+            if let Some(dir) = ed.io.crash_dir.clone() {
+                let label = name.unwrap_or_else(|| path.clone());
+                let dir2 = dir.clone();
+                let path2 = path.clone();
+                ed.background.as_ref().map(|bg| bg.spawn_blocking(move || {
+                    crate::kernel::storage::crash_recovery::drop_snapshot(&dir2, &label, Some(&path2));
+                }));
             }
             ed.events.emit_typed(keys::events::FILE_SAVED, FileSavedPayload { path: path.clone() });
             crate::kernel::debug::resync_after_save(ed, &path);
@@ -72,6 +84,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 && let Err(e) = ed.index.flush() {
                     debug!("index flush failed: {e}");
                 }
+            crash_snapshot_dirty_buffers(ed);
             // Opt-in only: the editor must never rewrite user files uninvited.
             if ed.options.get("auto-save").map(|v| v.as_str()) != Some("true") {
                 return;
@@ -87,6 +100,34 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             }
         }
         _ => {}
+    }
+}
+
+/// Snapshot every dirty buffer into the crash-recovery dir (R-16).  Unlike
+/// auto-save this is unconditional (opt-out via the `crash-recovery`
+/// option): it rewrites only the state-dir snapshots, never user files.
+fn crash_snapshot_dirty_buffers(ed: &mut Editor) {
+    let Some(dir) = ed.io.crash_dir.clone() else { return };
+    if ed.options.get("crash-recovery").map(|v| v.as_str()) == Some("false") {
+        return;
+    }
+    let dirty: Vec<(String, Option<String>, String)> = ed.buffers.iter()
+        .filter(|(_, arc)| {
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            buf.modified() && !buf.ephemeral && !buf.read_only
+        })
+        .filter_map(|(_key, arc)| {
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            Some((buf.name.clone(), buf.path.clone(), buf.slice(0, buf.len())))
+        })
+        .collect();
+    if dirty.is_empty() { return };
+    if let Some(bg) = ed.background.clone() {
+        bg.spawn_on(crate::kernel::runtime::Lane::Maintenance, Some("crash-snapshot"), move || {
+            for (name, path, content) in dirty {
+                crate::kernel::storage::crash_recovery::write_snapshot(&dir, &name, path.as_deref(), &content);
+            }
+        });
     }
 }
 

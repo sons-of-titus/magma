@@ -46,6 +46,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bg_handle = BackgroundHandle::new(runtime.clone(), bg_sender.clone());
 
     editor.background = Some(bg_handle.clone());
+    // Crash recovery (R-16): this run's snapshot dir; leftover snapshots
+    // from a previous crash resurface as read-only *recovered* buffers.
+    editor.io.crash_dir = Some(magma::kernel::storage::crash_recovery::new_session_dir());
+    magma::kernel::storage::crash_recovery::recover_into(&mut editor);
 
     {
         let bg = bg_handle.clone();

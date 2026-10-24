@@ -372,8 +372,14 @@ impl GuiApp {
 }
 
 /// Persist history + marks on editor shutdown; the project session joins
-/// them when a project is open.
+/// them when a project is open.  A clean exit also discards this run's
+/// crash-recovery snapshots — nothing unsaved remains (R-16).
 fn persist_session(ed: &Editor) {
     crate::kernel::state::persist::save_session(ed);
     crate::kernel::session::save_if_project(ed);
+    if let Some(dir) = ed.io.crash_dir.clone() {
+        std::thread::spawn(move || {
+            crate::kernel::storage::crash_recovery::clear_session(&dir);
+        });
+    }
 }

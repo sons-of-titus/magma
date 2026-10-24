@@ -100,6 +100,9 @@ pub struct RecoverableSession {
 }
 
 /// Scan the state dir for sessions whose owner died without a clean exit.
+/// Sessions already handed back to the user (`recovered: true` in their
+/// manifest) are skipped — recovering twice would let a second crash
+/// destroy the only copy of work the user never got to save.
 pub fn collect_recoverable() -> Vec<RecoverableSession> {
     let crash_root = crate::kernel::state::persist::state_dir().join("crash");
     collect_from(&crash_root)
@@ -123,12 +126,63 @@ fn collect_from(crash_root: &Path) -> Vec<RecoverableSession> {
         clear_session(&oldest);
     }
     sessions.into_iter()
+        .filter(|(dir, _)| !manifest_flag(dir, "recovered"))
         .map(|(dir, _)| RecoverableSession {
             snapshots: read_snapshots(&dir),
             dir,
         })
         .filter(|s| !s.snapshots.is_empty())
         .collect()
+}
+
+/// Mark a session as handed back to the user.
+pub fn mark_recovered(dir: &Path) {
+    let mut entries = read_manifest(dir);
+    for e in &mut entries {
+        e["recovered"] = serde_json::Value::Bool(true);
+    }
+    let json = serde_json::to_string(&entries).unwrap_or_default();
+    let _ = atomic_write(dir.join(MANIFEST).to_string_lossy().as_ref(), &json);
+}
+
+fn manifest_flag(dir: &Path, key: &str) -> bool {
+    read_manifest(dir).iter().any(|e| e[key] == serde_json::Value::Bool(true))
+}
+
+/// Open every survivor under `crash_root` as a read-only `*recovered …*`
+/// buffer and return how many buffers were restored.  Called once at
+/// startup with the real state dir (via `recover_into`); tests pass a
+/// scratch root.
+pub fn recover_from(ed: &mut crate::kernel::state::Editor, crash_root: &Path) -> usize {
+    let mut count = 0usize;
+    for session in collect_from(crash_root) {
+        for snap in &session.snapshots {
+            let label = format!(
+                "*recovered {}*",
+                snap.label.trim_matches('*')
+            );
+            let key = ed.create_buffer_from_str(&label, &snap.content);
+            if let Some(arc) = ed.buffers.get(key) {
+                arc.lock().unwrap_or_else(|e| e.into_inner()).read_only = true;
+            }
+            count += 1;
+        }
+        mark_recovered(&session.dir);
+    }
+    count
+}
+
+/// Startup path: recover from the user's real state dir and surface a
+/// status message when anything came back.
+pub fn recover_into(ed: &mut crate::kernel::state::Editor) {
+    let crash_root = crate::kernel::state::persist::state_dir().join("crash");
+    let count = recover_from(ed, &crash_root);
+    if count > 0 {
+        ed.show_message(
+            crate::kernel::state::MessageKind::Info,
+            format!("recovered {count} unsaved buffer(s) from the last run — see the *recovered* buffers"),
+        );
+    }
 }
 
 fn read_snapshots(dir: &Path) -> Vec<CrashSnapshot> {
@@ -153,57 +207,62 @@ fn read_manifest(dir: &Path) -> Vec<serde_json::Value> {
 mod tests {
     use super::*;
 
-    fn temp_dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("magma-crash-test-{tag}-{}",
+    /// A test-owned root: every session dir lives inside it and cleanup
+    /// removes only that root.  collect_from() prunes siblings, so tests
+    /// must never point it at a shared directory.
+    fn temp_root(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("magma-crash-test-{tag}-{}",
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        std::fs::create_dir_all(&d).unwrap();
-        d
+        std::fs::create_dir_all(&root).unwrap();
+        root
     }
 
     #[test]
     fn snapshot_roundtrip_preserves_content_and_label() {
-        let dir = temp_dir("roundtrip");
+        let root = temp_root("roundtrip");
+        let dir = root.join("s1");
         write_snapshot(&dir, "*scratch*", None, "unsaved work");
         write_snapshot(&dir, "main.rs", Some("/proj/src/main.rs"), "fn main() {}\n");
 
-        let sessions = collect_from(&dir.parent().unwrap());
-        // The parent holds sibling temp dirs from other tests too — filter.
-        let ours = sessions.iter().find(|s| s.dir == dir).expect("session found");
-        assert_eq!(ours.snapshots.len(), 2);
-        let scratch = ours.snapshots.iter().find(|s| s.label == "*scratch*").unwrap();
+        let sessions = collect_from(&root);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].snapshots.len(), 2);
+        let scratch = sessions[0].snapshots.iter().find(|s| s.label == "*scratch*").unwrap();
         assert_eq!(scratch.content, "unsaved work");
         assert_eq!(scratch.path, None);
-        let main = ours.snapshots.iter().find(|s| s.label == "main.rs").unwrap();
+        let main = sessions[0].snapshots.iter().find(|s| s.label == "main.rs").unwrap();
         assert_eq!(main.path.as_deref(), Some("/proj/src/main.rs"));
-        let _ = std::fs::remove_dir_all(&dir.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn rewriting_a_snapshot_replaces_not_duplicates() {
-        let dir = temp_dir("rewrite");
+        let root = temp_root("rewrite");
+        let dir = root.join("s1");
         write_snapshot(&dir, "*scratch*", None, "v1");
         write_snapshot(&dir, "*scratch*", None, "v2");
         let snapshots = read_snapshots(&dir);
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].content, "v2");
-        let _ = std::fs::remove_dir_all(&dir.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn drop_snapshot_removes_only_that_buffer() {
-        let dir = temp_dir("drop");
+        let root = temp_root("drop");
+        let dir = root.join("s1");
         write_snapshot(&dir, "a.rs", None, "aaa");
         write_snapshot(&dir, "b.rs", None, "bbb");
         drop_snapshot(&dir, "a.rs", None);
         let snapshots = read_snapshots(&dir);
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].label, "b.rs");
-        let _ = std::fs::remove_dir_all(&dir.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn clear_session_leaves_nothing_recoverable() {
-        let root = temp_dir("clear");
+        let root = temp_root("clear");
         let dir = root.join("s1");
         write_snapshot(&dir, "a.rs", None, "aaa");
         clear_session(&dir);
@@ -213,7 +272,7 @@ mod tests {
 
     #[test]
     fn pruning_keeps_only_the_newest_sessions() {
-        let root = temp_dir("prune");
+        let root = temp_root("prune");
         for i in 0..(MAX_SESSIONS + 2) {
             let dir = root.join(format!("s{i}"));
             write_snapshot(&dir, &format!("f{i}"), None, "x");
@@ -227,11 +286,12 @@ mod tests {
 
     #[test]
     fn oversized_snapshots_are_refused() {
-        let dir = temp_dir("oversize");
+        let root = temp_root("oversize");
+        let dir = root.join("s1");
         let big = "x".repeat(MAX_SNAPSHOT_BYTES + 1);
         write_snapshot(&dir, "big", None, &big);
         assert!(read_snapshots(&dir).is_empty());
-        let _ = std::fs::remove_dir_all(&dir.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -243,5 +303,32 @@ mod tests {
         assert_eq!(a1, a2);
         assert_ne!(a1, b);
         assert_ne!(a1, c, "path and name identities never collide");
+    }
+
+    #[test]
+    fn recover_opens_read_only_buffers_and_never_twice() {
+        let root = temp_root("recover");
+        let dir = root.join("s1");
+        write_snapshot(&dir, "notes.txt", None, "half-written note");
+        let mut ed = crate::kernel::state::Editor::new(
+            Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
+
+        let first = recover_from(&mut ed, &root);
+        assert_eq!(first, 1);
+        let (name, ro, content) = ed.buffers.iter()
+            .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).name.starts_with("*recovered"))
+            .map(|(_, a)| {
+                let b = a.lock().unwrap_or_else(|e| e.into_inner());
+                (b.name.clone(), b.read_only, b.slice(0, b.len()))
+            })
+            .expect("recovered buffer exists");
+        assert!(ro, "recovered buffers open read-only");
+        assert_eq!(content, "half-written note");
+        assert!(name.contains("notes.txt"), "label preserved: {name}");
+
+        // A second pass must not re-open the same work.
+        assert_eq!(recover_from(&mut ed, &root), 0,
+            "a recovered session is never recovered twice");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

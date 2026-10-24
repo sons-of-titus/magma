@@ -109,8 +109,8 @@
     (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id))
     (when lang-id
       (def uri (buffer-uri buf-id)) (def pos (buffer/cursor buf-id))
-      (def line (buffer/line-number buf-id pos))
-      (def col (- pos (buffer/line-start-offset buf-id line)))
+      # LSP wants (line, UTF-16 code units) — never a byte column.
+      (def [line col] (buffer/lsp-position buf-id pos))
       (lsp/request lang-id "textDocument/definition"
         (string/format "{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d}}" uri line col)))))
 
@@ -120,8 +120,11 @@
     (when path
       (command/run "open-file" :path path)
       (when-let [buf-id (buffer/current)]
-        (def line-start (buffer/line-start-offset buf-id (scan-number sl)))
-        (buffer/cursor buf-id (+ line-start (scan-number sc)))))))
+        # The server's columns are UTF-16 code units — convert, never add
+        # them to a byte line start.
+        (def offset (buffer/offset-of-lsp-position buf-id
+                      (scan-number sl) (scan-number sc)))
+        (buffer/cursor buf-id offset)))))
 
 (command/define "lsp-hover"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/hover lang-id))))

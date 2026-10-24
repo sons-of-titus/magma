@@ -75,8 +75,8 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
             let buf = buffer.lock().unwrap();
             let mut spans: Vec<(usize, usize, String)> = ranges.into_iter()
                 .map(|r| (
-                    offset_of(&buf, r.start.0, r.start.1),
-                    offset_of(&buf, r.end.0, r.end.1),
+                    offset_of_lsp_position(&buf, r.start.0, r.start.1),
+                    offset_of_lsp_position(&buf, r.end.0, r.end.1),
                     r.new_text,
                 ))
                 .collect();
@@ -116,7 +116,7 @@ fn line_char(pos: &serde_json::Value) -> Option<(usize, usize)> {
 
 /// Byte offset of an LSP (line, utf16-character) position in `buf`.
 /// Positions past the end of a line or the document clamp.
-fn offset_of(buf: &Buffer, line: usize, character: usize) -> usize {
+pub(crate) fn offset_of_lsp_position(buf: &Buffer, line: usize, character: usize) -> usize {
     let len = buf.len();
     let Some(line_start) = buf.line_start_offset(line) else {
         return len; // line beyond the document
@@ -156,18 +156,18 @@ mod tests {
     #[test]
     fn offset_of_resolves_lines_and_utf16_columns() {
         let buf = buffer_of("hello\nwörld\nx");
-        assert_eq!(offset_of(&buf, 0, 0), 0);
-        assert_eq!(offset_of(&buf, 1, 0), 6);
+        assert_eq!(offset_of_lsp_position(&buf, 0, 0), 0);
+        assert_eq!(offset_of_lsp_position(&buf, 1, 0), 6);
         // LSP character 2 on "wörld" is the start of 'r': ö is 2 UTF-8
         // bytes but 1 UTF-16 unit.
-        assert_eq!(offset_of(&buf, 1, 2), 9);
-        assert_eq!(offset_of(&buf, 2, 0), 13);
+        assert_eq!(offset_of_lsp_position(&buf, 1, 2), 9);
+        assert_eq!(offset_of_lsp_position(&buf, 2, 0), 13);
     }
 
     #[test]
     fn offset_of_clamps_past_line_and_document() {
         let buf = buffer_of("ab\ncd");
-        assert_eq!(offset_of(&buf, 0, 99), 3, "past end of line clamps to line end");
-        assert_eq!(offset_of(&buf, 99, 0), buf.len(), "past document clamps to end");
+        assert_eq!(offset_of_lsp_position(&buf, 0, 99), 3, "past end of line clamps to line end");
+        assert_eq!(offset_of_lsp_position(&buf, 99, 0), buf.len(), "past document clamps to end");
     }
 }

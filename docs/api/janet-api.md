@@ -56,6 +56,14 @@ Return the zero-based index of the line containing byte offset `offset`.
 Return `[line column]` for byte offset `offset`, with `column` counted in
 UTF-16 code units as the language-server protocol requires.
 
+### `(buffer/offset-of-lsp-position slab line column)` → integer
+
+Return the byte offset of an LSP `(line, UTF-16 column)` position — the
+inverse of `buffer/lsp-position`. Positions past the line or document
+clamp.
+
+### `(buffer/len slab)` → integer
+
 Return the total byte length of the buffer.
 
 ### `(buffer/name slab)` → string

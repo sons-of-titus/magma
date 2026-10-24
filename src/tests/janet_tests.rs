@@ -215,3 +215,24 @@ fn handler_can_subscribe_from_inside_a_handler() {
             "the nested subscription must have registered");
     });
 }
+
+#[test]
+fn lsp_position_round_trip_on_non_ascii() {
+    // goto-definition used to send byte columns and add UTF-16 columns to
+    // byte offsets; on non-ASCII lines both directions landed wrong.
+    janet_test!(ed, {
+        let key = ed.create_buffer_from_str("t.rs", "fn héllo() {}\nfn wörld() {}\n");
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
+        }
+        // Line 0 ("fn héllo() {}\n") is 15 bytes; 'r' in "wörld" sits at
+        // byte 21 (ö is two bytes) but UTF-16 column 5 (ö is one unit).
+        let a = scripting::eval_result(
+            "(let [b (buffer/current)] (string/format \"%d %d\" ;(buffer/lsp-position b 21)))").unwrap();
+        assert!(a.contains("1 5"), "lsp-position must be (1, 5), got {a}");
+
+        let b = scripting::eval_result(
+            "(string (buffer/offset-of-lsp-position (buffer/current) 1 5))").unwrap();
+        assert!(b.contains("21"), "inverse must return byte offset 21, got {b}");
+    });
+}

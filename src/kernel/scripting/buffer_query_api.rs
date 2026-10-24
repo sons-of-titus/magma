@@ -186,6 +186,21 @@ unsafe extern "C-unwind" fn c_buffer_lsp_position(argc: i32, argv: *mut Janet) -
     })
 }
 
+/// Byte offset of an LSP (line, UTF-16 character) position — the inverse
+/// of `buffer/lsp-position`; converts server coordinates for placement.
+unsafe extern "C-unwind" fn c_buffer_offset_of_lsp_position(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let line = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
+        let col = conv::get_int(argc, argv, 2).unwrap_or(0).max(0) as usize;
+        let offset = ed.buffers.get(key).map(|a| {
+            let buf = a.lock().unwrap();
+            crate::kernel::scripting::lsp_edit_api::offset_of_lsp_position(&buf, line, col)
+        }).unwrap_or(0);
+        conv::integer(offset as i32)
+    })
+}
+
 unsafe extern "C-unwind" fn c_buffer_line_of(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
@@ -234,6 +249,11 @@ unsafe extern "C-unwind" fn c_buffer_changes_since(argc: i32, argv: *mut Janet) 
 
 pub fn register() -> Vec<JanetReg> {
     vec![
+        JanetReg {
+            name: c"buffer/offset-of-lsp-position".as_ptr() as *const _,
+            cfun: Some(c_buffer_offset_of_lsp_position as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Byte offset of an LSP (line, UTF-16 character) position".as_ptr() as *const _,
+        },
         JanetReg {
             name: c"buffer/lsp-position".as_ptr() as *const _,
             cfun: Some(c_buffer_lsp_position as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),

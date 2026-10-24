@@ -39,6 +39,7 @@ mod transaction_core_tests;
 mod text_layout_tests;
 mod correctness_gates_tests;
 mod project_open_tests;
+mod diag_version_tests;
 #[cfg(feature = "gui")]
 mod quickfix_tests;
 #[cfg(feature = "gui")]

@@ -25,14 +25,17 @@ struct JanetSend(Janet);
 unsafe impl Send for JanetSend {}
 unsafe impl Sync for JanetSend {}
 
-/// Stored on-complete callbacks keyed by task ID.
-static TASK_COMPLETE_CALLBACKS: LazyLock<Mutex<HashMap<u64, JanetSend>>> =
+/// Stored on-complete callbacks keyed by task ID, each with the capability
+/// context captured at registration — a callback must run with its
+/// registrar's trust, not whatever context happens to be current when the
+/// task finishes (F-28).
+static TASK_COMPLETE_CALLBACKS: LazyLock<Mutex<HashMap<u64, (JanetSend, super::extension_api::ExecContext)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Drop all stored callbacks — called at the start of `janet_bridge::init()`.
 pub fn reset_task_complete_callbacks() {
     if let Ok(mut cbs) = TASK_COMPLETE_CALLBACKS.lock() {
-        for JanetSend(fn_val) in cbs.values() {
+        for (JanetSend(fn_val), _) in cbs.values() {
             unsafe { janet_gcunroot(*fn_val); }
         }
         cbs.clear();
@@ -128,7 +131,7 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
         // Cancel legacy task/spawn task
         ed.io.tasks.remove(&id);
         // Clean up on-complete callback (new system)
-        if let Some(JanetSend(fn_val)) = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+        if let Some((JanetSend(fn_val), _)) = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
             janet_gcunroot(fn_val);
         }
         // Clean up task/spawn stored function (legacy)
@@ -153,7 +156,9 @@ unsafe extern "C-unwind" fn c_task_on_complete(argc: i32, argv: *mut Janet) -> J
             conv::signal_err("task/on-complete: second argument must be a function");
         }
         janet_gcroot(fn_val);
-        TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).insert(id, JanetSend(fn_val));
+        let ctx = super::extension_api::current_context();
+        TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner())
+            .insert(id, (JanetSend(fn_val), ctx));
         conv::nil()
     })
 }
@@ -247,11 +252,11 @@ pub(crate) fn execute_task_complete_callback(
     ed: &mut crate::kernel::state::Editor,
     task_id: u64,
 ) {
-    let fn_val = {
+    let entry = {
         let mut cbs = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner());
         cbs.remove(&task_id)
     };
-    let Some(JanetSend(fn_ref)) = fn_val else { return };
+    let Some((JanetSend(fn_ref), ctx)) = entry else { return };
 
     unsafe {
         janet_gcunroot(fn_ref);
@@ -267,12 +272,14 @@ pub(crate) fn execute_task_complete_callback(
             }
             None => conv::nil(),
         };
-        let func = janet_unwrap_function(fn_ref);
-        let args = [arg];
-        let fiber = janet_fiber(func, 64, 1, args.as_ptr());
-        if fiber.is_null() { return; }
-        let mut out: Janet = std::mem::zeroed();
-        janet_continue(fiber, janet_wrap_nil(), &mut out);
+        super::extension_api::with_context(ctx, || {
+            let func = janet_unwrap_function(fn_ref);
+            let args = [arg];
+            let fiber = janet_fiber(func, 64, 1, args.as_ptr());
+            if fiber.is_null() { return; }
+            let mut out: Janet = std::mem::zeroed();
+            janet_continue(fiber, janet_wrap_nil(), &mut out);
+        });
     }
 }
 

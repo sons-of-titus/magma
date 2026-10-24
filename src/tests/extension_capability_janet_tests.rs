@@ -210,3 +210,39 @@ fn core_registered_handlers_stay_trusted() {
     let saw = scripting::eval_result("core-fs-ok").unwrap();
     assert_eq!(saw, "true", "core-registered handlers keep full trust");
 }
+
+#[test]
+fn task_on_complete_runs_in_its_registration_context() {
+    let _lock = acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    scripting::eval(r#"
+        (extension/declare "cbcap" "1.0" "cb.janet" @[])
+        (var saw-manifest false)
+        (task/on-complete 4242 (fn [_] (set saw-manifest (not (nil? (extension/manifest))))))
+        (extension/undeclare)
+    "#);
+    // The callback fires from core dispatch when the task finishes.
+    crate::kernel::scripting::execute_task_complete_callback_scoped(4242);
+    let saw = scripting::eval_result("saw-manifest").unwrap();
+    assert_eq!(saw, "true",
+        "a task/on-complete callback must run inside its registering extension's capability set");
+}
+
+#[test]
+fn core_registered_task_callback_stays_trusted() {
+    let _lock = acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    scripting::eval(r#"
+        (var core-manifest-nil false)
+        (task/on-complete 4243 (fn [_] (set core-manifest-nil (nil? (extension/manifest)))))
+    "#);
+    crate::kernel::scripting::execute_task_complete_callback_scoped(4243);
+    let saw = scripting::eval_result("core-manifest-nil").unwrap();
+    assert_eq!(saw, "true", "core-registered task callbacks keep full trust");
+}

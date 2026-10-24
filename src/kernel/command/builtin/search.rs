@@ -76,48 +76,56 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("keyword-context", "Show all lines containing the word under the cursor",
+    cmds.register_fn("keyword-context", "List every line containing the word under the cursor in the quickfix list",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.view_of_buffer(buf_id) {
+            let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()) };
+            let (word, entries) = {
                 let pos = view.cursor_offset();
                 let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                let text = buf.slice(0, buf.len());
-                let before = &text[..pos];
-                let word_start = before.rfind(|c: char| !c.is_alphanumeric() && c != '_')
-                    .map(|i| i + 1).unwrap_or(0);
-                let after = &text[pos..];
-                let word_len = after.find(|c: char| !c.is_alphanumeric() && c != '_')
-                    .unwrap_or(after.len());
-                if word_len == 0 { return Ok(()); }
-                let word = &text[word_start..word_start + word_len];
-                let mut line_num = 1;
-                let mut line_start = 0;
-                let mut matches = Vec::new();
-                for (i, c) in text.char_indices() {
-                    if c == '\n' {
-                        let line_text = &text[line_start..i];
-                        if line_text.contains(word) {
-                            matches.push(format!("{:>4}: {}", line_num, line_text));
+                let word_start = buf.rfind_char_before(pos, |c| !is_word_char(c))
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                let word_end = buf.find_char_from(word_start, |c| !is_word_char(c))
+                    .unwrap_or(buf.len());
+                if word_start >= word_end {
+                    return Ok(());
+                }
+                let word = buf.slice(word_start, word_end);
+                let location = buf.path.clone().unwrap_or_else(|| buf.name.clone());
+                let mut entries = Vec::new();
+                let mut line = 0usize;
+                while line < buf.line_count() {
+                    if let Some(span) = buf.line_span(line) {
+                        let text = buf.slice(span.start, span.end);
+                        if text.contains(&word) {
+                            // Column of the first match in grapheme-agnostic
+                            // bytes; quickfix navigation is line-based.
+                            let col = text.find(&word).map(|i| i + 1).unwrap_or(1);
+                            entries.push(crate::kernel::task::QuickfixEntry {
+                                filename: location.clone(),
+                                line: line + 1,
+                                col,
+                                message: text,
+                                severity: crate::kernel::semantic::provider::DiagnosticSeverity::Info,
+                            });
                         }
-                        line_num += 1;
-                        line_start = i + 1;
                     }
+                    line += 1;
                 }
-                if line_start < text.len() {
-                    let line_text = &text[line_start..];
-                    if line_text.contains(word) {
-                        matches.push(format!("{:>4}: {}", line_num, line_text));
-                    }
-                }
-                if matches.is_empty() {
-                    debug!("No match: {}", word);
-                } else {
-                    for m in &matches {
-                        debug!("{}", m);
-                    }
-                }
+                (word, entries)
+            };
+            let count = entries.len();
+            editor.quickfix_list = entries;
+            editor.quickfix_list.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
+            editor.quickfix_index = 0;
+            if count == 0 {
+                editor.show_message(crate::kernel::state::MessageKind::Info,
+                    format!("no other matches for “{word}”"));
+            } else {
+                editor.show_message(crate::kernel::state::MessageKind::Info,
+                    format!("{count} match(es) for “{word}” — quickfix-next to navigate"));
             }
             Ok(())
         },

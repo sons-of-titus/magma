@@ -17,8 +17,10 @@ struct JanetSend(Janet);
 unsafe impl Send for JanetSend {}
 unsafe impl Sync for JanetSend {}
 
-/// GC-rooted function references for pending background tasks.
-static TASK_FUNCTIONS: LazyLock<Mutex<HashMap<u64, JanetSend>>> =
+/// GC-rooted function references for pending background tasks, each with the
+/// capability context captured at registration — the foreground invocation
+/// must run with the registrar's trust, not the ambient one (F-28).
+static TASK_FUNCTIONS: LazyLock<Mutex<HashMap<u64, (JanetSend, super::extension_api::ExecContext)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// (process/spawn cmd &opt args cwd) → process-id
@@ -180,53 +182,61 @@ unsafe extern "C-unwind" fn c_process_list(_argc: i32, _argv: *mut Janet) -> Jan
 ///
 /// Called from `process_background_event` when a `TaskReady` event fires.
 pub(crate) fn execute_stored_task(ed: &mut crate::kernel::state::Editor, task_id: u64) {
-    let fn_val = {
+    let entry = {
         let mut tasks = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner());
         tasks.remove(&task_id)
     };
-    if let Some(JanetSend(fn_ref)) = fn_val {
+    if let Some((JanetSend(fn_ref), ctx)) = entry {
         unsafe {
             janet_gcunroot(fn_ref);
-            let func = janet_unwrap_function(fn_ref);
-            let args = [janet_wrap_nil()];
-            let fiber = janet_fiber(func, 64, 1, args.as_ptr());
-            if fiber.is_null() {
-                ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
-                    id: task_id.to_string(),
-                    value: String::new(),
-                    error: "fiber creation failed".to_string(),
-                });
-                return;
-            }
-            let mut out: Janet = std::mem::zeroed();
-            let sig = janet_continue(fiber, janet_wrap_nil(), &mut out);
-            if sig == JanetSignal_JANET_SIGNAL_OK {
-                let result = if janet_checktype(out, JanetType_JANET_STRING) != 0 {
-                    let ptr = janet_unwrap_string(out);
-                    if ptr.is_null() {
-                        "nil".to_string()
-                    } else {
-                        std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
-                    }
-                } else if janet_checktype(out, JanetType_JANET_NUMBER) != 0 {
-                    format!("{}", janet_unwrap_number(out))
-                } else if janet_checktype(out, JanetType_JANET_BOOLEAN) != 0 {
-                    format!("{}", janet_unwrap_boolean(out) != 0)
+            super::extension_api::with_context(ctx, || { execute_stored_fn(ed, task_id, fn_ref) });
+        }
+    }
+}
+
+/// Run a stored task/spawn function and report its result as a `task-result`
+/// event.  Caller supplies the capability context.
+unsafe fn execute_stored_fn(ed: &mut crate::kernel::state::Editor, task_id: u64, fn_ref: Janet) {
+    unsafe {
+        let func = janet_unwrap_function(fn_ref);
+        let args = [janet_wrap_nil()];
+        let fiber = janet_fiber(func, 64, 1, args.as_ptr());
+        if fiber.is_null() {
+            ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
+                id: task_id.to_string(),
+                value: String::new(),
+                error: "fiber creation failed".to_string(),
+            });
+            return;
+        }
+        let mut out: Janet = std::mem::zeroed();
+        let sig = janet_continue(fiber, janet_wrap_nil(), &mut out);
+        if sig == JanetSignal_JANET_SIGNAL_OK {
+            let result = if janet_checktype(out, JanetType_JANET_STRING) != 0 {
+                let ptr = janet_unwrap_string(out);
+                if ptr.is_null() {
+                    "nil".to_string()
                 } else {
-                    "ok".to_string()
-                };
-                ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
-                    id: task_id.to_string(),
-                    value: result,
-                    error: String::new(),
-                });
+                    std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
+                }
+            } else if janet_checktype(out, JanetType_JANET_NUMBER) != 0 {
+                format!("{}", janet_unwrap_number(out))
+            } else if janet_checktype(out, JanetType_JANET_BOOLEAN) != 0 {
+                format!("{}", janet_unwrap_boolean(out) != 0)
             } else {
-                ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
-                    id: task_id.to_string(),
-                    value: String::new(),
-                    error: format!("signal {}", sig),
-                });
-            }
+                "ok".to_string()
+            };
+            ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
+                id: task_id.to_string(),
+                value: result,
+                error: String::new(),
+            });
+        } else {
+            ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
+                id: task_id.to_string(),
+                value: String::new(),
+                error: format!("signal {}", sig),
+            });
         }
     }
 }
@@ -253,15 +263,17 @@ unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
         let id = ed.io.next_task_id;
         ed.io.next_task_id += 1;
 
-        // GC-root the function
+        // GC-root the function, capturing this call's capability context
         janet_gcroot(fn_val);
-        TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(id, JanetSend(fn_val));
+        let ctx = super::extension_api::current_context();
+        TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(id, (JanetSend(fn_val), ctx));
 
         let bg = match ed.background.as_ref() {
             Some(bg) => bg.clone(),
             None => {
-                TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-                janet_gcunroot(fn_val);
+                if let Some((JanetSend(fn_val), _)) = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+                    janet_gcunroot(fn_val);
+                }
                 conv::signal_err("no background runtime available");
             }
         };
@@ -290,7 +302,7 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         ed.io.tasks.remove(&id);
         // Remove the stored function so task-result won't fire
-        if let Some(JanetSend(fn_val)) = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+        if let Some((JanetSend(fn_val), _)) = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
             janet_gcunroot(fn_val);
         }
         conv::nil()
@@ -309,7 +321,7 @@ pub fn reset_task_functions() {
 /// task/cancel implementation in task_api.rs when cancelling any task.
 pub(super) fn remove_task_function(id: u64) {
     if let Ok(mut tasks) = TASK_FUNCTIONS.lock() {
-        if let Some(JanetSend(fn_val)) = tasks.remove(&id) {
+        if let Some((JanetSend(fn_val), _)) = tasks.remove(&id) {
             unsafe { evil_janet::janet_gcunroot(fn_val); }
         }
     }

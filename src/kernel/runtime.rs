@@ -277,7 +277,18 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 }
             }
         }
-        BackgroundEvent::LspDiagnostics { path, version: _, diagnostics } => {
+        BackgroundEvent::LspDiagnostics { path, version, diagnostics } => {
+            // A publish tagged with a version older than the buffer's current
+            // revision describes text that no longer exists — drop it.  The
+            // didChange that bumped the revision produces a fresh publish;
+            // until then the previous diagnostics stay.
+            let stale = version.is_some_and(|v| ed.buffers.iter().any(|(_, arc)| {
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+                lsp_path_matches(buf.path.as_deref(), &path) && buf.revision() > v
+            }));
+            if stale {
+                return;
+            }
             let count = diagnostics.len();
             // Typed diagnostics live in the semantic engine (canonical);
             // the buffer keeps display strings only.  URI vs path is
@@ -419,7 +430,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::GrepResultsBatch { generation, entries } => {
             if generation == ed.search_generation {
                 ed.quickfix_list.extend(entries);
-                ed.quickfix_list.truncate(crate::kernel::render::gui_find_tool::MAX_RESULTS);
+                ed.quickfix_list.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
             }
         }
         BackgroundEvent::GrepDone { generation } => {
@@ -514,12 +525,14 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                     // require the sequence (e.g. js-debug) hang without it.
                     crate::kernel::debug::sync_breakpoint_lines(ed);
                     let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
+                    #[cfg(feature = "janet")]
                     for file in files {
-                        #[cfg(feature = "janet")]
                         crate::kernel::scripting::send_dap_command(
                             ed, session_id, "setBreakpoints",
                             &ed.debug.set_breakpoints_args(&file));
                     }
+                    #[cfg(not(feature = "janet"))]
+                    let _ = files;
                     #[cfg(feature = "janet")]
                     crate::kernel::scripting::send_dap_command(
                         ed, session_id, "configurationDone", "{}");

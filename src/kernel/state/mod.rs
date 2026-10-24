@@ -13,6 +13,7 @@ pub mod completion;
 pub mod io;
 pub mod gutter;
 pub mod overlay;
+pub mod minimap;
 
 use std::sync::{Arc, Mutex};
 
@@ -210,7 +211,7 @@ pub struct Editor {
     pub icons: crate::kernel::icons::IconPack,
     pub default_icons: crate::kernel::icons::IconPack,
     /// Minimap sampled-line caches keyed by buffer slab key (rework.md §7).
-    pub minimap_cache: std::collections::HashMap<usize, crate::kernel::render::gui_minimap::MinimapCache>,
+    pub minimap_cache: std::collections::HashMap<usize, crate::kernel::state::minimap::MinimapCache>,
     pub task_scheduler: TaskScheduler,
     pub debug: DebugManager,
     pub scheduler: WorkScheduler,

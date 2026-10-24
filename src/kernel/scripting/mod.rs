@@ -1,6 +1,8 @@
 //! Janet scripting runtime bridge — wraps evil-janet FFI for Magma.
 
+#[cfg(feature = "janet")]
 use std::cell::Cell;
+#[cfg(feature = "janet")]
 use std::ffi::CString;
 
 use crate::kernel::state::Editor;
@@ -278,6 +280,7 @@ mod clipboard_api;
 mod task_api;
 #[cfg(feature = "janet")]
 mod debug_api;
+#[cfg(feature = "janet")]
 mod toolchain_api;
 #[cfg(feature = "janet")]
 pub(crate) use debug_api::send_dap_command;

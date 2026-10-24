@@ -145,12 +145,15 @@ impl Editor {
     /// this live borrow (docs/core-redesign.md §11).
     pub fn dispatch_events_scoped(&mut self) {
         self.publish_buffer_changes();
+        #[cfg(feature = "janet")]
         crate::kernel::scripting::scoped_editor(self, || {
             crate::kernel::scripting::with_editor(|ed| {
                 ed.events.drain_and_dispatch();
                 crate::kernel::scripting::conv::nil()
             });
         });
+        #[cfg(not(feature = "janet"))]
+        self.events.drain_and_dispatch();
     }
 
 }

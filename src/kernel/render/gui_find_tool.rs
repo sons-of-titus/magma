@@ -12,7 +12,7 @@ use super::tool_window::{ToolAction, ToolWindow};
 fn mono(size: f32) -> FontId { FontId::new(size, FontFamily::Monospace) }
 fn prop(size: f32) -> FontId { FontId::new(size, FontFamily::Proportional) }
 
-pub(crate) const MAX_RESULTS: usize = 500;
+use crate::kernel::task::QUICKFIX_MAX_RESULTS as MAX_RESULTS;
 
 /// Parse one `--vimgrep` line: `path:line:col:text`.
 fn parse_vimgrep(line: &str) -> Option<crate::kernel::task::QuickfixEntry> {

@@ -14,6 +14,10 @@ pub struct QuickfixEntry {
     pub severity: crate::kernel::semantic::provider::DiagnosticSeverity,
 }
 
+/// Upper bound on quickfix-list entries, applied wherever results stream in
+/// (find-in-files, grep batches, keyword-context).
+pub const QUICKFIX_MAX_RESULTS: usize = 500;
+
 impl Default for QuickfixEntry {
     fn default() -> Self {
         QuickfixEntry {

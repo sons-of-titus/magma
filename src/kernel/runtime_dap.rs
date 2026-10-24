@@ -53,10 +53,12 @@ fn evaluate_watches(ed: &mut Editor, session_id: u64, frame_id: u64) {
                 r#"{{"expression":"{escaped}","context":"watch","frameId":{frame_id}}}"#));
         }
     }
+    #[cfg(feature = "janet")]
     for args in &args_list {
-        #[cfg(feature = "janet")]
         crate::kernel::scripting::send_dap_command(ed, session_id, "evaluate", args);
     }
+    #[cfg(not(feature = "janet"))]
+    let _ = (session_id, args_list);
 }
 
 pub(crate) fn apply_dap_command_result(

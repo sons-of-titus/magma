@@ -40,7 +40,7 @@ fn goto_line_action_moves_cursor() {
 #[test]
 fn replace_all_rewrites_every_occurrence() {
     let mut ed = make_editor_with_buffer("foo bar foo");
-    DialogAction::ReplaceAllInFocused { find: "foo".into(), replace: "qux".into() }
+    DialogAction::ReplaceAllInFocused { find: "foo".into(), replace: "qux".into(), regex: false }
         .apply(&mut ed);
     assert_eq!(buf_text(&ed), "qux bar qux");
 }
@@ -48,7 +48,7 @@ fn replace_all_rewrites_every_occurrence() {
 #[test]
 fn replace_all_empty_find_is_noop() {
     let mut ed = make_editor_with_buffer("unchanged");
-    DialogAction::ReplaceAllInFocused { find: String::new(), replace: "x".into() }
+    DialogAction::ReplaceAllInFocused { find: String::new(), replace: "x".into(), regex: false }
         .apply(&mut ed);
     assert_eq!(buf_text(&ed), "unchanged");
 }

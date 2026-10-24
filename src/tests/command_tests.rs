@@ -274,3 +274,52 @@ fn search_repeat_wraps_in_both_directions() {
     assert_eq!(highlights, 2, "all occurrences highlight");
     let _ = &key;
 }
+
+// ── Regex + replace ──────────────────────────────────────────────────
+
+#[test]
+fn replace_all_is_one_undo_step() {
+    let mut ed = helpers::make_editor_with_buffer("cat hat bat");
+    let key = helpers::focused_key(&ed);
+    let before_undo = ed.buffers.get(key).unwrap().lock().unwrap().undo_len();
+
+    crate::kernel::command::builtin::search_query::replace_all(
+        &mut ed, "at", "op", false).unwrap();
+    assert_eq!(helpers::buf_text(&ed), "cop hop bop");
+
+    // One undo STEP: the three replacements share a group even though
+    // each is its own transaction.
+    let after_undo = ed.buffers.get(key).unwrap().lock().unwrap().undo_len();
+    assert_eq!(after_undo, before_undo + 3, "three transactions");
+    helpers::run(&mut ed, "undo");
+    assert_eq!(helpers::buf_text(&ed), "cat hat bat");
+}
+
+#[test]
+fn replace_all_regex_uses_patterns() {
+    let mut ed = helpers::make_editor_with_buffer("fn a() fn b()");
+    crate::kernel::command::builtin::search_query::replace_all(
+        &mut ed, r"fn (\w)", "fn m_$1", true).unwrap();
+    assert_eq!(helpers::buf_text(&ed), "fn m_a() fn m_b()");
+}
+
+#[test]
+fn replace_next_walks_matches() {
+    let mut ed = helpers::make_editor_with_buffer("aa aa aa");
+    use crate::kernel::command::builtin::search_query as q;
+    assert!(q::replace_next(&mut ed, "aa", "bb", false).unwrap());
+    assert_eq!(helpers::cursor(&ed), 2);
+    assert!(q::replace_next(&mut ed, "aa", "bb", false).unwrap());
+    assert_eq!(helpers::buf_text(&ed), "bb bb aa");
+    // All replaced: the final call wraps, finds nothing, reports false.
+    assert!(q::replace_next(&mut ed, "aa", "bb", false).unwrap());
+    assert!(!q::replace_next(&mut ed, "aa", "bb", false).unwrap());
+}
+
+#[test]
+fn smart_case_replaces_insensitively() {
+    let mut ed = helpers::make_editor_with_buffer("Hello hello");
+    crate::kernel::command::builtin::search_query::replace_all(
+        &mut ed, "hello", "x", false).unwrap();
+    assert_eq!(helpers::buf_text(&ed), "x x");
+}

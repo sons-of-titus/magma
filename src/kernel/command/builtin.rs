@@ -9,6 +9,7 @@ mod motion;
 mod editing;
 mod visual;
 mod search;
+pub mod search_query;
 mod registers;
 mod window;
 mod file;

@@ -27,6 +27,8 @@ pub struct SearchHit {
 pub struct SearchDialog {
     pub query:     String,
     pub replace:   String,
+    /// `.*` mode: the query compiles as a regular expression.
+    pub regex:     bool,
     pub(crate) results:    Vec<SearchHit>,
     pub(crate) last_query: String,
     /// Index of the hit Enter will visit next (Enter = next, Shift-Enter =
@@ -38,22 +40,27 @@ const SEARCH_CAP: usize = 200;
 
 impl SearchDialog {
     pub fn new() -> Self {
-        Self { query: String::new(), replace: String::new(), results: Vec::new(), last_query: String::new(), selected: 0 }
+        Self { query: String::new(), replace: String::new(), regex: false, results: Vec::new(), last_query: String::new(), selected: 0 }
     }
 
     /// Scan open buffers for `query`, capped at `SEARCH_CAP` hits.
     pub fn search(&mut self, editor: &Editor) {
         self.results.clear();
         if self.query.is_empty() { return; }
-        let insensitive = query_case_insensitive(&self.query);
-        let needle = if insensitive { self.query.to_lowercase() } else { self.query.clone() };
+        let Ok(query) = crate::kernel::command::builtin::search_query::SearchQuery::compile(
+            &self.query, self.regex) else { return };
         'outer: for (buf_id, arc) in editor.buffers.iter() {
             let buf = arc.lock().unwrap();
             let name = buf.name.clone();
             let text = buf.slice(0, buf.len());
             for (line_idx, line) in text.lines().enumerate() {
-                let haystack = if insensitive { line.to_lowercase() } else { line.to_string() };
-                if haystack.contains(&needle) {
+                let hit = match &query {
+                    crate::kernel::command::builtin::search_query::SearchQuery::Literal(n)
+                        => line.contains(n.as_str()),
+                    crate::kernel::command::builtin::search_query::SearchQuery::Regex(re)
+                        => re.is_match(line),
+                };
+                if hit {
                     self.results.push(SearchHit {
                         buf_id,
                         buf_name: name.clone(),
@@ -83,6 +90,8 @@ impl SearchDialog {
             self.last_query = self.query.clone();
             self.search(editor);
         }
+        ui.checkbox(&mut self.regex, ".*")
+            .on_hover_text("regular expression (smart case applies to literal queries)");
         ui.add(
             egui::TextEdit::singleline(&mut self.replace)
                 .hint_text("Replace with…")
@@ -90,10 +99,16 @@ impl SearchDialog {
                 .desired_width(f32::INFINITY),
         );
         ui.horizontal(|ui| {
+            if ui.button("Replace next").clicked() && !self.query.is_empty() {
+                actions.push(DialogAction::ReplaceNextInFocused {
+                    find: self.query.clone(), replace: self.replace.clone(), regex: self.regex,
+                });
+            }
             if ui.button("Replace all (focused buffer)").clicked() && !self.query.is_empty() {
                 actions.push(DialogAction::ReplaceAllInFocused {
                     find:    self.query.clone(),
                     replace: self.replace.clone(),
+                    regex:   self.regex,
                 });
             }
             ui.label(

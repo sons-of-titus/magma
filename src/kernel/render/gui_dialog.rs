@@ -73,7 +73,8 @@ pub enum DialogAction {
     /// argument prompt — parsed by `execute_command_line`.
     ExecuteCommandLine(String),
     SetOption { name: String, value: String },
-    ReplaceAllInFocused { find: String, replace: String },
+    ReplaceAllInFocused { find: String, replace: String, regex: bool },
+    ReplaceNextInFocused { find: String, replace: String, regex: bool },
     UpsertRunConfig {
         original: Option<String>,
         name: String,
@@ -152,30 +153,21 @@ impl DialogAction {
             DialogAction::SetOption { name, value } => {
                 ed.options.insert(name, value);
             }
-            DialogAction::ReplaceAllInFocused { find, replace } => {
-                replace_all_in_focused(ed, &find, &replace);
+            DialogAction::ReplaceAllInFocused { find, replace, regex } => {
+                match crate::kernel::command::builtin::search_query::replace_all(ed, &find, &replace, regex) {
+                    Ok(n) => ed.show_message(crate::kernel::state::MessageKind::Info,
+                        format!("replaced {n} occurrences")),
+                    Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
+                }
+            }
+            DialogAction::ReplaceNextInFocused { find, replace, regex } => {
+                match crate::kernel::command::builtin::search_query::replace_next(ed, &find, &replace, regex) {
+                    Ok(true) => {}
+                    Ok(false) => ed.show_message(crate::kernel::state::MessageKind::Info, "no more matches"),
+                    Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
+                }
             }
         }
-    }
-}
-
-fn replace_all_in_focused(ed: &mut Editor, find: &str, replace: &str) {
-    if find.is_empty() { return; }
-    let Some(buf_id) = ed.view_tree.focused_window()
-        .and_then(|wid| ed.view_tree.buffer(wid)) else { return };
-    let Some(arc) = ed.buffers.get_mut(buf_id) else { return };
-    let mut buf = arc.lock().unwrap();
-    let text = buf.slice(0, buf.len());
-    // Replace back-to-front so earlier offsets stay valid.
-    let mut starts: Vec<usize> = text.match_indices(find).map(|(s, _)| s).collect();
-    starts.reverse();
-    for start in starts {
-        buf.replace(start, start + find.len(), replace);
-    }
-    let len = buf.len();
-    drop(buf);
-    if let Some(view) = ed.view_of_buffer_mut(buf_id) {
-        view.set_cursor(view.cursor_offset().min(len));
     }
 }
 

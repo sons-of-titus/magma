@@ -7,6 +7,7 @@ description = "A programmable text editor – Rust kernel, Janet userland"
 [dependencies]
 anyhow = "1.0"
 thiserror = "1.0"
+regex = "1"
 unicode-width = "0.2"
 unicode-segmentation = "1.12"
 smallstr = "0.3"

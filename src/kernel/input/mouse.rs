@@ -105,7 +105,7 @@ fn dispatch_gutter_click(
     let row_offset = pane.y + header_rows;
 
     let total_lines = ed.buffers.get(buf_id)
-        .map(|a| a.lock().unwrap().line_count())
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
         .unwrap_or(1);
 
     // Determine which gutter provider column was clicked.  Provider columns
@@ -278,7 +278,7 @@ pub(crate) fn resolve_click_to_offset(
     let vis_row = (click_y - row_offset) as usize;
 
     let total_lines = ed.buffers.get(buf_id)
-        .map(|a| a.lock().unwrap().line_count())
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
         .unwrap_or(1);
     let gutter_width = compute_gutter_width(ed, buf_id, total_lines);
     let content_x = pane.x + gutter_width as u16;
@@ -481,7 +481,7 @@ pub(crate) fn hit_test_pane(ed: &Editor, x: u16, y: u16) -> Option<(Pane, usize)
 /// Returns `true` when the x-coordinate falls within the gutter region.
 fn is_in_gutter(ed: &Editor, pane: &Pane, buf_id: usize, click_x: u16) -> bool {
     let total_lines = ed.buffers.get(buf_id)
-        .map(|a| a.lock().unwrap().line_count())
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
         .unwrap_or(1);
     let gutter_width = compute_gutter_width(ed, buf_id, total_lines);
     click_x < pane.x + gutter_width as u16
@@ -495,7 +495,7 @@ fn compute_gutter_width(ed: &Editor, buf_id: usize, total_lines: usize) -> usize
 
 fn gutter_header_rows(ed: &Editor, buf_id: usize) -> u16 {
     if ed.buffers.get(buf_id)
-        .map(|a| a.lock().unwrap().header_line.is_some())
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).header_line.is_some())
         .unwrap_or(false)
     { 1 } else { 0 }
 }

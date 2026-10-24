@@ -16,13 +16,13 @@ fn get_or_create_special(
     name: &str,
 ) -> usize {
     for (key, arc) in &ed.buffers {
-        if arc.lock().unwrap().name == name {
+        if arc.lock().unwrap_or_else(|e| e.into_inner()).name == name {
             return key;
         }
     }
     let key = ed.create_buffer(name);
     if let Some(arc) = ed.buffers.get_mut(key) {
-        arc.lock().unwrap().ephemeral = true;
+        arc.lock().unwrap_or_else(|e| e.into_inner()).ephemeral = true;
     }
     key
 }
@@ -34,7 +34,7 @@ unsafe extern "C-unwind" fn c_editor_log_message(argc: i32, argv: *mut Janet) ->
         let key = get_or_create_special(ed, "*Messages*");
         // Bypass read-only: write directly via the buffer
         if let Some(arc) = ed.buffers.get_mut(key) {
-            let mut buf = arc.lock().unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             buf.read_only = false;
             let end = buf.len();
             let line = format!("{}\n", text);
@@ -65,7 +65,7 @@ unsafe extern "C-unwind" fn c_editor_echo(argc: i32, argv: *mut Janet) -> Janet 
         ed.show_message(kind, text.clone());
         let key = get_or_create_special(ed, "*Messages*");
         if let Some(arc) = ed.buffers.get_mut(key) {
-            let mut buf = arc.lock().unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             buf.read_only = false;
             let end = buf.len();
             buf.insert(end, &format!("{text}\n"));
@@ -82,7 +82,7 @@ unsafe extern "C-unwind" fn c_editor_warn(argc: i32, argv: *mut Janet) -> Janet 
         let text = conv::get_str(argc, argv, 0).unwrap_or_default();
         let key = get_or_create_special(ed, "*Warnings*");
         if let Some(arc) = ed.buffers.get_mut(key) {
-            let mut buf = arc.lock().unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             buf.read_only = false;
             let end = buf.len();
             let line = format!("{}\n", text);
@@ -104,7 +104,7 @@ unsafe extern "C-unwind" fn c_editor_show_help(argc: i32, argv: *mut Janet) -> J
         let text = conv::get_str(argc, argv, 0).unwrap_or_default();
         let key = get_or_create_special(ed, "*Help*");
         if let Some(arc) = ed.buffers.get_mut(key) {
-            let mut buf = arc.lock().unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             buf.read_only = false;
             // Replace entire content
             let old_len = buf.len();

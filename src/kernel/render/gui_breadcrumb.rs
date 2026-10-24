@@ -59,7 +59,7 @@ impl BreadcrumbBar {
         let Some(arc)    = editor.buffers.get(buf_id)         else { return None };
 
         let (path, cursor_offset) = {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             // Prefer the full path so the bar shows the JetBrains-style
             // directory chain; scratch buffers fall back to their name.
@@ -67,7 +67,7 @@ impl BreadcrumbBar {
         };
 
         let cursor_line = {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             buf.position_of(cursor_offset).line
         };
 

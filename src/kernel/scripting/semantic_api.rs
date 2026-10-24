@@ -47,7 +47,7 @@ unsafe extern "C-unwind" fn c_semantic_symbols(argc: i32, argv: *mut Janet) -> J
             return janet_wrap_array(janet_array(0));
         };
         let text = match ed.buffers.get(buf_id) {
-            Some(arc) => { let b = arc.lock().unwrap(); b.slice(0, b.len()).to_string() }
+            Some(arc) => { let b = arc.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()).to_string() }
             None => return janet_wrap_array(janet_array(0)),
         };
         let symbols = ed.semantic.symbols_for_buffer(&lang, &text);
@@ -118,7 +118,7 @@ unsafe extern "C-unwind" fn c_semantic_index_buffer(argc: i32, argv: *mut Janet)
         };
         let (text, path) = match ed.buffers.get(buf_id) {
             Some(arc) => {
-                let b = arc.lock().unwrap();
+                let b = arc.lock().unwrap_or_else(|e| e.into_inner());
                 (b.slice(0, b.len()).to_string(), b.path.clone().unwrap_or_default())
             }
             None => return conv::nil(),
@@ -154,7 +154,7 @@ unsafe extern "C-unwind" fn c_semantic_diagnostics(argc: i32, argv: *mut Janet) 
         let buf_id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let path = match ed.buffers.get(buf_id) {
             Some(arc) => {
-                let b = arc.lock().unwrap();
+                let b = arc.lock().unwrap_or_else(|e| e.into_inner());
                 b.path.clone().unwrap_or_default()
             }
             None => return janet_wrap_array(janet_array(0)),

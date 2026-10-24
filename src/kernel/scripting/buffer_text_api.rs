@@ -11,7 +11,7 @@ unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Jane
         let pos = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         let text = conv::get_str(argc, argv, 2).unwrap_or_default();
         debug!("BI: buffer/insert buf={}, pos={}, text_len={}", key, pos, text.len());
-        if ed.buffers.get(key).map(|a| a.lock().unwrap().read_only).unwrap_or(false) {
+        if ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).read_only).unwrap_or(false) {
             ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, crate::kernel::event::payload::BufferReadOnlyPayload {
                 buffer_id: key.to_string(),
             });
@@ -31,7 +31,7 @@ unsafe extern "C-unwind" fn c_buffer_delete(argc: i32, argv: *mut Janet) -> Jane
         let start = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
         debug!("BD: buffer/delete buf={}, start={}, end={}", key, start, end);
-        if ed.buffers.get(key).map(|a| a.lock().unwrap().read_only).unwrap_or(false) {
+        if ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).read_only).unwrap_or(false) {
             ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, crate::kernel::event::payload::BufferReadOnlyPayload {
                 buffer_id: key.to_string(),
             });
@@ -51,7 +51,7 @@ unsafe extern "C-unwind" fn c_buffer_slice(argc: i32, argv: *mut Janet) -> Janet
         let start = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
         let s = ed.buffers.get(key)
-            .map(|a| a.lock().unwrap().slice(start, end))
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).slice(start, end))
             .unwrap_or_default();
         conv::string(&s)
     })
@@ -60,7 +60,7 @@ unsafe extern "C-unwind" fn c_buffer_slice(argc: i32, argv: *mut Janet) -> Janet
 unsafe extern "C-unwind" fn c_buffer_len(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let len = ed.buffers.get(key).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+        let len = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len()).unwrap_or(0);
         conv::integer(len as i32)
     })
 }
@@ -106,7 +106,7 @@ unsafe extern "C-unwind" fn c_buffer_mark_saved(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         if let Some(arc) = ed.buffers.get_mut(key) {
-            arc.lock().unwrap().mark_saved();
+            arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved();
         }
         conv::nil()
     })

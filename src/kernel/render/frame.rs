@@ -108,7 +108,7 @@ pub fn compute_scroll_state(editor: &Editor, buf_id: usize, visible_lines: usize
         .unwrap_or(0);
     match editor.buffers.get(buf_id) {
         Some(arc) => {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             scroll_state_for_buffer(&buf, cursor_offset, visible_lines, scrolloff, tab_width,
                                     &editor.font_config.glyph_widths)
         }
@@ -141,7 +141,7 @@ pub fn pane_scroll_state(ed: &Editor, pane: &Pane, buf_id: usize, visible_lines:
         .unwrap_or(0);
     match ed.buffers.get(buf_id) {
         Some(arc) => {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let (cursor_line, cursor_col) = cursor_metrics(&buf, cursor_offset,
                 int_option(ed, "tab-width", 4), &ed.font_config.glyph_widths);
             ScrollState {

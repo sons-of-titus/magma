@@ -30,7 +30,7 @@ pub(super) fn current_col(view: &BufferView) -> usize {
 
 pub(super) fn move_to_line_col(view: &mut BufferView, line: usize, col: usize) {
     let (offset, line_len) = {
-        let buf = view.buffer.lock().unwrap();
+        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
         let offset = buf.line_start_offset(line);
         let line_text = buf.line(line).unwrap_or_default();
         (offset, line_text.len())
@@ -45,7 +45,7 @@ pub(super) fn move_cursor(editor: &mut Editor, delta: isize) {
     if let Some(view) = editor.view_of_buffer_mut(buf_id) {
         let pos = view.cursor.offset;
         let new_pos = {
-            let buf = view.buffer.lock().unwrap();
+            let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
             if delta < 0 {
                 let text = buf.slice(0, pos);
                 text.chars().last().map(|c| pos - c.len_utf8()).unwrap_or(0)

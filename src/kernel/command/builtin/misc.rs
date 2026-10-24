@@ -51,11 +51,11 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             let arc = editor.buffers.get_mut(buf_id)
                 .ok_or_else(|| "No buffer".to_string())?;
-            let path = arc.lock().unwrap().path.clone();
+            let path = arc.lock().unwrap_or_else(|e| e.into_inner()).path.clone();
             if let Some(ref path) = path {
-                let content = { let b = arc.lock().unwrap(); b.slice(0, b.len()) };
+                let content = { let b = arc.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
                 editor.fs.write(path, &content).map_err(|e| e.to_string())?;
-                arc.lock().unwrap().mark_saved();
+                arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved();
             }
             editor.running = false;
             Ok(())
@@ -72,7 +72,7 @@ pub(super) fn register(editor: &mut Editor) {
             let new_mode = crate::kernel::text_engine::MajorMode::from_name(name);
             let buf_id = get_current_buffer_id(editor);
             if let Some(arc) = editor.buffers.get_mut(buf_id) {
-                arc.lock().unwrap().major_mode = new_mode;
+                arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode = new_mode;
             }
             editor.events.emit_typed(keys::events::MAJOR_MODE_CHANGED, MajorModeChangedPayload {
                 mode: name.to_string(),
@@ -88,7 +88,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(arc) = editor.buffers.get(buf_id) {
-                println!("{}", arc.lock().unwrap().major_mode.name());
+                println!("{}", arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name());
             }
             Ok(())
         },

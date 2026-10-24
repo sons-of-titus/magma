@@ -17,7 +17,7 @@ impl ContextProvider for EditorContextProvider {
         let (content, path, language) = focused_buf_id
             .and_then(|id| {
                 let arc = ed.buffers.get(id)?;
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 let p = buf.path.clone();
                 let len = buf.len();
                 let text = buf.slice(0, len.min(4096));

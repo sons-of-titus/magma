@@ -175,13 +175,13 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
 
     // Try to find an existing buffer for this file
     let existing_key = editor.buffers.iter()
-        .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(path.as_str()))
+        .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path.as_str()))
         .map(|(key, _)| key);
 
     if let Some(key) = existing_key {
         if let Some(arc) = editor.buffers.get_mut(key) {
             let (target, char_offset) = {
-                let mut buf = arc.lock().unwrap();
+                let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 buf.set_diagnostics(diags);
                 let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
                 let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
@@ -277,7 +277,7 @@ mod tests {
     fn ed_with_main() -> (crate::kernel::state::Editor, usize) {
         let mut ed = test_support::make_editor_with_buffer("fn main() {}\n");
         let key = test_support::focused_key(&ed);
-        ed.buffers.get_mut(key).unwrap().lock().unwrap().path =
+        ed.buffers.get_mut(key).unwrap().lock().unwrap_or_else(|e| e.into_inner()).path =
             Some("/repo/src/main.rs".to_string());
         (ed, key)
     }
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(qf.line, 4);
         assert_eq!(qf.col, 9);
 
-        let buf = ed.buffers.get(key).unwrap().lock().unwrap();
+        let buf = ed.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner());
         let ds = buf.get_diagnostics();
         assert_eq!(ds.len(), 1);
         assert_eq!(ds[0].message, "mismatched types");

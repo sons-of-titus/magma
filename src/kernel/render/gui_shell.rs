@@ -283,7 +283,7 @@ impl ShellRuntime {
             .and_then(|bg| FileWatcher::new(bg.sender.clone()).ok())
             .map(|mut w| {
                 for (_, arc) in ed.buffers.iter() {
-                    let buf = arc.lock().unwrap();
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(ref path) = buf.path {
                         w.watch(path);
                     }
@@ -391,7 +391,7 @@ impl ShellRuntime {
 pub(crate) fn window_title(ed: &Editor) -> String {
     match ed.focused_buffer_key() {
         0 => "Magma".to_string(),
-        key => match ed.buffers.get(key).map(|a| a.lock().unwrap().name.clone()) {
+        key => match ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).name.clone()) {
             Some(name) => format!("{name} — Magma"),
             None => "Magma".to_string(),
         },

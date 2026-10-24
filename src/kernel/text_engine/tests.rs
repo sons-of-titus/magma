@@ -17,7 +17,7 @@ fn empty_view() -> BufferView {
 #[test]
 fn new_buffer_is_empty() {
     let view = empty_view();
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.len(), 0);
     assert!(buf.is_empty());
     drop(buf);
@@ -28,7 +28,7 @@ fn new_buffer_is_empty() {
 fn insert_appends_text_and_advances_cursor() {
     let mut view = empty_view();
     view.insert(0, "hello");
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "hello");
     drop(buf);
     assert_eq!(view.cursor_offset(), 5);
@@ -40,7 +40,7 @@ fn insert_at_cursor_advances_correctly() {
     view.set_cursor(0);
     let cur = view.cursor_offset();
     view.insert(cur, "hello ");
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "hello world");
     drop(buf);
     assert_eq!(view.cursor_offset(), 6);
@@ -50,7 +50,7 @@ fn insert_at_cursor_advances_correctly() {
 fn insert_multibyte_advances_by_byte_length() {
     let mut view = empty_view();
     view.insert(0, "é"); // 2 bytes in UTF-8
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.len(), 2);
     assert_eq!(buf.slice(0, buf.len()), "é");
     drop(buf);
@@ -62,7 +62,7 @@ fn delete_removes_range_and_adjusts_cursor() {
     let mut view = buf_view("hello world");
     view.set_cursor(5);
     view.delete(5, 6); // remove space
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "helloworld");
     drop(buf);
     assert_eq!(view.cursor_offset(), 5);
@@ -73,7 +73,7 @@ fn delete_before_cursor_adjusts_cursor_back() {
     let mut view = buf_view("hello");
     view.set_cursor(5);
     view.delete(0, 2); // remove "he"
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "llo");
     drop(buf);
     assert_eq!(view.cursor_offset(), 3);
@@ -84,7 +84,7 @@ fn delete_multibyte_char() {
     let mut view = buf_view("héllo"); // 'é' at bytes 1-2
     view.set_cursor(0);
     view.delete(1, 3); // delete 'é'
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "hllo");
 }
 
@@ -120,7 +120,7 @@ fn undo_reverts_insert() {
     let mut view = empty_view();
     view.insert(0, "hello");
     assert!(view.undo());
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "");
 }
 
@@ -130,7 +130,7 @@ fn undo_then_redo_restores() {
     view.insert(0, "hello");
     view.undo();
     assert!(view.redo());
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.slice(0, buf.len()), "hello");
 }
 
@@ -152,9 +152,9 @@ fn undo_multiple_steps() {
     let mut view = empty_view();
     view.insert(0, "a");
     view.insert(1, "b");
-    let before = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
+    let before = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
     view.undo();
-    let after = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
+    let after = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
     assert_ne!(before, after);
 }
 
@@ -163,7 +163,7 @@ fn undo_multiple_steps() {
 #[test]
 fn char_at_ascii() {
     let view = buf_view("hello");
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.char_at(0), Some('h'));
     assert_eq!(buf.char_at(4), Some('o'));
     assert_eq!(buf.char_at(5), None);
@@ -172,7 +172,7 @@ fn char_at_ascii() {
 #[test]
 fn char_at_multibyte() {
     let view = buf_view("héllo");
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.char_at(0), Some('h'));
     assert_eq!(buf.char_at(1), Some('é')); // 'é' starts at byte 1
     assert_eq!(buf.char_at(3), Some('l')); // after 'é' (2 bytes)
@@ -183,14 +183,14 @@ fn char_at_multibyte() {
 #[test]
 fn line_count_multiline() {
     let view = buf_view("a\nb\nc");
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.line_count(), 3);
 }
 
 #[test]
 fn line_retrieval() {
     let view = buf_view("first\nsecond\nthird");
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.line(0), Some("first".to_string()));
     assert_eq!(buf.line(1), Some("second".to_string()));
     assert_eq!(buf.line(2), Some("third".to_string()));

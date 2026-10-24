@@ -46,7 +46,7 @@ unsafe extern "C-unwind" fn c_option_get_local(argc: i32, argv: *mut Janet) -> J
         };
         let buf_id = crate::kernel::input::focused_buffer_id(ed);
         if let Some(arc) = ed.buffers.get(buf_id) {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(val) = buf.local_options.get(&key) {
                 return conv::string(val);
             }
@@ -68,7 +68,7 @@ unsafe extern "C-unwind" fn c_option_set_local(argc: i32, argv: *mut Janet) -> J
         };
         let buf_id = crate::kernel::input::focused_buffer_id(ed);
         if let Some(arc) = ed.buffers.get_mut(buf_id) {
-            arc.lock().unwrap().local_options.insert(key, value);
+            arc.lock().unwrap_or_else(|e| e.into_inner()).local_options.insert(key, value);
         }
         conv::nil()
     })

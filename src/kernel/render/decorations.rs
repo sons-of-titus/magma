@@ -117,7 +117,7 @@ pub fn render_overlays(editor: &Editor, surface: &mut Surface) {
 
         if let Some(buf_id) = ov.buffer_id {
             if let Some(arc) = editor.buffers.get(buf_id) {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 // Only the rows the overlay can show are extracted.
                 let max_rows = ov.height as usize;
                 let max_cols = ov.width as usize;

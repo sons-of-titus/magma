@@ -44,11 +44,11 @@ impl FileWatcher {
 
                     // Only emit if at least one path is being watched
                     let should_emit = {
-                        let w = watched_clone.lock().unwrap();
+                        let w = watched_clone.lock().unwrap_or_else(|e| e.into_inner());
                         if paths.iter().any(|p| w.contains(p)) {
                             true
                         } else {
-                            let roots = roots_clone.lock().unwrap();
+                            let roots = roots_clone.lock().unwrap_or_else(|e| e.into_inner());
                             paths.iter().any(|p| {
                                 roots.iter().any(|r| p.starts_with(r.as_str()))
                             })
@@ -96,7 +96,7 @@ impl FileWatcher {
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| root.to_string());
         {
-            let mut roots = self.project_roots.lock().unwrap();
+            let mut roots = self.project_roots.lock().unwrap_or_else(|e| e.into_inner());
             if !roots.insert(canonical.clone()) {
                 return;
             }
@@ -115,7 +115,7 @@ impl FileWatcher {
         let path_str = canonical.to_string_lossy().to_string();
 
         {
-            let mut w = self.watched.lock().unwrap();
+            let mut w = self.watched.lock().unwrap_or_else(|e| e.into_inner());
             if !w.insert(path_str.clone()) {
                 return;
             }
@@ -135,7 +135,7 @@ impl FileWatcher {
         };
         let path_str = canonical.to_string_lossy().to_string();
 
-        let mut w = self.watched.lock().unwrap();
+        let mut w = self.watched.lock().unwrap_or_else(|e| e.into_inner());
         w.remove(&path_str);
     }
 
@@ -146,7 +146,7 @@ impl FileWatcher {
             Err(_) => Path::new(path).to_path_buf(),
         };
         let path_str = canonical.to_string_lossy().to_string();
-        let w = self.watched.lock().unwrap();
+        let w = self.watched.lock().unwrap_or_else(|e| e.into_inner());
         w.contains(&path_str)
     }
 }

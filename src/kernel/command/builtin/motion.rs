@@ -15,7 +15,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let (new_pos, buf_len) = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let np = match buf.find_char_from(pos, is_word_char) {
                         Some(ws) => {
                             let we = buf.find_char_from(ws, |c| !is_word_char(c))
@@ -41,7 +41,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 if pos == 0 { return Ok(()); }
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let Some(last_word) = buf.rfind_char_before(pos, is_word_char) else {
                         return Ok(());
                     };
@@ -63,7 +63,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     buf.find_char_from(pos, is_word_char)
                         .and_then(|ws| buf.find_char_from(ws, |c| !is_word_char(c)))
                         .unwrap_or(pos)
@@ -87,7 +87,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     buf.find_char_from(pos, |c| c == ch)
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
@@ -110,7 +110,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     buf.rfind_char_before(pos, |c| c == ch)
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
@@ -133,7 +133,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // Stop one char before the target: back up over the
                     // preceding char (which may be multibyte).
                     buf.find_char_from(pos.saturating_sub(0), |c| c == ch)
@@ -160,7 +160,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // Stop one char after the target (multibyte-aware).
                     buf.rfind_char_before(pos, |c| c == ch)
                         .map(|at| at + ch.len_utf8())
@@ -223,7 +223,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // The cursor can sit on a non-boundary byte after a
                     // UTF-16 → byte conversion; snap down first.
                     let mut pos = pos.min(buf.len());
@@ -282,7 +282,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let text = buf.slice(pos, buf.len());
                     let lines: Vec<&str> = text.split('\n').collect();
                     let mut found_empty = false;
@@ -312,7 +312,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let text = buf.slice(0, pos);
                     let lines: Vec<&str> = text.split('\n').collect();
                     let mut found_content = false;
@@ -342,7 +342,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let text = buf.slice(pos, buf.len());
                     text.find(['.', '!', '?']).map(|idx| {
                         let after = &text[idx..];
@@ -366,7 +366,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 if pos == 0 { return Ok(()); }
                 let new_pos = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let text = buf.slice(0, pos);
                     let mut result = None;
                     let mut i = pos;

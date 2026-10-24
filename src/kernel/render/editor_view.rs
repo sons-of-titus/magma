@@ -28,7 +28,7 @@ impl View for EditorView {
             Some(a) => a,
             None => return,
         };
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let view = editor.view_of_buffer(buf_id);
         let cursor_offset = view.map(|v| v.cursor.offset).unwrap_or(0);
 

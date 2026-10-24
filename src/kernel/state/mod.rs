@@ -383,7 +383,7 @@ impl Editor {
         if sel.is_line() {
             let buf_id = crate::kernel::input::focused_buffer_id(self);
             if let Some(arc) = self.buffers.get(buf_id) {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 let a_line = sel.anchor;
                 let c_line = buf.slice(0, cursor).chars().filter(|&c| c == '\n').count();
                 let (first, last) = (a_line.min(c_line), a_line.max(c_line));
@@ -420,7 +420,7 @@ impl Editor {
     pub fn dirty_buffer_names(&self) -> Vec<String> {
         self.buffers.iter()
             .filter_map(|(key, arc)| {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 let saving = self.io.saves_in_flight.contains_key(&key);
                 ((buf.modified() || saving) && !buf.read_only).then(|| buf.name.clone())
             })

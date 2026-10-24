@@ -48,7 +48,7 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
 
     for (path, ranges) in edits_by_uri {
         let key = ed.buffers.iter()
-            .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(&path))
+            .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(&path))
             .map(|(k, _)| k);
         let Some(key) = key else { continue };
         let Some(view) = ed.view_of_buffer_mut(key) else { continue };
@@ -56,7 +56,7 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
         // Resolve LSP (line, character) positions against THIS buffer's
         // line index before touching anything.
         let buffer = view.buffer.clone();
-        let buf = buffer.lock().unwrap();
+        let buf = buffer.lock().unwrap_or_else(|e| e.into_inner());
         let mut spans: Vec<(usize, usize, String)> = ranges.into_iter()
             .map(|r| (
                 offset_of_lsp_position(&buf, r.start.0, r.start.1),
@@ -69,7 +69,7 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
         // Back to front, so earlier ranges stay valid while applying.
         spans.sort_by_key(|b| std::cmp::Reverse(b.0));
         for (start, end, new_text) in spans {
-            let buf_len = buffer.lock().unwrap().len();
+            let buf_len = buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
             if end > buf_len || start > end { continue; }
             if start < end { view.delete(start, end); }
             if !new_text.is_empty() { view.insert(start, &new_text); }

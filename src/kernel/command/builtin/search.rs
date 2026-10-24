@@ -82,7 +82,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer(buf_id) {
                 let pos = view.cursor_offset();
-                let buf = view.buffer.lock().unwrap();
+                let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                 let text = buf.slice(0, buf.len());
                 let before = &text[..pos];
                 let word_start = before.rfind(|c: char| !c.is_alphanumeric() && c != '_')
@@ -128,7 +128,7 @@ pub(super) fn register(editor: &mut Editor) {
 fn word_and_next(editor: &Editor, buf_id: usize, forward: bool) -> Option<(String, Option<usize>)> {
     let view = editor.view_of_buffer(buf_id)?;
     let pos = view.cursor_offset();
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     let word_start = buf.rfind_char_before(pos, |c| !is_word_char(c))
         .map(|i| i + 1)
         .unwrap_or(0);
@@ -151,7 +151,7 @@ fn word_and_next(editor: &Editor, buf_id: usize, forward: bool) -> Option<(Strin
 fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
     let ranges = {
         let Some(arc) = editor.buffers.get(buf_id) else { return };
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let mut ranges = Vec::new();
         let mut from = 0usize;
         let plen = pattern.len();
@@ -185,7 +185,7 @@ fn execute_search(editor: &mut Editor, pattern: &str, forward: bool) -> CommandR
 
     let found = {
         let Some(arc) = editor.buffers.get(buf_id) else { return Ok(()); };
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         if forward {
             let start = (pos + 1).min(buf.len());
             buf.find_sub_from(start, pattern).or_else(|| {

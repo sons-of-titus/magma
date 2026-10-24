@@ -98,7 +98,7 @@ impl Editor {
         let mut notes: Vec<(usize, crate::kernel::text_engine::transaction::EditTransaction)> =
             Vec::new();
         for (key, arc) in self.buffers.iter() {
-            let mut buf = arc.lock().unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             if buf.has_pending_changes() {
                 for txn in buf.take_pending_changes() {
                     notes.push((key, txn));

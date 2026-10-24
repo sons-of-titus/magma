@@ -50,7 +50,7 @@ unsafe extern "C-unwind" fn c_buffer_set_header_line(argc: i32, argv: *mut Janet
             conv::signal_err("buffer/set-header-line requires a buffer key")
         };
         if let Some(arc) = ed.buffers.get_mut(buf_key as usize) {
-            let mut buf = arc.lock().unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             if argc > 1 && unsafe { janet_checktype(*argv.add(1), JanetType_JANET_NIL) } != 0 {
                 buf.header_line = None;
             } else {
@@ -68,7 +68,7 @@ unsafe extern "C-unwind" fn c_buffer_header_line(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| {
         let Some(buf_key) = (unsafe { conv::get_int(argc, argv, 0) }) else { return conv::nil(); };
         if let Some(arc) = ed.buffers.get(buf_key as usize) {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             match &buf.header_line {
                 Some(text) => conv::string(text),
                 None => conv::nil(),

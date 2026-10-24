@@ -242,7 +242,7 @@ fn revision_current(ed: &Editor, buf_key: Option<usize>, revision: u64) -> bool 
     match buf_key {
         None => true,
         Some(key) => ed.buffers.get(key)
-            .map(|a| a.lock().unwrap().revision() == revision)
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision() == revision)
             .unwrap_or(false),
     }
 }
@@ -285,7 +285,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             let display: Vec<String> = diagnostics.iter().map(|d| d.display()).collect();
             let mut buffer_id: Option<usize> = None;
             for (key, arc) in ed.buffers.iter_mut() {
-                let mut buf = arc.lock().unwrap();
+                let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 if lsp_path_matches(buf.path.as_deref(), &path) {
                     buf.set_diagnostics(diagnostics.clone());
                     buffer_id = Some(key);
@@ -341,7 +341,7 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::SaveWritten { buf_key, path, saved_rev } => {
             ed.io.saves_in_flight.remove(&buf_key);
             if let Some(arc) = ed.buffers.get(buf_key) {
-                arc.lock().unwrap().mark_saved_at(saved_rev);
+                arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(saved_rev);
             }
             ed.events.emit_typed(keys::events::FILE_SAVED, FileSavedPayload { path: path.clone() });
             crate::kernel::debug::resync_after_save(ed, &path);
@@ -712,9 +712,9 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
             }
             let Some(bg) = ed.background.clone() else { return };
             let dirty: Vec<(usize, String, String, u64)> = ed.buffers.iter()
-                .filter(|(_, arc)| arc.lock().unwrap().modified())
+                .filter(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).modified())
                 .filter_map(|(key, arc)| {
-                    let buf = arc.lock().unwrap();
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                     buf.path.clone().map(|p| (key, p, buf.slice(0, buf.len()), buf.revision()))
                 })
                 .collect();
@@ -733,11 +733,11 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
                 // Only the revision actually written becomes clean; edits
                 // made after the snapshot keep the buffer modified
                 // (docs/core-redesign.md §5.1).
-                arc.lock().unwrap().mark_saved_at(saved_rev);
+                arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(saved_rev);
             }
         }
         BackgroundEvent::BufferWords { buf_key, revision, words } => {
-            let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap().revision());
+            let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
             if current == Some(revision) {
                 ed.completion.word_cache.insert(buf_key, crate::kernel::state::completion::WordCache {
                     revision,

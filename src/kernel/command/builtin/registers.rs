@@ -17,7 +17,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let (start, eol, deleted) = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let start = buf.line_start_offset(line).unwrap_or(0);
                     let line_text = buf.line(line).unwrap_or_default();
                     let end = start + line_text.len();
@@ -54,7 +54,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer(buf_id) {
                 let line = current_line(view);
                 let yanked = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let start = buf.line_start_offset(line).unwrap_or(0);
                     let line_text = buf.line(line).unwrap_or_default();
                     let end = start + line_text.len();
@@ -79,7 +79,7 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                     let pos = view.cursor_offset();
                     let paste_pos = {
-                        let buf = view.buffer.lock().unwrap();
+                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         let after = buf.slice(pos, buf.len());
                         after.chars().next().map(|c| pos + c.len_utf8()).unwrap_or(pos)
                     };
@@ -260,7 +260,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(&mark_pos) = editor.marks.get(&ch) {
                 if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                     let offset = {
-                        let buf = view.buffer.lock().unwrap();
+                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         let text = buf.slice(0, mark_pos);
                         let line = text.chars().filter(|&c| c == '\n').count();
                         buf.line_start_offset(line).unwrap_or(mark_pos)

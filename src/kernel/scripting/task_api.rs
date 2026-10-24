@@ -128,7 +128,7 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
         // Cancel legacy task/spawn task
         ed.io.tasks.remove(&id);
         // Clean up on-complete callback (new system)
-        if let Some(JanetSend(fn_val)) = TASK_COMPLETE_CALLBACKS.lock().unwrap().remove(&id) {
+        if let Some(JanetSend(fn_val)) = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
             janet_gcunroot(fn_val);
         }
         // Clean up task/spawn stored function (legacy)
@@ -153,7 +153,7 @@ unsafe extern "C-unwind" fn c_task_on_complete(argc: i32, argv: *mut Janet) -> J
             conv::signal_err("task/on-complete: second argument must be a function");
         }
         janet_gcroot(fn_val);
-        TASK_COMPLETE_CALLBACKS.lock().unwrap().insert(id, JanetSend(fn_val));
+        TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).insert(id, JanetSend(fn_val));
         conv::nil()
     })
 }
@@ -248,7 +248,7 @@ pub(crate) fn execute_task_complete_callback(
     task_id: u64,
 ) {
     let fn_val = {
-        let mut cbs = TASK_COMPLETE_CALLBACKS.lock().unwrap();
+        let mut cbs = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner());
         cbs.remove(&task_id)
     };
     let Some(JanetSend(fn_ref)) = fn_val else { return };

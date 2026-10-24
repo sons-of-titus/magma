@@ -23,7 +23,7 @@ fn register_handler(fn_val: Janet) -> usize {
     unsafe {
         janet_gcroot(fn_val);
     }
-    let mut handlers = JANET_HANDLERS.lock().unwrap();
+    let mut handlers = JANET_HANDLERS.lock().unwrap_or_else(|e| e.into_inner());
     let idx = handlers.len();
     handlers.push(Some(JanetSend(fn_val)));
     idx

@@ -109,7 +109,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
         ServerOp::Ping => Response::ok(serde_json::json!("pong"), 0),
         ServerOp::OpenFile { path, content, id } => {
             for (key, arc) in ed.buffers.iter() {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 if buf.path.as_deref() == Some(&path) {
                     let result = serde_json::json!({
                         "buffer": key,
@@ -139,7 +139,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
             let Some(arc) = ed.buffers.get(buf_id) else {
                 return Response::error(&format!("Buffer {buf_id} not found"), id);
             };
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let result = serde_json::json!({
                 "content": buf.slice(0, buf.len()),
                 "name": buf.name.clone(),
@@ -158,7 +158,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
                 view.insert(pos, &text);
             }
             let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len()).unwrap_or(0);
             Response::ok(serde_json::json!({"cursor": cursor, "size": size}), id)
         }
         ServerOp::Delete { buf_id, start, end, id } => {
@@ -169,7 +169,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
                 view.delete(start, end);
             }
             let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap().len()).unwrap_or(0);
+            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len()).unwrap_or(0);
             Response::ok(serde_json::json!({"cursor": cursor, "size": size}), id)
         }
         ServerOp::Save { buf_id, id } => {
@@ -177,7 +177,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
                 return Response::error(&format!("Buffer {buf_id} not found"), id);
             };
             let (path, content, rev) = {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 let Some(path) = buf.path.clone() else {
                     return Response::error("Buffer has no path", id);
                 };
@@ -189,7 +189,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
             match std::thread::spawn(write).join() {
                 Ok(Ok(())) => {
                     if let Some(arc) = ed.buffers.get_mut(buf_id) {
-                        arc.lock().unwrap().mark_saved_at(rev);
+                        arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(rev);
                     }
                     Response::ok(serde_json::json!({"saved": true}), id)
                 }
@@ -215,7 +215,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
             }
         }ServerOp::ListBuffers { id } => {
             let buffers: Vec<serde_json::Value> = ed.buffers.iter().map(|(key, arc)| {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 serde_json::json!({
                     "id": key,
                     "name": buf.name.clone(),

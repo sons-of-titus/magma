@@ -23,7 +23,7 @@ pub fn schedule_tree_update(ed: &mut crate::kernel::state::Editor, buf_key: usiz
     let Some(lang) = ed.ts_languages.get(&buf_key).cloned() else { return };
     let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
     let Some(bg) = ed.background.clone() else { return };
-    let revision = arc.lock().unwrap().revision();
+    let revision = arc.lock().unwrap_or_else(|e| e.into_inner()).revision();
     let coalesce = format!("ts-{buf_key}");
     let sender = bg.sender.clone();
     // Lane P1, coalesced per buffer: typing past a queued parse
@@ -56,7 +56,7 @@ pub fn schedule_tree_update(ed: &mut crate::kernel::state::Editor, buf_key: usiz
 /// editor's tree cache.
 pub fn take_ready_tree(ed: &mut crate::kernel::state::Editor, buf_key: usize, revision: u64) {
     let mut handoff = HANDOFF.lock().unwrap_or_else(|e| e.into_inner());
-    let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap().revision());
+    let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
     let mut picked: Vec<(usize, VecDeque<u64>)> = Vec::new();
     let _ = &mut picked;
     let mut kept = VecDeque::new();

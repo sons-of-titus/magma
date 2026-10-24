@@ -150,7 +150,7 @@ pub fn replace_all(
         return Err("no view for focused buffer".to_string());
     };
     let spans = {
-        let buf = view.buffer.lock().unwrap();
+        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
         query.find_all(&buf, 0, 100_000)
     };
     if spans.is_empty() {
@@ -159,7 +159,7 @@ pub fn replace_all(
     // Back-to-front keeps earlier offsets valid; expansions are computed
     // against the original matched text before any mutation.
     let texts: Vec<String> = {
-        let buf = view.buffer.lock().unwrap();
+        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
         spans.iter().map(|(s, e)| query.expand(&buf.slice(*s, *e), replacement)).collect()
     };
     view.open_undo_session();
@@ -188,7 +188,7 @@ pub fn replace_next(
     };
     let cursor = view.cursor_offset();
     let found = {
-        let buf = view.buffer.lock().unwrap();
+        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
         query.find_from(&buf, cursor)
             .or_else(|| query.find_from(&buf, 0).filter(|(s, _)| *s < cursor))
     };

@@ -112,7 +112,7 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
     let (word_start, trigger) = {
         let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
         let cursor = view.cursor_offset();
-        let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
+        let text = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
         let before = &text[..cursor];
         let ws = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
         if cursor <= ws { return Ok(()); }

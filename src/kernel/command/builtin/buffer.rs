@@ -25,7 +25,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let dirty: Vec<(usize, Option<String>)> = editor.buffers.iter()
                 .filter_map(|(key, arc)| {
-                    let buf = arc.lock().unwrap();
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                     (buf.modified() || editor.io.saves_in_flight.contains_key(&key))
                         .then(|| (key, buf.path.clone()))
                 })
@@ -49,7 +49,7 @@ pub(super) fn register(editor: &mut Editor) {
                 .ok_or_else(|| "Path required".to_string())?;
             // Opening an already-open path focuses it — never fork a duplicate.
             if let Some((key, _)) = editor.buffers.iter().find(|(_, arc)| {
-                arc.lock().unwrap().path.as_deref() == Some(path)
+                arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path)
             }) {
                 let pane = editor.view_tree.panes().iter()
                     .find(|p| p.buffer_id == Some(key))
@@ -88,7 +88,7 @@ pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
     let key = editor.create_buffer_from_str(&name, content);
     let buf_id = key as u64;
     if let Some(arc) = editor.buffers.get(key) {
-        arc.lock().unwrap().path = Some(path.to_string());
+        arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(path.to_string());
     }
     // A newly opened file opens its own tab — never over the file
     // already on screen.  The one exception is an untouched scratch
@@ -96,7 +96,7 @@ pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
     let reusable = editor.view_tree.focused_window().and_then(|wid| {
         let pane = editor.view_tree.window(wid)?;
         let buf_key = pane.buffer_id?;
-        let arc = editor.buffers.get(buf_key)?.lock().unwrap();
+        let arc = editor.buffers.get(buf_key)?.lock().unwrap_or_else(|e| e.into_inner());
         (arc.path.is_none() && !arc.modified() && arc.slice(0, arc.len()).is_empty())
             .then(|| (wid, buf_key))
     });
@@ -261,7 +261,7 @@ fn save_buffer_common(
         .ok_or_else(|| "No current buffer".to_string())?
         .clone();
     let (path, content, saved_rev) = {
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let path = path_arg
             .filter(|p| !p.is_empty())
             .or_else(|| buf.path.clone())
@@ -278,7 +278,7 @@ fn save_buffer_common(
         editor.fs.write(&path, &content)
             .map_err(|e| format!("Save failed: {e}"))?;
         if let Some(arc) = editor.buffers.get(buf_id) {
-            arc.lock().unwrap().mark_saved_at(saved_rev);
+            arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(saved_rev);
         }
         editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
             path: path.clone(),

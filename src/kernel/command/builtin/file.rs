@@ -24,7 +24,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let view = editor.view_of_buffer(buf_id)
                     .ok_or_else(|| "No buffer".to_string())?;
                 let line_num = current_line(view);
-                let buf = view.buffer.lock().unwrap();
+                let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                 buf.line(line_num)
                     .ok_or_else(|| "Could not read line".to_string())?
                     .trim()
@@ -43,7 +43,7 @@ pub(super) fn register(editor: &mut Editor) {
                 .unwrap_or_else(|| path.clone());
             let key = editor.create_buffer_from_str(&name, &content);
             if let Some(arc) = editor.buffers.get(key) {
-                arc.lock().unwrap().path = Some(path);
+                arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(path);
             }
             if let Some(win) = editor.view_tree.focused_window_mut() {
                 win.buffer_id = Some(key);
@@ -87,7 +87,7 @@ pub(super) fn register(editor: &mut Editor) {
                 .map_err(|e| format!("Cannot rename {from}: {e}"))?;
             // Open buffers follow the rename so they keep saving to disk.
             for (_, arc) in editor.buffers.iter() {
-                let mut buf = arc.lock().unwrap();
+                let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 if buf.path.as_deref() == Some(from) {
                     buf.path = Some(to.to_string());
                 }
@@ -111,7 +111,7 @@ pub(super) fn register(editor: &mut Editor) {
             }
             // Close any buffer that pointed at the deleted file.
             let doomed: Vec<usize> = editor.buffers.iter()
-                .filter(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(path))
+                .filter(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path))
                 .map(|(k, _)| k)
                 .collect();
             for key in doomed {

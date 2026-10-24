@@ -24,7 +24,7 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                     let cursor = view.cursor_offset();
                     let (start, end) = {
-                        let buf = view.buffer.lock().unwrap();
+                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         let end_char_len = buf.char_at(anchor.max(cursor))
                             .map(|c| c.len_utf8()).unwrap_or(1);
                         (anchor.min(cursor), anchor.max(cursor) + end_char_len)
@@ -47,7 +47,7 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(view) = editor.view_of_buffer(buf_id) {
                     let cursor = view.cursor_offset();
                     let yanked = {
-                        let buf = view.buffer.lock().unwrap();
+                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         let end_char_len = buf.char_at(anchor.max(cursor))
                             .map(|c| c.len_utf8()).unwrap_or(1);
                         let start = anchor.min(cursor);
@@ -72,7 +72,7 @@ pub(super) fn register(editor: &mut Editor) {
                 Some(crate::kernel::state::mode::Selection { anchor, .. }) => {
                     let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                     let out = editor.view_of_buffer(buf_id).map(|view| {
-                        let buf = view.buffer.lock().unwrap();
+                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         let end_char_len = buf.char_at(anchor.max(cursor))
                             .map(|c| c.len_utf8()).unwrap_or(1);
                         let start = anchor.min(cursor);

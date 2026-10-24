@@ -64,7 +64,7 @@ impl TabBar {
             let buf_id = pane.buffer_id?;
             let (label, modified) = editor.buffers.get(buf_id)
                 .map(|arc| {
-                    let buf = arc.lock().unwrap();
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                     (buf.name.clone(), buf.modified())
                 })
                 .unwrap_or_else(|| ("?".to_string(), false));

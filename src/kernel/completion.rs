@@ -48,7 +48,7 @@ fn cursor_line_and_col(editor: &Editor) -> Option<(String, usize)> {
         .and_then(|wid| editor.view_tree.buffer(wid))?;
     let view = editor.view_of_buffer(buf_id)?;
     let cursor = view.cursor_offset();
-    let buf = view.buffer.lock().unwrap();
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     let line = buf.line_col_bytes(cursor).0;
     let start = buf.line_start_offset(line)?;
     let line_text = buf.line(line)?;
@@ -75,7 +75,7 @@ fn scan_words(text: &str, out: &mut BTreeSet<String>) {
 fn candidate_words(editor: &mut Editor, buf_id: usize) -> Option<Arc<BTreeSet<String>>> {
     let arc = editor.buffers.get(buf_id)?;
     let (revision, len) = {
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         (buf.revision(), buf.len())
     };
 
@@ -87,7 +87,7 @@ fn candidate_words(editor: &mut Editor, buf_id: usize) -> Option<Arc<BTreeSet<St
     if len <= INLINE_WORD_SCAN_LIMIT {
         let mut words = BTreeSet::new();
         {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             for chunk in buf.rope_handle().chunks() {
                 scan_words(chunk, &mut words);
             }
@@ -215,7 +215,7 @@ fn request_lsp_completion(editor: &Editor, buf_id: usize, prefix: &str) -> bool 
     let Some(server) = editor.lsp.get(&lang) else { return false };
     let Some(arc) = editor.buffers.get(buf_id) else { return false };
     let (uri, position, revision) = {
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let uri = match buf.path.as_deref() {
             Some(p) => format!("file://{p}"),
             None => return false,

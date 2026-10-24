@@ -35,7 +35,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap().char_at(pos);
+                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
                 if let Some(ch) = ch {
                     view.delete(pos, pos + ch.len_utf8());
                 }
@@ -63,7 +63,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 if pos > 0 {
-                    let text = view.buffer.lock().unwrap().slice(0, pos);
+                    let text = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(0, pos);
                     if let Some(ch) = text.chars().last() {
                         let start = pos - ch.len_utf8();
                         view.delete(start, pos);
@@ -107,7 +107,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let old_ch = view.buffer.lock().unwrap().char_at(pos);
+                let old_ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
                 if let Some(old) = old_ch {
                     let end = pos + old.len_utf8();
                     let replacement: String = if ch == '\n' { "\n".to_string() } else { ch.to_string() };
@@ -127,7 +127,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let (line_count, eol, next_start) = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let lc = buf.line_count();
                     if line + 1 < lc {
                         let eol = buf.line_start_offset(line).unwrap_or(0)
@@ -170,14 +170,14 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer(buf_id) {
                 let line = current_line(view);
                 let (_line_start, line_end) = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let ls = buf.line_start_offset(line).unwrap_or(0);
                     let lt = buf.line(line).unwrap_or_default();
                     (ls, ls + lt.len())
                 };
                 let pos = view.cursor.offset;
                 if pos < line_end {
-                    let yanked = view.buffer.lock().unwrap().slice(pos, line_end);
+                    let yanked = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(pos, line_end);
                     editor.yanked_text = Some(yanked.to_string());
                 }
             }
@@ -193,7 +193,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
                 if pos == 0 { return Ok(()); }
-                let text = view.buffer.lock().unwrap().slice(0, pos);
+                let text = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(0, pos);
                 let trimmed = text.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'));
                 if trimmed.is_empty() {
                     let last = text.chars().last().map(|c| c.len_utf8()).unwrap_or(0);
@@ -224,7 +224,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap().char_at(pos);
+                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
                 if let Some(ch) = ch {
                     let toggled: String = ch.to_uppercase().collect::<String>()
                         .chars().next()
@@ -246,7 +246,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap().char_at(pos);
+                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
                 if let Some(ch) = ch {
                     let lower = ch.to_lowercase().to_string();
                     let end = pos + ch.len_utf8();
@@ -265,7 +265,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap().char_at(pos);
+                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
                 if let Some(ch) = ch {
                     let upper = ch.to_uppercase().to_string();
                     let end = pos + ch.len_utf8();
@@ -305,7 +305,7 @@ pub(super) fn register(editor: &mut Editor) {
                 Some((start, end)) => {
                     let text = {
                         let arc = editor.buffers.get(buf_id).ok_or("no buffer")?;
-                        let buf = arc.lock().unwrap();
+                        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                         buf.slice(start, end)
                     };
                     let mut rt = editor.runtime.take();
@@ -331,7 +331,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             let text = {
                 let arc = editor.buffers.get(buf_id).ok_or("no buffer")?;
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 buf.slice(0, buf.len())
             };
             let mut rt = editor.runtime.take();
@@ -355,7 +355,7 @@ fn adjust_number(editor: &mut Editor, delta: isize) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
     if let Some(view) = editor.view_of_buffer(buf_id) {
         let pos = view.cursor.offset;
-        let text = { let b = view.buffer.lock().unwrap(); b.slice(0, b.len()) };
+        let text = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
         // Find start of number at/around cursor
         let before = &text[..pos];
         let num_start = before.rfind(|c: char| !c.is_ascii_digit() && c != '-').map(|i| i + 1).unwrap_or(0);

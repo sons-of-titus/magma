@@ -42,7 +42,7 @@ impl BufferView {
 
     pub fn set_cursor(&mut self, offset: usize) {
         let pos = {
-            let buf = self.buffer.lock().unwrap();
+            let buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.position_of(offset)
         };
         self.cursor = pos;
@@ -63,7 +63,7 @@ impl BufferView {
     pub fn insert(&mut self, offset: usize, text: &str) {
         let cursor_before = self.cursor.offset;
         let txn = {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             if buf.read_only { return; }
             buf.insert_with_cursor(offset, text, cursor_before)
         };
@@ -77,7 +77,7 @@ impl BufferView {
     pub fn insert_many(&mut self, edits: &[(usize, &str)]) -> Option<EditTransaction> {
         let cursor_before = self.cursor.offset;
         let txn = {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             if buf.read_only { return None; }
             buf.insert_many(edits, cursor_before)
         };
@@ -90,7 +90,7 @@ impl BufferView {
     pub fn delete(&mut self, start: usize, end: usize) {
         let cursor_before = self.cursor.offset;
         let txn = {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.delete_with_cursor(start, end, cursor_before)
         };
         if let Some(txn) = txn {
@@ -101,7 +101,7 @@ impl BufferView {
     pub fn replace(&mut self, start: usize, end: usize, text: &str) {
         let cursor_before = self.cursor.offset;
         let txn = {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.replace_with_cursor(start, end, text, cursor_before)
         };
         if let Some(txn) = txn {
@@ -111,7 +111,7 @@ impl BufferView {
 
     pub fn undo(&mut self) -> bool {
         let restored = {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.undo()
         };
         match restored {
@@ -125,7 +125,7 @@ impl BufferView {
 
     pub fn redo(&mut self) -> bool {
         let restored = {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.redo()
         };
         match restored {
@@ -138,11 +138,11 @@ impl BufferView {
     }
 
     pub fn open_undo_session(&mut self) {
-        self.buffer.lock().unwrap().open_undo_session_at(self.cursor.offset);
+        self.buffer.lock().unwrap_or_else(|e| e.into_inner()).open_undo_session_at(self.cursor.offset);
     }
 
     pub fn close_undo_session(&mut self) {
-        self.buffer.lock().unwrap().close_undo_session();
+        self.buffer.lock().unwrap_or_else(|e| e.into_inner()).close_undo_session();
     }
 
     // ── Folds ──

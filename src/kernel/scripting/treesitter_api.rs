@@ -41,7 +41,7 @@ unsafe extern "C-unwind" fn c_ts_query(argc: i32, argv: *mut Janet) -> Janet {
         };
         let text = match ed.buffers.get(buf_id) {
             Some(arc) => {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 buf.slice(0, buf.len()).to_string()
             }
             None => return conv::nil(),
@@ -129,7 +129,7 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
             return conv::nil();
         };
 
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let current_rev = buf.revision();
         let mut cached = ed.ts_trees.get(&buf_id).filter(|s| s.revision <= current_rev).cloned();
         let mut edits: Vec<tree_sitter::InputEdit> = Vec::new();

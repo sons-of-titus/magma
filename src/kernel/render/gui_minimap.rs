@@ -67,7 +67,7 @@ impl Minimap {
         visible_rows: usize,
     ) -> Option<usize> {
         let Some(arc) = editor.buffers.get(buf_id) else { return None };
-        let buf = arc.lock().unwrap();
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let total = buf.line_count();
         if total == 0 || rect.height() < 8.0 { return None; }
 

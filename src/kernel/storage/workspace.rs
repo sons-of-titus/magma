@@ -55,7 +55,7 @@ impl WorkspaceManager {
     pub fn snapshot(editor: &Editor) -> WorkspaceState {
         let mut buffers = Vec::new();
         for (_key, arc) in &editor.buffers {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             if buf.ephemeral {
                 continue;
             }
@@ -94,7 +94,7 @@ impl WorkspaceManager {
                     Ok(content) => {
                         let key = editor.create_buffer_from_str(&pb.name, &content);
                         if let Some(arc) = editor.buffers.get(key) {
-                            arc.lock().unwrap().path = Some(file_path.clone());
+                            arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(file_path.clone());
                         }
                         count += 1;
                     }

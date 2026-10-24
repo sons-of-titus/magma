@@ -121,7 +121,7 @@ pub fn render_editor_pane(
         if let (Some(pane), Some(buf_id)) = (&focused_pane, focused_buf) {
             let is_focused = paint.editor.view_tree.focused_window() == Some(pane.id);
             let header_rows = paint.editor.buffers.get(buf_id)
-                .map(|a| a.lock().unwrap().header_line.is_some() as i32)
+                .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).header_line.is_some() as i32)
                 .unwrap_or(0) as f32;
             let st = pane_scroll_state(paint.editor, pane, buf_id, visible_rows);
 
@@ -132,7 +132,7 @@ pub fn render_editor_pane(
                     let prefix_margin = crate::kernel::render::decorations::prefix_margin_width(paint.editor, buf_id);
                     let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
                     let total_lines = paint.editor.buffers.get(buf_id)
-                        .map(|a| a.lock().unwrap().line_count()).unwrap_or(1);
+                        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count()).unwrap_or(1);
                     let gutter_px = ((prefix_cols + paint.editor.gutter.total_width(total_lines)) as f32) * char_w;
                     let x = editor_rect.min.x + gutter_px + st.cursor_col as f32 * char_w;
                     let y = editor_rect.min.y + (header_rows + vis_row as f32) * line_h;
@@ -176,7 +176,7 @@ pub fn render_editor_pane(
     let focused_buf = focused_pane.as_ref().and_then(|p| p.buffer_id);
     if strip_w > 0.0 && let (Some(pane), Some(buf_id)) = (focused_pane, focused_buf) {
         let scroll = pane_scroll_state(paint.editor, &pane, buf_id, visible_rows);
-        let total = paint.editor.buffers.get(buf_id).map(|a| a.lock().unwrap().line_count()).unwrap_or(1);
+        let total = paint.editor.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count()).unwrap_or(1);
         if minimap {
             if let Some(line0) =
                 Minimap::show(ui, paint.editor, buf_id, strip_rect, paint.theme, scroll.scroll_top, visible_rows)

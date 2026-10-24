@@ -15,7 +15,7 @@ unsafe extern "C-unwind" fn c_buffer_find_or_create(argc: i32, argv: *mut Janet)
         let name = conv::get_str(argc, argv, 0).unwrap_or_default();
         // Search existing buffers first
         for (key, arc) in &ed.buffers {
-            if arc.lock().unwrap().name == name {
+            if arc.lock().unwrap_or_else(|e| e.into_inner()).name == name {
                 return conv::integer(key as i32);
             }
         }
@@ -33,7 +33,7 @@ unsafe extern "C-unwind" fn c_buffer_get_by_name(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| {
         let name = conv::get_str(argc, argv, 0).unwrap_or_default();
         for (key, arc) in &ed.buffers {
-            if arc.lock().unwrap().name == name {
+            if arc.lock().unwrap_or_else(|e| e.into_inner()).name == name {
                 return conv::integer(key as i32);
             }
         }
@@ -50,7 +50,7 @@ unsafe extern "C-unwind" fn c_buffer_set_read_only(argc: i32, argv: *mut Janet) 
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let val = conv::get_bool(argc, argv, 1).unwrap_or(true);
         if let Some(arc) = ed.buffers.get_mut(key) {
-            arc.lock().unwrap().read_only = val;
+            arc.lock().unwrap_or_else(|e| e.into_inner()).read_only = val;
         }
         conv::nil()
     })
@@ -62,7 +62,7 @@ unsafe extern "C-unwind" fn c_buffer_set_read_only(argc: i32, argv: *mut Janet) 
 unsafe extern "C-unwind" fn c_buffer_read_only(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let ro = ed.buffers.get(key).map(|a| a.lock().unwrap().read_only).unwrap_or(false);
+        let ro = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).read_only).unwrap_or(false);
         conv::boolean(ro)
     })
 }
@@ -76,7 +76,7 @@ unsafe extern "C-unwind" fn c_buffer_set_ephemeral(argc: i32, argv: *mut Janet) 
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let val = conv::get_bool(argc, argv, 1).unwrap_or(true);
         if let Some(arc) = ed.buffers.get_mut(key) {
-            arc.lock().unwrap().ephemeral = val;
+            arc.lock().unwrap_or_else(|e| e.into_inner()).ephemeral = val;
         }
         conv::nil()
     })
@@ -88,7 +88,7 @@ unsafe extern "C-unwind" fn c_buffer_set_ephemeral(argc: i32, argv: *mut Janet) 
 unsafe extern "C-unwind" fn c_buffer_ephemeral(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let e = ed.buffers.get(key).map(|a| a.lock().unwrap().ephemeral).unwrap_or(false);
+        let e = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).ephemeral).unwrap_or(false);
         conv::boolean(e)
     })
 }

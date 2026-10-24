@@ -45,7 +45,7 @@ impl SearchDialog {
         let Ok(query) = crate::kernel::command::builtin::search_query::SearchQuery::compile(
             &self.query, self.regex) else { return };
         'outer: for (buf_id, arc) in editor.buffers.iter() {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let name = buf.name.clone();
             let text = buf.slice(0, buf.len());
             for (line_idx, line) in text.lines().enumerate() {

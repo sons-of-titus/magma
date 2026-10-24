@@ -57,7 +57,7 @@ unsafe extern "C-unwind" fn c_lsp_did_open(argc: i32, argv: *mut Janet) -> Janet
     with_editor(|ed| unsafe {
         let mut attached: Option<(usize, String)> = None;
         with_server_and_doc(ed, argc, argv, |server, buf_key, arc, uri| {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             server.did_open(&uri, &buf.slice(0, buf.len()), buf.revision());
             attached = Some((buf_key, server.language_id().to_string()));
         });
@@ -75,7 +75,7 @@ unsafe extern "C-unwind" fn c_lsp_did_open(argc: i32, argv: *mut Janet) -> Janet
 unsafe extern "C-unwind" fn c_lsp_did_change(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         with_server_and_doc(ed, argc, argv, |server, _buf_key, arc, uri| {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             server.did_change(&uri, &buf.slice(0, buf.len()), buf.revision());
         });
         conv::nil()
@@ -146,7 +146,7 @@ unsafe extern "C-unwind" fn c_lsp_request(argc: i32, argv: *mut Janet) -> Janet 
 fn focused_revision(ed: &Editor) -> (usize, u64) {
     let buf_key = crate::kernel::input::focused_buffer_id(ed);
     let revision = ed.buffers.get(buf_key)
-        .map(|a| a.lock().unwrap().revision())
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
         .unwrap_or(0);
     (buf_key, revision)
 }
@@ -170,7 +170,7 @@ unsafe fn with_server_and_doc(
         let Some(server) = ed.lsp.get(&language).cloned() else { return };
         let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
         let uri = {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             match buf.path.as_deref() {
                 Some(p) => lsp_proto::path_to_uri(p),
                 None => format!("untitled:{}", buf.name),
@@ -256,7 +256,7 @@ unsafe fn request_at_cursor(
         let buf_key = crate::kernel::input::focused_buffer_id(ed);
         let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
         let (line, character, uri) = {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let cursor = ed.view_of_buffer(buf_key).map(|v| v.cursor_offset()).unwrap_or(0);
             let (l, _col_bytes) = buf.line_col_bytes(cursor);
             let (_l, character) = buf.lsp_position(cursor);

@@ -9,7 +9,7 @@ use crate::kernel::event::keys;
 pub(super) fn emit_buffer_changed(ed: &mut crate::kernel::state::Editor, key: usize) {
     // Not a text mutation: an empty transition (same revision, no edits)
     // signals "this buffer's content should be re-examined".
-    let rev = ed.buffers.get(key).map(|a| a.lock().unwrap().revision()).unwrap_or(0);
+    let rev = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision()).unwrap_or(0);
     ed.events.emit_typed(keys::events::BUFFER_CHANGED, BufferChangedPayload {
         buffer_id: key.to_string(),
         revision_before: rev.to_string(),
@@ -34,7 +34,7 @@ unsafe extern "C-unwind" fn c_buffer_list(_argc: i32, _argv: *mut Janet) -> Jane
     with_editor(|ed| unsafe {
         let arr = janet_wrap_array(janet_array(ed.buffers.len() as i32));
         for (key, arc) in ed.buffers.iter() {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let tbl = janet_wrap_table(janet_table(0));
             janet_table_put(janet_unwrap_table(tbl), conv::keyword("slab"), conv::integer(key as i32));
             janet_table_put(janet_unwrap_table(tbl), conv::keyword("name"), conv::string(&buf.name.clone()));
@@ -64,7 +64,7 @@ unsafe extern "C-unwind" fn c_buffer_create(argc: i32, argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_buffer_name(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let name = ed.buffers.get(key).map(|a| a.lock().unwrap().name.clone()).unwrap_or_default();
+        let name = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).name.clone()).unwrap_or_default();
         conv::string(&name)
     })
 }
@@ -73,7 +73,7 @@ unsafe extern "C-unwind" fn c_buffer_path(argc: i32, argv: *mut Janet) -> Janet 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => match arc.lock().unwrap().path.clone() {
+            Some(arc) => match arc.lock().unwrap_or_else(|e| e.into_inner()).path.clone() {
                 Some(p) => conv::string(&p),
                 None => conv::nil(),
             },
@@ -89,7 +89,7 @@ unsafe extern "C-unwind" fn c_buffer_set_path(argc: i32, argv: *mut Janet) -> Ja
             return conv::nil();
         };
         if let Some(arc) = ed.buffers.get_mut(key) {
-            arc.lock().unwrap().path = Some(path);
+            arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(path);
         }
         conv::nil()
     })
@@ -99,7 +99,7 @@ unsafe extern "C-unwind" fn c_buffer_major_mode(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => conv::string(arc.lock().unwrap().major_mode.name()),
+            Some(arc) => conv::string(arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name()),
             None => conv::string("fundamental"),
         }
     })
@@ -109,7 +109,7 @@ unsafe extern "C-unwind" fn c_buffer_line_count(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => conv::integer(arc.lock().unwrap().line_count() as i32),
+            Some(arc) => conv::integer(arc.lock().unwrap_or_else(|e| e.into_inner()).line_count() as i32),
             None => conv::integer(0),
         }
     })
@@ -120,7 +120,7 @@ unsafe extern "C-unwind" fn c_buffer_line_start_offset(argc: i32, argv: *mut Jan
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let line = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => match arc.lock().unwrap().line_start_offset(line) {
+            Some(arc) => match arc.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(line) {
                 Some(offset) => conv::integer(offset as i32),
                 None => conv::nil(),
             },
@@ -135,7 +135,7 @@ unsafe extern "C-unwind" fn c_buffer_line_number(argc: i32, argv: *mut Janet) ->
         let cursor = ed.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
         match ed.buffers.get(key) {
             Some(arc) => {
-                let buf = arc.lock().unwrap();
+                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 let text = buf.slice(0, cursor);
                 let line = text.chars().filter(|&c| c == '\n').count();
                 conv::integer(line as i32)
@@ -149,7 +149,7 @@ unsafe extern "C-unwind" fn c_buffer_modified(argc: i32, argv: *mut Janet) -> Ja
     with_editor(|ed| {
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => conv::boolean(arc.lock().unwrap().modified()),
+            Some(arc) => conv::boolean(arc.lock().unwrap_or_else(|e| e.into_inner()).modified()),
             None => conv::boolean(false),
         }
     })
@@ -159,7 +159,7 @@ unsafe extern "C-unwind" fn c_buffer_diagnostics(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let diags = match ed.buffers.get(key) {
-            Some(arc) => arc.lock().unwrap().diagnostic_strings(),
+            Some(arc) => arc.lock().unwrap_or_else(|e| e.into_inner()).diagnostic_strings(),
             None => Vec::new(),
         };
         let arr_ptr = janet_array(diags.len() as i32);
@@ -174,7 +174,7 @@ unsafe extern "C-unwind" fn c_buffer_lsp_position(argc: i32, argv: *mut Janet) -
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let offset = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
-        match ed.buffers.get(key).map(|a| a.lock().unwrap().lsp_position(offset)) {
+        match ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).lsp_position(offset)) {
             Some((line, col)) => {
                 let arr = janet_array(2);
                 janet_array_push(arr, conv::integer(line as i32));
@@ -194,7 +194,7 @@ unsafe extern "C-unwind" fn c_buffer_offset_of_lsp_position(argc: i32, argv: *mu
         let line = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
         let col = conv::get_int(argc, argv, 2).unwrap_or(0).max(0) as usize;
         let offset = ed.buffers.get(key).map(|a| {
-            let buf = a.lock().unwrap();
+            let buf = a.lock().unwrap_or_else(|e| e.into_inner());
             crate::kernel::semantic::edit_apply::offset_of_lsp_position(&buf, line, col)
         }).unwrap_or(0);
         conv::integer(offset as i32)
@@ -206,7 +206,7 @@ unsafe extern "C-unwind" fn c_buffer_line_of(argc: i32, argv: *mut Janet) -> Jan
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
         let offset = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0).max(0) as usize;
         let line = ed.buffers.get(key)
-            .map(|a| a.lock().unwrap().position_of(offset).line)
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).position_of(offset).line)
             .unwrap_or(0);
         conv::integer(line as i32)
     })
@@ -215,7 +215,7 @@ unsafe extern "C-unwind" fn c_buffer_line_of(argc: i32, argv: *mut Janet) -> Jan
 unsafe extern "C-unwind" fn c_buffer_revision(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
-        let rev = ed.buffers.get(key).map(|a| a.lock().unwrap().revision()).unwrap_or(0);
+        let rev = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision()).unwrap_or(0);
         conv::integer(rev as i32)
     })
 }
@@ -225,7 +225,7 @@ unsafe extern "C-unwind" fn c_buffer_changes_since(argc: i32, argv: *mut Janet) 
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let since = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as u64;
         let changes = ed.buffers.get(key)
-            .and_then(|a| a.lock().unwrap().changes_since(since))
+            .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).changes_since(since))
             .unwrap_or_default();
         let arr = janet_array(changes.len() as i32);
         for (before, after, edits) in changes {

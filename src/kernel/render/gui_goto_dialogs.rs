@@ -50,7 +50,7 @@ pub fn collect_entries(editor: &Editor, source: PickerSource) -> Vec<PickerEntry
                 .unwrap_or_default();
             let mut files: Vec<String> = editor.project_manager.project.files.clone();
             for (_, arc) in editor.buffers.iter() {
-                let name = arc.lock().unwrap().name.clone();
+                let name = arc.lock().unwrap_or_else(|e| e.into_inner()).name.clone();
                 if !name.is_empty() && !files.contains(&name) {
                     files.push(name);
                 }

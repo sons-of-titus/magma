@@ -132,7 +132,7 @@ impl DialogAction {
                 DialogAction::OpenFile(path.clone()).apply(ed);
                 let buf_id = ed.buffers.iter()
                     .find(|(_, arc)| {
-                        arc.lock().unwrap().path.as_deref() == Some(path.as_str())
+                        arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path.as_str())
                     })
                     .map(|(k, _)| k);
                 if let Some(buf_id) = buf_id {

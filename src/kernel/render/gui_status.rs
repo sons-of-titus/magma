@@ -78,7 +78,7 @@ impl StatusWidget for FilenameWidget {
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
 
         let (name, modified) = {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             (buf.name.clone(), buf.modified())
         };
         pill(ui, theme, None, &name, if modified { theme.text } else { theme.subtext0 });
@@ -95,7 +95,7 @@ impl StatusWidget for PositionWidget {
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
 
         let (row, col) = {
-            let buf = arc.lock().unwrap();
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let offset = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
             let pos = buf.position_of(offset);
             (pos.line + 1, pos.column + 1)
@@ -138,7 +138,7 @@ impl StatusWidget for FileTypeWidget {
         let Some(buf_id) = editor.view_tree.buffer(wid)      else { return };
         let Some(arc)    = editor.buffers.get(buf_id)         else { return };
 
-        let mode = arc.lock().unwrap().major_mode.name().to_string();
+        let mode = arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name().to_string();
         pill(ui, theme, None, &mode, theme.overlay0);
     }
 }

@@ -181,7 +181,7 @@ unsafe extern "C-unwind" fn c_process_list(_argc: i32, _argv: *mut Janet) -> Jan
 /// Called from `process_background_event` when a `TaskReady` event fires.
 pub(crate) fn execute_stored_task(ed: &mut crate::kernel::state::Editor, task_id: u64) {
     let fn_val = {
-        let mut tasks = TASK_FUNCTIONS.lock().unwrap();
+        let mut tasks = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner());
         tasks.remove(&task_id)
     };
     if let Some(JanetSend(fn_ref)) = fn_val {
@@ -255,12 +255,12 @@ unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
 
         // GC-root the function
         janet_gcroot(fn_val);
-        TASK_FUNCTIONS.lock().unwrap().insert(id, JanetSend(fn_val));
+        TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(id, JanetSend(fn_val));
 
         let bg = match ed.background.as_ref() {
             Some(bg) => bg.clone(),
             None => {
-                TASK_FUNCTIONS.lock().unwrap().remove(&id);
+                TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
                 janet_gcunroot(fn_val);
                 conv::signal_err("no background runtime available");
             }
@@ -290,7 +290,7 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         ed.io.tasks.remove(&id);
         // Remove the stored function so task-result won't fire
-        if let Some(JanetSend(fn_val)) = TASK_FUNCTIONS.lock().unwrap().remove(&id) {
+        if let Some(JanetSend(fn_val)) = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
             janet_gcunroot(fn_val);
         }
         conv::nil()

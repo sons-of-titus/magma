@@ -46,7 +46,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
-                let count = view.buffer.lock().unwrap().line_count();
+                let count = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_count();
                 if line + 1 < count {
                     let col = current_col(view);
                     move_to_line_col(view, line + 1, col);
@@ -63,7 +63,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
-                let offset = view.buffer.lock().unwrap().line_start_offset(line);
+                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(line);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -80,7 +80,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let start = buf.line_start_offset(line).unwrap_or(0);
                     let text_len = buf.line(line).unwrap_or_default().len();
                     start + text_len
@@ -99,7 +99,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let start = buf.line_start_offset(line).unwrap_or(0);
                     let text = buf.line(line).unwrap_or_default();
                     let indent = text.len() - text.trim_start().len();
@@ -129,7 +129,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let len = view.buffer.lock().unwrap().len();
+                let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
                 view.set_cursor(len);
             }
             emit_cursor_moved(editor);
@@ -145,7 +145,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let target_offset = {
-                    let buf = view.buffer.lock().unwrap();
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let line_count = buf.line_count();
                     let line = args.get("line")
                         .and_then(|a| a.as_integer())
@@ -172,7 +172,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(20);
-                let offset = view.buffer.lock().unwrap().line_start_offset(target);
+                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -189,7 +189,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(10);
-                let offset = view.buffer.lock().unwrap().line_start_offset(target);
+                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -204,7 +204,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let len = view.buffer.lock().unwrap().len();
+                let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
                 view.set_cursor(len);
             }
             emit_cursor_moved(editor);
@@ -219,7 +219,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(20);
-                let offset = view.buffer.lock().unwrap().line_start_offset(target);
+                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -236,7 +236,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(10);
-                let offset = view.buffer.lock().unwrap().line_start_offset(target);
+                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -252,7 +252,7 @@ pub(super) fn register(editor: &mut Editor) {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
-                let offset = view.buffer.lock().unwrap().line_start_offset(line);
+                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(line);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -272,7 +272,7 @@ pub(super) fn register(editor: &mut Editor) {
             let pos = editor.change_list[editor.change_list_idx];
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let len = view.buffer.lock().unwrap().len();
+                let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
                 view.set_cursor(pos.min(len));
             }
             emit_cursor_moved(editor);
@@ -290,7 +290,7 @@ pub(super) fn register(editor: &mut Editor) {
             let pos = editor.change_list[editor.change_list_idx];
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let len = view.buffer.lock().unwrap().len();
+                let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
                 view.set_cursor(pos.min(len));
             }
             emit_cursor_moved(editor);

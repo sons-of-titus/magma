@@ -137,3 +137,76 @@ jt!(extension_capabilities_contain_correct_keywords,
 jt!(core_code_can_call_fs_cwd,
     "(string? (fs/cwd))",
     "true");
+
+// ── Trust model: no self-escalation, runtime enforcement (F-28, R-18) ────────
+
+jt!(self_undeclare_leaves_context_revoked_not_core,
+    r#"
+    (extension/declare "tricky" "1.0" "t.janet" @[])
+    (def denied-in-ext (protect (fs/cwd)))
+    (extension/undeclare)
+    (def denied-after (protect (fs/cwd)))
+    (and (not (first denied-in-ext))
+         (not (first denied-after)))
+    "#,
+    "true");
+
+
+#[test]
+fn event_handler_runs_in_its_registration_context() {
+    let _lock = acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    scripting::eval(r#"
+        (extension/declare "capped" "1.0" "c.janet" @[])
+        (var saw-fs-ok false)
+        (event/on "capped-evt" (fn [_] (set saw-fs-ok (first (protect (fs/cwd))))))
+        (extension/undeclare)
+    "#);
+    // The handler runs later, from core dispatch: it must still be
+    // confined to the (empty) capability set of "capped".
+    scripting::eval(r#"(event/emit "capped-evt" {})"#);
+    ed.dispatch_events_scoped();
+    let saw = scripting::eval_result("saw-fs-ok").unwrap();
+    assert_eq!(saw, "false",
+        "a handler must run inside its registering extension's capability set");
+}
+
+#[test]
+fn command_runs_in_its_definition_context() {
+    let _lock = acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    scripting::eval(r#"
+        (extension/declare "cmdcap" "1.0" "cc.janet" @[])
+        (var cmd-fs-ok false)
+        (command/define "captest-cmd" (fn [] (set cmd-fs-ok (first (protect (fs/cwd))))))
+        (extension/undeclare)
+    "#);
+    // Run from core dispatch.
+    scripting::eval(r#"(editor/run-command "captest-cmd")"#);
+    let saw = scripting::eval_result("cmd-fs-ok").unwrap();
+    assert_eq!(saw, "false",
+        "a command must run inside its defining extension's capability set");
+}
+
+#[test]
+fn core_registered_handlers_stay_trusted() {
+    let _lock = acquire_janet_lock();
+    let mut ed = crate::tests::helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    scripting::eval(r#"
+        (var core-fs-ok false)
+        (event/on "core-evt" (fn [_] (set core-fs-ok (first (protect (fs/cwd))))))
+        (event/emit "core-evt" {})
+    "#);
+    ed.dispatch_events_scoped();
+    let saw = scripting::eval_result("core-fs-ok").unwrap();
+    assert_eq!(saw, "true", "core-registered handlers keep full trust");
+}

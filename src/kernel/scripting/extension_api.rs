@@ -17,32 +17,60 @@ use crate::kernel::event::keys;
 use crate::kernel::event::payload::{ExtensionDeclaredPayload, ExtensionUndeclaredPayload};
 
 thread_local! {
-    /// Name of the extension whose code is currently executing.
-    ///
-    /// `None` — core code (builtins, user init) — always trusted.
-    /// `Some(name)` — extension code; capabilities are enforced via the
-    /// registry stored on the `Editor`.
-    static CURRENT_EXTENSION: RefCell<Option<String>> = RefCell::new(None);
+    /// Execution contexts, outermost first.  Core (empty stack) is
+    /// trusted; extension contexts are checked against the registry; a
+    /// revoked context fails every check.  Handlers and commands capture
+    /// the context at registration and re-enter it at invocation, so the
+    /// gate holds at runtime, not just load time.
+    static CONTEXT_STACK: RefCell<Vec<ExecContext>> = RefCell::new(Vec::new());
 }
 
-/// Return true if the calling code is allowed to use `cap`.
-///
-/// Core code (no active extension) is always trusted.  Extension code is
-/// checked against the registry.
+#[derive(Debug, Clone)]
+pub(crate) enum ExecContext {
+    Core,
+    Extension(String),
+    Revoked(String),
+}
+
+pub(crate) fn current_context() -> ExecContext {
+    CONTEXT_STACK.with(|s| {
+        s.borrow().last().cloned().unwrap_or(ExecContext::Core)
+    })
+}
+
+pub(crate) fn push_context(ctx: ExecContext) {
+    CONTEXT_STACK.with(|s| s.borrow_mut().push(ctx));
+}
+
+pub(crate) fn pop_context() {
+    CONTEXT_STACK.with(|s| { s.borrow_mut().pop(); });
+}
+
+/// Run `f` inside `ctx`, restoring the previous context afterwards.
+pub(crate) fn with_context<R>(ctx: ExecContext, f: impl FnOnce() -> R) -> R {
+    push_context(ctx);
+    let out = f();
+    pop_context();
+    out
+}
+
+/// The capability verdict for the calling context.
 pub(super) fn check_capability(cap: &Capability) -> bool {
-    let ext_name = CURRENT_EXTENSION.with(|c| c.borrow().clone());
-    match ext_name {
-        None => true,
-        Some(ref name) => super::EDITOR_PTR.with(|cell| match cell.get() {
-            Some(ptr) => unsafe { (&*ptr).extension_registry.has_capability(name, cap) },
-            None => false,
-        }),
+    match current_context() {
+        ExecContext::Core => true,
+        ExecContext::Revoked(_) => false,
+        ExecContext::Extension(ref name) => {
+            super::EDITOR_PTR.with(|cell| match cell.get() {
+                Some(ptr) => unsafe { (&*ptr).extension_registry.has_capability(name, cap) },
+                None => false,
+            })
+        }
     }
 }
 
 /// Reset the thread-local at the start of each Janet VM session.
 pub fn reset_current_extension() {
-    CURRENT_EXTENSION.with(|c| *c.borrow_mut() = None);
+    CONTEXT_STACK.with(|c| c.borrow_mut().clear());
 }
 
 /// `(extension/declare name version capabilities)` → `:ok`
@@ -93,7 +121,8 @@ unsafe extern "C-unwind" fn c_extension_declare(argc: i32, argv: *mut Janet) -> 
         ed.extension_registry.register(manifest);
 
         // Activate the extension context for this loading session
-        CURRENT_EXTENSION.with(|c| *c.borrow_mut() = Some(name.clone()));
+        crate::kernel::scripting::extension_api::push_context(
+            ExecContext::Extension(name.clone()));
 
         ed.events.emit_typed(keys::events::EXTENSION_DECLARED, ExtensionDeclaredPayload {
             name,
@@ -106,16 +135,24 @@ unsafe extern "C-unwind" fn c_extension_declare(argc: i32, argv: *mut Janet) -> 
 
 /// `(extension/undeclare)` → nil
 ///
-/// Clear the current extension context.  Should be called after an
-/// extension's file has finished loading.
+/// Revoke the calling extension's context: every capability check fails
+/// from here on.  An extension cannot undeclare itself back into core
+/// trust — that was a one-call self-escalation.  Core code calling this
+/// is a no-op.
 unsafe extern "C-unwind" fn c_extension_undeclare(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let prev = CURRENT_EXTENSION.with(|c| {
-            let prev = c.borrow().clone();
-            *c.borrow_mut() = None;
-            prev
+        let revoked = CONTEXT_STACK.with(|s| {
+            let mut stack = s.borrow_mut();
+            match stack.last() {
+                Some(ExecContext::Extension(name)) => {
+                    let name = name.clone();
+                    *stack.last_mut().unwrap() = ExecContext::Revoked(name.clone());
+                    Some(name)
+                }
+                _ => None,
+            }
         });
-        if let Some(name) = prev {
+        if let Some(name) = revoked {
             ed.events.emit_typed(keys::events::EXTENSION_UNDECLARED, ExtensionUndeclaredPayload { name });
         }
         conv::nil()
@@ -128,13 +165,12 @@ unsafe extern "C-unwind" fn c_extension_undeclare(_argc: i32, _argv: *mut Janet)
 /// if no extension is active.
 unsafe extern "C-unwind" fn c_extension_manifest(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let ext_name = CURRENT_EXTENSION.with(|c| c.borrow().clone());
-        match ext_name {
-            None => conv::nil(),
-            Some(ref name) => match ed.extension_registry.get(name) {
+        match current_context() {
+            ExecContext::Extension(ref name) => match ed.extension_registry.get(name) {
                 None => conv::nil(),
                 Some(manifest) => manifest_to_janet(manifest),
             },
+            _ => conv::nil(),
         }
     })
 }

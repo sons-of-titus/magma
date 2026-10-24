@@ -29,6 +29,18 @@ fn register_handler(fn_val: Janet) -> usize {
     idx
 }
 
+/// Invoke a handler inside the execution context it was registered from,
+/// so capability gates hold at handler-run time, not just load time.
+unsafe fn call_in_registration_context(
+    ctx: super::extension_api::ExecContext,
+    fn_val: Janet,
+    arg: Janet,
+) {
+    super::extension_api::with_context(ctx, || {
+        call_janet_fn_with_arg(fn_val, arg);
+    });
+}
+
 /// Call a Janet function with one argument outside any active fiber.
 ///
 /// `janet_call` requires an existing fiber context; this function creates a
@@ -73,6 +85,7 @@ unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
         }
         let fn_val = *argv.add(1);
         let fn_idx = register_handler(fn_val);
+        let registration_ctx = super::extension_api::current_context();
         let sub_id = ed.events.on(&name, move |data: &HashMap<String, String>| {
             // Copy the function value out and drop the lock before entering
             // the VM: a handler that registers or removes handlers
@@ -84,7 +97,7 @@ unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
             if let Some(fn_val) = fn_val {
                 let tbl = data_to_table(data);
                 let arg = janet_wrap_table(tbl);
-                call_janet_fn_with_arg(fn_val, arg);
+                call_in_registration_context(registration_ctx.clone(), fn_val, arg);
             }
             None
         });
@@ -104,6 +117,7 @@ unsafe extern "C-unwind" fn c_event_once(argc: i32, argv: *mut Janet) -> Janet {
         }
         let fn_val = *argv.add(1);
         let fn_idx = register_handler(fn_val);
+        let registration_ctx = super::extension_api::current_context();
         let sub_id = ed.events.once(&name, move |data: &HashMap<String, String>| {
             let fn_val = JANET_HANDLERS.lock()
                 .ok()
@@ -111,7 +125,7 @@ unsafe extern "C-unwind" fn c_event_once(argc: i32, argv: *mut Janet) -> Janet {
             if let Some(fn_val) = fn_val {
                 let tbl = data_to_table(data);
                 let arg = janet_wrap_table(tbl);
-                call_janet_fn_with_arg(fn_val, arg);
+                call_in_registration_context(registration_ctx.clone(), fn_val, arg);
             }
             None
         });

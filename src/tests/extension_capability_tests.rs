@@ -232,3 +232,5 @@ fn manifest_with_all_capabilities() {
     assert!(m.has_capability(&Capability::ProcessExecution));
     assert!(m.has_capability(&Capability::EditorAccess));
 }
+
+// ── Trust model: no self-escalation, runtime enforcement ────────────

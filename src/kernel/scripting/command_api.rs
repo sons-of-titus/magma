@@ -107,10 +107,14 @@ pub(crate) fn invoke_janet_command(
 
 fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &str) {
     let lookup_name = name.to_string();
+    // Commands run long after registration: re-enter the context that
+    // defined them so capability gates hold at invocation time.
+    let registration_ctx = super::extension_api::current_context();
     ed.commands.register(name, "Janet-defined command", vec![], Box::new(move |ed, args| {
         // The registry hands us a live exclusive borrow; the Janet call runs
         // inside its scope (docs/core-redesign.md §11).
         crate::kernel::scripting::scoped_editor(ed, || {
+            super::extension_api::with_context(registration_ctx.clone(), || {
             unsafe {
                 let env = janet_core_env(std::ptr::null_mut());
                 let mut root: Janet = std::mem::zeroed();
@@ -130,6 +134,7 @@ fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &
                 let raw = args.get("arg").and_then(|v| v.as_string().map(|s| s.to_string()));
                 invoke_janet_command(func, raw.as_deref())
             }
+            })
         })
     }));
 }

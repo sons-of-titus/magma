@@ -14,7 +14,7 @@ S ≤2 days, M ≤2 weeks, L >2 weeks.
 | R-5 Build output → quickfix for all tasks | F-20, F-21 | R-4 | S | failing `cargo build`/`cargo test` yields clickable errors |
 | R-6 goto-definition UTF-16 fix | F-17 | — | S | correct target on non-ASCII lines (test with `héllo`) |
 
-## Milestone 2 — Editor quality parity
+## Milestone 2 — Editor quality parity ✅ (R-8..R-11, R-13/R-14, R-17..R-20 done — see findings.md)
 
 | Item | Fixes | Effort |
 |---|---|---|
@@ -29,7 +29,7 @@ S ≤2 days, M ≤2 weeks, L >2 weeks.
 | R-15 IME preedit overlay | F-14 | M |
 | R-16 Crash recovery (unsaved buffer snapshots) | F-36 | M |
 
-## Milestone 3 — Trust and scale
+## Milestone 3 — Trust and scale ✅ (R-17..R-21 done in the same wave; R-22..R-24 remain)
 
 | Item | Fixes | Effort |
 |---|---|---|

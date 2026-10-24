@@ -83,7 +83,23 @@ tests (`improvements.md`).
 - Test: `vc_backend_tests.rs::template_values_are_shell_quoted_not_executed`
   (sentinel file proves no execution).
 
-## Closed by the "Close the Semantic Loops" wave (follow-up commits)
+## Closed by Milestone 2 + trust wave (R-8..R-11, R-13/R-14, R-17..R-20)
+
+- **F-12 closed** — motions and search run on rope chunk scans; no
+  document-sized copies per keypress.
+- **F-13/F-34 closed** — regex mode, smart case, replace-next/all with
+  capture-group expansion, one undo group per replace-all.
+- **F-22 closed** — git status parsed from `--porcelain -z`.
+- **F-27 partially closed** — saves (fsync ×2) and the find-files walk
+  leave the UI thread; open-file stays sync by documented design.
+- **F-28 closed** — no self-escalation; handlers/commands run inside
+  their registration context; capability gates hold at runtime.
+- **F-29 closed** — server auth token handshake; tcp-listen loopback.
+- **F-30 closed** — process groups; tree kills for tasks/processes/PTYs.
+- **F-31 closed** — bounded runtime shutdown.
+- **F-33 closed** — .gitignore-aware walk; symlink-immune traversal.
+
+## Open findings "Close the Semantic Loops" wave (follow-up commits)
 
 - **F-26 closed** — typed diagnostics end-to-end; zero display-string parsers.
 - **F-17 closed** — goto-definition converts UTF-16 in both directions.

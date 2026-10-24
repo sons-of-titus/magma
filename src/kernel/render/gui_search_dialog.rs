@@ -11,11 +11,6 @@ use super::gui_dialog::DialogAction;
 
 // ── SearchDialog ─────────────────────────────────────────────────────────────
 
-/// Smart-case: a lowercase-only query matches case-insensitively.
-pub fn query_case_insensitive(query: &str) -> bool {
-    !query.chars().any(|c| c.is_uppercase())
-}
-
 #[derive(Clone)]
 pub struct SearchHit {
     pub buf_id:  usize,

@@ -375,7 +375,14 @@ fn s9_editing_while_debugging_resyncs_breakpoints_on_save() {
     }
     execute_command_line(&mut ed, "save-buffer").unwrap();
 
-    assert_eq!(ed.debug.breakpoints_for(&path)[0].line, 4, "the anchor follows the edit");
+    // The write lands off-thread; the anchor follows the edit and the
+    // resync re-sends the shifted breakpoint when it does.
+    assert!(wait_until(|| {
+        while let Ok(ev) = rx.try_recv() {
+            crate::kernel::runtime::process_background_event(&mut ed, ev);
+        }
+        ed.debug.breakpoints_for(&path)[0].line == 4
+    }, 10), "the anchor follows the edit once the save lands");
     assert!(wait_until(|| {
         let lines = dap_log_lines(&fake.log);
         matches!(lines.windows(2).rev().find(|w| w[0] == "setBreakpoints"),

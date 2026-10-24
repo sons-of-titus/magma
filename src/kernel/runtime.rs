@@ -172,6 +172,11 @@ pub enum BackgroundEvent {
     },
     /// An external-change reload read finished off the foreground thread.
     BufferReloaded { buf_key: usize, content: Result<String, String> },
+    /// An explicit save's disk write finished; only this exact revision
+    /// may be marked clean.
+    SaveWritten { buf_key: usize, path: String, saved_rev: u64 },
+    /// An explicit save's disk write failed.
+    SaveFailed { buf_key: usize, error: String },
     /// The server asked us to apply a workspace edit (applyEdit); the
     /// foreground applies it and answers the request.
     LspApplyEdit { language: String, request_id: u64, edit_json: String },
@@ -330,6 +335,20 @@ pub fn process_background_event(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::BufferReloaded { buf_key, content } => {
             crate::kernel::storage::reload::apply_reload(ed, buf_key, content);
+        }
+        BackgroundEvent::SaveWritten { buf_key, path, saved_rev } => {
+            ed.io.saves_in_flight.remove(&buf_key);
+            if let Some(arc) = ed.buffers.get(buf_key) {
+                arc.lock().unwrap().mark_saved_at(saved_rev);
+            }
+            ed.events.emit_typed(keys::events::FILE_SAVED, FileSavedPayload { path: path.clone() });
+            crate::kernel::debug::resync_after_save(ed, &path);
+            ed.show_message(crate::kernel::state::MessageKind::Info, "saved");
+        }
+        BackgroundEvent::SaveFailed { buf_key, error } => {
+            ed.io.saves_in_flight.remove(&buf_key);
+            ed.show_message(crate::kernel::state::MessageKind::Error,
+                format!("save failed: {error}"));
         }
         BackgroundEvent::LspApplyEdit { language, request_id, edit_json } => {
             let applied = match serde_json::from_str::<serde_json::Value>(&edit_json) {

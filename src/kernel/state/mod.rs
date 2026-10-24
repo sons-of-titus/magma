@@ -419,9 +419,10 @@ impl Editor {
     /// buffers hold generated content (shell/grep output), not user work.
     pub fn dirty_buffer_names(&self) -> Vec<String> {
         self.buffers.iter()
-            .filter_map(|(_, arc)| {
+            .filter_map(|(key, arc)| {
                 let buf = arc.lock().unwrap();
-                (buf.modified() && !buf.read_only).then(|| buf.name.clone())
+                let saving = self.io.saves_in_flight.contains_key(&key);
+                ((buf.modified() || saving) && !buf.read_only).then(|| buf.name.clone())
             })
             .collect()
     }

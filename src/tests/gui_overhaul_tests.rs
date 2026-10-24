@@ -10,7 +10,7 @@ use crate::kernel::render::gui_breadcrumb::{relative_to_project, segments, symbo
 use crate::kernel::render::gui_dialog::DialogAction;
 use crate::kernel::render::gui_settings_dialog::sorted_options;
 use crate::kernel::render::gui_goto_dialogs::{collect_entries, PickerEntry, PickerSource};
-use crate::kernel::render::gui_search_dialog::{query_case_insensitive, SearchDialog};
+use crate::kernel::render::gui_search_dialog::SearchDialog;
 use crate::kernel::render::gui_theme::GuiTheme;
 use crate::kernel::semantic::provider::{Symbol, SymbolKind};
 use crate::tests::helpers::{buf_text, cursor, make_editor, make_editor_with_buffer};
@@ -156,9 +156,14 @@ fn search_smart_case() {
 
 #[test]
 fn smart_case_predicate() {
-    assert!(query_case_insensitive("abc"));
-    assert!(!query_case_insensitive("Abc"));
-    assert!(query_case_insensitive(""));
+    use crate::kernel::command::builtin::search_query::SearchQuery;
+    match SearchQuery::compile("abc", false).unwrap() {
+        SearchQuery::Regex(_) => {}           // lowercase ⇒ insensitive ⇒ regex path
+        SearchQuery::Literal(_) => panic!("lowercase queries must compile case-insensitive"),
+    }
+    assert!(matches!(SearchQuery::compile("Abc", false).unwrap(), SearchQuery::Literal(_)),
+        "mixed-case queries are exact literals");
+    assert!(matches!(SearchQuery::compile("", false), Err(_)), "empty queries are rejected");
 }
 
 // ── SettingsDialog helpers ───────────────────────────────────────────────────

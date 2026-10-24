@@ -169,9 +169,10 @@ fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
 
 fn execute_search(editor: &mut Editor, pattern: &str, forward: bool) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
-    let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
-    let pos = view.cursor_offset();
-    drop(view);
+    let pos = {
+        let Some(view) = editor.view_of_buffer(buf_id) else { return Ok(()); };
+        view.cursor_offset()
+    };
 
     if pattern.is_empty() {
         if let Some(view) = editor.view_of_buffer_mut(buf_id) {

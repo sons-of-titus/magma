@@ -9,7 +9,7 @@ fn temp_file(tag: &str, content: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("magma_reload_{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("{tag}.txt");
+    let path = dir.join(format!("{tag}.txt"));
     std::fs::write(&path, content).unwrap();
     std::fs::canonicalize(&path).unwrap()
 }
@@ -121,4 +121,54 @@ fn reload_is_undoable() {
     let undone = ed.views.get_mut(&key).unwrap().undo();
     assert!(undone, "the reload is one undo step");
     assert_eq!(helpers::buf_text(&ed), "first version\n");
+}
+
+// ── Async save ───────────────────────────────────────────────────────
+
+#[test]
+fn async_save_marks_clean_only_when_the_write_lands() {
+    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use std::time::{Duration, Instant};
+
+    let path = temp_file("asyncsave", "v1\n");
+    let (mut ed, _bg, mut rx) = crate::tests::helpers::editor_with_background();
+    open_file_in_editor(&mut ed, &path);
+
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().insert(0, "v2 ");
+
+    helpers::run(&mut ed, "save-buffer");
+    // In flight: the buffer stays under the quit guard's protection.
+    assert!(ed.dirty_buffer_names().iter().any(|n| n.contains("asyncsave")),
+        "an in-flight save must keep the quit guard armed");
+
+    let mut landed = false;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev, BackgroundEvent::SaveWritten { .. }) {
+                landed = true;
+            }
+            process_background_event(&mut ed, ev);
+        }
+        if landed { break; }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(landed, "the write must complete");
+    assert!(ed.dirty_buffer_names().is_empty(), "confirmed save disarms the guard");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "v2 v1\n");
+    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
+}
+
+#[test]
+fn sync_save_without_pool_is_immediately_clean() {
+    let path = temp_file("syncsave", "one\n");
+    let mut ed = helpers::make_editor();
+    open_file_in_editor(&mut ed, &path);
+    let key = helpers::focused_key(&ed);
+    ed.views.get_mut(&key).unwrap().insert(0, "two ");
+    helpers::run(&mut ed, "save-buffer");
+    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified(),
+        "no pool: the write is synchronous");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "two one\n");
 }

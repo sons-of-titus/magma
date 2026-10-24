@@ -16,69 +16,26 @@ pub(super) fn register(editor: &mut Editor) {
         ],
         |editor, args| {
             let buf_id = get_current_buffer_id(editor);
-            let arc = editor.buffers.get(buf_id)
-                .ok_or_else(|| "No current buffer".to_string())?;
-            let (path, content, saved_rev) = {
-                let buf = arc.lock().unwrap();
-                let path = args.get("path").and_then(|a| a.as_string())
-                    .filter(|p| !p.is_empty())
-                    .map(|p| p.to_string())
-                    .or_else(|| buf.path.clone())
-                    .ok_or_else(|| "No path specified".to_string())?;
-                let content = buf.slice(0, buf.len());
-                (path, content, buf.revision())
-            };
-            editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
-                path: path.clone(),
-                buffer_id: buf_id.to_string(),
-            });
-            editor.fs.write(&path, &content)
-                .map_err(|e| format!("Save failed: {}", e))?;
-            if let Some(arc) = editor.buffers.get(buf_id) {
-                arc.lock().unwrap().mark_saved_at(saved_rev);
-            }
-            editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
-                path: path.clone(),
-                buffer_id: buf_id.to_string(),
-            });
-            crate::kernel::debug::resync_after_save(editor, &path);
-            Ok(())
+            save_buffer_common(editor, buf_id, args.get("path").and_then(|a| a.as_string()).map(str::to_string))
         },
     );
 
     cmds.register_fn("save-all", "Save all modified buffers to disk",
         vec![],
         |editor, _args| {
-            let dirty: Vec<(usize, String, String, u64)> = editor.buffers.iter()
+            let dirty: Vec<(usize, Option<String>)> = editor.buffers.iter()
                 .filter_map(|(key, arc)| {
                     let buf = arc.lock().unwrap();
-                    if !buf.modified() { return None; }
-                    let path = buf.path.clone()?;
-                    Some((key, path, buf.slice(0, buf.len()), buf.revision()))
+                    (buf.modified() || editor.io.saves_in_flight.contains_key(&key))
+                        .then(|| (key, buf.path.clone()))
                 })
                 .collect();
-            let mut failures: Vec<String> = Vec::new();
-            for (key, path, content, saved_rev) in dirty {
-                editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
-                    path: path.clone(),
-                    buffer_id: key.to_string(),
-                });
-                match editor.fs.write(&path, &content) {
-                    Ok(()) => {
-                        if let Some(arc) = editor.buffers.get_mut(key) {
-                            arc.lock().unwrap().mark_saved_at(saved_rev);
-                        }
-                        editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
-                            path: path.clone(),
-                            buffer_id: key.to_string(),
-                        });
-                        crate::kernel::debug::resync_after_save(editor, &path);
-                    }
-                    Err(e) => failures.push(format!("{path}: {e}")),
+            for (key, _) in dirty {
+                if let Err(e) = save_buffer_common(editor, key, None) {
+                    editor.show_message(crate::kernel::state::MessageKind::Error, e);
                 }
             }
-            if failures.is_empty() { Ok(()) }
-            else { Err(format!("Save failed: {}", failures.join("; "))) }
+            Ok(())
         },
     );
 
@@ -281,4 +238,68 @@ pub(super) fn register(editor: &mut Editor) {
             Ok(())
         },
     );
+}
+
+
+/// Save one buffer.  With a background pool the disk write (fsync × 2 in
+/// the atomic writer) runs off the UI thread: the buffer is marked clean
+/// only when the write-confirmed event lands, and stays in the quit
+/// guard's dirty set until then.  Without a pool (tests, embedders) the
+/// write is synchronous.
+fn save_buffer_common(
+    editor: &mut Editor,
+    buf_id: usize,
+    path_arg: Option<String>,
+) -> Result<(), String> {
+    let arc = editor.buffers.get(buf_id)
+        .ok_or_else(|| "No current buffer".to_string())?
+        .clone();
+    let (path, content, saved_rev) = {
+        let buf = arc.lock().unwrap();
+        let path = path_arg
+            .filter(|p| !p.is_empty())
+            .or_else(|| buf.path.clone())
+            .ok_or_else(|| "No path specified".to_string())?;
+        let content = buf.slice(0, buf.len());
+        (path, content, buf.revision())
+    };
+    editor.events.emit_typed(keys::events::BUFFER_BEFORE_SAVE, BufferBeforeSavePayload {
+        path: path.clone(),
+        buffer_id: buf_id.to_string(),
+    });
+
+    let Some(bg) = editor.background.clone() else {
+        editor.fs.write(&path, &content)
+            .map_err(|e| format!("Save failed: {e}"))?;
+        if let Some(arc) = editor.buffers.get(buf_id) {
+            arc.lock().unwrap().mark_saved_at(saved_rev);
+        }
+        editor.events.emit_typed(keys::events::BUFFER_AFTER_SAVE, BufferAfterSavePayload {
+            path: path.clone(),
+            buffer_id: buf_id.to_string(),
+        });
+        crate::kernel::debug::resync_after_save(editor, &path);
+        return Ok(());
+    };
+
+    editor.io.saves_in_flight.insert(buf_id, saved_rev);
+    let sender = bg.sender.clone();
+    bg.spawn_blocking(move || {
+        use crate::kernel::storage::FileSystem as _;
+        let fs = crate::kernel::storage::DiskFileSystem::new();
+        match fs.write(&path, &content) {
+            Ok(()) => {
+                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::SaveWritten {
+                    buf_key: buf_id, path, saved_rev,
+                });
+            }
+            Err(e) => {
+                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::SaveFailed {
+                    buf_key: buf_id,
+                    error: e.to_string(),
+                });
+            }
+        }
+    });
+    Ok(())
 }

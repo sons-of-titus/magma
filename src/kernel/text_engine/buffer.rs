@@ -16,6 +16,10 @@ pub struct Buffer {
     pub id: BufferId,
     pub name: String,
     pub path: Option<String>,
+    /// Path this buffer's syntax is inferred from when it holds generated
+    /// content (a diff pane) rather than a file of its own.  `None` for real
+    /// files, whose own `path` is the source.
+    pub language_path: Option<String>,
     pub(super) doc: Document,
     marks: MarkSet,
     undo: UndoHistory,
@@ -51,6 +55,7 @@ impl Buffer {
             id,
             name: name.to_string(),
             path: None,
+            language_path: None,
             doc: Document::new(),
             marks: MarkSet::new(),
             undo: UndoHistory::new(),

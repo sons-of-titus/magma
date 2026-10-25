@@ -78,6 +78,11 @@ Return the file path associated with the buffer, or nil.
 
 Set the file path for the buffer.
 
+### `(buffer/language-path slab)` → string or nil
+
+Return the path this buffer's syntax is inferred from when it holds generated
+content (a diff pane) rather than a file of its own, or nil.
+
 ### `(buffer/cursor slab)` → integer or nil
 
 Return the cursor position (byte offset) in the buffer.

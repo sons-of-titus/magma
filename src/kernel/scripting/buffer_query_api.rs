@@ -95,6 +95,19 @@ unsafe extern "C-unwind" fn c_buffer_set_path(argc: i32, argv: *mut Janet) -> Ja
     })
 }
 
+unsafe extern "C-unwind" fn c_buffer_language_path(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        match ed.buffers.get(key) {
+            Some(arc) => match arc.lock().unwrap_or_else(|e| e.into_inner()).language_path.clone() {
+                Some(p) => conv::string(&p),
+                None => conv::nil(),
+            },
+            None => conv::nil(),
+        }
+    })
+}
+
 unsafe extern "C-unwind" fn c_buffer_major_mode(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
@@ -303,6 +316,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"buffer/set-path".as_ptr() as *const _,
             cfun: Some(c_buffer_set_path as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Set the file path for a buffer".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"buffer/language-path".as_ptr() as *const _,
+            cfun: Some(c_buffer_language_path as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Path the buffer's syntax is inferred from, or nil".as_ptr() as *const _,
         },
         JanetReg {
             name: c"buffer/major-mode".as_ptr() as *const _,

@@ -206,13 +206,19 @@
 
 # --- API ----------------------------------------------------------------
 
+(defn- syntax-lang
+  "Language name for a buffer: the path its syntax is inferred from — an
+  explicit language path (a generated buffer, e.g. a diff pane) over the
+  buffer's own file path."
+  [buf-id]
+  (get *extension-language*
+       (file-extension (or (buffer/language-path buf-id) (buffer/path buf-id)))))
+
 (defn syntax/highlight-buffer
   [buf-id]
-  (def path (buffer/path buf-id))
-  (def ext (file-extension path))
-  (def lang (get *extension-language* ext))
+  (def lang (syntax-lang buf-id))
   (def kw-table (when lang (get *syntax-rules* lang)))
-  (if (and lang kw-table)
+  (when kw-table
     (full-highlight buf-id kw-table (get *comment-markers* lang))))
 
 (command/define "syntax-highlight"
@@ -225,11 +231,9 @@
   (when raw
     (def buf-id (scan-number raw))
     (when buf-id
-      (def path (buffer/path buf-id))
-      (def ext (file-extension path))
-      (def lang (get *extension-language* ext))
+      (def lang (syntax-lang buf-id))
       (def kw-table (when lang (get *syntax-rules* lang)))
-      (when (and lang kw-table)
+      (when kw-table
         # buffer-created payloads carry no revisions — scan-number(nil)
         # throws, so absent keys must degrade to nil, not kill the handler.
         (def rev-before (when-let [r (get data :revision-before)] (scan-number r)))

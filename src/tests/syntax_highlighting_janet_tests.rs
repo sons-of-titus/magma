@@ -270,6 +270,31 @@ fn syntax_highlight_buffer_rust_produces_ranges() {
 }
 
 #[test]
+fn syntax_highlight_uses_language_path_for_generated_buffers() {
+    // A diff pane holds a generated snapshot and claims no file; its syntax
+    // must come from the source path carried as `language-path`.
+    janet_test!(ed, {
+        let key = crate::tests::helpers::focused_key(&ed);
+        {
+            let arc = ed.buffers.get(key).unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(buf.path.is_none(), "a generated pane claims no file");
+            buf.insert(0, "fn main() { let x = 1; }\n");
+            buf.language_path = Some("/test/main.rs".to_string());
+        }
+        assert!(
+            scripting::eval_result(&format!("(buffer/language-path {key})"))
+                .unwrap_or_default().contains("/test/main.rs"),
+            "buffer/language-path must expose the inferred language source");
+        assert_eq!(scripting::eval(&format!("(syntax/highlight-buffer {key})")), "ok");
+        let view = ed.views.get(&key).unwrap();
+        let ranges = view.highlight_layers.get("syntax")
+            .expect("the language path must drive highlighting without a file path");
+        assert!(ranges.iter().any(|r| r.2 == "keyword-face"), "rust keywords highlighted");
+    });
+}
+
+#[test]
 fn default_comment_face_is_dim() {
     janet_test!(ed, {
         let face = ed.faces.get("comment-face").unwrap();

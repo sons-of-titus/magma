@@ -1346,6 +1346,12 @@ The current watch expressions.
 
 Resolve an executable against `$PATH`; nil when it is not installed.
 
+### `(toolchain/find-extended name)` → path string or nil
+
+Resolve an executable against `$PATH`, then the well-known install roots that
+packaging hides from it (keg-only Homebrew, MacPorts, VS Code extensions; on
+macOS also `xcrun --find`); nil when it is installed nowhere.
+
 Return an array of line numbers (integers) for all breakpoints set in `file`.
 
 ---

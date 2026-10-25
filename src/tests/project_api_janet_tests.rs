@@ -225,3 +225,20 @@ fn project_set_current_member_fires_event() {
         std::fs::remove_dir_all(&tmp).ok();
     });
 }
+
+#[test]
+fn toolchain_find_extended_resolves_path_binaries() {
+    janet_test!(_ed, {
+        let r = scripting::eval_result(r#"(string? (toolchain/find-extended "sh"))"#).unwrap();
+        assert_eq!(r, "true", "a $PATH binary must resolve to a path string");
+    });
+}
+
+#[test]
+fn toolchain_find_extended_reports_missing_binaries() {
+    janet_test!(_ed, {
+        let r = scripting::eval_result(r#"(nil? (toolchain/find-extended "magma-no-such-tool-9f3a"))"#)
+            .unwrap();
+        assert_eq!(r, "true", "a binary installed nowhere must be nil");
+    });
+}

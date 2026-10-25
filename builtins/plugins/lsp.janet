@@ -70,18 +70,21 @@
 (defn- resolve-command
   "Command override for a language: the `<lang>-lsp-command` editor option
   wins (the per-language config packs set these), then the built-in table.
-  A command that is not on PATH reports once and returns nil — a raw spawn
-  failure is the wrong way for a user to learn a server is missing."
+  Resolution goes through `toolchain/find-extended` and returns the resolved
+  *path*, so a server installed outside `$PATH` (keg-only Homebrew, Xcode)
+  is both found and spawnable.  A command that is missing everywhere reports
+  once and returns nil — a raw spawn failure is the wrong way for a user to
+  learn a server is missing."
   [lang-id cmd]
   (def override (option/get (string lang-id "-lsp-command")))
   (def final-cmd (or override cmd))
-  (if (toolchain/find final-cmd)
-    final-cmd
+  (if-let [path (toolchain/find-extended final-cmd)]
+    path
     (do
       (unless (get *missing-reported* final-cmd)
         (put *missing-reported* final-cmd true)
         (editor/echo (string "LSP: '" final-cmd
-                             "' not found on PATH — language server disabled for "
+                             "' not found — language server disabled for "
                              lang-id) "error"))
       nil)))
 

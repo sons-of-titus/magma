@@ -1,6 +1,12 @@
-/// Central event bus.  Events are queued synchronously and dispatched via
-/// `drain_and_dispatch`, which processes the entire pending queue in order.
-/// Hook chains run Before → Transform → After around each subscriber group.
+//! Central event bus for Magma.
+//!
+//! Events are queued synchronously and dispatched via `drain_and_dispatch`,
+//! which processes the entire pending queue in order.  Hook chains run
+//! Before → Transform → After around each subscriber group.
+
+#[macro_use]
+extern crate logging;
+
 use std::collections::{HashMap, VecDeque};
 
 pub mod keys;
@@ -217,3 +223,6 @@ impl EventBus {
         id
     }
 }
+
+#[cfg(test)]
+mod tests;

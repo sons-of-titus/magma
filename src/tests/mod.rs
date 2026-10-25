@@ -22,7 +22,6 @@ macro_rules! test_pairs { ($($base:ident),+ $(,)?) => {
 
 mod command_tests;
 mod completion_tests;
-mod event_tests;
 mod file_reload_tests;
 mod mode_tests;
 mod insertable_tests;
@@ -56,7 +55,7 @@ mod ime_tests;
 
 test_pairs!(
     extension_foundation, special_buffers, process_async, project_api,
-    vc, keymap, lsp_feature, syntax_highlighting, treesitter,
+    vc, lsp_feature, syntax_highlighting, treesitter,
     fold, display, window_management,
     ecosystem, render, font_rendering, ui_customization,
     buffer_decoration, gutter_provider, unified_input,
@@ -70,6 +69,7 @@ test_pairs!(
 #[cfg(feature = "janet")] mod janet_tests;
 #[cfg(feature = "janet")] mod render_integration_tests;
 #[cfg(feature = "janet")] mod keymap_guard_tests;
+#[cfg(feature = "janet")] mod keymap_janet_tests;
 #[cfg(feature = "janet")] mod builtin_parse_tests;
 mod scratch_probe_tests;
 #[cfg(feature = "janet")]

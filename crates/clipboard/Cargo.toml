@@ -1,0 +1,8 @@
+[package]
+name = "clipboard"
+version = "0.1.0"
+edition = "2024"
+description = "System clipboard integration for Magma"
+
+[dependencies]
+arboard = { version = "3.2", default-features = false }

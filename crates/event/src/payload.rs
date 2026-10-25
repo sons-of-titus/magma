@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::kernel::event::EventData;
+use crate::EventData;
 
 macro_rules! event_payload {
     ($name:ident { $($field:ident $(: $key:expr)?),+ $(,)? }) => {

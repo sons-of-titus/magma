@@ -1,8 +1,8 @@
 //! Network connection and server state types.
 //!
-//! Rust provides the primitive types; net_api.rs registers the Janet C functions.
-//! Janet owns all behavior — deciding when to open connections, how to handle
-//! received data, and what to do with server clients.
+//! Rust provides the primitive types; the Janet bridge registers the C
+//! functions.  Janet owns all behavior — deciding when to open connections,
+//! how to handle received data, and what to do with server clients.
 
 use std::collections::HashMap;
 use std::sync::{Arc, atomic::AtomicBool};

@@ -1,0 +1,8 @@
+[package]
+name = "net"
+version = "0.1.0"
+edition = "2024"
+description = "Network connection and server state for Magma"
+
+[dependencies]
+tokio = { version = "1", features = ["sync"] }

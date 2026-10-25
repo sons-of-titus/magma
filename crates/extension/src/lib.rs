@@ -1,4 +1,4 @@
-//! Plugin Capability System (Phase 10).
+//! Plugin Capability System.
 //!
 //! Extensions declare required capabilities in an `ExtensionManifest`.
 //! The `ExtensionRegistry` stores manifests and enforces them when Janet C
@@ -73,9 +73,8 @@ impl ExtensionManifest {
 /// Tracks all registered extensions and their declared capabilities.
 ///
 /// The registry is the authority for what any named extension is allowed to
-/// do.  When a Janet C function requires a capability, it calls
-/// `scripting::extension_api::check_capability`, which reads the current
-/// extension name from a thread-local and consults this registry.
+/// do.  When a Janet C function requires a capability it consults this
+/// registry for the active extension context.
 #[derive(Default)]
 pub struct ExtensionRegistry {
     extensions: HashMap<String, ExtensionManifest>,
@@ -113,7 +112,7 @@ impl ExtensionRegistry {
     /// Returns `false` for unregistered names so that extensions that declare
     /// themselves but forget to call `extension/declare` before using a
     /// privileged API are denied.  Core code (no active extension) always
-    /// passes — the caller (`check_capability`) handles the `None` case.
+    /// passes — the caller handles the `None` case.
     pub fn has_capability(&self, name: &str, capability: &Capability) -> bool {
         self.extensions
             .get(name)

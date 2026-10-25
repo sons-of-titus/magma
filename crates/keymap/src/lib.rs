@@ -1,12 +1,13 @@
-/// Layered keymap system.
-/// Resolution order: buffer-local → active mode layers (LIFO) → global.
-///
-/// # Layer lifecycle
-/// Layers live in a registry (`layers`) and are never deleted — their bindings
-/// survive push/pop cycles.  `push_layer` activates a layer; `pop_layer`
-/// deactivates it.  This means you can pre-populate an "insert" layer's
-/// bindings before the first `push_layer("insert")` call, and those bindings
-/// will still be present when the layer is re-activated later.
+//! Layered keymap system.
+//!
+//! Resolution order: buffer-local → active mode layers (LIFO) → global.
+//!
+//! # Layer lifecycle
+//! Layers live in a registry (`layers`) and are never deleted — their bindings
+//! survive push/pop cycles.  `push_layer` activates a layer; `pop_layer`
+//! deactivates it.  This means you can pre-populate an "insert" layer's
+//! bindings before the first `push_layer("insert")` call, and those bindings
+//! will still be present when the layer is re-activated later.
 use std::collections::HashMap;
 
 pub type KeySequence  = String;
@@ -174,5 +175,5 @@ impl KeymapManager {
     }
 }
 
-
-
+#[cfg(test)]
+mod tests;

@@ -1,5 +1,13 @@
 [workspace]
-members = ["crates/logging"]
+members = [
+    "crates/logging",
+    "crates/util",
+    "crates/event",
+    "crates/keymap",
+    "crates/extension",
+    "crates/net",
+    "crates/clipboard",
+]
 resolver = "3"
 
 [package]
@@ -10,6 +18,12 @@ description = "A programmable text editor – Rust kernel, Janet userland"
 
 [dependencies]
 logging = { path = "crates/logging" }
+util = { path = "crates/util" }
+event = { path = "crates/event" }
+keymap = { path = "crates/keymap" }
+extension = { path = "crates/extension" }
+net = { path = "crates/net" }
+clipboard = { path = "crates/clipboard" }
 anyhow = "1.0"
 thiserror = "1.0"
 regex = "1"
@@ -24,7 +38,6 @@ ab_glyph = { version = "0.2", optional = true }
 rfd = { version = "0.15", optional = true }
 resvg = { version = "0.45", optional = true }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
-arboard = { version = "3.2", default-features = false }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

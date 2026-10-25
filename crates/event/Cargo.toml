@@ -1,0 +1,8 @@
+[package]
+name = "event"
+version = "0.1.0"
+edition = "2024"
+description = "Event bus for Magma"
+
+[dependencies]
+logging = { path = "../logging" }

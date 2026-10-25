@@ -24,8 +24,9 @@ cargo test --features janet buffer_major_mode
 # Run only the Janet API tests serially (required when debugging Janet VM issues)
 cargo test --features janet sprint1_janet_tests -- --test-threads=1
 
-# Enable debug logging at runtime
-MAGMA_LOG=1 cargo run --features janet
+# Enable logging at runtime (levels: error, warn, info, debug, trace)
+# MAGMA_LOG defaults to info; MAGMA_DEBUG_HTTP opens the HTTP channel.
+MAGMA_LOG=debug cargo run --features janet
 ```
 
 The `janet` feature links the `evil-janet` amalgamation and is required for all Janet bridge code.  `gui` adds `eframe` (egui).  Both are on by default.
@@ -59,6 +60,23 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `src/janet_bridge/*_api.rs` | C function groups registered per namespace (`buffer/`, `editor/`, …) |
 
 `Editor` is wrapped in `Arc<RwLock<Editor>>` in `main.rs`.  Commands receive `&mut Editor` directly; the lock is acquired by the caller.
+
+### Workspace crates
+
+| Path | Responsibility |
+|------|----------------|
+| `crates/logging` | Leveled `error!`/`warn!`/`info!`/`debug!`/`trace!` macros, gated on `MAGMA_LOG`; imported crate-wide in `src/lib.rs` |
+| `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
+| `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
+| `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |
+| `crates/extension` | Plugin capability registry (`ExtensionRegistry`, `ExtensionManifest`, `Capability`) |
+| `crates/net` | TCP connection/server state primitives (`NetConnection`, `NetServer`) |
+| `crates/clipboard` | System clipboard wrapper (`Clipboard`) |
+
+The kernel re-exports these crates as modules in `src/kernel/mod.rs`
+(`pub use event;`, `pub use keymap;`, …) so `crate::kernel::<x>::…` paths keep
+resolving. Extract a module into a crate only when it has no `crate::kernel::*`
+dependencies; `Editor` currently couples the remaining subsystems in cycles.
 
 ### Janet side
 

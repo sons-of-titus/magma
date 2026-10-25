@@ -114,3 +114,11 @@
 # Register the toggle-breakpoint command so it can be bound to a key.
 (command/define "debug/toggle-breakpoint"
   (fn [] (debug/toggle-breakpoint)))
+
+# ── Keybindings (IntelliJ IDEA defaults) ─────────────────────────────────────
+
+(keymap/set "f7"       "dbg-step-in"  :editor)
+(keymap/set "f8"       "dbg-step-over" :editor)
+(keymap/set "shift-f8" "dbg-step-out" :editor)
+(keymap/set "f9"       "dbg-continue" :editor)
+(keymap/set "meta-f8"  "dbg-bp"       :editor)

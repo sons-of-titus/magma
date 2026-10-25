@@ -24,7 +24,7 @@ pub fn detect_language(root: &Path) -> Option<&'static str> {
 }
 
 /// Debug adapter candidates per detected language, in preference order —
-/// the first one found on PATH is used.
+/// the first one installed wins.
 pub fn adapter_candidates(language: &str) -> &'static [&'static str] {
     match language {
         "rust" => &["codelldb", "lldb-dap", "lldb-vscode"],
@@ -34,6 +34,16 @@ pub fn adapter_candidates(language: &str) -> &'static [&'static str] {
         "cmake" => &["codelldb", "lldb-dap"],
         _ => &[],
     }
+}
+
+/// The resolved path of the first candidate adapter actually installed for
+/// `language`, through `toolchain::find_extended` — so packaging that hides the
+/// binary from `$PATH` (Xcode's `lldb-dap`, keg-only Homebrew LLVM, CodeLLDB)
+/// still counts.  The path is returned, not the bare name: a binary resolved
+/// outside `$PATH` cannot be spawned by name.
+pub fn find_adapter(language: &str) -> Option<std::path::PathBuf> {
+    adapter_candidates(language).iter()
+        .find_map(|candidate| super::toolchain::find_extended(candidate))
 }
 
 #[cfg(test)]
@@ -48,6 +58,17 @@ mod tests {
         std::fs::write(tmp.join("Makefile"), "").unwrap();
         assert_eq!(detect_language(&tmp), Some("rust"));
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn unknown_language_has_no_adapter() {
+        assert!(adapter_candidates("cobol").is_empty());
+        assert_eq!(find_adapter("cobol"), None);
+    }
+
+    #[test]
+    fn rust_candidates_prefer_codelldb_then_lldb_dap() {
+        assert_eq!(adapter_candidates("rust"), &["codelldb", "lldb-dap", "lldb-vscode"]);
     }
 
     #[test]

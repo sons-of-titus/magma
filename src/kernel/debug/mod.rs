@@ -255,7 +255,14 @@ pub fn spawn_session(
 
     let bg = ed.background.clone()
         .ok_or_else(|| "no background runtime".to_string())?;
-    let session_id = ed.debug.new_session(adapter.to_string());
+    // The adapter may arrive as a full path (something resolved outside
+    // `$PATH`, e.g. Xcode's `lldb-dap`); the session label is the binary
+    // name so the Debug panel stays readable.
+    let label = std::path::Path::new(adapter)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| adapter.to_string());
+    let session_id = ed.debug.new_session(label);
     let adapter = adapter.to_string();
     std::thread::Builder::new()
         .name(format!("dap-init-{session_id}"))

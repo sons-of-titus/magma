@@ -91,10 +91,15 @@ pub(super) fn register(editor: &mut Editor) {
                 .filter(|a| !a.is_empty());
             let language = editor.project_manager.project.language.clone();
             let adapter = match override_adapter {
-                Some(a) => a.to_string(),
-                None => detect::adapter_candidates(&language).iter()
-                    .find(|candidate| toolchain::find(candidate).is_some())
-                    .map(|candidate| candidate.to_string())
+                // A bare name is resolved like the candidates (so the
+                // `:dbg-start lldb-dap` the error message suggests works even
+                // when the binary lives outside `$PATH`); an unresolved value
+                // is passed through verbatim.
+                Some(a) => toolchain::find_extended(a)
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| a.to_string()),
+                None => detect::find_adapter(&language)
+                    .map(|path| path.to_string_lossy().into_owned())
                     .ok_or_else(|| format!(
                         "no debug adapter for {language}: tried {} — install one or run :dbg-start <adapter>",
                         detect::adapter_candidates(&language).join(", ")))?,

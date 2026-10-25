@@ -30,6 +30,7 @@ mod terminal_tests;
 mod terminal_manager_tests;
 mod terminal_palette_tests;
 mod vc_backend_tests;
+mod vc_diff_tests;
 mod janet_eval_tests;
 mod anchor_tests;
 mod transaction_tests;

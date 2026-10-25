@@ -76,6 +76,10 @@ impl View for EditorView {
         let scroll_top = editor.view_tree.window(self.pane_id)
             .and_then(|p| pane_scroll_top_synced(p, buf_id))
             .unwrap_or(st.scroll_top);
+        // The two halves of a diff share one scroll link but hold different
+        // line counts; the mirrored top can overrun this buffer's end, so
+        // clamp before any subtraction.
+        let scroll_top = scroll_top.min(total_lines.saturating_sub(1));
         // First visible content column (0 = line start).  The gutter stays
         // fixed; only text columns pan.
         let scroll_left = editor.view_tree.window(self.pane_id)
@@ -85,7 +89,7 @@ impl View for EditorView {
         let cursor_vis_row = cursor_line.checked_sub(scroll_top);
         let cursor_col = st.cursor_col;
 
-        let max_visible = (total_lines - scroll_top).min(visible_lines);
+        let max_visible = total_lines.saturating_sub(scroll_top).min(visible_lines);
         let text_style = Style {
             fg: editor.theme_color("fg"), bg: (bg_r, bg_g, bg_b), ..Default::default()
         };

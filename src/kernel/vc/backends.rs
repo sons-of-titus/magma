@@ -217,6 +217,30 @@ impl VcBackend for GitBackend {
         let spec = format!("stash@{{{index}}}");
         run_cmd(root, "git", &["stash", "drop", &spec]).map(|_| ())
     }
+
+    fn cat_file(&self, root: &Path, rev: &str, path: &str) -> Result<String, String> {
+        // `rev` is `HEAD` or a merge stage shorthand (`:2`, `:3`); both form a
+        // valid `<rev>:<path>` object name.
+        run_cmd(root, "git", &["show", &format!("{rev}:{path}")])
+    }
+
+    fn resolve_ours(&self, root: &Path, path: &str) -> Result<(), String> {
+        run_cmd(root, "git", &["checkout", "--ours", "--", path])?;
+        run_cmd(root, "git", &["add", "--", path]).map(|_| ())
+    }
+
+    fn resolve_theirs(&self, root: &Path, path: &str) -> Result<(), String> {
+        run_cmd(root, "git", &["checkout", "--theirs", "--", path])?;
+        run_cmd(root, "git", &["add", "--", path]).map(|_| ())
+    }
+
+    fn fetch(&self, root: &Path) -> Result<String, String> {
+        run_cmd(root, "git", &["fetch", "--all", "--prune"])
+    }
+
+    fn pull(&self, root: &Path) -> Result<String, String> {
+        run_cmd(root, "git", &["pull"])
+    }
 }
 
 // ── Mercurial ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 //! Version-control background-event handlers — finished repo operations and
-//! async status fetches.
+//! async status fetches feeding the Commit tool window.
 
 use crate::kernel::state::Editor;
 
@@ -16,20 +16,25 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::VcStatusFetched { backend_idx, root, result } => {
             match result {
-                Ok(status) => {
-                    ed.vc.last_status = Some(status);
-                    crate::kernel::command::builtin::vcs::redraw_vc_buffer(ed);
-                }
+                Ok(status) => ed.vc.last_status = Some(status),
                 Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
             }
             let _ = (backend_idx, root);
         }
-        BackgroundEvent::VcPreviewReady { path, text } => {
-            ed.vc.preview_path = Some(path);
-            ed.vc.preview = Some(text);
-        }
         BackgroundEvent::VcBranchesReady { branches } => {
             ed.vc.branches = branches;
+        }
+        BackgroundEvent::VcStashListed { result } => {
+            match result {
+                Ok(stashes) => ed.vc.stashes = stashes,
+                Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
+            }
+        }
+        BackgroundEvent::VcDiffReady { path, result } => {
+            match result {
+                Ok(data) => crate::kernel::command::builtin::vc_diff::open_diff(ed, &path, data),
+                Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
+            }
         }
         _ => {}
     }

@@ -289,6 +289,9 @@ impl GuiTheme {
             self.crust
         }));
         m.insert("gui-bg".into(),           t(self.base));
+        m.insert("diff-add".into(),         t(self.green));
+        m.insert("diff-del".into(),         t(self.red));
+        m.insert("diff-hunk".into(),        t(self.blue));
 
         // Syntax faces follow the chrome theme so the editor text never
         // clashes with it (the Janet defaults are Catppuccin-only).

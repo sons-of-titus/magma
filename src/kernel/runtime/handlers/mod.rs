@@ -86,8 +86,9 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         // ── Version control ──────────────────────────────────────────────
         BackgroundEvent::VcOpDone { .. }
         | BackgroundEvent::VcStatusFetched { .. }
-        | BackgroundEvent::VcPreviewReady { .. }
-        | BackgroundEvent::VcBranchesReady { .. } => vc::handle(ed, event),
+        | BackgroundEvent::VcBranchesReady { .. }
+        | BackgroundEvent::VcStashListed { .. }
+        | BackgroundEvent::VcDiffReady { .. } => vc::handle(ed, event),
 
         // ── Agent ────────────────────────────────────────────────────────
         BackgroundEvent::AgentThought { .. }
@@ -98,13 +99,6 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::AgentError { .. } => agent::handle(ed, event),
 
         // ── Free-form ────────────────────────────────────────────────────
-        BackgroundEvent::Custom(name, payload) if name == "vc-hunks-diff" => {
-            // The hunk buffer needs its own renderer (patches stashed on
-            // VcState), so this Custom event is claimed by the VC layer.
-            if let Err(e) = crate::kernel::command::builtin::vc_ops::build_hunks_buf(ed, &payload) {
-                ed.show_message(crate::kernel::state::MessageKind::Error, e);
-            }
-        }
         BackgroundEvent::Custom(name, payload) => {
             let mut data = std::collections::HashMap::new();
             data.insert("payload".into(), payload);

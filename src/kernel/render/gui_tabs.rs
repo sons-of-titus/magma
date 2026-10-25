@@ -37,19 +37,22 @@ impl TabAction {
         match self {
             TabAction::Focus(id) => editor.view_tree.focus(id),
             TabAction::Close(id) => {
+                // A pane belonging to the side-by-side diff closes the whole
+                // pair, so the layout it borrowed is always handed back.
+                if let Some(view) = &editor.vc.diff_view
+                    && (view.left == id || view.right == id) {
+                        crate::kernel::command::builtin::vc_diff::close_diff(editor);
+                        return;
+                }
                 let was_last = editor.view_tree.panes().len() <= 1;
                 editor.view_tree.close(id);
-                // A pane is never left empty: closing the last tab lands on
-                // a fresh scratch buffer instead of nowhere to type.
-                let focused_empty = editor.view_tree.focused_window()
-                    .and_then(|wid| editor.view_tree.buffer(wid))
-                    .is_none();
-                if was_last || focused_empty {
-                    let key = editor.create_buffer("*scratch*");
-                    if let Some(win) = editor.view_tree.focused_window_mut() {
-                        win.buffer_id = Some(key);
+                // A pane is never re-opened with a fresh scratch buffer:
+                // closing the last tab leaves an empty editor area (the
+                // buffer itself stays alive, as for any other tab close).
+                if was_last
+                    && let Some(win) = editor.view_tree.focused_window_mut() {
+                        win.buffer_id = None;
                     }
-                }
             }
             TabAction::Reorder { from, to } => editor.view_tree.reorder(from, to),
         }
@@ -59,9 +62,25 @@ impl TabAction {
 pub struct TabBar;
 
 impl TabBar {
-    fn collect_tabs(editor: &Editor) -> Vec<TabItem> {
+    pub(crate) fn collect_tabs(editor: &Editor) -> Vec<TabItem> {
+        let diff = editor.vc.diff_view.as_ref();
         editor.view_tree.panes().iter().filter_map(|pane| {
             let buf_id = pane.buffer_id?;
+            // The two diff halves read as one tab: the right half is skipped
+            // and the left carries the pair's `{file}:HEAD->TREE` label.
+            if let Some(view) = diff && pane.id == view.right {
+                return None;
+            }
+            if let Some(view) = diff && pane.id == view.left {
+                let short = view.path.rsplit('/').next().unwrap_or(&view.path);
+                return Some(TabItem {
+                    label: format!("{short}:HEAD->TREE"),
+                    window_id: pane.id,
+                    modified: false,
+                    closable: true,
+                    icon: None,
+                });
+            }
             let (label, modified) = editor.buffers.get(buf_id)
                 .map(|arc| {
                     let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
@@ -85,7 +104,14 @@ impl TabBar {
     /// Render the tab bar; return any action to apply to the editor.
     pub fn show(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Option<TabAction> {
         let tabs    = Self::collect_tabs(editor);
-        let focused = editor.view_tree.focused_window();
+        // The diff's two halves read as one tab: focus on either half lights
+        // that single tab.
+        let focused = editor.view_tree.focused_window().map(|id| {
+            match &editor.vc.diff_view {
+                Some(v) if id == v.right => v.left,
+                _ => id,
+            }
+        });
         let mut action: Option<TabAction> = None;
 
         // Per-frame drag state stored in egui context memory.

@@ -185,10 +185,13 @@ pub enum BackgroundEvent {
         then_refresh: bool,
         result: Result<String, String>,
     },
-    /// An inline diff preview for the Commit tool window finished.
-    VcPreviewReady { path: String, text: String },
     /// A branch list for the Commit window's branch widget finished.
     VcBranchesReady { branches: Vec<String> },
+    /// A stash list for the Commit window's stash section finished.
+    VcStashListed { result: Result<Vec<crate::kernel::vc::StashEntry>, String> },
+    /// A one-file diff bundle (HEAD + worktree + patch) finished; the handler
+    /// opens the side-by-side editor diff from it.
+    VcDiffReady { path: String, result: Result<crate::kernel::vc::DiffData, String> },
     /// An external-change reload read finished off the foreground thread.
     BufferReloaded { buf_key: usize, content: Result<String, String> },
     /// An explicit save's disk write finished; only this exact revision

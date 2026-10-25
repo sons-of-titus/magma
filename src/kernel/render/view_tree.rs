@@ -55,6 +55,8 @@ pub struct Pane {
     pub scroll_buf: Option<usize>,
     /// Cursor offset at the last sync — a change releases a manual scroll pin.
     pub scroll_cursor: Option<usize>,
+    /// Panes sharing a link id scroll together (the two halves of a diff).
+    pub scroll_link: Option<u32>,
     /// How this pane was created in the layout tree.
     pub layout: LayoutConstraint,
 }
@@ -77,6 +79,7 @@ impl Pane {
             scroll_left_pinned: false,
             scroll_buf: None,
             scroll_cursor: None,
+            scroll_link: None,
             layout: LayoutConstraint::default(),
         }
     }

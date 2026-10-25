@@ -6,9 +6,9 @@
 //! Janet via `vc/register-backend`.
 
 pub mod backends;
-mod display;
+pub mod ops;
 
-pub use display::{VC_HEADER_LINES, build_display, path_at_line};
+pub use ops::{DiffData, DiffView, HiddenPane, VcRemoteOp, run_cmd, run_cmd_stdin, run_op, status_for_root};
 
 use std::path::{Path, PathBuf};
 
@@ -125,6 +125,34 @@ pub trait VcBackend: Send + Sync {
     fn stash_drop(&self, _root: &Path, _index: usize) -> Result<(), String> {
         Err(format!("{}: stash not supported", self.name()))
     }
+
+    // ── File / merge / remote surface (GUI diff and conflict resolution) ──
+
+    /// File content at `rev` — `HEAD`, or a merge stage `:2:` (ours) / `:3:`
+    /// (theirs).  Feeds the side-by-side diff's left half.
+    fn cat_file(&self, _root: &Path, _rev: &str, _path: &str) -> Result<String, String> {
+        Err(format!("{}: file-at-revision not supported", self.name()))
+    }
+
+    /// Resolve a conflict by taking the "ours" side and staging the result.
+    fn resolve_ours(&self, _root: &Path, _path: &str) -> Result<(), String> {
+        Err(format!("{}: conflict resolution not supported", self.name()))
+    }
+
+    /// Resolve a conflict by taking the "theirs" side and staging the result.
+    fn resolve_theirs(&self, _root: &Path, _path: &str) -> Result<(), String> {
+        Err(format!("{}: conflict resolution not supported", self.name()))
+    }
+
+    /// Fetch from the remote, returning the command's combined output.
+    fn fetch(&self, _root: &Path) -> Result<String, String> {
+        Err(format!("{}: fetch not supported", self.name()))
+    }
+
+    /// Pull from the remote, returning the command's combined output.
+    fn pull(&self, _root: &Path) -> Result<String, String> {
+        Err(format!("{}: pull not supported", self.name()))
+    }
 }
 
 // ── Editor state ──────────────────────────────────────────────────────────────
@@ -138,30 +166,26 @@ pub struct VcState {
     /// Name of the active backend — the identity background op jobs use,
     /// since trait-object backends cannot cross into the pool by value.
     pub active_backend_name: Option<String>,
-    /// Slab key of the `*vc*` display buffer.
-    pub buf_key: Option<usize>,
+    /// Set by `:vc`; the GUI reveals the Commit tool window and clears it.
+    pub request_open: bool,
     /// Detected repository root.
     pub repo_root: Option<PathBuf>,
-    /// Last fetched status (used to map cursor lines to file paths).
+    /// Last fetched status (drives the Commit tool window).
     pub last_status: Option<VcStatus>,
-    /// When true the next `vc-commit-save` amends instead of committing.
+    /// When true the next commit amends instead of creating a new commit.
     pub amend_pending: bool,
-    /// Single-hunk patches behind the `*vc-hunks*` buffer, aligned with
-    /// the hunk markers shown in it.
-    pub last_hunks: Vec<String>,
-    /// Path the inline diff preview belongs to (Commit tool window).
-    pub preview_path: Option<String>,
-    /// Latest inline diff text for `preview_path`.
-    pub preview: Option<String>,
+    /// The side-by-side editor diff, while one is open.
+    pub diff_view: Option<DiffView>,
     /// Branch names for the Commit window's branch widget.
     pub branches: Vec<String>,
+    /// Saved stashes, as last listed.
+    pub stashes: Vec<StashEntry>,
 }
 
 impl std::fmt::Debug for VcState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("VcState")
             .field("active_backend", &self.active_backend)
-            .field("buf_key", &self.buf_key)
             .field("repo_root", &self.repo_root)
             .finish()
     }
@@ -184,14 +208,13 @@ impl VcState {
             ],
             active_backend: None,
             active_backend_name: None,
-            buf_key: None,
+            request_open: false,
             repo_root: None,
             last_status: None,
             amend_pending: false,
-            last_hunks: Vec::new(),
-            preview_path: None,
-            preview: None,
+            diff_view: None,
             branches: Vec::new(),
+            stashes: Vec::new(),
         }
     }
 
@@ -212,151 +235,3 @@ impl VcState {
     }
 }
 
-// ── Shell helper (shared by backends and shell-template backends) ──────────────
-
-/// Run a command in `dir` and return combined stdout + stderr.
-/// One background-dispatchable repository operation.
-#[derive(Debug, Clone)]
-pub enum VcRemoteOp {
-    Stage(String),
-    Unstage(String),
-    Diff(Option<String>),
-    Log,
-    Push,
-    Blame(String),
-    Commit(String),
-    /// Hunk-level staging: the single-hunk patch goes to the backend's stdin.
-    StagePatch(String),
-    /// Hunk-level discard: reverse-apply in the worktree.
-    DiscardPatch(String),
-    /// Zero-context diff of one file — the granularity the hunk splitter
-    /// and `git apply` want (default context merges nearby hunks).
-    HunkDiff(String),
-    /// Unified diff of one file for the inline preview (routed to
-    /// `VcPreviewReady`, not a scratch buffer).
-    PreviewDiff(String),
-    /// Discard all worktree changes to one file (diff, then reverse-apply).
-    DiscardFile(String),
-    /// Amend the last commit, keeping or replacing its message.
-    Amend(Option<String>),
-    ListBranches,
-    Checkout { branch: String, create: bool },
-    StashPush(Option<String>),
-    /// List stashes; rendered as `stash@{N}  message` lines.
-    StashList,
-    StashApply { index: usize, pop: bool },
-    StashDrop(usize),
-}
-
-/// Run `op` against the named backend at `root`.  Backends are stateless
-/// CLI wrappers, so a fresh detection by name is equivalent to the
-/// foreground's registry entry.
-pub fn run_op(root: &Path, backend_name: &str, op: &VcRemoteOp) -> Result<String, String> {
-    let backend = detect_backends(root).into_iter()
-        .find(|b| b.name() == backend_name)
-        .ok_or_else(|| format!("no '{backend_name}' backend available"))?;
-    match op {
-        VcRemoteOp::Stage(path) => backend.stage(root, path).map(|_| String::new()),
-        VcRemoteOp::Unstage(path) => backend.unstage(root, path).map(|_| String::new()),
-        VcRemoteOp::Diff(file) => backend.diff(root, file.as_deref()),
-        VcRemoteOp::Log => backend.log(root, 30),
-        VcRemoteOp::Push => backend.push(root),
-        VcRemoteOp::Blame(path) => backend.blame(root, path),
-        VcRemoteOp::Commit(message) => backend.commit(root, message).map(|_| String::new()),
-        VcRemoteOp::StagePatch(patch) => backend.stage_patch(root, patch).map(|_| String::new()),
-        VcRemoteOp::DiscardPatch(patch) => backend.discard_patch(root, patch).map(|_| String::new()),
-        VcRemoteOp::HunkDiff(file) => backend.hunk_diff(root, file),
-        VcRemoteOp::PreviewDiff(file) => backend.diff(root, Some(file)),
-        VcRemoteOp::DiscardFile(file) => {
-            let patch = backend.hunk_diff(root, file)?;
-            backend.discard_patch(root, &patch).map(|_| String::new())
-        }
-        VcRemoteOp::Amend(msg) => backend.amend(root, msg.as_deref()).map(|_| String::new()),
-        VcRemoteOp::ListBranches => {
-            let branches = backend.list_branches(root)?;
-            Ok(branches.iter()
-                .map(|b| format!("{} {}", if b.current { "*" } else { " " }, b.name))
-                .collect::<Vec<_>>()
-                .join("\n"))
-        }
-        VcRemoteOp::Checkout { branch, create } => {
-            backend.checkout(root, branch, *create).map(|_| String::new())
-        }
-        VcRemoteOp::StashPush(msg) => backend.stash_push(root, msg.as_deref()).map(|_| String::new()),
-        VcRemoteOp::StashList => {
-            let entries = backend.stash_list(root)?;
-            Ok(entries.iter()
-                .map(|e| format!("stash@{{{}}}  {}", e.index, e.message))
-                .collect::<Vec<_>>()
-                .join("\n"))
-        }
-        VcRemoteOp::StashApply { index, pop } => {
-            backend.stash_apply(root, *index, *pop).map(|_| String::new())
-        }
-        VcRemoteOp::StashDrop(index) => backend.stash_drop(root, *index).map(|_| String::new()),
-    }
-}
-
-/// Detect the backend for `root` and fetch its status.  Runs on background
-/// threads for the async refresh path (backends are stateless).
-pub fn status_for_root(root: &Path) -> Result<VcStatus, String> {
-    for backend in &detect_backends(root) {
-        if let Ok(status) = backend.status(root) {
-            return Ok(status);
-        }
-    }
-    Err("no version-control backend for this root".to_string())
-}
-
-fn detect_backends(_root: &Path) -> Vec<Box<dyn VcBackend>> {
-    vec![
-        Box::new(backends::GitBackend),
-        Box::new(backends::HgBackend),
-        Box::new(backends::SvnBackend),
-        Box::new(backends::JjBackend),
-    ]
-}
-
-pub fn run_cmd(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
-    let out = std::process::Command::new(program)
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .map_err(|e| format!("{program}: {e}"))?;
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    if out.status.success() || stderr.is_empty() {
-        Ok(stdout)
-    } else if stdout.is_empty() {
-        Err(stderr)
-    } else {
-        Ok(format!("{stdout}\n{stderr}"))
-    }
-}
-
-/// Like `run_cmd`, but feeds `stdin_data` to the child — how patch text
-/// reaches `git apply` without a temp file.
-pub fn run_cmd_stdin(dir: &Path, program: &str, args: &[&str], stdin_data: &str) -> Result<String, String> {
-    use std::io::Write;
-    let mut child = std::process::Command::new(program)
-        .args(args)
-        .current_dir(dir)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("{program}: {e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(stdin_data.as_bytes());
-    }
-    let out = child.wait_with_output().map_err(|e| format!("{program}: {e}"))?;
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    if out.status.success() || stderr.is_empty() {
-        Ok(stdout)
-    } else if stdout.is_empty() {
-        Err(stderr)
-    } else {
-        Ok(format!("{stdout}\n{stderr}"))
-    }
-}

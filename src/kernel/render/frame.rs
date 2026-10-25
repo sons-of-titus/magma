@@ -268,6 +268,25 @@ pub fn sync_viewport_scroll(ed: &mut Editor) {
             pane.scroll_left = follow_col(pane.scroll_left, cursor_col, content_w, h_margin);
         }
     }
+
+    // ── Linked panes (the two halves of a side-by-side diff) ────────────
+    // Whichever half holds the focus drives; the other mirrors it on both
+    // axes, so the two file versions stay line-for-line aligned.
+    let source = ed.view_tree.focused_window().and_then(|f| {
+        let p = ed.view_tree.window(f)?;
+        p.scroll_link.map(|link| (f, link, p.scroll_offset, p.scroll_left))
+    });
+    if let Some((focused_id, link, top, left)) = source {
+        for pane in ed.view_tree.panes_mut() {
+            if pane.id == focused_id || pane.scroll_link != Some(link) { continue; }
+            pane.scroll_offset = top;
+            pane.scroll_left = left;
+            // Pin so the cursor-follow rules never drag the mirror out of step.
+            pane.scroll_pinned = true;
+            pane.scroll_left_pinned = true;
+            pane.scroll_buf = pane.buffer_id;
+        }
+    }
 }
 
 /// Viewport top for a cursor entering an unscrolled pane.

@@ -79,6 +79,8 @@ impl Editor {
         self.drop_window_views_of_buffer(key);
         self.completion.word_cache.remove(&key);
         self.minimap_cache.remove(&key);
+        // Buffer-local keys are keyed by slab slot, which the slab reuses.
+        self.keymaps.clear_buffer_local(key as u64);
         let fallback = self.buffers.iter().map(|(k, _)| k).find(|&k| k != key);
         for pane in self.view_tree.panes_mut() {
             if pane.buffer_id == Some(key) {

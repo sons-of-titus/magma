@@ -241,6 +241,9 @@ impl Editor {
         theme.insert("gui-bg".into(),           (30,  30,  46));
         theme.insert("terminal-bg".into(),      (0,   0,   0));
         theme.insert("terminal-fg".into(),      (0,   255, 0));
+        theme.insert("diff-add".into(),         (166, 227, 161));
+        theme.insert("diff-del".into(),         (243, 139, 168));
+        theme.insert("diff-hunk".into(),        (137, 180, 250));
 
         Editor {
             buffers: slab::Slab::new(),
@@ -366,6 +369,9 @@ impl Editor {
             "selection-fg"     => (30,  30,  46),
             "gui-bg"           => (30,  30,  46),
             "cursor"           => (180, 190, 254),
+            "diff-add"         => (166, 227, 161),
+            "diff-del"         => (243, 139, 168),
+            "diff-hunk"        => (137, 180, 250),
             _                  => (200, 200, 200),
         })
     }

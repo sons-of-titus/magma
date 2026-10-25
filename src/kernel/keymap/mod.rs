@@ -76,6 +76,12 @@ impl KeymapManager {
             .insert(key.into(), command.into());
     }
 
+    /// Drop a buffer's local bindings.  Slab keys are recycled, so a dropped
+    /// buffer's bindings must never reach the buffer that reuses its slot.
+    pub fn clear_buffer_local(&mut self, buffer_id: u64) {
+        self.buffer_local.remove(&buffer_id);
+    }
+
     pub fn unset(&mut self, key: &str) {
         self.global.bindings.remove(key);
     }

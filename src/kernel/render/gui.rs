@@ -157,7 +157,7 @@ impl eframe::App for GuiApp {
         let ctx = ui.ctx().clone();
 
         // ── GPU init + font rebuild (shared by both windows) ──────────────
-        if gui_shell::sync_gpu_and_fonts(&mut self.target_format, &mut self.atlas, &mut self.atlas_dirty, &mut self.editor, frame, &ctx) {
+        if gui_shell::sync_gpu_and_fonts(&mut self.target_format, &mut self.atlas, &mut self.atlas_dirty, &mut self.atlas_ppx, &mut self.editor, frame, &ctx) {
             self.atlas_rasterized = true;
             self.font_size = self.editor.font_config.size;
         }

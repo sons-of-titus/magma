@@ -164,12 +164,16 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
     }
 }
 
-/// One-time GPU target capture + font (re)build after a font change.
-/// Returns true when the glyph atlas was re-rasterized.
+/// One-time GPU target capture + font atlas (re)build.
+///
+/// The atlas is rasterized at device resolution (font size × `pixels_per_point`,
+/// F-35) so HiDPI displays sample denser texels; a font change or a scale change
+/// both trigger it.  Returns true when the glyph atlas was re-rasterized.
 pub(crate) fn sync_gpu_and_fonts(
     target_format: &mut Option<eframe::wgpu::TextureFormat>,
     atlas: &mut super::gpu_atlas::GpuGlyphAtlas,
     atlas_dirty: &mut bool,
+    atlas_ppx: &mut f32,
     ed: &mut Editor,
     frame: &eframe::Frame,
     ctx: &egui::Context,
@@ -178,21 +182,25 @@ pub(crate) fn sync_gpu_and_fonts(
     if target_format.is_none() {
         *target_format = Some(rs.target_format);
     }
-    let changed = ed.font_changed;
+    let font_changed = ed.font_changed;
     ed.font_changed = false;
-    if changed {
+    let ppx = ctx.pixels_per_point();
+    let ppx_changed = (ppx - *atlas_ppx).abs() > 0.001;
+    if !font_changed && !ppx_changed {
+        return false;
+    }
+    if font_changed {
         // Glyph metrics feed the row-layout cache; drop it so rows re-lay
         // out against the new widths (R-12).
         ed.row_layouts.clear();
         let font_config = ed.font_config.clone();
         super::gui_fonts::apply_fonts_to_egui(ctx, &font_config);
-        if let Some(bytes) = font_config.primary_font() {
-            atlas.rasterize(bytes, font_config.size);
-            *atlas_dirty = true;
-            return true;
-        }
     }
-    false
+    let Some(bytes) = ed.font_config.primary_font() else { return false };
+    atlas.rasterize_at_ppx(bytes, ed.font_config.size, ppx);
+    *atlas_ppx = ppx;
+    *atlas_dirty = true;
+    true
 }
 
 /// Re-resolve the chrome palette from the `gui-theme` option and push it to

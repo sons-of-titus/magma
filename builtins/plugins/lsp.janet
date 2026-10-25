@@ -1,11 +1,9 @@
 (var *lsp-servers* @{})
 (var *buffer-languages* @{})
 (var *lsp-progress* @{})
-# Buffers whose language server is still initializing — didOpen is sent
-# when the `lsp-initialized` event confirms the server is ready.
-(var *pending-attach* @{})
 # Buffers that have received didOpen for their server (idempotence across
-# focus/attach events).
+# focus/attach events).  Only marked once the server is ready — see
+# send-did-open — or the one didOpen the server never saw locks the buffer out.
 (var *attached-buffers* @{})
 
 (def *lang-servers*
@@ -58,8 +56,12 @@
   (if path (string "file://" path) (string "untitled:" (buffer/name buffer-id))))
 
 (defn send-did-open [buffer-id]
+  # Only a ready server has a live handle; lsp/did-open against a still-starting
+  # server silently drops, and marking the buffer attached then would suppress
+  # the retry on `lsp-initialized`.
   (def lang-id (get *buffer-languages* buffer-id))
-  (when (and lang-id (get *lsp-servers* lang-id) (not (get *attached-buffers* buffer-id)))
+  (when (and lang-id (= :ready (get *lsp-servers* lang-id))
+             (not (get *attached-buffers* buffer-id)))
     (lsp/did-open lang-id buffer-id)
     (put *attached-buffers* buffer-id true)))
 
@@ -73,14 +75,15 @@
   [lang-id cmd]
   (def override (option/get (string lang-id "-lsp-command")))
   (def final-cmd (or override cmd))
-  (unless (toolchain/find final-cmd)
-    (unless (get *missing-reported* final-cmd)
-      (put *missing-reported* final-cmd true)
-      (editor/echo (string "LSP: '" final-cmd
-                           "' not found on PATH — language server disabled for "
-                           lang-id) "error"))
-    nil)
-  final-cmd)
+  (if (toolchain/find final-cmd)
+    final-cmd
+    (do
+      (unless (get *missing-reported* final-cmd)
+        (put *missing-reported* final-cmd true)
+        (editor/echo (string "LSP: '" final-cmd
+                             "' not found on PATH — language server disabled for "
+                             lang-id) "error"))
+      nil)))
 
 (defn attach-if-supported [buffer-id]
   (def cfg (language-for buffer-id))
@@ -98,8 +101,7 @@
   (fn [ev]
     (def lang-id (get ev :language))
     (put *lsp-servers* lang-id :ready)
-    (put *pending-attach* lang-id nil)
-    # Sync every buffer already attached to this language.
+    # Now that the handle is live, sync every buffer of this language.
     (each buf-id (keys *buffer-languages*)
       (when (= lang-id (get *buffer-languages* buf-id))
         (send-did-open buf-id)))))

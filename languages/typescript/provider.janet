@@ -8,7 +8,7 @@
     (def name (get data "name" ""))
     (when (or (= name "typescript")
               (os/stat (string root "/tsconfig.json")))
-      (lsp/start "typescript-language-server" root))))
+      (lsp/start "typescript" "typescript-language-server"))))
 
 (semantic/register-provider "typescript" "lsp")
 

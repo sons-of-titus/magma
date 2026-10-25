@@ -8,7 +8,7 @@
     (def name (get data "name" ""))
     (when (or (= name "go")
               (os/stat (string root "/go.mod")))
-      (lsp/start "gopls" root))))
+      (lsp/start "go" "gopls"))))
 
 (semantic/register-provider "go" "lsp")
 

@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "terraform")
               (os/stat (string root "/.terraform")))
-      (lsp/start "terraform-ls" root))))
+      (lsp/start "terraform" "terraform-ls"))))
 
 (semantic/register-provider "terraform" "lsp")
 

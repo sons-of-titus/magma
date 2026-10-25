@@ -8,7 +8,7 @@
     (def name (get data "name" ""))
     (when (or (= name "lua")
               (os/stat (string root "/.luarc.json")))
-      (lsp/start "lua-language-server" root))))
+      (lsp/start "lua" "lua-language-server"))))
 
 (semantic/register-provider "lua" "lsp")
 

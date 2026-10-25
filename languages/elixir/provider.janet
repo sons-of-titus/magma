@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "elixir")
               (os/stat (string root "/mix.exs")))
-      (lsp/start "elixir-ls" root))))
+      (lsp/start "elixir" "elixir-ls"))))
 
 (semantic/register-provider "elixir" "lsp")
 

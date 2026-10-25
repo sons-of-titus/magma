@@ -7,7 +7,7 @@
     (when (or (= name "java")
               (os/stat (string root "/pom.xml"))
               (os/stat (string root "/build.gradle")))
-      (lsp/start "jdtls" root))))
+      (lsp/start "java" "jdtls"))))
 
 (semantic/register-provider "java" "lsp")
 

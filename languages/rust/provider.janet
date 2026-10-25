@@ -6,11 +6,6 @@
 # This file is loaded by `language/load "rust"` and expected to call
 # `semantic/register-provider` for the "rust" language ID.
 
-(defn- rust-lsp-start
-  "Start rust-analyzer for `root` if it is not already running."
-  [root]
-  (lsp/start "rust-analyzer" root))
-
 # Register the tree-sitter provider for immediate offline parsing.
 (semantic/register-provider "rust" "treesitter")
 
@@ -21,7 +16,7 @@
     (def name (get data "name" ""))
     (when (or (= name "rust")
               (os/stat (string root "/Cargo.toml")))
-      (rust-lsp-start root))))
+      (lsp/start "rust" "rust-analyzer"))))
 
 # Also register the LSP provider in the Semantic Engine so completions
 # from rust-analyzer are surfaced alongside tree-sitter completions.

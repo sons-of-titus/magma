@@ -14,7 +14,7 @@
               (os/stat (string root "/pyproject.toml"))
               (os/stat (string root "/setup.py"))
               (os/stat (string root "/requirements.txt")))
-      (lsp/start "pylsp" root))))
+      (lsp/start "python" "pylsp"))))
 
 (semantic/register-provider "python" "lsp")
 

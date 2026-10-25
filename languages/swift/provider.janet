@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "swift")
               (os/stat (string root "/Package.swift")))
-      (lsp/start "sourcekit-lsp" root))))
+      (lsp/start "swift" "sourcekit-lsp"))))
 
 (semantic/register-provider "swift" "lsp")
 

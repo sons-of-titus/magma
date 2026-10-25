@@ -8,7 +8,7 @@
     (def name (get data "name" ""))
     (when (or (= name "javascript")
               (os/stat (string root "/package.json")))
-      (lsp/start "typescript-language-server" root))))
+      (lsp/start "javascript" "typescript-language-server"))))
 
 (semantic/register-provider "javascript" "lsp")
 

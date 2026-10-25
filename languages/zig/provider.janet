@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "zig")
               (os/stat (string root "/build.zig")))
-      (lsp/start "zls" root))))
+      (lsp/start "zig" "zls"))))
 
 (semantic/register-provider "zig" "lsp")
 

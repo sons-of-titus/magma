@@ -7,7 +7,7 @@
     (when (or (= name "clojure")
               (os/stat (string root "/deps.edn"))
               (os/stat (string root "/project.clj")))
-      (lsp/start "clojure-lsp" root))))
+      (lsp/start "clojure" "clojure-lsp"))))
 
 (semantic/register-provider "clojure" "lsp")
 

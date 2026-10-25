@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "nix")
               (os/stat (string root "/flake.nix")))
-      (lsp/start "nil" root))))
+      (lsp/start "nix" "nil"))))
 
 (semantic/register-provider "nix" "lsp")
 

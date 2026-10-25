@@ -7,7 +7,7 @@
     (when (or (= name "kotlin")
               (os/stat (string root "/build.gradle.kts"))
               (os/stat (string root "/settings.gradle.kts")))
-      (lsp/start "kotlin-language-server" root))))
+      (lsp/start "kotlin" "kotlin-language-server"))))
 
 (semantic/register-provider "kotlin" "lsp")
 

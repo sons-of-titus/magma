@@ -8,7 +8,7 @@
     (def name (get data "name" ""))
     (when (or (= name "ruby")
               (os/stat (string root "/Gemfile")))
-      (lsp/start "solargraph" root))))
+      (lsp/start "ruby" "solargraph"))))
 
 (semantic/register-provider "ruby" "lsp")
 

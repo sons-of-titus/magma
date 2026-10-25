@@ -7,7 +7,7 @@
     (when (or (= name "haskell")
               (os/stat (string root "/cabal.project"))
               (os/stat (string root "/stack.yaml")))
-      (lsp/start "haskell-language-server" root))))
+      (lsp/start "haskell" "haskell-language-server"))))
 
 (semantic/register-provider "haskell" "lsp")
 

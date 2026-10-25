@@ -7,7 +7,7 @@
     (when (or (= name "sh")
               (os/stat (string root "/.shellcheckrc"))
               (os/stat (string root "/shellcheckrc")))
-      (lsp/start "bash-language-server" root))))
+      (lsp/start "bash" "bash-language-server"))))
 
 (semantic/register-provider "sh" "lsp")
 

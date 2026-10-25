@@ -5,7 +5,7 @@
     (def root (get data "root" ""))
     (def name (get data "name" ""))
     (when (= name "html")
-      (lsp/start "vscode-html-languageserver" root))))
+      (lsp/start "html" "vscode-html-languageserver"))))
 
 (semantic/register-provider "html" "lsp")
 

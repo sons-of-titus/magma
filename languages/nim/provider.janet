@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "nim")
               (os/stat (string root "/nimble")))
-      (lsp/start "nimlangserver" root))))
+      (lsp/start "nim" "nimlangserver"))))
 
 (semantic/register-provider "nim" "lsp")
 

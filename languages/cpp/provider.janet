@@ -8,7 +8,7 @@
     (def name (get data "name" ""))
     (when (or (= name "cpp")
               (os/stat (string root "/compile_commands.json")))
-      (lsp/start "clangd" root))))
+      (lsp/start "cpp" "clangd"))))
 
 (semantic/register-provider "cpp" "lsp")
 

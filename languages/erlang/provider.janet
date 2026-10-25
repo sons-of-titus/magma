@@ -6,7 +6,7 @@
     (def name (get data "name" ""))
     (when (or (= name "erlang")
               (os/stat (string root "/rebar.config")))
-      (lsp/start "erlang_ls" root))))
+      (lsp/start "erlang" "erlang_ls"))))
 
 (semantic/register-provider "erlang" "lsp")
 

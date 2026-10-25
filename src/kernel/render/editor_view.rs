@@ -97,7 +97,7 @@ impl View for EditorView {
 
         // Highest severity per line, from the typed diagnostics.
         let mut diag_lines: HashMap<usize, char> = HashMap::new();
-        for d in &buf.diagnostics {
+        for d in buf.get_diagnostics() {
             diag_lines.entry(d.line).or_insert(d.severity.code());
         }
 

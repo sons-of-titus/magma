@@ -24,9 +24,13 @@ pub struct Buffer {
     pending_changes: Vec<EditTransaction>,
     pub major_mode: MajorMode,
     pub encoding: String,
-    /// LSP/tool diagnostics for this buffer, typed.  Render through
-    /// `Diagnostic::display` — nothing parses display strings back apart.
-    pub diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+    /// LSP-owned diagnostics for this buffer, typed.  Kept apart from tool
+    /// output so an empty LSP publish cannot wipe build errors, and a clean
+    /// build cannot wipe LSP results.  Render through `Diagnostic::display` —
+    /// nothing parses display strings back apart.
+    pub lsp_diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+    /// Tool (build/compiler) diagnostics for this buffer, typed.
+    pub tool_diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
     /// Per-buffer options that shadow global `editor.options`.
     pub local_options: std::collections::HashMap<String, String>,
     /// When true, `buffer/insert` and `buffer/delete` are no-ops via the Janet API.
@@ -53,7 +57,8 @@ impl Buffer {
             pending_changes: Vec::new(),
             major_mode: MajorMode::Fundamental,
             encoding: "utf-8".to_string(),
-            diagnostics: Vec::new(),
+            lsp_diagnostics: Vec::new(),
+            tool_diagnostics: Vec::new(),
             local_options: std::collections::HashMap::new(),
             read_only: false,
             ephemeral: false,
@@ -400,20 +405,32 @@ impl Buffer {
 
     // ── Diagnostics ──
 
-    pub fn set_diagnostics(
+    /// Replace the LSP-owned diagnostics for this buffer.
+    pub fn set_lsp_diagnostics(
         &mut self,
         diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
     ) {
-        self.diagnostics = diagnostics;
+        self.lsp_diagnostics = diagnostics;
     }
 
-    pub fn get_diagnostics(&self) -> &[crate::kernel::semantic::provider::Diagnostic] {
-        &self.diagnostics
+    /// Replace the tool-owned (build/compiler) diagnostics for this buffer.
+    pub fn set_tool_diagnostics(
+        &mut self,
+        diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+    ) {
+        self.tool_diagnostics = diagnostics;
+    }
+
+    /// Every diagnostic on the buffer: LSP first, then tool output.
+    pub fn get_diagnostics(&self) -> Vec<crate::kernel::semantic::provider::Diagnostic> {
+        let mut all = self.lsp_diagnostics.clone();
+        all.extend(self.tool_diagnostics.iter().cloned());
+        all
     }
 
     /// Display strings through the single formatter (Janet queries, logs).
     pub fn diagnostic_strings(&self) -> Vec<String> {
-        self.diagnostics.iter().map(|d| d.display()).collect()
+        self.get_diagnostics().iter().map(|d| d.display()).collect()
     }
 
     // ── Marks (anchors, §2.3) ──

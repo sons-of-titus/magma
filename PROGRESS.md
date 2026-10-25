@@ -163,9 +163,10 @@ JetBrains plugin-ecosystem parity.
 2. **Tool-output parser reads human rustc output**, not
    `--message-format=json` — correct clickable errors today; JSON mode
    remains a roadmap candidate.
-3. **Tool diagnostics vs LSP diagnostics share one buffer field**; a
-   clean build clears the quickfix list but not LSP-owned diagnostics.
-   Merging the stores is future work on the F-26 substrate.
+3. **Tool and LSP diagnostics are separate stores** (`Buffer.tool_diagnostics`
+   / `lsp_diagnostics`, merged on read); a clean build clears only the tool
+   store, so LSP results survive.  `quickfix_list` still holds both build
+   problems and search/find results — splitting that is future work.
 4. **CJK glyphs on the GPU path** render through the CPU paint fallback
    (fixed-grid atlas cannot hold CJK); Latin/Greek/Cyrillic are baked.
 5. **Bidi scope:** per-line L2 reordering with grapheme granularity;

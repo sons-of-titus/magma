@@ -49,7 +49,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             for (key, arc) in ed.buffers.iter_mut() {
                 let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 if lsp_path_matches(buf.path.as_deref(), &path) {
-                    buf.set_diagnostics(diagnostics.clone());
+                    buf.set_lsp_diagnostics(diagnostics.clone());
                     buffer_id = Some(key);
                     break;
                 }

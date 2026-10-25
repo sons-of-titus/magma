@@ -110,9 +110,10 @@ pub fn finish_output_task(ed: &mut Editor, id: u64, exit_code: i32, stdout: &str
     true
 }
 
-/// Parse finished tool output into the quickfix list and typed
-/// diagnostics on every open buffer it mentions.  One failed build
-/// becomes clickable errors and gutter marks.
+/// Parse finished tool output into the quickfix list and typed diagnostics on
+/// every open buffer.  One failed build becomes clickable errors and gutter
+/// marks.  Only the tool-owned store is touched, so a clean build clears stale
+/// build diagnostics without disturbing LSP-owned ones.
 pub fn apply_tool_diagnostics(ed: &mut Editor, command: &str, output: &str, cwd: &std::path::Path) {
     let findings = diag_parse::parse_tool_output(command, output, cwd);
     ed.quickfix_list = findings.iter().map(|f| f.quickfix()).collect();
@@ -125,10 +126,10 @@ pub fn apply_tool_diagnostics(ed: &mut Editor, command: &str, output: &str, cwd:
     }
     for (_, arc) in ed.buffers.iter_mut() {
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(path) = buf.path.as_deref()
-            && let Some(diags) = by_path.remove(path) {
-                buf.set_diagnostics(diags);
-            }
+        let diags = buf.path.as_deref()
+            .and_then(|path| by_path.remove(path))
+            .unwrap_or_default();
+        buf.set_tool_diagnostics(diags);
     }
     ed.frame_dirty = true;
 }
@@ -186,7 +187,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
         if let Some(arc) = editor.buffers.get_mut(key) {
             let (target, char_offset) = {
                 let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                buf.set_diagnostics(diags);
+                buf.set_tool_diagnostics(diags);
                 let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
                 let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
                 let char_offset: usize = line_text.chars()
@@ -213,7 +214,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
                 crate::kernel::state::id::BufferId(id), &name, &content,
             );
             buf.path = Some(path.clone());
-            buf.set_diagnostics(diags);
+            buf.set_tool_diagnostics(diags);
             let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
             let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
             let char_offset: usize = line_text.chars()
@@ -308,15 +309,39 @@ mod tests {
     }
 
     #[test]
-    fn apply_tool_diagnostics_clean_run_clears_quickfix() {
-        let (mut ed, _key) = ed_with_main();
+    fn apply_tool_diagnostics_clean_run_clears_quickfix_and_tool_marks() {
+        let (mut ed, key) = ed_with_main();
         apply_tool_diagnostics(&mut ed, "cargo build",
             "error: broken\n --> src/main.rs:4:9\n", std::path::Path::new("/repo"));
         assert_eq!(ed.quickfix_list.len(), 1);
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner())
+            .tool_diagnostics.len(), 1);
 
         apply_tool_diagnostics(&mut ed, "cargo build",
             "   Compiling repo v0.1.0\n    Finished dev profile", std::path::Path::new("/repo"));
         assert!(ed.quickfix_list.is_empty(), "a clean run clears the list");
+        assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner())
+            .tool_diagnostics.len(), 0, "a clean run clears stale tool diagnostics");
+    }
+
+    #[test]
+    fn clean_build_preserves_lsp_diagnostics() {
+        use crate::kernel::semantic::provider::{Diagnostic, DiagnosticSeverity};
+        let (mut ed, key) = ed_with_main();
+        ed.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner())
+            .set_lsp_diagnostics(vec![Diagnostic {
+                message: "unused import".to_string(),
+                severity: DiagnosticSeverity::Warning,
+                line: 0, column: 0, end_line: 0, end_column: 1,
+            }]);
+
+        apply_tool_diagnostics(&mut ed, "cargo build",
+            "    Finished dev profile", std::path::Path::new("/repo"));
+
+        let buf = ed.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(buf.lsp_diagnostics.len(), 1,
+            "a clean build must not clear LSP-owned diagnostics");
+        assert!(buf.tool_diagnostics.is_empty());
     }
 
     #[test]

@@ -463,7 +463,7 @@ fn update_hover_card(ui: &egui::Ui, ed: &mut Editor, rect: Rect, char_w: f32, li
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let (ws, we) = crate::kernel::input::mouse::word_range_at(&buf, offset)?;
             let diag_line = buf.position_of(offset).line;
-            let diag = buf.diagnostics.iter()
+            let diag = buf.get_diagnostics().into_iter()
                 .find(|d| d.line == diag_line)
                 .map(|d| d.display());
             Some((buf.slice(ws, we), diag, offset, buf_id))

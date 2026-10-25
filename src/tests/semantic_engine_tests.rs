@@ -45,7 +45,7 @@ fn buffers_hold_typed_diagnostics() {
     let mut ed = helpers::make_editor();
     let key = crate::tests::helpers::focused_key(&ed);
     if let Some(arc) = ed.buffers.get_mut(key) {
-        arc.lock().unwrap().set_diagnostics(vec![
+        arc.lock().unwrap().set_lsp_diagnostics(vec![
             diag(DiagnosticSeverity::Error, 2, 0, "broken"),
             diag(DiagnosticSeverity::Warning, 2, 5, "also warn"),
         ]);

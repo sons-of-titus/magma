@@ -29,6 +29,26 @@ fn immediate_repaint_counter(ctx: &egui::Context) -> Arc<AtomicUsize> {
     count
 }
 
+/// Run one egui pass that invokes `f` with the viewport reporting `focused`
+/// (`None` leaves egui's default, which reads as focused).
+fn schedule_pass(ctx: &egui::Context, focused: Option<bool>, mut f: impl FnMut(&egui::Context)) {
+    let mut raw = egui::RawInput::default();
+    if let Some(v) = focused {
+        raw.viewports.entry(egui::ViewportId::ROOT).or_default().focused = Some(v);
+    }
+    let mut out = ctx.run_ui(raw, |root| f(&root.ctx().clone()));
+    out.textures_delta.clear();
+}
+
+/// True when the last pass recorded a repaint request originating in the
+/// `schedule_repaint` scheduler (egui records the caller file for every
+/// request, even ones it does not surface through the callback).
+fn armed_by_scheduler(ctx: &egui::Context) -> bool {
+    ctx.repaint_causes()
+        .iter()
+        .any(|cause| cause.file.contains("gui_editor_window"))
+}
+
 /// One full egui pass plus the shell's repaint scheduling for it.
 ///
 /// egui only reports an immediate request when it lowers the pending
@@ -97,7 +117,7 @@ fn stale_blink_deadline_does_not_latch_in_non_text_modes() {
 }
 
 #[test]
-fn due_blink_in_text_mode_repaints_once_per_flip() {
+fn due_blink_flips_the_caret_without_an_extra_immediate_repaint() {
     let mut app = GuiApp::new(make_editor());
     let ctx = egui::Context::default();
     let immediate = immediate_repaint_counter(&ctx);
@@ -106,17 +126,75 @@ fn due_blink_in_text_mode_repaints_once_per_flip() {
     app.atlas_dirty = false;
     schedule_cycle(&mut app, &ctx, false);
     schedule_cycle(&mut app, &ctx, false);
+    quiet_cycles(&mut app, &ctx, &immediate, 1, false);
 
+    let before_phase = app.blink_visible;
+    let before_immediate = immediate.load(Ordering::Relaxed);
     app.last_blink = Instant::now() - Duration::from_millis(1000);
-    schedule_cycle(&mut app, &ctx, false);
-    assert!(immediate.load(Ordering::Relaxed) >= 1,
-        "the flip cycle must repaint so the new cursor phase shows immediately");
+    schedule_pass(&ctx, None, |c| app.schedule_repaint(c));
 
-    quiet_cycles(&mut app, &ctx, &immediate, 1, false);
-    let settled = immediate.load(Ordering::Relaxed);
-    quiet_cycles(&mut app, &ctx, &immediate, 1, false);
-    assert_eq!(immediate.load(Ordering::Relaxed), settled,
-        "a settled blink must not keep scheduling immediate repaints");
+    assert_ne!(app.blink_visible, before_phase, "a due deadline flips the caret");
+    assert_eq!(
+        immediate.load(Ordering::Relaxed),
+        before_immediate,
+        "the waking pass renders the new phase; a flip must not add an immediate repaint"
+    );
+}
+
+#[test]
+fn caret_blinks_only_when_focused_and_text_accepting() {
+    assert!(GuiApp::caret_blinks(true, true));
+    assert!(!GuiApp::caret_blinks(false, true), "an unfocused window must not blink");
+    assert!(!GuiApp::caret_blinks(true, false), "a non-text surface must not blink");
+    assert!(!GuiApp::caret_blinks(false, false));
+}
+
+#[test]
+fn unfocused_window_arms_no_blink_heartbeat_while_focused_does() {
+    let mut app = GuiApp::new(make_editor());
+    let ctx = egui::Context::default();
+
+    app.editor_open = true;
+    app.atlas_dirty = false;
+    app.last_blink = Instant::now(); // not due: measure the heartbeat only
+
+    // egui surfaces a pass's repaint causes only once the next pass begins, so
+    // schedule and then run one more no-op pass before reading them.
+    let armed_after = |app: &mut GuiApp, focused: Option<bool>| {
+        app.editor.frame_dirty = false;
+        schedule_pass(&ctx, focused, |c| app.schedule_repaint(c));
+        schedule_pass(&ctx, focused, |_| {});
+        armed_by_scheduler(&ctx)
+    };
+
+    let unfocused_armed = armed_after(&mut app, Some(false));
+    let focused_armed = armed_after(&mut app, None);
+
+    assert!(
+        !unfocused_armed,
+        "an unfocused window must not arm the 400 ms blink heartbeat"
+    );
+    assert!(
+        focused_armed,
+        "a focused idle window must still arm the 400 ms blink heartbeat"
+    );
+}
+
+#[test]
+fn unfocused_window_freezes_the_caret_and_never_flips() {
+    let mut app = GuiApp::new(make_editor());
+    let ctx = egui::Context::default();
+
+    app.editor_open = true;
+    app.atlas_dirty = false;
+    app.blink_visible = true;
+    // Overdue, but unfocused: the deadline must be ignored entirely.
+    app.last_blink = Instant::now() - Duration::from_millis(1000);
+
+    schedule_pass(&ctx, Some(false), |c| app.schedule_repaint(c));
+
+    assert!(app.blink_visible, "an unfocused caret must not flip");
+    assert!(app.editor.cursor_visible, "the frozen caret stays visible");
 }
 
 #[test]

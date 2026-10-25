@@ -5,7 +5,7 @@
 
 use eframe::egui::{self, FontFamily, FontId, RichText, ScrollArea};
 use crate::kernel::state::Editor;
-use super::gui_theme::GuiTheme;
+use super::gui_theme::{GuiTheme, icons};
 use super::tool_window::{ToolAction, ToolWindow};
 
 fn mono(size: f32) -> FontId { FontId::new(size, FontFamily::Monospace) }
@@ -23,7 +23,7 @@ impl AgentToolWindow {
 
 impl ToolWindow for AgentToolWindow {
     fn title(&self) -> &str { "Agent" }
-    fn icon(&self)  -> char { '✦' }
+    fn icon(&self)  -> char { super::gui_theme::icons::AGENT.chars().next().unwrap_or(' ') }
 
     fn ui(&mut self, ui: &mut egui::Ui, editor: &mut Editor, theme: &GuiTheme) -> Vec<ToolAction> {
         let mut actions = Vec::new();
@@ -72,7 +72,7 @@ impl ToolWindow for AgentToolWindow {
                                 } else {
                                     format!("{command} — {description}")
                                 };
-                                ui.label(RichText::new(format!("▸ {label}"))
+                                ui.label(RichText::new(format!("{} {label}", icons::CARET_RIGHT))
                                     .font(mono(11.5)).color(theme.blue));
                             }
                             crate::kernel::agent::TranscriptEntry::StepOutput(text) => {
@@ -102,10 +102,13 @@ impl ToolWindow for AgentToolWindow {
             .map(|s| s.status == crate::kernel::agent::AgentStatus::Running)
             .unwrap_or(false);
         ui.horizontal(|ui| {
+            // A bounded width — an infinite desired width would let the
+            // docked panel grow to fill the window.
+            let input_w = (ui.available_width() - 120.0).max(80.0);
             let resp = ui.add(egui::TextEdit::singleline(&mut self.input)
                 .hint_text("ask the agent…")
                 .font(prop(12.5))
-                .desired_width(f32::INFINITY));
+                .desired_width(input_w));
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter)) && resp.has_focus();
             let prompt = self.input.trim().to_string();
             if (ui.button("Send").clicked() || (enter && !prompt.is_empty()))

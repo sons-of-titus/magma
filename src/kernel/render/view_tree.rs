@@ -41,10 +41,15 @@ pub struct Pane {
     pub cursor_row: u16,
     pub cursor_col: u16,
     pub scroll_offset: usize,
+    /// First visible content column (0 = line start).  The gutter is fixed;
+    /// only text columns pan.
+    pub scroll_left: usize,
     /// Fractional layout weight [0.0, 1.0] for proportional horizontal sizing.
     pub weight: f32,
     /// When true, scroll_offset is the explicit top line (not cursor-following).
     pub scroll_pinned: bool,
+    /// When true, scroll_left is the explicit first column (not cursor-following).
+    pub scroll_left_pinned: bool,
     /// Buffer `scroll_offset`/`scroll_cursor` were computed for; a mismatch
     /// (buffer switch) re-derives the viewport from the cursor.
     pub scroll_buf: Option<usize>,
@@ -66,8 +71,10 @@ impl Pane {
             cursor_row: 0,
             cursor_col: 0,
             scroll_offset: 0,
+            scroll_left: 0,
             weight: 1.0,
             scroll_pinned: false,
+            scroll_left_pinned: false,
             scroll_buf: None,
             scroll_cursor: None,
             layout: LayoutConstraint::default(),

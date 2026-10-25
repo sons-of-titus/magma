@@ -19,8 +19,9 @@ fn ime_preedit_and_commit_reach_the_collect_surface() {
         ..Default::default()
     });
     let mut wheel = 0.0;
+    let mut wheel_x = 0.0;
     let (_keys, _mice, ime) =
-        crate::kernel::render::gui_input::collect(&ctx, 16.0, &mut wheel);
+        crate::kernel::render::gui_input::collect(&ctx, 16.0, &mut wheel, &mut wheel_x);
     assert_eq!(ime, vec![
         crate::kernel::render::gui_input::ImeInput::Preedit {
             text: "こん".to_string(),
@@ -47,8 +48,9 @@ fn empty_preedit_clears_the_composition() {
         ..Default::default()
     });
     let mut wheel = 0.0;
+    let mut wheel_x = 0.0;
     let (_keys, _mice, ime) =
-        crate::kernel::render::gui_input::collect(&ctx, 16.0, &mut wheel);
+        crate::kernel::render::gui_input::collect(&ctx, 16.0, &mut wheel, &mut wheel_x);
     assert_eq!(ime.len(), 2);
     assert_eq!(ime[1].clone(), crate::kernel::render::gui_input::ImeInput::Preedit {
         text: String::new(),

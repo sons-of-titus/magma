@@ -138,6 +138,42 @@ fn window_scroll_top_returns_pinned_value() {
 }
 
 #[test]
+fn window_scroll_left_round_trips() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    let wid = ed.view_tree.focused_window().unwrap();
+    scripting::eval(&format!("(window/set-scroll-left {} 6)", wid.0));
+    let win = ed.view_tree.window(wid).unwrap();
+    assert_eq!(win.scroll_left, 6);
+    assert!(win.scroll_left_pinned, "set-scroll-left must pin the pan");
+
+    let read = scripting::eval_result(&format!("(window/scroll-left {})", wid.0)).unwrap();
+    assert_eq!(read, "6", "scroll-left must read back the pinned column");
+}
+
+#[test]
+fn scroll_column_commands_pan_the_focused_window() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");
+    scripting::init(&mut ed);
+    let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
+
+    let wid = ed.view_tree.focused_window().unwrap();
+    scripting::eval("(editor/run-command \"scroll-column-right\")");
+    assert_eq!(ed.view_tree.window(wid).unwrap().scroll_left, 4);
+
+    scripting::eval("(editor/run-command \"scroll-column-left\")");
+    assert_eq!(ed.view_tree.window(wid).unwrap().scroll_left, 0);
+
+    // Never goes negative.
+    scripting::eval("(editor/run-command \"scroll-column-left\")");
+    assert_eq!(ed.view_tree.window(wid).unwrap().scroll_left, 0);
+}
+
+#[test]
 fn window_unpin_scroll_clears_pin() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line1\nline2\nline3\n");

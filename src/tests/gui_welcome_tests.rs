@@ -44,7 +44,7 @@ fn welcome_remove_recent_action_forgets_a_project() {
 #[test]
 fn welcome_set_theme_action_switches_the_palette() {
     let (mut shell, mut ed) = shell_and_editor();
-    assert!(!GuiTheme::option_is_light(&ed.options), "mocha is the default preset");
+    assert!(!GuiTheme::option_is_light(&ed.options), "intellij-dark is the default preset");
 
     shell.handle_welcome_action(&mut ed, WelcomeAction::SetTheme("latte"));
 

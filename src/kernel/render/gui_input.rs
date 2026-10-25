@@ -32,7 +32,7 @@ pub enum ImeInput {
 /// events).
 ///
 /// `line_h` converts point-unit wheel deltas into scroll lines.
-pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32)
+pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32, wheel_remain_x: &mut f32)
     -> (Vec<String>, Vec<RawMouseEvent>, Vec<ImeInput>)
 {
     let mut keys = Vec::new();
@@ -78,21 +78,40 @@ pub fn collect(ctx: &egui::Context, line_h: f32, wheel_remain: &mut f32)
                 egui::Event::MouseWheel { unit, delta, modifiers, .. } => {
                     // Fractional wheel deltas accumulate across events: a slow
                     // two-finger scroll must not stall below one line.
-                    let raw = match unit {
-                        egui::MouseWheelUnit::Point => delta.y / line_h,
-                        egui::MouseWheelUnit::Line  => delta.y,
-                        egui::MouseWheelUnit::Page  => delta.y * 10.0,
+                    let scale = match unit {
+                        egui::MouseWheelUnit::Point => 1.0 / line_h,
+                        egui::MouseWheelUnit::Line  => 1.0,
+                        egui::MouseWheelUnit::Page  => 10.0,
                     };
-                    let acc = raw + *wheel_remain;
-                    let dy = acc.trunc() as i32;
-                    *wheel_remain = acc - acc.trunc();
+                    // Shift + vertical wheel is the conventional horizontal pan.
+                    let (raw_x, raw_y) = if modifiers.shift && delta.x == 0.0 {
+                        (delta.y * scale, 0.0)
+                    } else {
+                        (delta.x * scale, delta.y * scale)
+                    };
+                    let mods = format_modifiers(modifiers);
+                    let (px, py) = i.pointer.latest_pos()
+                        .map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+
+                    let acc_y = raw_y + *wheel_remain;
+                    let dy = acc_y.trunc() as i32;
+                    *wheel_remain = acc_y - acc_y.trunc();
                     if dy != 0 {
-                        let mods = format_modifiers(modifiers);
-                        let (px, py) = i.pointer.latest_pos()
-                            .map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
                         mice.push(RawMouseEvent {
                             px, py,
                             kind: MouseEventKind::Scroll(dy),
+                            button: MouseButton::Left,
+                            modifiers: mods.clone(),
+                        });
+                    }
+
+                    let acc_x = raw_x + *wheel_remain_x;
+                    let dx = acc_x.trunc() as i32;
+                    *wheel_remain_x = acc_x - acc_x.trunc();
+                    if dx != 0 {
+                        mice.push(RawMouseEvent {
+                            px, py,
+                            kind: MouseEventKind::ScrollX(dx),
                             button: MouseButton::Left,
                             modifiers: mods,
                         });
@@ -145,6 +164,12 @@ pub(crate) fn translate_event(ev: &egui::Event) -> Option<String> {
                 _ => None,
             };
             if let Some(s) = special {
+                // Left/right arrows take a ctrl/alt prefix so horizontal-scroll
+                // chords (e.g. ctrl-shift-left) are addressable.  The other
+                // named keys keep their current behavior.
+                if (ctrl || alt) && matches!(s, "left" | "right") {
+                    return Some(format!("{}-{}", modifier_prefix(ctrl, shift), s));
+                }
                 // Shift extends navigation (select-left, shift-tab); other
                 // modifiers keep the plain name so chords stay predictable.
                 if shift && !ctrl && !alt {

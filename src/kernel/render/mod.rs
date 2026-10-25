@@ -82,5 +82,15 @@ pub(crate) mod gui_terminal_tool;
 pub(crate) mod gpu_rasterizer;
 #[cfg(feature = "gui")]
 pub(crate) mod tool_window;
+#[cfg(feature = "gui")]
+pub(crate) mod tool_window_view;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_dock;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_menu;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_commit_tool;
+#[cfg(feature = "gui")]
+pub(crate) mod gui_commit_actions;
 
 pub use view_tree::{ViewTree, Pane, LayoutConstraint, SplitDirection};

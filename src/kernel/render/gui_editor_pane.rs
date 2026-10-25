@@ -23,6 +23,8 @@ use super::gui_theme::GuiTheme;
 
 const SCROLLBAR_W: f32 = 10.0;
 const THUMB_MIN_H: f32 = 18.0;
+/// Height of the bottom horizontal scrollbar strip.
+const H_BAR_H: f32 = 8.0;
 
 /// Everything the pane needs to paint one frame.
 pub struct PanePaint<'a> {
@@ -45,7 +47,9 @@ pub struct PanePaint<'a> {
 pub struct PreeditOverlay {
     pub text: String,
     /// Composition cursor as a char offset into `text`, when the IME
-    /// reports one.
+    /// reports one.  Reserved for inline composition-caret rendering; the
+    /// overlay currently paints the full composition at the text cursor.
+    #[allow(dead_code)]
     pub cursor_char: Option<usize>,
 }
 
@@ -54,6 +58,8 @@ pub enum EditorPaneAction {
     /// Scroll the focused pane's viewport so `line` (1-based) is the top row.
     /// Viewport-only: the cursor stays where it is.
     ScrollViewport(usize),
+    /// Horizontal pan: make `col` the pane's first visible content column.
+    ScrollLeft(usize),
 }
 
 /// Render the central editor pane.  Returns a chrome-initiated action.
@@ -68,7 +74,7 @@ pub fn render_editor_pane(
     let minimap = minimap_enabled(paint.editor);
 
     let strip_w = if minimap { STRIP_W } else { SCROLLBAR_W };
-    let editor_rect = Rect::from_min_max(
+    let mut editor_rect = Rect::from_min_max(
         full.min,
         egui::pos2(full.right() - strip_w, full.bottom()),
     );
@@ -78,6 +84,34 @@ pub fn render_editor_pane(
     );
 
     let visible_cols = ((editor_rect.width()  / char_w).floor() as usize).max(1);
+
+    // ── Horizontal scrollbar reservation (focused pane) ─────────────────
+    // A bottom strip appears only when the visible content is wider than the
+    // text area; text rows shrink so the bar never overlaps the grid.
+    let h_focused = paint.editor.view_tree.focused_window()
+        .and_then(|wid| paint.editor.view_tree.window(wid).cloned());
+    let h_buf = h_focused.as_ref().and_then(|p| p.buffer_id);
+    let h_geom = h_buf.and_then(|buf_id| {
+        let total_lines = paint.editor.buffers.get(buf_id)
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
+            .unwrap_or(1);
+        let gutter = crate::kernel::render::frame::gutter_cols(paint.editor, buf_id, total_lines);
+        let content_cols = visible_cols.saturating_sub(gutter);
+        let extent = crate::kernel::render::frame::horizontal_extent(paint.editor, buf_id);
+        (content_cols > 0 && extent > content_cols).then_some((content_cols, extent))
+    });
+    let h_bar_h = if h_geom.is_some() { H_BAR_H } else { 0.0 };
+    let h_bar_rect = Rect::from_min_max(
+        egui::pos2(editor_rect.left(), editor_rect.bottom() - h_bar_h),
+        editor_rect.max,
+    );
+    if h_bar_h > 0.0 {
+        editor_rect = Rect::from_min_max(
+            editor_rect.min,
+            egui::pos2(editor_rect.right(), editor_rect.bottom() - h_bar_h),
+        );
+    }
+
     let visible_rows = ((editor_rect.height() / line_h).floor() as usize).max(1);
     let ed = &mut *paint.editor;
     ed.view_tree.resize(visible_cols as u16, visible_rows as u16);
@@ -136,17 +170,21 @@ pub fn render_editor_pane(
                 .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).header_line.is_some() as i32)
                 .unwrap_or(0) as f32;
             let st = pane_scroll_state(paint.editor, pane, buf_id, visible_rows);
+            let scroll_left = crate::kernel::render::frame::pane_scroll_left(pane, buf_id);
 
             // Cursor pixel anchor — shared by the cursor rect and popups.
             let cursor_px = st.cursor_line.checked_sub(st.scroll_top)
-                .filter(|&vis_row| vis_row < visible_rows && st.cursor_col < visible_cols)
+                .filter(|&vis_row| vis_row < visible_rows
+                    && st.cursor_col >= scroll_left
+                    && st.cursor_col - scroll_left < visible_cols)
                 .map(|vis_row| {
                     let prefix_margin = crate::kernel::render::decorations::prefix_margin_width(paint.editor, buf_id);
                     let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
                     let total_lines = paint.editor.buffers.get(buf_id)
                         .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count()).unwrap_or(1);
                     let gutter_px = ((prefix_cols + paint.editor.gutter.total_width(total_lines)) as f32) * char_w;
-                    let x = editor_rect.min.x + gutter_px + st.cursor_col as f32 * char_w;
+                    let x = editor_rect.min.x + gutter_px
+                        + (st.cursor_col - scroll_left) as f32 * char_w;
                     let y = editor_rect.min.y + (header_rows + vis_row as f32) * line_h;
                     (x, y)
                 });
@@ -176,7 +214,7 @@ pub fn render_editor_pane(
                 && let Some((x, y)) = cursor_px {
                     let (fr, fg, fb) = paint.editor.theme_color("fg");
                     let color = egui::Color32::from_rgb(fr, fg, fb);
-                    let font = FontId::new(line_h * 0.8, FontFamily::Monospace);
+                    let font = FontId::new(paint.editor.font_config.size, FontFamily::Monospace);
                     ui.painter().text(
                         Pos2::new(x, y + line_h * 0.5),
                         egui::Align2::LEFT_CENTER,
@@ -229,11 +267,27 @@ pub fn render_editor_pane(
         }
     }
 
+    // ── Horizontal scrollbar (bottom strip) ──────────────────────────────
+    if let (Some((content_cols, extent)), Some(buf_id)) = (h_geom, h_buf) {
+        let scroll_left = h_focused.as_ref()
+            .map(|p| crate::kernel::render::frame::pane_scroll_left(p, buf_id))
+            .unwrap_or(0);
+        if let Some(col) = h_scrollbar(ui, h_bar_rect, paint.theme, content_cols, extent, scroll_left) {
+            action = Some(EditorPaneAction::ScrollLeft(col));
+        }
+    }
+
     // ── Mouse dispatch (pixel → cell coords, editor rect only) ───────────
     if !raw.is_empty() {
         let ed = &mut *paint.editor;
         for ev in raw.drain(..) {
-            if !editor_rect.contains(egui::pos2(ev.px, ev.py))
+            let pos = egui::pos2(ev.px, ev.py);
+            // The horizontal bar owns its strip — never let a drag there
+            // extend a text selection.
+            if h_bar_h > 0.0 && h_bar_rect.contains(pos) {
+                continue;
+            }
+            if !editor_rect.contains(pos)
                 && matches!(ev.kind, crate::kernel::input::event::MouseEventKind::Click
                     | crate::kernel::input::event::MouseEventKind::Release)
             {
@@ -266,8 +320,8 @@ fn scrollbar(
     if total_lines <= visible_rows || rect.height() < 8.0 { return None; }
     ui.allocate_rect(rect, egui::Sense::click_and_drag());
 
-    ui.painter().rect_filled(rect, 0.0, theme.crust);
-
+    // No track fill: the editor background shows through, so the strip never
+    // reads as a dark band beside the text.
     let track_h = rect.height();
     let frac   = visible_rows as f32 / total_lines as f32;
     let thumb_h = (track_h * frac).max(THUMB_MIN_H).min(track_h);
@@ -289,6 +343,39 @@ fn scrollbar(
 
 fn minimap_enabled(ed: &Editor) -> bool {
     ed.options.get("minimap-enabled").map(|v| v.as_str()) == Some("true")
+}
+
+/// Bottom horizontal scrollbar: track + thumb, click/drag to pan.  Returns the
+/// first visible column the drag asks for.
+fn h_scrollbar(
+    ui:           &mut egui::Ui,
+    rect:         Rect,
+    theme:        &GuiTheme,
+    content_cols: usize,
+    extent:       usize,
+    scroll_left:  usize,
+) -> Option<usize> {
+    if rect.height() < 4.0 || extent <= content_cols { return None; }
+    ui.allocate_rect(rect, egui::Sense::click_and_drag());
+    // Transparent track — the bottom strip must not look like a black tape.
+
+    let track_w = rect.width();
+    let max_left = (extent - content_cols) as f32;
+    let frac = content_cols as f32 / extent as f32;
+    let thumb_w = (track_w * frac).max(THUMB_MIN_H).min(track_w);
+    let max_slide = (track_w - thumb_w).max(0.0);
+    let thumb_x = if max_left > 0.0 { scroll_left as f32 / max_left * max_slide } else { 0.0 };
+    let thumb = Rect::from_min_size(
+        egui::pos2(rect.left() + thumb_x, rect.top() + 2.0),
+        egui::vec2(thumb_w, (rect.height() - 4.0).max(2.0)),
+    );
+    ui.painter().rect_filled(thumb, egui::CornerRadius::same(4), theme.surface1);
+
+    let ptr = ui.ctx().pointer_hover_pos()?;
+    if !rect.contains(ptr) { return None; }
+    if !ui.ctx().input(|i| i.pointer.primary_down()) { return None; }
+    let frac_x = ((ptr.x - rect.left() - thumb_w / 2.0) / max_slide.max(1.0)).clamp(0.0, 1.0);
+    Some((frac_x * max_left) as usize)
 }
 
 /// Completion popup — anchored at the cursor, one row per candidate, with a

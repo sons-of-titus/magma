@@ -124,8 +124,9 @@
 (keymap/set "ctrl-a" "select-all"   :editor)
 
 # Completion — works while typing, no mode entry required.
-# ctrl-p stays with the palette (GUI-reserved); cycling back is one
-# keymap line away for any community layout.
+# ctrl-p is no longer GUI-reserved: it cycles back through completions,
+# matching vim's insert-mode mapping.
+(keymap/set "ctrl-p"     "completion-prev"    :editor)
 (keymap/set "ctrl-n"     "completion-next"    :editor)
 (keymap/set "ctrl-space" "completion-trigger" :editor)
 

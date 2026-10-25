@@ -22,7 +22,6 @@ pub enum DialogKind {
     Search,
     GotoFile,
     GotoSymbol,
-    CommandPalette,
     CommandLine,
     Settings,
     QuitConfirm,
@@ -35,7 +34,6 @@ impl DialogKind {
             DialogKind::Search         => "Search in Buffers",
             DialogKind::GotoFile       => "Go to File",
             DialogKind::GotoSymbol     => "Go to Symbol",
-            DialogKind::CommandPalette => "Command Palette",
             DialogKind::CommandLine    => "Run Command",
             DialogKind::Settings       => "Settings",
             DialogKind::QuitConfirm    => "Unsaved Changes",
@@ -48,7 +46,6 @@ impl DialogKind {
             DialogKind::Search         => icons::SEARCH,
             DialogKind::GotoFile       => icons::FILE,
             DialogKind::GotoSymbol     => icons::SYMBOL,
-            DialogKind::CommandPalette => icons::COMMAND,
             DialogKind::CommandLine    => icons::COMMAND,
             DialogKind::Settings       => icons::SETTINGS,
             DialogKind::QuitConfirm    => icons::CLOSE,
@@ -281,11 +278,12 @@ impl DialogManager {
     /// for the keymap, so vim's insert ctrl-p still reaches completion.
     pub fn shortcut(key: &str) -> Option<DialogKind> {
         match key {
-            "ctrl-p"         => Some(DialogKind::CommandPalette),
             "alt-x"          => Some(DialogKind::CommandLine),
             "ctrl-shift-f"   => Some(DialogKind::Search),
             "ctrl-shift-n"   => Some(DialogKind::GotoFile),
             "ctrl-shift-o"   => Some(DialogKind::GotoSymbol),
+            // JetBrains: Settings is Ctrl+Alt+S (Cmd+, on macOS).
+            "ctrl-alt-s"     => Some(DialogKind::Settings),
             "ctrl-comma"     => Some(DialogKind::Settings),
             _ => None,
         }
@@ -298,18 +296,21 @@ impl DialogManager {
         let mut close = false;
 
         let title = format!("{}  {}", kind.icon(), kind.title());
-        egui::Window::new(title)
+        let settings = kind == DialogKind::Settings;
+        let mut win = egui::Window::new(title)
             .collapsible(false)
-            .resizable(false)
+            .resizable(settings)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0))
-            .default_width(480.0)
-            .show(ctx, |ui| {
+            .default_width(if settings { 760.0 } else { 480.0 });
+        if settings {
+            win = win.default_height(560.0);
+        }
+        win.show(ctx, |ui| {
                 match kind {
                     DialogKind::Search         => close = self.search.show(ui, editor, &mut actions),
                     DialogKind::Settings       => close = self.settings.show(ui, editor, theme, &mut actions),
                     DialogKind::GotoFile       => close = self.picker.show(ui, editor, theme, PickerSource::Files, &mut actions),
                     DialogKind::GotoSymbol     => close = self.picker.show(ui, editor, theme, PickerSource::Symbols, &mut actions),
-                    DialogKind::CommandPalette => close = self.picker.show(ui, editor, theme, PickerSource::Everywhere, &mut actions),
                     DialogKind::CommandLine    => close = self.command_line.show(ui, editor, theme, &mut actions),
                     DialogKind::RunConfig      => close = self.run_config.show(ui, editor, theme, &mut actions),
                     DialogKind::QuitConfirm    => {

@@ -1,6 +1,6 @@
-//! List-picker dialogs — goto-file, goto-symbol, command palette.
+//! List-picker dialogs — goto-file and goto-symbol.
 //!
-//! One `PickerDialog` widget with three sources.  Items are fuzzy-ranked
+//! One `PickerDialog` widget with two sources.  Items are fuzzy-ranked
 //! (`gui_fuzzy`) as the query changes; ↑/↓ move the selection, Enter or a
 //! click activates it, Escape closes (handled by the shell's key gate).
 
@@ -16,10 +16,6 @@ const MAX_SHOWN: usize = 12;
 pub enum PickerSource {
     Files,
     Symbols,
-    Commands,
-    /// One finder: files + symbols + commands ranked together
-    /// (JetBrains "search everywhere").
-    Everywhere,
 }
 
 /// One activatable row, independent of how it renders.
@@ -28,7 +24,6 @@ pub enum PickerEntry {
     /// Absolute path to open.
     File(String),
     Symbol { name: String, file: String, line: usize },
-    Command { name: String, description: String, needs_args: bool },
 }
 
 impl PickerEntry {
@@ -36,7 +31,6 @@ impl PickerEntry {
         match self {
             PickerEntry::File(p)     => p.clone(),
             PickerEntry::Symbol { name, file, line } => format!("{}  ·  {}:{}", name, file, line),
-            PickerEntry::Command { name, .. }  => name.clone(),
         }
     }
 }
@@ -75,22 +69,6 @@ pub fn collect_entries(editor: &Editor, source: PickerSource) -> Vec<PickerEntry
                 .map(|s| PickerEntry::Symbol { name: s.name, file: s.file, line: s.line })
                 .collect()
         }
-        PickerSource::Commands => {
-            editor.commands.list_detailed().into_iter()
-                .map(|(name, description, needs_args)| {
-                    PickerEntry::Command { name, description, needs_args }
-                })
-                .collect()
-        }
-        PickerSource::Everywhere => {
-            let files = collect_entries(editor, PickerSource::Files);
-            let symbols = collect_entries(editor, PickerSource::Symbols);
-            let commands = collect_entries(editor, PickerSource::Commands);
-            let mut all = files;
-            all.extend(symbols);
-            all.extend(commands);
-            all
-        }
     }
 }
 
@@ -98,58 +76,23 @@ pub struct PickerDialog {
     pub query:       String,
     pub selected:    usize,
     focus_pending:   bool,
-    /// Set when a command needing arguments was activated: the picker turns
-    /// into an argument prompt for that command.  Escape steps back to the
-    /// list (`go_back`).
-    args_for: Option<String>,
 }
 
 impl PickerDialog {
     pub fn new() -> Self {
-        Self { query: String::new(), selected: 0, focus_pending: false, args_for: None }
+        Self { query: String::new(), selected: 0, focus_pending: false }
     }
 
     pub fn reset(&mut self) {
         self.query.clear();
         self.selected = 0;
         self.focus_pending = true;
-        self.args_for = None;
     }
 
-    /// Escape in argument mode steps back to the list; returns true when
-    /// consumed.  The shell calls this before closing the whole dialog.
-    pub fn go_back(&mut self) -> bool {
-        if self.args_for.take().is_some() {
-            self.query.clear();
-            self.focus_pending = true;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn activate(&mut self, entry: &PickerEntry, actions: &mut Vec<DialogAction>) -> bool {
+    fn activate(&self, entry: &PickerEntry, actions: &mut Vec<DialogAction>) {
         match entry.clone() {
-            PickerEntry::File(path) => {
-                actions.push(DialogAction::OpenFile(path));
-                true
-            }
-            PickerEntry::Symbol { file, line, .. } => {
-                actions.push(DialogAction::GotoSymbol { file, line });
-                true
-            }
-            PickerEntry::Command { name, needs_args, .. } => {
-                if needs_args && self.args_for.is_none() {
-                    self.args_for = Some(name);
-                    self.query.clear();
-                    self.selected = 0;
-                    self.focus_pending = true;
-                    false
-                } else {
-                    actions.push(DialogAction::ExecuteCommand(name));
-                    true
-                }
-            }
+            PickerEntry::File(path) => actions.push(DialogAction::OpenFile(path)),
+            PickerEntry::Symbol { file, line, .. } => actions.push(DialogAction::GotoSymbol { file, line }),
         }
     }
 
@@ -164,36 +107,9 @@ impl PickerDialog {
     ) -> bool {
         let mono = FontId::new(12.0, FontFamily::Monospace);
 
-        // Argument mode: one input whose contents are passed to the command.
-        if let Some(name) = self.args_for.clone() {
-            let hint = format!("Arguments for {name}…");
-            let resp = ui.add(
-                egui::TextEdit::singleline(&mut self.query)
-                    .hint_text(hint)
-                    .font(mono)
-                    .desired_width(f32::INFINITY),
-            );
-            if self.focus_pending {
-                resp.request_focus();
-                self.focus_pending = false;
-            }
-            ui.label(RichText::new("Enter runs · Esc back")
-                .size(11.0).color(theme.overlay0));
-            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if enter {
-                let args = self.query.trim().to_string();
-                let line = if args.is_empty() { name } else { format!("{name} {args}") };
-                actions.push(DialogAction::ExecuteCommandLine(line));
-                return true;
-            }
-            return false;
-        }
-
         let hint = match source {
-            PickerSource::Files      => "File name…",
-            PickerSource::Symbols    => "Symbol name…",
-            PickerSource::Commands   => "Command name…",
-            PickerSource::Everywhere => "Search everywhere — files, symbols, commands…",
+            PickerSource::Files   => "File name…",
+            PickerSource::Symbols => "Symbol name…",
         };
         let resp = ui.add(
             egui::TextEdit::singleline(&mut self.query)
@@ -233,18 +149,10 @@ impl PickerDialog {
                     file.rsplit('/').next().unwrap_or(file),
                     line + 1,
                 )).font(mono.clone()),
-                PickerEntry::Command { name, description, needs_args } => {
-                    let mut text = name.clone();
-                    if *needs_args { text.push_str("  …"); }
-                    if !description.is_empty() {
-                        text.push_str(&format!("  —  {}", description));
-                    }
-                    RichText::new(text).font(mono.clone())
-                }
             };
             let label = label.color(if is_sel { Color32::WHITE } else { theme.subtext1 });
-            if ui.selectable_label(is_sel, label).clicked()
-                && self.activate(entry, actions) {
+            if ui.selectable_label(is_sel, label).clicked() {
+                self.activate(entry, actions);
                 return true;
             }
         }
@@ -260,7 +168,8 @@ impl PickerDialog {
 
         if enter && !ranked.is_empty() {
             let (_, idx) = ranked[self.selected.min(ranked.len() - 1)];
-            return self.activate(&entries[idx], actions);
+            self.activate(&entries[idx], actions);
+            return true;
         }
         false
     }

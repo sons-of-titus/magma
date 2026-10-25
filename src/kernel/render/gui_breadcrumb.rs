@@ -77,8 +77,8 @@ impl BreadcrumbBar {
 
         ui.horizontal(|ui| {
             ui.set_min_height(BAR_H);
-            // The breadcrumb sits on the editor surface, so the active tab's
-            // fill reads as continuing through the band into the editor.
+            // The breadcrumb is part of the editor surface — same fill — and
+            // tucked under the tab strip, per the JetBrains layout.
             ui.painter().rect_filled(ui.max_rect(), 0, theme.base);
             ui.spacing_mut().item_spacing.x = 4.0;
             ui.add_space(4.0);

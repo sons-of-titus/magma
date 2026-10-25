@@ -144,12 +144,15 @@ pub(crate) fn customize(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) ->
     ui.add_space(18.0);
 
     section_header(ui, theme, "COLOR THEME");
-    let light = GuiTheme::option_is_light(&editor.options);
+    let current = editor.options.get("gui-theme").map(String::as_str)
+        .unwrap_or("intellij-dark");
     for (key, label, hint) in [
-        ("mocha", "Catppuccin Mocha", "dark"),
-        ("latte", "Catppuccin Latte", "light"),
+        ("intellij-dark",  "IntelliJ Dark",   "dark"),
+        ("intellij-light", "IntelliJ Light",  "light"),
+        ("mocha",          "Catppuccin Mocha", "dark"),
+        ("latte",          "Catppuccin Latte", "light"),
     ] {
-        if option_row(ui, theme, label, hint, (key == "latte") == light) {
+        if option_row(ui, theme, label, hint, key == current) {
             action = Some(WelcomeAction::SetTheme(key));
         }
     }
@@ -186,10 +189,11 @@ pub(crate) fn learn(ui: &mut egui::Ui, theme: &GuiTheme) -> Option<WelcomeAction
     ui.add_space(16.0);
 
     const KEYS: &[(&str, &str)] = &[
-        ("ctrl-p",       "Search everywhere — commands, files, symbols"),
         ("ctrl-shift-n", "Go to file"),
+        ("ctrl-shift-o", "Go to symbol"),
+        ("ctrl-alt-s",   "Open settings"),
         ("ctrl-space",   "Trigger completion"),
-        ("ctrl-\\",      "Toggle the sidebar"),
+        ("ctrl-\\",      "Toggle the left dock"),
         ("ctrl-s",       "Save the buffer"),
         ("ctrl-shift-l", "Toggle light / dark theme"),
         ("ctrl-q",       "Quit"),

@@ -1,9 +1,9 @@
 //! Native tab bar widget for the GUI — JetBrains-style.
 //!
-//! Each pane in the ViewTree becomes one tab.  The active tab is highlighted
-//! and its underline fades in; inactive tabs are dimmed.  A blue dot marks
-//! modified buffers.  The close button is only shown when the tab is hovered
-//! or active.  Tabs can be drag-reordered.
+//! Each pane in the ViewTree becomes one tab.  The active tab reads as an
+//! elevated card (a hair lighter than the strip); inactive tabs are dimmed.  A
+//! blue dot marks modified buffers.  The close button is only shown when the
+//! tab is hovered or active.  Tabs can be drag-reordered.
 
 use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, CornerRadius, Sense, Vec2};
 use crate::kernel::icons::IconKind;
@@ -95,7 +95,7 @@ impl TabBar {
         let drag_over: Option<WindowId> = ui.ctx().data(|d| d.get_temp(drag_over_id));
 
         const TAB_H:     f32 = 30.0;
-        const H_PAD:     f32 = 12.0;
+        const H_PAD:     f32 = 10.0;
         const CLOSE_W:   f32 = 14.0;
         const DOT_R:     f32 = 3.5;
         const FONT_SIZE: f32 = 13.0;
@@ -107,8 +107,7 @@ impl TabBar {
             ui.spacing_mut().item_spacing.x = 0.0;
             ui.set_min_height(TAB_H);
 
-            // Strip baseline — the active tab's fill is painted over it, so
-            // the selected tab reads as connected to the editor surface.
+            // Strip baseline — a hairline the elevated active tab sits above.
             let strip_left = ui.cursor().left();
             let baseline_y = ui.cursor().top() + TAB_H - 1.0;
             ui.painter().rect_filled(
@@ -142,10 +141,9 @@ impl TabBar {
 
                 // ── Background ──────────────────────────────────────────────
                 if is_active {
-                    ui.painter().rect_filled(tab_rect, Self::top_rounding(), theme.base);
+                    ui.painter().rect_filled(tab_rect, Self::top_rounding(), theme.tab_active_bg());
                 } else if is_hovered {
-                    ui.painter().rect_filled(tab_rect, Self::top_rounding(),
-                                             theme.surface0.gamma_multiply(0.5));
+                    ui.painter().rect_filled(tab_rect, Self::top_rounding(), theme.tab_hover_bg());
                 }
 
                 if is_drag_over {
@@ -175,7 +173,7 @@ impl TabBar {
                 } else if is_hovered {
                     theme.subtext1
                 } else {
-                    theme.overlay0
+                    theme.subtext0
                 };
 
                 if let Some(kind) = &tab.icon {

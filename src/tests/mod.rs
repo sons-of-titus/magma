@@ -49,6 +49,8 @@ mod gui_repaint_tests;
 #[cfg(feature = "gui")]
 mod gui_welcome_tests;
 #[cfg(feature = "gui")]
+mod gui_chrome_tests;
+#[cfg(feature = "gui")]
 mod ime_tests;
 
 test_pairs!(

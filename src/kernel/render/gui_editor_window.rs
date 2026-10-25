@@ -6,22 +6,26 @@
 //! Repaint scheduling is driven by `Editor::frame_dirty` — bumped by every
 //! mutating entry point (input dispatch, background events, chrome actions)
 //! — plus the cursor-blink heartbeat.  There is no per-frame polling of
-//! buffer state.
+//! buffer state.  The chrome panels themselves live in `gui_dock::show_panels`.
+
+use std::collections::HashMap;
 
 use eframe::egui::{self, FontFamily, FontId};
 
+use crate::kernel::command::execute_command;
 use crate::kernel::input;
-use crate::kernel::state::Editor;
+use crate::kernel::state::{Editor, MessageKind};
 
-use super::gui_breadcrumb::{BreadcrumbAction, BreadcrumbBar};
+use super::gui_breadcrumb::BreadcrumbAction;
+use super::gui_commit_actions;
+use super::gui_dock;
 use super::gui_editor_pane::{render_editor_pane, EditorPaneAction, PanePaint};
 use super::gui_input;
-use super::gui_run_tool::{RunAction, RunBar};
+use super::gui_layout::LeftTool;
+use super::gui_menu::MenuAction;
 use super::gui_shell::{self, window_title};
-use super::gui_sidebar::ProjectTree;
-use super::gui_sidebar_state::SidebarAction;
-use super::gui_status::{StatusBar, StatusAction};
-use super::gui_tabs::{TabAction, TabBar};
+use super::gui_status::StatusAction;
+use super::gui_theme::GuiTheme;
 
 use super::gui::GuiApp;
 
@@ -60,7 +64,7 @@ impl GuiApp {
 
         // ── Key + mouse + IME events ───────────────────────────────────────
         let (key_events, mut raw_mouse_events, ime_events) =
-            gui_input::collect(ctx, line_h, &mut self.wheel_remain);
+            gui_input::collect(ctx, line_h, &mut self.wheel_remain, &mut self.wheel_remain_x);
         for ime in ime_events {
             match ime {
                 gui_input::ImeInput::Preedit { text, cursor_char } => {
@@ -104,167 +108,55 @@ impl GuiApp {
         // ── Project watching + debounced re-index ──────────────────────────
         self.shell.maintain_project(&mut self.editor);
 
-        // ── Panel layout ──────────────────────────────────────────────────
-        let sidebar_open   = self.layout.sidebar_open;
-        let sidebar_width  = self.layout.sidebar_width;
-        let breadcrumb_on  = self.editor.options.get("breadcrumb-enabled").map(|v| v.as_str()) != Some("false");
-        let status_h       = line_h + 8.0;
-        let mut tab_action:        Option<TabAction>        = None;
-        let mut sidebar_actions:   Vec<SidebarAction>       = Vec::new();
-        let mut breadcrumb_action: Option<BreadcrumbAction> = None;
-
-        // Status bar — outermost bottom panel.
-        let mut status_action: Option<StatusAction> = None;
-        egui::containers::Panel::bottom("magma_status")
-            .exact_size(status_h)
-            .frame(egui::Frame::NONE.fill(self.theme.crust)
-                .inner_margin(egui::Margin::symmetric(6, 0)))
-            .show(ui, |ui| {
-                status_action = StatusBar::show(ui, &self.editor, &self.theme);
-            });
-        if let Some(action) = status_action {
-            gui_shell::apply_status_action(&mut self.editor, action);
+        // ── A new debug session opens the Debugger dock, however it started ──
+        let session_id = self.editor.debug.active_session().map(|s| s.id);
+        if session_id.is_some() && session_id != self.last_debug_session {
+            self.layout.left_tool = LeftTool::Debug;
+            self.layout.sidebar_open = true;
         }
+        self.last_debug_session = session_id;
 
-        // The terminal dock tracks the session set: focusing a terminal
-        // opens the dock (entry 0); the last session ending minimizes it.
-        if let Some(entry) = self.tool_windows.entries.first_mut() {
-            if self.editor.io.terminals.sessions.is_empty() {
-                entry.visible = false;
-            } else if self.editor.io.terminals.focused.is_some() && !entry.visible {
-                entry.visible = true;
-                self.tool_windows.active_bottom = super::tool_window::TERMINAL_TOOL;
-            }
-        }
-
-        // Docked-bottom tool windows — inside the status bar, outside the editor.
-        let mut tool_actions = self.tool_windows.show_docked_bottom(ui, &mut self.editor, &self.theme);
-
-        // Navigation band — tabs and breadcrumb share one top panel with one
-        // background; the tab strip's own baseline separates them.
-        egui::containers::Panel::top("magma_nav")
-            .frame(egui::Frame::NONE.fill(self.theme.crust))
-            .show(ui, |ui| {
-                if let Some(a) = TabBar::show(ui, &self.editor, &self.theme) {
-                    tab_action = Some(a);
-                }
-                if breadcrumb_on {
-                    breadcrumb_action = BreadcrumbBar::show(ui, &self.editor, &self.theme);
-                }
-            });
-
-        // Run toolbar — its own exact-size panel: a right-aligned row inside
-        // the nav panel would size itself to the panel's full remaining
-        // height and push the editor off-screen.
-        let mut run_actions: Vec<RunAction> = Vec::new();
-        egui::containers::Panel::top("magma_run_bar")
-            .exact_size(28.0)
-            .resizable(false)
-            .frame(egui::Frame::NONE.fill(self.theme.crust))
-            .show(ui, |ui| {
-                run_actions = RunBar::show(ui, &self.editor, &self.theme);
-            });
-
-        // Tool window icon strip — outermost left strip (28 px wide).
-        let mut toggled_tool: Option<usize> = None;
-        egui::containers::Panel::left("magma_tool_strip")
-            .exact_size(28.0)
-            .resizable(false)
-            .frame(egui::Frame::NONE.fill(self.theme.crust)
-                .inner_margin(egui::Margin::same(0)))
-            .show(ui, |ui| {
-                toggled_tool = self.tool_windows.show_sidebar_edge(ui, &self.theme);
-            });
-        if let Some(idx) = toggled_tool {
-            if idx == super::tool_window::TERMINAL_TOOL {
-                // The terminal button always hands you a fresh shell and
-                // opens the dock; the other tool windows keep their
-                // show/hide toggle.
-                if let Some(entry) = self.tool_windows.entries.first_mut() {
-                    entry.visible = true;
-                }
-                self.tool_windows.active_bottom = super::tool_window::TERMINAL_TOOL;
-                tool_actions.push(super::tool_window::ToolAction::TerminalNew);
-            } else {
-                self.tool_windows.toggle(idx);
-            }
-        }
-
-        // Project tree sidebar.
-        if sidebar_open {
-            egui::containers::Panel::left("magma_sidebar")
-                .default_size(sidebar_width)
-                .resizable(true)
-                .show(ui, |ui| {
-                    sidebar_actions = ProjectTree::show(ui, &self.editor, &mut self.sidebar_state, &self.theme);
-                });
-        }
+        // ── Chrome panels (menu, status, docks, rails, tabs, toolbar) ──────
+        let out = gui_dock::show_panels(self, ui, line_h);
 
         // Apply chrome actions before rendering the central editor pane.
-        if let Some(action) = tab_action.take() {
+        if let Some(action) = out.tab {
             action.apply(&mut self.editor);
         }
-
-        if !sidebar_actions.is_empty() {
-            gui_shell::apply_sidebar_actions(&mut self.editor, sidebar_actions);
+        if !out.sidebar.is_empty() {
+            gui_shell::apply_sidebar_actions(&mut self.editor, out.sidebar);
         }
-
-        // Run-bar actions dispatch through commands; launching also opens the
-        // Output tool window so the run has a visible surface.
-        if !run_actions.is_empty() {
-            for action in run_actions {
-                match action {
-                    RunAction::Run | RunAction::Stop => {
-                        let cmd = if matches!(action, RunAction::Run) { "run-config" } else { "stop-config" };
-                        if let Err(e) = crate::kernel::command::execute_command(
-                            &mut self.editor, cmd, &std::collections::HashMap::new()) {
-                            self.editor.show_message(
-                                crate::kernel::state::MessageKind::Error, e);
-                        }
-                        if cmd == "run-config" {
-                            if let Some(entry) = self.tool_windows.entries.get_mut(super::tool_window::OUTPUT_TOOL) {
-                                entry.visible = true;
-                            }
-                            self.tool_windows.active_bottom = super::tool_window::OUTPUT_TOOL;
-                        }
-                    }
-                    RunAction::Debug => {
-                        if let Err(e) = crate::kernel::command::execute_command(
-                            &mut self.editor, "debug-config", &std::collections::HashMap::new()) {
-                            self.editor.show_message(
-                                crate::kernel::state::MessageKind::Error, e);
-                        } else {
-                            if let Some(entry) = self.tool_windows.entries.get_mut(super::tool_window::DEBUG_TOOL) {
-                                entry.visible = true;
-                            }
-                            self.tool_windows.active_bottom = super::tool_window::DEBUG_TOOL;
-                        }
-                    }
-                    RunAction::Select(name) => {
-                        let mut args = std::collections::HashMap::new();
-                        args.insert("name".to_string(),
-                            crate::kernel::command::args::ArgValue::String(name));
-                        if let Err(e) = crate::kernel::command::execute_command(
-                            &mut self.editor, "select-config", &args) {
-                            self.editor.show_message(
-                                crate::kernel::state::MessageKind::Error, e);
-                        }
-                    }
-                    RunAction::Edit => {
-                        self.dialogs.open_run_config_editor(&self.editor);
-                    }
-                }
+        if let Some(action) = out.status {
+            apply_status_action(&mut self.editor, &mut self.layout, action);
+        }
+        if !out.menu.is_empty() {
+            self.apply_menu_actions(out.menu);
+        }
+        if !out.commit.is_empty() {
+            gui_commit_actions::apply_commit_actions(&mut self.editor, out.commit);
+        }
+        if !out.run.is_empty() {
+            gui_dock::apply_run_actions(
+                &mut self.editor, &mut self.tool_windows, &mut self.layout, &mut self.dialogs, out.run);
+        }
+        if let Some(tool) = out.left_clicked {
+            self.layout.left_tool = tool;
+            self.layout.sidebar_open = true;
+            if tool == LeftTool::Commit {
+                let _ = execute_command(&mut self.editor, "vc-refresh", &HashMap::new())
+                    .or_else(|_| execute_command(&mut self.editor, "vc", &HashMap::new()));
             }
         }
-
-        if let Some(BreadcrumbAction::RevealInSidebar { rel_dir }) = breadcrumb_action.take() {
+        if let Some(BreadcrumbAction::RevealInSidebar { rel_dir }) = out.breadcrumb {
             self.layout.sidebar_open = true;
+            self.layout.left_tool = LeftTool::Project;
             let parts: Vec<&str> = rel_dir.split('/').filter(|s| !s.is_empty()).collect();
             for i in 1..=parts.len() {
                 self.sidebar_state.expanded_dirs.insert(parts[..i].join("/"));
             }
             self.sidebar_state.selected = Some(rel_dir);
         }
+        let mut tool_actions = out.tool;
 
         // ── Central panel: surface-based editor + scrollbar/minimap ───────
         // The buffer is CPU-rendered through egui's text rasterizer by
@@ -301,22 +193,8 @@ impl GuiApp {
             });
         drop(paint);
 
-        if let Some(EditorPaneAction::ScrollViewport(line)) = pane_action.take() {
-            // Scrollbar / minimap drags move the viewport, never the cursor.
-            // The pin holds until the cursor moves again.
-            if let Some(wid) = self.editor.view_tree.focused_window() {
-                let buf = self.editor.view_tree.buffer(wid);
-                let cursor = buf
-                    .and_then(|b| self.editor.view_of_buffer(b))
-                    .map(|v| v.cursor.offset);
-                if let Some(pane) = self.editor.view_tree.window_mut(wid) {
-                    pane.scroll_offset = line.saturating_sub(1);
-                    pane.scroll_pinned = true;
-                    pane.scroll_buf = buf;
-                    pane.scroll_cursor = cursor;
-                }
-            }
-            self.editor.frame_dirty = true;
+        if let Some(action) = pane_action.take() {
+            gui_dock::apply_pane_action(&mut self.editor, action);
         }
 
         // ── Modal dialogs ─────────────────────────────────────────────────
@@ -346,32 +224,77 @@ impl GuiApp {
         }
     }
 
+    fn apply_menu_actions(&mut self, actions: Vec<MenuAction>) {
+        for action in actions {
+            match action {
+                MenuAction::Command(cmd) => {
+                    if let Err(e) = execute_command(&mut self.editor, cmd, &HashMap::new()) {
+                        self.editor.show_message(MessageKind::Error, e);
+                    }
+                }
+                MenuAction::OpenDialog(kind) => self.dialogs.open_dialog(kind),
+                MenuAction::ShowLeft(tool) => {
+                    self.layout.left_tool = tool;
+                    self.layout.sidebar_open = true;
+                }
+                MenuAction::ToggleTheme => {
+                    let next = if GuiTheme::option_is_light(&self.editor.options) {
+                        "intellij-dark"
+                    } else {
+                        "intellij-light"
+                    };
+                    self.editor.options.insert("gui-theme".to_string(), next.to_string());
+                    self.editor.frame_dirty = true;
+                }
+            }
+        }
+    }
+
+    /// Whether the caret should animate (and therefore whether the blink
+    /// heartbeat is armed).  Only a focused, text-accepting surface blinks:
+    /// an unfocused or non-text surface must arm nothing, or the editor
+    /// repaints the whole UI every 400 ms while parked.
+    pub(crate) fn caret_blinks(focused: bool, accepts_text: bool) -> bool {
+        focused && accepts_text
+    }
+
     pub(crate) fn schedule_repaint(&mut self, ctx: &egui::Context) {
         const BLINK_PERIOD: std::time::Duration = std::time::Duration::from_millis(400);
-        let (dirty, blinked) = {
-            let mut blinked = false;
-            if self.editor.editor_mode.accepts_text && self.last_blink.elapsed() >= BLINK_PERIOD {
+
+        // The caret blinks only while the window is focused.  An unfocused or
+        // non-text surface has nothing to animate, so it must not arm the
+        // heartbeat: the heartbeat is the ONLY idle repaint source, and gating
+        // it here is what lets a parked window truly sleep instead of
+        // repainting the whole UI every 400 ms.
+        let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        let blink_active = Self::caret_blinks(focused, self.editor.editor_mode.accepts_text);
+
+        if blink_active {
+            if self.last_blink.elapsed() >= BLINK_PERIOD {
                 self.blink_visible = !self.blink_visible;
                 self.last_blink = std::time::Instant::now();
-                blinked = true;
-            } else if !self.editor.editor_mode.accepts_text {
-                self.blink_visible = true;
             }
-            self.editor.cursor_visible = self.blink_visible;
-            (self.editor.frame_dirty, blinked)
-        };
+        } else {
+            // A frozen caret stays solid — there is no deadline to honour.
+            self.blink_visible = true;
+        }
+        self.editor.cursor_visible = self.blink_visible;
+
         // A pending atlas upload must not wake the welcome surface: nothing
         // there consumes it, and the editor pane needs the flag to still be
         // set on its first frame.
         let atlas_pending = self.atlas_dirty && self.editor_open;
-        let repaint_now = dirty || blinked || atlas_pending;
+        let repaint_now = self.editor.frame_dirty || atlas_pending;
         self.editor.frame_dirty = false;
         if repaint_now {
             ctx.request_repaint();
         }
-        // Terminal output arrives through the PTY waker thread; nothing here
-        // needs frame-rate polling.
-        ctx.request_repaint_after(BLINK_PERIOD);
+        // Re-arm only while the caret is animating.  The wake itself renders
+        // the new phase, so a flip needs no *immediate* repaint on top of it —
+        // requesting one doubled the idle frame count.
+        if blink_active {
+            ctx.request_repaint_after(BLINK_PERIOD);
+        }
     }
 
     /// Close the main window and bring the welcome window back.
@@ -386,6 +309,16 @@ impl GuiApp {
             egui::ViewportId::ROOT,
             egui::ViewportCommand::Focus,
         );
+    }
+}
+
+/// Apply a status-bar request; the VC pill switches the left dock to Commit.
+fn apply_status_action(ed: &mut Editor, layout: &mut super::gui_layout::GuiLayout, action: StatusAction) {
+    if action == StatusAction::OpenVc {
+        layout.left_tool = LeftTool::Commit;
+        layout.sidebar_open = true;
+        let _ = execute_command(ed, "vc-refresh", &HashMap::new())
+            .or_else(|_| execute_command(ed, "vc", &HashMap::new()));
     }
 }
 

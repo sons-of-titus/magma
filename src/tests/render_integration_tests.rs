@@ -10,8 +10,15 @@ fn gui_app_init_bootstraps_bundled_font_and_atlas() {
     let ed = &app.editor;
     assert!(
         !ed.font_config.loaded_fonts.is_empty(),
-        "init installs the bundled font"
+        "init installs a default font (system monospace or bundled)"
     );
     assert!(ed.font_changed, "first frame re-applies fonts to egui + atlas");
-    assert_eq!(ed.font_config.family, "magma-mono");
+    assert!(
+        ed.font_config.family == "system-mono" || ed.font_config.family == "magma-mono",
+        "unexpected default family {:?}", ed.font_config.family
+    );
+    assert!(
+        ed.font_config.primary_font().is_some(),
+        "the primary family must resolve to loaded bytes"
+    );
 }

@@ -47,8 +47,9 @@ pub struct OptionSpec {
 pub const OPTION_SPECS: &[OptionSpec] = &[
     OptionSpec {
         name: "gui-theme", kind: OptionKind::Enum,
-        choices: &["mocha", "latte"], default: "mocha",
-        description: "Catppuccin palette: mocha (dark) or latte (light)",
+        choices: &["intellij-dark", "intellij-light", "mocha", "latte"],
+        default: "intellij-dark",
+        description: "Chrome palette: IntelliJ dark/light, or Catppuccin mocha/latte",
         category: OptionCategory::Appearance,
     },
     OptionSpec {

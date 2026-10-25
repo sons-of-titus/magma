@@ -7,11 +7,11 @@
 
 /// Keys the GUI consumes in normal mode; none may be keymap-bound there.
 const GUI_RESERVED_NORMAL: &[&str] = &[
-    "ctrl-p",       // search-everywhere palette
     "ctrl-shift-n", // go to file
     "ctrl-shift-f", // search dialog
     "ctrl-shift-o", // go to symbol
-    "ctrl-comma",   // settings
+    "ctrl-alt-s",   // settings (JetBrains)
+    "ctrl-comma",   // settings (macOS)
     "ctrl-q",       // quit guard
     "ctrl-\\",      // sidebar toggle
     "ctrl-shift-l", // theme toggle
@@ -50,11 +50,37 @@ fn completion_bindings_work_while_typing() {
 #[test]
 fn ctrl_o_still_means_jump_back_in_normal_mode() {
     // The review's finding: the GUI hijacked ctrl-o and vim's jump-back
-    // silently vanished.  It is restored; the palette owns ctrl-p.
+    // silently vanished.  It is restored; the GUI takes no ctrl-p.
     janet_test!(ed, {
         enter_normal_mode(&mut ed);
         assert_eq!(ed.keymaps.resolve("ctrl-o").as_deref(), Some("mark-ring-jump-back"));
         assert_eq!(ed.keymaps.resolve("ctrl-i").as_deref(), Some("mark-ring-jump-forward"));
+    });
+}
+
+#[test]
+fn horizontal_scroll_chords_resolve_in_normal_mode() {
+    janet_test!(ed, {
+        enter_normal_mode(&mut ed);
+        assert_eq!(ed.keymaps.resolve("ctrl-shift-left").as_deref(),
+            Some("scroll-column-left"));
+        assert_eq!(ed.keymaps.resolve("ctrl-shift-right").as_deref(),
+            Some("scroll-column-right"));
+        // ctrl/meta + arrow keep their pre-prefix cursor behavior.
+        assert_eq!(ed.keymaps.resolve("ctrl-left").as_deref(), Some("cursor-left"));
+        assert_eq!(ed.keymaps.resolve("meta-right").as_deref(), Some("cursor-right"));
+    });
+}
+
+#[test]
+fn debug_keys_follow_intellij_defaults() {
+    janet_test!(ed, {
+        enter_normal_mode(&mut ed);
+        assert_eq!(ed.keymaps.resolve("f7").as_deref(),       Some("dbg-step-in"));
+        assert_eq!(ed.keymaps.resolve("f8").as_deref(),       Some("dbg-step-over"));
+        assert_eq!(ed.keymaps.resolve("shift-f8").as_deref(), Some("dbg-step-out"));
+        assert_eq!(ed.keymaps.resolve("f9").as_deref(),       Some("dbg-continue"));
+        assert_eq!(ed.keymaps.resolve("meta-f8").as_deref(),  Some("dbg-bp"));
     });
 }
 

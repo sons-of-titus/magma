@@ -1,18 +1,19 @@
-//! Settings dialog — the typed option registry, rendered by category.
-//!
-//! Known options come from `state::options::OPTION_SPECS` with typed
-//! widgets, effective values, per-option reset, and descriptions on hover.
-//! Anything the user set that the registry doesn't know about renders under
-//! "Custom" as raw strings.  Mutations are `DialogAction::SetOption`s the
-//! shell applies — same contract as every other dialog.
+//! Settings dialog — a JetBrains-style two-pane window: a category list on the
+//! left, a search box on top, and the selected category's typed options on the
+//! right.  Known options come from `state::options::OPTION_SPECS`; anything the
+//! registry doesn't know renders under "Advanced" as raw strings.  Mutations
+//! are `DialogAction::SetOption`s the shell applies — same contract as every
+//! other dialog.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
 use crate::kernel::state::options::{self, OptionCategory, OptionKind, OPTION_SPECS};
 use crate::kernel::state::Editor;
 use super::gui_dialog::DialogAction;
-use super::gui_theme::GuiTheme;
+use super::gui_theme::{GuiTheme, icons};
 
 pub struct SettingsDialog {
+    section:   usize,
+    search:    String,
     new_name:  String,
     new_value: String,
 }
@@ -28,20 +29,16 @@ pub fn sorted_options(editor: &Editor) -> Vec<(String, String)> {
     opts
 }
 
+const SECTIONS: &[(&str, Option<OptionCategory>)] = &[
+    ("Appearance", Some(OptionCategory::Appearance)),
+    ("Editing",    Some(OptionCategory::Editing)),
+    ("Behavior",   Some(OptionCategory::Behavior)),
+    ("Advanced",   None),
+];
+
 impl SettingsDialog {
     pub fn new() -> Self {
-        Self { new_name: String::new(), new_value: String::new() }
-    }
-
-    fn category_header(ui: &mut egui::Ui, theme: &GuiTheme, title: &str) {
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new(title.to_ascii_uppercase())
-                .size(11.0)
-                .color(theme.overlay0)
-                .strong(),
-        );
-        ui.separator();
+        Self { section: 0, search: String::new(), new_name: String::new(), new_value: String::new() }
     }
 
     fn spec_row(
@@ -96,7 +93,7 @@ impl SettingsDialog {
             }
 
             if value != spec.default
-                && ui.small_button("↺").on_hover_text("Reset to default").clicked() {
+                && ui.small_button(icons::RESET).on_hover_text("Reset to default").clicked() {
                 changed = Some(spec.default.to_string());
             }
             if value != spec.default {
@@ -104,59 +101,117 @@ impl SettingsDialog {
             }
 
             if let Some(v) = changed {
+                actions.push(DialogAction::SetOption { name: spec.name.to_string(), value: v });
+            }
+        });
+    }
+
+    fn search_matches(spec: &options::OptionSpec, q: &str) -> bool {
+        spec.name.to_lowercase().contains(q)
+            || spec.description.to_lowercase().contains(q)
+            || spec.category.title().to_lowercase().contains(q)
+    }
+
+    fn render_specs(
+        ui: &mut egui::Ui,
+        editor: &Editor,
+        theme: &GuiTheme,
+        specs: impl Iterator<Item = &'static options::OptionSpec>,
+        actions: &mut Vec<DialogAction>,
+    ) {
+        let mut any = false;
+        for spec in specs {
+            any = true;
+            Self::spec_row(ui, editor, theme, spec, actions);
+        }
+        if !any {
+            ui.label(RichText::new("No matching settings.").size(12.0).color(theme.overlay0));
+        }
+    }
+
+    fn render_advanced(
+        ui: &mut egui::Ui,
+        editor: &Editor,
+        theme: &GuiTheme,
+        state: &mut Self,
+        actions: &mut Vec<DialogAction>,
+    ) {
+        ui.label(RichText::new("Custom (not in the registry)").size(11.0).color(theme.overlay0).strong());
+        let custom = sorted_options(editor);
+        if custom.is_empty() {
+            ui.label(RichText::new("No custom options set.").size(12.0).color(theme.overlay0));
+        }
+        for (name, value) in custom {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(name.clone()).strong().color(theme.text));
+                let mut field = value.clone();
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut field)
+                        .desired_width(180.0)
+                        .font(FontId::new(12.0, FontFamily::Monospace)),
+                );
+                if resp.changed() && field != value {
+                    actions.push(DialogAction::SetOption { name: name.clone(), value: field });
+                }
+            });
+        }
+        ui.add_space(8.0);
+        ui.label(RichText::new("Add a setting").size(11.0).color(theme.overlay0).strong());
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut state.new_name)
+                .hint_text("option name").desired_width(140.0));
+            ui.add(egui::TextEdit::singleline(&mut state.new_value)
+                .hint_text("value").desired_width(140.0));
+            if ui.button("Add").clicked() && !state.new_name.is_empty() {
                 actions.push(DialogAction::SetOption {
-                    name: spec.name.to_string(),
-                    value: v,
+                    name:  std::mem::take(&mut state.new_name),
+                    value: std::mem::take(&mut state.new_value),
                 });
             }
         });
     }
 
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme, actions: &mut Vec<DialogAction>) -> bool {
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .max_height(360.0)
-            .show(ui, |ui| {
-                for category in [OptionCategory::Appearance, OptionCategory::Editing, OptionCategory::Behavior] {
-                    Self::category_header(ui, theme, category.title());
-                    for spec in OPTION_SPECS.iter().filter(|s| s.category == category) {
-                        Self::spec_row(ui, editor, theme, spec, actions);
-                    }
-                }
+        // Search across every option.
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(super::gui_theme::icons::SEARCH).color(theme.overlay0));
+            ui.add(egui::TextEdit::singleline(&mut self.search)
+                .hint_text("Search settings")
+                .desired_width(f32::INFINITY));
+        });
+        ui.separator();
 
-                let custom = sorted_options(editor);
-                if !custom.is_empty() {
-                    Self::category_header(ui, theme, "Custom (not in the registry)");
-                    for (name, value) in custom {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(name.clone()).strong().color(theme.text));
-                            let mut field = value.clone();
-                            let resp = ui.add(
-                                egui::TextEdit::singleline(&mut field)
-                                    .desired_width(140.0)
-                                    .font(FontId::new(12.0, FontFamily::Monospace)),
-                            );
-                            if resp.changed() && field != value {
-                                actions.push(DialogAction::SetOption { name: name.clone(), value: field });
-                            }
-                        });
+        let query = self.search.trim().to_lowercase();
+        ui.horizontal_top(|ui| {
+            // Left: category list.
+            ui.vertical(|ui| {
+                ui.set_width(170.0);
+                ui.set_min_height(420.0);
+                for (i, (label, _)) in SECTIONS.iter().enumerate() {
+                    if ui.selectable_label(self.section == i, *label).clicked() {
+                        self.section = i;
                     }
                 }
             });
-        ui.separator();
+            ui.separator();
 
-        ui.horizontal(|ui| {
-            ui.label("new:");
-            ui.add(egui::TextEdit::singleline(&mut self.new_name)
-                .hint_text("option name").desired_width(110.0));
-            ui.add(egui::TextEdit::singleline(&mut self.new_value)
-                .hint_text("value").desired_width(110.0));
-            if ui.button("Add").clicked() && !self.new_name.is_empty() {
-                actions.push(DialogAction::SetOption {
-                    name:  std::mem::take(&mut self.new_name),
-                    value: std::mem::take(&mut self.new_value),
+            // Right: the selected category (or search results).
+            egui::ScrollArea::vertical()
+                .id_salt("settings_pane")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.set_min_width(520.0);
+                    if !query.is_empty() {
+                        Self::render_specs(ui, editor, theme,
+                            OPTION_SPECS.iter().filter(|s| Self::search_matches(s, &query)), actions);
+                        return;
+                    }
+                    match SECTIONS[self.section.min(SECTIONS.len() - 1)].1 {
+                        Some(category) => Self::render_specs(ui, editor, theme,
+                            OPTION_SPECS.iter().filter(|s| s.category == category), actions),
+                        None => Self::render_advanced(ui, editor, theme, self, actions),
+                    }
                 });
-            }
         });
         false
     }

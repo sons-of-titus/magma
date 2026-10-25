@@ -12,7 +12,6 @@ use crate::kernel::storage::watcher::FileWatcher;
 
 use super::gui_dialog::DialogAction;
 use super::gui_sidebar_state::SidebarAction;
-use super::gui_status::StatusAction;
 use super::gui_welcome::{WelcomeAction, WelcomeScreen};
 use super::tool_window::ToolAction;
 
@@ -57,12 +56,6 @@ pub(crate) fn apply_sidebar_actions(ed: &mut Editor, actions: Vec<SidebarAction>
                 ed.project_manager.project.file_index_dirty = true;
             }
         }
-    }
-}
-
-pub(crate) fn apply_status_action(ed: &mut Editor, action: StatusAction) {
-    if action == StatusAction::OpenVc {
-        let _ = execute_command(ed, "vc", &std::collections::HashMap::new());
     }
 }
 
@@ -193,7 +186,7 @@ pub(crate) fn sync_gpu_and_fonts(
         ed.row_layouts.clear();
         let font_config = ed.font_config.clone();
         super::gui_fonts::apply_fonts_to_egui(ctx, &font_config);
-        if let Some(bytes) = font_config.loaded_fonts.values().next() {
+        if let Some(bytes) = font_config.primary_font() {
             atlas.rasterize(bytes, font_config.size);
             *atlas_dirty = true;
             return true;
@@ -263,10 +256,9 @@ pub(crate) fn dispatch_shell_key(
         dialogs.open_dialog(kind);
         return true;
     }
-    // An open dialog owns the keyboard; Escape closes it — but in the
-    // picker's argument mode it steps back to the list first.
+    // An open dialog owns the keyboard; Escape closes it.
     if dialogs.is_open() {
-        if key == "esc" && !dialogs.picker.go_back() {
+        if key == "esc" {
             dialogs.close();
             ed.frame_dirty = true;
         }

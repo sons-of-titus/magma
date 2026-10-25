@@ -21,6 +21,7 @@ use crate::kernel::state::Editor;
 
 use super::gui_dialog::DialogManager;
 use super::gui_layout::GuiLayout;
+use super::gui_commit_tool::CommitState;
 use super::gui_shell::{self, ShellRuntime};
 use super::gui_sidebar_state::SidebarState;
 use super::gui_theme::GuiTheme;
@@ -34,6 +35,8 @@ pub struct GuiApp {
     pub(crate) font_size:       f32,
     pub(crate) layout:          GuiLayout,
     pub(crate) sidebar_state:   SidebarState,
+    /// Commit tool-window UI state (change lists, commit box, diff preview).
+    pub(crate) commit_state:    CommitState,
     pub(crate) bg_receiver:     mpsc::UnboundedReceiver<BackgroundEvent>,
     pub(crate) atlas:           GpuGlyphAtlas,
     /// True once the atlas has been rasterized with real font data.
@@ -54,6 +57,9 @@ pub struct GuiApp {
     /// schedule a repaint even when the title is unchanged, so it must only
     /// be sent when the text actually differs.
     pub(crate) last_window_title: String,
+    /// Debug session seen last frame.  A session appearing is what opens the
+    /// Debugger dock, however the session was started.
+    pub(crate) last_debug_session: Option<u64>,
     /// Cursor blink phase, flipped by the heartbeat while text input is
     /// accepted (§9.4: repaint driven by cursor blinking).
     pub(crate) blink_visible: bool,
@@ -69,6 +75,8 @@ pub struct GuiApp {
     pub(crate) waker_started: bool,
     /// Sub-line wheel delta carried between events.
     pub(crate) wheel_remain: f32,
+    /// Fractional horizontal wheel accumulator (mirrors `wheel_remain`).
+    pub(crate) wheel_remain_x: f32,
     /// Active IME composition (R-15); rendered inline at the cursor and
     /// cleared when the IME commits or cancels.
     pub(crate) preedit: Option<super::gui_editor_pane::PreeditOverlay>,
@@ -85,15 +93,16 @@ impl GuiApp {
     }
 
     fn init(mut editor: Editor, bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>) -> Self {
-        // Install the bundled JetBrains Mono when no font was loaded from
-        // config — the GPU atlas and egui chrome both depend on it.
+        // Install the default editor font when none was loaded from config:
+        // the system monospace (Monaco on macOS) if present, else the bundled
+        // JetBrains Mono.  The GPU atlas and egui chrome both depend on it.
         if editor.font_config.loaded_fonts.is_empty() {
-            editor.font_config.bootstrap_bundled();
+            editor.font_config.bootstrap_default_font();
             editor.font_changed = true;
         }
         let (font_size, font_bytes) = (
             editor.font_config.size,
-            editor.font_config.loaded_fonts.values().next().cloned(),
+            editor.font_config.primary_font().cloned(),
         );
         let mut atlas = GpuGlyphAtlas::new();
         let atlas_rasterized = if let Some(bytes) = font_bytes {
@@ -105,6 +114,8 @@ impl GuiApp {
     // The GUI paints the cursor as a native rect overlay.
     editor.cursor_overlay = true;
     let shell = ShellRuntime::new(&mut editor);
+    // Resolve the chrome palette before the editor is moved into `Self`.
+    let theme = GuiTheme::from_options(&editor.options);
     // PTY output wakes the event loop through this channel instead of a
     // frame-rate poll in schedule_repaint.
     let (wake_tx, wake_rx) = std::sync::mpsc::channel();
@@ -114,6 +125,7 @@ impl GuiApp {
             font_size,
             layout: GuiLayout::default(),
             sidebar_state: SidebarState::default(),
+            commit_state: CommitState::default(),
             bg_receiver,
             atlas,
             atlas_rasterized,
@@ -122,9 +134,10 @@ impl GuiApp {
             target_format: None,
             tool_windows: ToolWindowManager::new(),
             dialogs: DialogManager::new(),
-            theme: GuiTheme::mocha(),
+            theme,
             theme_synced: false,
             last_window_title: String::new(),
+            last_debug_session: None,
             blink_visible: true,
             last_blink: std::time::Instant::now(),
             shell,
@@ -133,6 +146,7 @@ impl GuiApp {
             pty_wake_rx: Some(wake_rx),
             waker_started: false,
             wheel_remain: 0.0,
+            wheel_remain_x: 0.0,
             preedit: None,
         }
     }

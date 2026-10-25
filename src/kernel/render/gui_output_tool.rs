@@ -7,7 +7,7 @@
 use eframe::egui::{self, FontFamily, FontId, RichText};
 use crate::kernel::state::Editor;
 use super::gui_find_tool::quickfix_rows;
-use super::gui_theme::GuiTheme;
+use super::gui_theme::{GuiTheme, icons};
 use super::tool_window::{ToolAction, ToolWindow};
 
 fn mono(size: f32) -> FontId { FontId::new(size, FontFamily::Monospace) }
@@ -21,13 +21,13 @@ impl OutputToolWindow {
 
 impl ToolWindow for OutputToolWindow {
     fn title(&self) -> &str { "Output" }
-    fn icon(&self)  -> char { '⚑' }
+    fn icon(&self)  -> char { super::gui_theme::icons::OUTPUT.chars().next().unwrap_or(' ') }
 
     fn ui(&mut self, ui: &mut egui::Ui, editor: &mut Editor, theme: &GuiTheme) -> Vec<ToolAction> {
         match &editor.last_task {
             Some((name, output)) => {
                 ui.label(
-                    RichText::new(format!("▸ {name}"))
+                    RichText::new(format!("{} {name}", icons::CARET_RIGHT))
                         .font(prop(12.0))
                         .color(theme.blue)
                         .strong(),

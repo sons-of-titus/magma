@@ -217,23 +217,21 @@ fn picker_symbols_come_from_index() {
 #[test]
 fn picker_commands_list_registry() {
     let ed = make_editor();
-    let entries = collect_entries(&ed, PickerSource::Commands);
-    assert!(entries.iter().any(|e| matches!(e, PickerEntry::Command { name, .. } if name == "goto-line")));
+    let listed = ed.commands.list_detailed();
+    assert!(listed.iter().any(|(name, _, _)| name == "goto-line"));
 }
 
 #[test]
 fn picker_lists_janet_defined_commands() {
     let mut ed = make_editor();
     // A Janet-defined trampoline (as command/define registers) is a normal
-    // registry citizen now: the palette lists every command.
+    // registry citizen: the registry lists every command.
     ed.commands.register("janet-plumb", "Janet-defined command", vec![],
         Box::new(|_ed, _args| Ok(())));
-    let entries = collect_entries(&ed, PickerSource::Commands);
-    let entry = entries.iter().find(|e| matches!(e,
-        PickerEntry::Command { name, .. } if name == "janet-plumb"));
-    assert!(entry.is_some(), "Janet-defined commands must appear in the palette");
-    assert!(entries.iter().any(|e| matches!(e,
-        PickerEntry::Command { name, .. } if name == "goto-line")));
+    let listed = ed.commands.list_detailed();
+    assert!(listed.iter().any(|(name, _, _)| name == "janet-plumb"),
+        "Janet-defined commands must appear in the registry listing");
+    assert!(listed.iter().any(|(name, _, _)| name == "goto-line"));
 }
 
 // ── CommandRegistry::list_detailed ───────────────────────────────────────────
@@ -324,6 +322,21 @@ fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
         ("GIT_BRANCH", icons::GIT_BRANCH),
         ("PROJECTS",  icons::PROJECTS),
         ("LEARN",     icons::LEARN),
+        ("RUN",       icons::RUN),
+        ("DEBUG",     icons::DEBUG),
+        ("STOP",      icons::STOP),
+        ("BUILD",     icons::BUILD),
+        ("TEST",      icons::TEST),
+        ("AGENT",     icons::AGENT),
+        ("OUTPUT",    icons::OUTPUT),
+        ("PAUSE",     icons::PAUSE),
+        ("STEP_OVER", icons::STEP_OVER),
+        ("STEP_IN",   icons::STEP_IN),
+        ("STEP_OUT",  icons::STEP_OUT),
+        ("RESTART",   icons::RESTART),
+        ("RESET",     icons::RESET),
+        ("CARET_RIGHT", icons::CARET_RIGHT),
+        ("CARET_DOWN",  icons::CARET_DOWN),
     ];
     for (name, icon) in all {
         for ch in icon.chars() {
@@ -447,4 +460,28 @@ fn ctrl_space_translates_to_a_keymap_key() {
     };
     assert_eq!(gui_input::translate_event(&ev), Some("ctrl-space".to_string()),
         "ctrl-space must reach the keymap (completion-trigger's binding)");
+}
+
+#[test]
+fn arrow_chords_carry_a_modifier_prefix() {
+    use crate::kernel::render::gui_input;
+    use eframe::egui::{Event, Key, Modifiers};
+
+    let key = |key: Key, modifiers: Modifiers| Event::Key {
+        key, physical_key: None, pressed: true, repeat: false, modifiers,
+    };
+    let ctrl_shift = Modifiers { ctrl: true, shift: true, ..Default::default() };
+    let ctrl_only  = Modifiers { ctrl: true, ..Default::default() };
+    let shift_only = Modifiers { shift: true, ..Default::default() };
+
+    // ctrl/meta arrows gain a prefix so horizontal-scroll chords exist.
+    assert_eq!(gui_input::translate_event(&key(Key::ArrowLeft, ctrl_shift)),
+        Some("ctrl-shift-left".to_string()));
+    assert_eq!(gui_input::translate_event(&key(Key::ArrowRight, ctrl_only)),
+        Some("ctrl-right".to_string()));
+    // Plain and shift-only forms are unchanged.
+    assert_eq!(gui_input::translate_event(&key(Key::ArrowLeft, Modifiers::default())),
+        Some("left".to_string()));
+    assert_eq!(gui_input::translate_event(&key(Key::ArrowLeft, shift_only)),
+        Some("shift-left".to_string()));
 }

@@ -28,7 +28,13 @@ pub fn present(
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, bg_color);
 
-    let font_id = FontId::new(line_h * 0.85, egui::FontFamily::Monospace);
+    // Paint at the SAME size the grid was measured at (`char_w` is
+    // `glyph_width('M')` and `line_h` is `row_height`, both at
+    // `font_config.size`).  A monospace run then advances one `char_w` per
+    // glyph, so runs stay locked to the cell grid; painting at
+    // `line_h * 0.85` overshot the measured size, so glyphs grew ~12% and
+    // drifted right of the cursor/selection the further along a run they sat.
+    let font_id = FontId::new(ed.font_config.size, egui::FontFamily::Monospace);
     let render_rows = surface.height as usize - surface_y_offset;
 
     for sy in surface_y_offset..surface_y_offset + render_rows {
@@ -38,7 +44,7 @@ pub fn present(
         // ── Background rects: one per same-bg run, skipping the default bg ──
         let mut bg_run: Option<(u16, Color32)> = None;
         for sx in 0..surface.width as usize {
-            let cell_bg = cell_bg(surface.cell(sx as u16, sy as u16));
+            let cell_bg = cell_bg(surface.cell(sx as u16, sy as u16), bg_color);
             if cell_bg == bg_color {
                 flush_bg(&painter, &mut bg_run, sx, rect.min.x, y, char_w, line_h);
                 continue;
@@ -73,10 +79,10 @@ pub fn present(
     }
 }
 
-fn cell_bg(cell: Option<&Cell>) -> Color32 {
+fn cell_bg(cell: Option<&Cell>, fallback: Color32) -> Color32 {
     match cell {
         Some(c) => Color32::from_rgb(c.style.bg.0, c.style.bg.1, c.style.bg.2),
-        None => Color32::BLACK,
+        None => fallback,
     }
 }
 

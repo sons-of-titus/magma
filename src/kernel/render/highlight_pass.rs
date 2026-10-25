@@ -82,7 +82,9 @@ pub fn apply_highlights(
                 let Some(layout) = layouts.get(vis_row) else { continue };
                 for i in 0..layout.widths.len() {
                     let byte = *line_start + layout.offsets[i] as usize;
-                    if byte >= hl_end { break; }
+                    // Offsets are non-monotonic in bidi rows — never break
+                    // on a byte bound, skip instead.
+                    if byte >= hl_end { continue; }
                     if byte < hl_start { continue; }
                     paint_cells(surface, content_x, surf_row,
                         layout.cols[i] as usize, layout.widths[i] as usize,
@@ -104,7 +106,7 @@ pub fn apply_highlights(
             let Some(layout) = layouts.get(vis_row) else { continue };
             for i in 0..layout.widths.len() {
                 let byte = *line_start + layout.offsets[i] as usize;
-                if byte >= *line_end { break; }
+                if byte >= *line_end { continue; }
                 if byte >= sel_start && byte < sel_end {
                     paint_cells(surface, content_x, surf_row,
                         layout.cols[i] as usize, layout.widths[i] as usize,

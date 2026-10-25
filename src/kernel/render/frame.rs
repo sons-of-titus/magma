@@ -75,12 +75,13 @@ pub fn cursor_metrics(
     let line_start = buf.line_start_offset(cursor_line).unwrap_or(0);
     // Exactly the cursor's line — never the rest of the document.
     let line_end = buf.line_start_offset(cursor_line + 1).unwrap_or(buf.len());
-    let cursor_col = crate::kernel::text_engine::text_layout::cell_column(
-        &buf.slice(line_start, line_end),
-        cursor_offset.saturating_sub(line_start),
-        tab_width,
-        glyph_widths,
-    );
+    // The row layout is bidi-aware (F-15): visual_col_of maps the logical
+    // byte to the screen column, and is identical to the logical walk for
+    // LTR rows.
+    let line_text = buf.slice(line_start, line_end);
+    let layout = crate::kernel::render::row_layout::RowLayout::build(
+        &line_text, 0, tab_width, glyph_widths);
+    let cursor_col = layout.visual_col_of(cursor_offset.saturating_sub(line_start));
     (cursor_line, cursor_col)
 }
 

@@ -337,6 +337,19 @@ fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
         ("RESET",     icons::RESET),
         ("CARET_RIGHT", icons::CARET_RIGHT),
         ("CARET_DOWN",  icons::CARET_DOWN),
+        ("REFRESH",   icons::REFRESH),
+        ("FETCH",     icons::FETCH),
+        ("PULL",      icons::PULL),
+        ("PUSH",      icons::PUSH),
+        ("LOG",       icons::LOG),
+        ("BLAME",     icons::BLAME),
+        ("CHEVRON_RIGHT", icons::CHEVRON_RIGHT),
+        ("CHEVRON_DOWN",  icons::CHEVRON_DOWN),
+        ("ARROW_UP",   icons::ARROW_UP),
+        ("ARROW_DOWN", icons::ARROW_DOWN),
+        ("TRASH",     icons::TRASH),
+        ("STASH_APPLY", icons::STASH_APPLY),
+        ("STASH_POP",   icons::STASH_POP),
     ];
     for (name, icon) in all {
         for ch in icon.chars() {

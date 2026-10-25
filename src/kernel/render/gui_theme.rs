@@ -44,6 +44,20 @@ pub mod icons {
     pub const RESET:    &str = "\u{F0E2}"; // fa-undo
     pub const CARET_RIGHT: &str = "\u{F0DA}"; // fa-caret-right
     pub const CARET_DOWN:  &str = "\u{F0D7}"; // fa-caret-down
+    // Version-control panel — codicons, matching the panel's JetBrains look.
+    pub const REFRESH:   &str = "\u{EB37}"; // cod-refresh
+    pub const FETCH:     &str = "\u{EC1D}"; // cod-git-fetch
+    pub const PULL:      &str = "\u{EB40}"; // cod-repo-pull
+    pub const PUSH:      &str = "\u{EB41}"; // cod-repo-push
+    pub const LOG:       &str = "\u{EA82}"; // cod-history
+    pub const BLAME:     &str = "\u{EA67}"; // cod-person
+    pub const CHEVRON_RIGHT: &str = "\u{EAB6}"; // cod-chevron-right
+    pub const CHEVRON_DOWN:  &str = "\u{EAB4}"; // cod-chevron-down
+    pub const ARROW_UP:   &str = "\u{EAA1}"; // cod-arrow-up
+    pub const ARROW_DOWN: &str = "\u{EA9A}"; // cod-arrow-down
+    pub const TRASH:     &str = "\u{EA81}"; // cod-trash
+    pub const STASH_APPLY: &str = "\u{EC27}"; // cod-git-stash-apply
+    pub const STASH_POP:   &str = "\u{EC28}"; // cod-git-stash-pop
 }
 
 /// A color `t` of the way from `c` toward white, used to build the

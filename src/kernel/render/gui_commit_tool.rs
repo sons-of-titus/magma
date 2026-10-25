@@ -15,7 +15,7 @@ use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, RichText, Se
 use crate::kernel::state::Editor;
 use crate::kernel::vc::VcStatus;
 
-use super::gui_theme::GuiTheme;
+use super::gui_theme::{icons, GuiTheme};
 
 pub(super) const ROW_H:    f32 = 22.0;
 pub(super) const FONT_SIZE: f32 = 12.5;
@@ -161,12 +161,12 @@ impl CommitPanel {
             ui.spacing_mut().item_spacing.x = 2.0;
             ui.add_space(2.0);
             for (glyph, tip, action) in [
-                ("⟳", "Refresh",  CommitAction::Refresh),
-                ("⇣", "Fetch",    CommitAction::Fetch),
-                ("⇩", "Pull",     CommitAction::Pull),
-                ("⇧", "Push",     CommitAction::Push),
-                ("≡", "Log",      CommitAction::Log),
-                ("⊷", "Blame",    CommitAction::Blame),
+                (icons::REFRESH, "Refresh", CommitAction::Refresh),
+                (icons::FETCH,   "Fetch",   CommitAction::Fetch),
+                (icons::PULL,    "Pull",    CommitAction::Pull),
+                (icons::PUSH,    "Push",    CommitAction::Push),
+                (icons::LOG,     "Log",     CommitAction::Log),
+                (icons::BLAME,   "Blame",   CommitAction::Blame),
             ] {
                 if ghost_button(ui, glyph, theme, theme.overlay0, tip) {
                     actions.push(action);
@@ -279,7 +279,8 @@ pub(super) fn section_header(
     }
     let cy = rect.center().y;
     ui.painter().text(Pos2::new(rect.left() + 2.0, cy), Align2::LEFT_CENTER,
-        if *open { "▾" } else { "▸" }, FontId::new(11.0, FontFamily::Proportional), theme.overlay0);
+        if *open { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT },
+        FontId::new(11.0, FontFamily::Proportional), theme.overlay0);
     ui.painter().text(Pos2::new(rect.left() + 16.0, cy), Align2::LEFT_CENTER,
         title, FontId::new(SMALL, FontFamily::Proportional), theme.subtext1);
     if count > 0 {

@@ -13,7 +13,7 @@ use crate::kernel::vc::{FileStatus, StashEntry, VcStatus};
 use super::gui_commit_tool::{
     section_header, CommitAction, CommitPanel, CommitState, FONT_SIZE, ROW_H, SMALL,
 };
-use super::gui_theme::GuiTheme;
+use super::gui_theme::{icons, GuiTheme};
 
 impl CommitPanel {
     /// The four change lists.  Returns the path a row click selected.
@@ -173,7 +173,7 @@ fn change_row(
     let btn = Rect::from_center_size(Pos2::new(rect.right() - 12.0, cy), Vec2::splat(18.0));
     let btn_resp = ui.interact(btn, egui::Id::new(("commit_toggle", path)), Sense::click())
         .on_hover_text(if conflicts { "Mark resolved" } else if staged { "Unstage" } else { "Stage" });
-    let glyph = if staged { "▲" } else { "▼" };
+    let glyph = if staged { icons::ARROW_UP } else { icons::ARROW_DOWN };
     ui.painter().text(btn.center(), Align2::CENTER_CENTER, glyph,
         FontId::new(12.0, FontFamily::Proportional),
         if btn_resp.hovered() { theme.blue } else { theme.overlay0 });
@@ -245,9 +245,9 @@ fn stash_row(
 
     let mut x = rect.right() - 4.0;
     for (glyph, tip, color, action) in [
-        ("✕", "Drop",  theme.red,   CommitAction::StashDrop(index)),
-        ("↧", "Apply", theme.blue,  CommitAction::StashApply(index)),
-        ("⇪", "Pop",   theme.green, CommitAction::StashPop(index)),
+        (icons::TRASH,       "Drop",  theme.red,   CommitAction::StashDrop(index)),
+        (icons::STASH_APPLY, "Apply", theme.blue,  CommitAction::StashApply(index)),
+        (icons::STASH_POP,   "Pop",   theme.green, CommitAction::StashPop(index)),
     ] {
         let btn = egui::Rect::from_center_size(Pos2::new(x - 10.0, cy), Vec2::splat(18.0));
         let br = ui.interact(btn, egui::Id::new(("stash_btn", index, glyph)), Sense::click())

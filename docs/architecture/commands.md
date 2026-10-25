@@ -166,13 +166,15 @@ Commands can be intercepted via hooks:
     (print "Ran command: " cmd-name)))
 ```
 
-## Command Palette
+## Command surfaces
 
-The command palette (ctrl-p) lists **all** registered commands — Rust and
-Janet-defined alike — with their descriptions.  Commands declaring a required
-argument first prompt for it; the entered remainder maps positionally over
-declared arguments, a lone argument receives the whole remainder, and a
-Janet-defined command receives it as its one string argument.
+The GUI has **no command palette**: Go to File (`ctrl-shift-n`) and Go to
+Symbol (`ctrl-shift-o`) cover navigation, and Settings (`ctrl-alt-s`) covers
+options.  The command line (`alt-x`), the menu bar, and `:` all dispatch
+through the same registry — Rust and Janet-defined commands alike.  Commands
+declaring a required argument prompt for it; the entered remainder maps
+positionally over declared arguments, a lone argument receives the whole
+remainder, and a Janet-defined command receives it as its one string argument.
 
 The command line (alt-x) runs the same dispatch from a single
 `"name args…"` input and is the GUI equivalent of `editor/run-command`.

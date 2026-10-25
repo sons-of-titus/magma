@@ -44,15 +44,14 @@ supports.
 
 | Key | Action |
 |-----|--------|
-| `ctrl-p` | Search everywhere: files, symbols, and commands in one list |
 | `ctrl-shift-n` | Go to file |
+| `ctrl-shift-o` | Go to symbol |
 | `ctrl-space` | Completion at any prefix; also pops up automatically after ~2 typed characters |
 | `↑`/`↓`, `tab`/`return`, `esc` | While the completion popup is open: cycle, accept, dismiss |
 | `ctrl-]` | Go to definition (tree-sitter, LSP fallback) |
 | `ctrl-shift-f` | Search open buffers (`n`/`N` walk the matches) |
-| `ctrl-shift-o` | Go to symbol |
-| `ctrl-comma` | Settings |
-| `ctrl-\` | Toggle the sidebar |
+| `ctrl-alt-s` | Settings |
+| `ctrl-\` | Toggle the left dock |
 | `ctrl-q` | Quit — refuses while buffers have unsaved changes |
 
 ## Projects and the dev loop
@@ -86,10 +85,11 @@ supports.
 
 ## Commands — where `:` went
 
-There is no command line in the shipped editor.  Everything a command line
-would do lives in the **palette** (`ctrl-p`): files, symbols, and every
-command with its description — `build`, `test`, `run`, `grep`, `messages`,
-`help`, `colorscheme`, `tags`, `open-project`, and the rest of the registry.
+There is no command line in the shipped editor.  Use Go to File
+(`ctrl-shift-n`) and Go to Symbol (`ctrl-shift-o`) to jump around, and the
+Settings dialog (`ctrl-alt-s`) for options.  Everything else the registry
+exposes — `build`, `test`, `run`, `grep`, `messages`, `help`, `colorscheme`,
+`tags`, `open-project` — is reachable by name from the menu bar or `:`.
 
 ## Configuration
 
@@ -119,7 +119,7 @@ own layer, and manage modes with `editor/set-mode`.
 
 ## Getting Help
 
-- The palette (`ctrl-p`) lists every command with its description.
+- Open Settings (`ctrl-alt-s`) to browse every typed option, or the menu bar for commands.
 - `help` opens the help buffer.
 - The full Janet API reference lives in [docs/api/janet-api.md](../api/janet-api.md).
 

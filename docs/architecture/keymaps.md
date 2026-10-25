@@ -126,9 +126,23 @@ Key                  Action
 "ctrl-w q"           close-window
 "dd"                 delete-line
 "yy"                 yank-line
-"ctrl-p"             command-palette
+"ctrl-p"             completion-prev
+"ctrl-shift-left"    scroll-column-left
+"ctrl-shift-right"   scroll-column-right
 "ctrl-`"             repl-toggle
 "esc"                escape
+```
+
+### Debug (IntelliJ IDEA defaults)
+
+```
+Key                  Action
+───                  ──────
+"f7"                 dbg-step-in
+"f8"                 dbg-step-over
+"shift-f8"           dbg-step-out
+"f9"                 dbg-continue
+"meta-f8"            dbg-bp          (toggle breakpoint at the cursor)
 ```
 
 ### Insert Mode

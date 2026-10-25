@@ -1207,6 +1207,15 @@ Set the horizontal layout weight for window `id` to `w-frac` (0.0–1.0).
 
 Pin the scroll offset for window `id` to line `top`.
 
+### `(window/scroll-left &opt window-id)` → integer
+
+Return the window's first visible content column (0 = line start).
+
+### `(window/set-scroll-left &opt window-id col)` → nil
+
+Pin the window's first visible content column to `col`; the viewport stops
+following the cursor horizontally until it moves again.
+
 ### `(window/unpin-scroll id)` → nil
 
 Release the pinned scroll offset; cursor-following scroll resumes.
@@ -1549,10 +1558,17 @@ event bus.
 
 ### `(agent/ask prompt)` → session-id
 
-Submit a natural-language query to the BuiltinPlanner.  The planner snapshots
-the current editor context (active buffer, language, diagnostics, symbols,
-project info) and generates a plan.  Returns a numeric session ID immediately.
-Results arrive as `agent-thought` and `agent-result` events.
+Submit a natural-language goal to the agent.  With an LLM configured
+(`MAGMA_AGENT_API_KEY` env var or the `agent.api-key` option; endpoint and
+model via the `agent.api-url` / `agent.model` options) the agent runs a real
+tool-calling loop: the model requests tools — `read_active_buffer`,
+`get_diagnostics`, `list_editor_commands`, and `run_editor_command`, which
+dispatches through the command registry — the foreground executes them and
+feeds results back, bounded at 12 turns, stoppable from the Agent panel.
+Without a key the deterministic BuiltinPlanner plans offline.  Returns a
+numeric session ID immediately; results arrive as `agent-thought`,
+`agent-action`, and `agent-result` events.  The agent never starts at
+runtime on its own — only on an explicit ask.
 
 ```janet
 (def id (agent/ask "what diagnostics are in this file?"))

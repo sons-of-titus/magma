@@ -15,19 +15,30 @@ still builds for headless use (`--server`); interactive use requires it.
 
 ## Frame composition
 
-`GuiApp::update()` (in `gui.rs`) assembles the shell top-down. Panels are
-declared outside-in, so the first panel declared is the outermost:
+`GuiApp::editor_shell()` (in `gui_editor_window.rs`) assembles the shell via
+`gui_dock::show_panels`. Panels are declared outside-in, so the first panel on
+a side is the outermost (top panels stack downward in declaration order, bottom
+panels upward):
 
 ```
-TopBottomPanel::bottom("magma_status")       ← StatusBar (file, messages, git, position)
-TopBottomPanel::bottom("magma_tools_bottom") ← docked ToolWindows (terminal, find)
-TopBottomPanel::top("magma_tabs")            ← TabBar (drag-reorder, close, modified)
-TopBottomPanel::top("magma_breadcrumb")      ← BreadcrumbBar (path › symbol)
-SidePanel::left("magma_tool_strip")          ← 28px tool-window icon strip
-SidePanel::left("magma_sidebar")             ← ProjectTree (ctrl-\ toggles)
-CentralPanel                                 ← editor pane (Surface + strip)
-Window(layer)                                ← modal dialogs, floating tool windows
+Panel::top("magma_top")             ← menu + main toolbar (run/build/test)   [outermost top]
+Panel::bottom("magma_status")       ← StatusBar (file, messages, git, position)
+Panel::bottom("magma_dock_bar")     ← bottom tool-window buttons
+Panel::bottom("magma_tools_bottom") ← docked ToolWindows (terminal, find, output)
+Panel::top("magma_nav")             ← TabBar (drag-reorder, close, modified) + BreadcrumbBar  [last band above the editor]
+Panel::left("magma_tool_rail")      ← 28px rail (Project, Commit, Debugger)
+Panel::left("magma_dock_project" | "magma_dock_commit" | "magma_dock_debug")
+                                    ← ProjectTree / CommitPanel / Debugger (one id per tool, so each keeps its own width)
+Panel::right("magma_agent_rail")    ← 28px rail (Agent)
+Panel::right("magma_agent_dock")    ← Agent panel
+CentralPanel                        ← editor pane (Surface + strip)
+Window(layer)                       ← modal dialogs, floating tool windows
 ```
+
+The tab strip is the last top band, so it sits directly on the editor; the
+toolbar rides above it in the shared `magma_top` row (JetBrains New UI layout).
+The Debugger docks in the left dock (`DockPosition::Left`), selected by
+`GuiLayout::left_tool` alongside Project/Commit — JetBrains puts it there too.
 
 ## Module map
 
@@ -38,7 +49,10 @@ Window(layer)                                ← modal dialogs, floating tool wi
 | `gui_input.rs` | egui events → Magma key strings + raw mouse events |
 | `gui_editor_pane.rs` | Central pane: Surface build, GPU/CPU paint, scrollbar, mouse dispatch |
 | `gui_welcome.rs` | Welcome screen (open folder, recents, key hints) |
-| `gui_tabs.rs` | Tab bar (close → scratch, modified dot, drag-reorder, animated underline) |
+| `gui_dock.rs` | Panel construction: top row (menu + toolbar), tab band, rails, docks, status; applies run/tool actions |
+| `gui_menu.rs` | Top menu bar (File/Edit/View/Navigate/Run) |
+| `gui_run_tool.rs` | Main toolbar: run-config selector, Run/Debug/Stop, Build/Test launchers |
+| `gui_tabs.rs` | Tab bar (close → scratch, modified dot, drag-reorder, elevated active card) |
 | `gui_sidebar.rs` + `gui_sidebar_state.rs` | Project file tree: single-click open, context menu (new/rename/delete/copy path), inline input row |
 | `gui_status.rs` | Status bar, transient messages, clickable git branch |
 | `gui_breadcrumb.rs` | Path segments + innermost symbol tail; reveal-in-sidebar |
@@ -48,11 +62,11 @@ Window(layer)                                ← modal dialogs, floating tool wi
 | `gui_search_dialog.rs` | In-buffer search, Enter/Shift-Enter hit walking, replace-all |
 | `gui_goto_dialogs.rs` | Pickers: search-everywhere, goto-file, goto-symbol |
 | `gui_fuzzy.rs` | Pure subsequence matcher with ranking |
-| `gui_theme.rs` | `GuiTheme` palette (Mocha/Latte), egui visuals, editor colour map |
+| `gui_theme.rs` | `GuiTheme` palette (IntelliJ Dark default, light/Mocha/Latte presets), egui visuals, editor colour map, icon glyphs |
 | `tool_window.rs` | `ToolWindow` trait + manager, terminal (with input row) |
 | `gui_find_tool.rs` | Find-in-files (ripgrep on the project) + shared quickfix rows |
 | `gui_output_tool.rs` | Task output + problems panel |
-| `gui_debug_tool.rs` | DAP session view: threads, call stack (clickable), variables |
+| `gui_debug_tool.rs` | Debugger (left dock): icon-only step toolbar over Frames/Threads/Console/Watches/Breakpoints tabs |
 | `gui_layout.rs` | Panel visibility/size state |
 
 ## Widget contract
@@ -67,17 +81,17 @@ and mutation centralized in `gui.rs`.
 
 ```
 egui events
-  → gui_input::collect()          key strings ("ctrl-p", "return", …) + pixel mouse events
+  → gui_input::collect()          key strings ("ctrl-s", "return", …) + pixel mouse events
   → gui_shell::dispatch_shell_key (the ONLY keymap pre-emption; skipped while
                                    a terminal buffer owns the focus):
         ctrl-q            quit guard (dialog when dirty — see Behaviour notes)
-        ctrl-\            toggle sidebar
+        ctrl-\            toggle the left dock
         ctrl-shift-l      toggle theme (gui-theme option)
-        ctrl-p            search everywhere (files + symbols + commands)
         ctrl-shift-n      go to file
         ctrl-shift-f      search open buffers
         ctrl-shift-o      go to symbol
-        ctrl-comma        settings
+        ctrl-alt-s        settings (JetBrains)
+        ctrl-comma        settings (macOS)
         dialog open?      Escape closes; every other key is consumed by the dialog
         otherwise         input::dispatch_key (keymap + Janet handlers)
   → the window close button routes through the same quit guard

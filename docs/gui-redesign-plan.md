@@ -1,5 +1,14 @@
 # GUI Redesign Plan
 
+> **Superseded in part (JetBrains overhaul).**  A later shell redesign toward
+> IntelliJ/New-UI conventions landed: an IntelliJ default theme + sans UI font,
+> a menu bar and toolbar, left rail = Project + Commit with a **Commit tool
+> window** (change lists, commit box, branch widget, inline diff), the Agent
+> docked on the right, a bottom tool bar for Terminal/Find/Output/Debug, and
+> the **command palette removed** in favour of a two-pane Settings dialog
+> (`ctrl-alt-s`).  Where the sprints below describe the palette, sidebar, or
+> Catppuccin-only theming, see `PROGRESS.md` → "GUI overhaul".
+
 Source: `docs/gui-ux-review.md` (brutal IDE review, overall 3/10).  This plan
 maps every P0/P1 finding to a sprint, in dependency order, grounded in the
 **current** tree — several review findings are already stale (see Baseline).

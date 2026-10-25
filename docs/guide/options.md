@@ -1,9 +1,9 @@
 # Options reference
 
 Options live in the string map on the editor; set them from Janet with
-`(option/set "name" "value")` or from the Settings dialog (`ctrl-comma`).
-The registry below is the source of truth for types, defaults, and
-descriptions (`src/kernel/state/options.rs`) — the Settings dialog renders
+`(option/set "name" "value")` or from the Settings dialog (`ctrl-alt-s`, or
+`ctrl-comma`).  The registry below is the source of truth for types, defaults,
+and descriptions (`src/kernel/state/options.rs`) — the Settings dialog renders
 it directly.  Options not listed here are treated as custom strings.
 
 Any option can be set globally, buffer-locally (`option/set-local`), or per
@@ -13,7 +13,7 @@ project (`project/option-set`).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `gui-theme` | enum `mocha`/`latte` | `mocha` | Catppuccin palette: mocha (dark) or latte (light) |
+| `gui-theme` | enum `intellij-dark`/`intellij-light`/`mocha`/`latte` | `intellij-dark` | Chrome palette: IntelliJ dark/light, or Catppuccin mocha/latte |
 | `breadcrumb-enabled` | bool | `true` | Show the path breadcrumb under the tab bar |
 | `minimap-enabled` | bool | `false` | Show the code minimap instead of the scrollbar |
 

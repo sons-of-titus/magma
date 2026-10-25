@@ -29,8 +29,8 @@ cargo build --release
 
 A welcome window opens; pick a folder and the main editor window follows.
 
-Open a folder from the welcome screen (or `:open <dir>`), then `ctrl-p`
-searches everything and `:` runs commands.  See
+Open a folder from the welcome screen (or `:open <dir>`); `ctrl-shift-n` jumps
+to a file, `ctrl-alt-s` opens Settings, and `:` still runs commands.  See
 [Getting Started](guide/getting-started.md).
 
 ## Documentation
@@ -57,7 +57,7 @@ docs/
 
 - **Native GUI IDE shell** — project tree, tabs, dialogs, tool windows, quickfix
 - **Non-modal editing** — text always inserts; modal editing (vim and friends) is community-extension territory, with the mode/keymap substrate built in
-- **Search everywhere** — files, symbols, and commands in one palette (`ctrl-p`)
+- **Navigate fast** — Go to File / Go to Symbol (`ctrl-shift-n` / `ctrl-shift-o`) and a project tree
 - **Safe by default** — guarded quit, opt-in auto-save, trash-conscious deletes
 - **Live programmability** — commands, keybindings, and behavior change at runtime
 - **Event-driven** — central event bus with hook chains

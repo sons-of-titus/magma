@@ -382,7 +382,7 @@ fn selection_paints_tab_expanded_cell_columns() {
         rows.iter().map(|(s, e, t)| std::sync::Arc::new(
             crate::kernel::render::row_layout::RowLayout::build(t, 0, 4, &ed.font_config.glyph_widths)))
         .collect();
-    apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 2);
+    apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 2, 0);
 
     // 'x' is painted at cell 4 (tab stop), so the selection must reach
     // cells 0..5 — before the fix the selection style stopped at cell 1
@@ -418,7 +418,7 @@ fn highlight_layer_covers_wide_glyph_trailing_cell() {
         rows.iter().map(|(s, e, t)| std::sync::Arc::new(
             crate::kernel::render::row_layout::RowLayout::build(t, 0, 4, &ed.font_config.glyph_widths)))
         .collect();
-    apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 0);
+    apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 0, 0);
 
     let default_style = crate::kernel::render::surface::Style::default();
     let lead = surface.cell(0, 0).unwrap();
@@ -431,4 +431,23 @@ fn highlight_layer_covers_wide_glyph_trailing_cell() {
     // so the cell keeps its default (unstyled) state.
     let after = surface.cell(2, 0).unwrap();
     assert!(after.style == default_style, "'x' is outside the highlight range");
+}
+
+// ── Surface default fill ─────────────────────────────────────────────────────
+
+#[test]
+fn render_frame_seeds_unpainted_cells_with_the_editor_background() {
+    let mut ed = crate::tests::helpers::make_editor();
+    ed.theme.insert("bg".to_string(), (30, 31, 34));
+    // A surface larger than the single pane leaves cells no view paints; they
+    // must carry the editor background, not `Style::default()`'s black.
+    let mut surface = Surface::new(200, 200);
+    crate::kernel::render::frame::render_frame(&ed, &mut surface);
+    for y in 0..surface.height {
+        for x in 0..surface.width {
+            let cell = surface.cell(x, y).unwrap();
+            assert_ne!(cell.style.bg, (0, 0, 0),
+                "cell ({x},{y}) kept the default black background");
+        }
+    }
 }

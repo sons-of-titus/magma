@@ -29,3 +29,19 @@
 (command/define "scroll-half-page-up" (fn [&] (scroll-by-lines (- (max 1 (math/floor (/ ((window/dimensions) :height) 2)))))))
 (command/define "scroll-page-down" (fn [&] (scroll-by-lines (max 1 (- ((window/dimensions) :height) 2)))))
 (command/define "scroll-page-up" (fn [&] (scroll-by-lines (- (max 1 (- ((window/dimensions) :height) 2))))))
+
+# --- Horizontal scroll commands --------------------------------------
+#
+# The viewport pans horizontally; the caret rides along (sticky view-follow
+# keeps it visible whenever it is not manually pinned).  The window id is
+# passed explicitly because set-scroll-left takes `&opt window-id col`.
+
+(defn- scroll-by-columns [n]
+  (def cur (window/current))
+  (when cur
+    (def id (get cur :id))
+    (def left (or (window/scroll-left id) 0))
+    (window/set-scroll-left id (max 0 (+ left n)))))
+
+(command/define "scroll-column-left"  (fn [&] (scroll-by-columns -4)))
+(command/define "scroll-column-right" (fn [&] (scroll-by-columns 4)))

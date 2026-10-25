@@ -72,6 +72,15 @@ impl Surface {
         }
     }
 
+    /// Set every cell's style, keeping the character.  Used to seed the grid
+    /// with the editor background so cells no view paints render as the editor
+    /// background instead of the default (black) style.
+    pub fn fill_style(&mut self, style: Style) {
+        for cell in &mut self.cells {
+            cell.style = style;
+        }
+    }
+
     pub fn set_cell(&mut self, x: u16, y: u16, ch: char, style: Option<Style>) {
         if x >= self.width || y >= self.height {
             return;

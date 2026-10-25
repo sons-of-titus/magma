@@ -30,6 +30,7 @@ pub fn dispatch_mouse(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
         MouseEventKind::Click => dispatch_click(ed, surface, event),
         MouseEventKind::Drag => dispatch_drag(ed, surface, event),
         MouseEventKind::Scroll(delta) => dispatch_scroll(ed, event.x, event.y, delta),
+        MouseEventKind::ScrollX(delta) => dispatch_scroll_x(ed, event.x, event.y, delta),
         MouseEventKind::Release => dispatch_release(ed),
     }
 }
@@ -283,7 +284,7 @@ pub(crate) fn resolve_click_to_offset(
     let gutter_width = compute_gutter_width(ed, buf_id, total_lines);
     let content_x = pane.x + gutter_width as u16;
     if click_x < content_x { return None; }
-    let click_col = (click_x - content_x) as usize;
+    let click_col = (click_x - content_x) as usize + pane.scroll_left;
 
     let visible_lines = (pane.height as usize)
         .saturating_sub(header_rows as usize);
@@ -449,6 +450,31 @@ fn dispatch_scroll(ed: &mut Editor, x: u16, y: u16, delta: i32) {
     pane.scroll_cursor = cursor;
 }
 
+/// Horizontal wheel/trackpad pan of the pane under the pointer.  Sign mirrors
+/// the vertical wheel: positive `delta` reveals earlier columns.  Pinned until
+/// the cursor moves, like the vertical scroll.
+fn dispatch_scroll_x(ed: &mut Editor, x: u16, y: u16, delta: i32) {
+    let (pane_id, buf_id) = match hit_test_pane(ed, x, y) {
+        Some((pane, _)) => (pane.id, pane.buffer_id),
+        None => return,
+    };
+    let Some(buf_id) = buf_id else { return };
+    let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor.offset);
+    let max_left = max_visible_cells(ed, buf_id) as usize;
+    let Some(pane) = ed.view_tree.pane_mut(pane_id) else { return };
+    let new_left = (pane.scroll_left as i64 - delta as i64).clamp(0, max_left as i64) as usize;
+    pane.scroll_left = new_left;
+    pane.scroll_left_pinned = true;
+    pane.scroll_buf = Some(buf_id);
+    pane.scroll_cursor = cursor;
+}
+
+/// Widest visible line in display cells — the horizontal pan bound.  Shared
+/// with the render path via `frame::horizontal_extent`.
+fn max_visible_cells(ed: &Editor, buf_id: usize) -> u16 {
+    crate::kernel::render::frame::horizontal_extent(ed, buf_id).min(u16::MAX as usize) as u16
+}
+
 // ── Release ───────────────────────────────────────────────────────────────────
 
 fn dispatch_release(ed: &mut Editor) {
@@ -488,9 +514,7 @@ fn is_in_gutter(ed: &Editor, pane: &Pane, buf_id: usize, click_x: u16) -> bool {
 }
 
 fn compute_gutter_width(ed: &Editor, buf_id: usize, total_lines: usize) -> usize {
-    let prefix_margin = prefix_margin_width(ed, buf_id);
-    let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
-    prefix_cols + ed.gutter.total_width(total_lines)
+    crate::kernel::render::frame::gutter_cols(ed, buf_id, total_lines)
 }
 
 fn gutter_header_rows(ed: &Editor, buf_id: usize) -> u16 {

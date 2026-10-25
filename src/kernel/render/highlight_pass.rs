@@ -13,10 +13,14 @@ use crate::kernel::render::surface::{Style, Surface};
 /// Restyle `w` cells starting at column `col` with `style`, stamping the
 /// grapheme's lead char on the first cell (already there from the text
 /// pass, but the restyle must not drop it) and blanks on trailing cells.
+/// `scroll_left` is the pane's first visible column: cells left of it stay
+/// off-screen, and everything else shifts left by it.
 fn paint_cells(surface: &mut Surface, content_x: u16, surf_row: u16, col: usize, w: usize,
-               lead: char, style: Style) {
+               lead: char, style: Style, scroll_left: usize) {
     for k in 0..w {
-        let sx = content_x + (col + k) as u16;
+        let cell_col = col + k;
+        if cell_col < scroll_left { continue; }
+        let sx = content_x + (cell_col - scroll_left) as u16;
         if sx < surface.width {
             let ch = if k == 0 { lead } else { ' ' };
             surface.set_cell(sx, surf_row, ch, Some(style));
@@ -37,6 +41,7 @@ pub fn apply_highlights(
     content_x: u16,
     row_offset: u16,
     cursor_offset: usize,
+    scroll_left: usize,
 ) {
     let layer_order: [&str; 5] = ["base", "syntax", "semantic", "search", "selection"];
     let empty_vec = Vec::new();
@@ -88,7 +93,7 @@ pub fn apply_highlights(
                     if byte < hl_start { continue; }
                     paint_cells(surface, content_x, surf_row,
                         layout.cols[i] as usize, layout.widths[i] as usize,
-                        layout.leads[i], style);
+                        layout.leads[i], style, scroll_left);
                 }
             }
         }
@@ -110,7 +115,7 @@ pub fn apply_highlights(
                 if byte >= sel_start && byte < sel_end {
                     paint_cells(surface, content_x, surf_row,
                         layout.cols[i] as usize, layout.widths[i] as usize,
-                        layout.leads[i], sel_style);
+                        layout.leads[i], sel_style, scroll_left);
                 }
             }
             if *line_end > sel_end { break; }

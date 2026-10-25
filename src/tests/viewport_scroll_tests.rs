@@ -3,7 +3,9 @@
 
 use crate::kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
 use crate::kernel::input::mouse;
-use crate::kernel::render::frame::{pane_scroll_top, sync_viewport_scroll};
+use crate::kernel::render::frame::{
+    gutter_cols, pane_scroll_left, pane_scroll_top, render_frame, sync_viewport_scroll,
+};
 use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view_tree::Pane;
 use crate::kernel::state::Editor;
@@ -312,4 +314,131 @@ fn word_range_at_scopes_to_the_word_run() {
     // Right after a word (on the following space): selects that word.
     let (s2, e2) = mouse::word_range_at(&buf, 2).expect("adjacent word still selects");
     assert_eq!(buf.slice(s2, e2), "fn");
+}
+
+// ── Horizontal scrolling ────────────────────────────────────────────────────
+
+fn content_cols_of(ed: &Editor, buf_id: usize) -> usize {
+    let total = ed.buffers.get(buf_id).unwrap().lock().unwrap().line_count();
+    (pane_of(ed).width as usize).saturating_sub(gutter_cols(ed, buf_id, total))
+}
+
+fn set_cursor_offset(ed: &mut Editor, buf_id: usize, offset: usize) {
+    if let Some(view) = ed.view_of_buffer_mut(buf_id) {
+        view.set_cursor(offset);
+    }
+}
+
+#[test]
+fn caret_past_right_edge_pans_the_view() {
+    let mut ed = make_editor_with_buffer(&"x".repeat(200));
+    ed.view_tree.panes_mut()[0].width = 20;
+    let buf_id = focused_key(&ed);
+    set_cursor_offset(&mut ed, buf_id, 100);
+
+    sync_viewport_scroll(&mut ed);
+    let pane = pane_of(&ed);
+    let left = pane_scroll_left(&pane, buf_id);
+    let content = content_cols_of(&ed, buf_id);
+    assert!(left > 0, "a caret off the right edge must pan the view");
+    assert!(left <= 100, "the pan is minimal, never past the caret");
+    assert!(100 - left < content, "the caret must be inside the panned view");
+}
+
+#[test]
+fn caret_back_left_pans_back_to_the_start() {
+    let mut ed = make_editor_with_buffer(&"x".repeat(200));
+    ed.view_tree.panes_mut()[0].width = 20;
+    let buf_id = focused_key(&ed);
+    set_cursor_offset(&mut ed, buf_id, 100);
+    sync_viewport_scroll(&mut ed);
+    assert!(pane_scroll_left(&pane_of(&ed), buf_id) > 0);
+
+    set_cursor_offset(&mut ed, buf_id, 0);
+    sync_viewport_scroll(&mut ed);
+    assert_eq!(pane_scroll_left(&pane_of(&ed), buf_id), 0,
+        "the caret returning to column 0 scrolls the view back");
+}
+
+#[test]
+fn horizontal_scroll_resets_on_buffer_switch() {
+    let mut ed = make_editor_with_buffer(&"x".repeat(200));
+    ed.view_tree.panes_mut()[0].width = 20;
+    let buf_id = focused_key(&ed);
+    {
+        let pane = &mut ed.view_tree.panes_mut()[0];
+        pane.scroll_left = 12;
+        pane.scroll_left_pinned = true;
+        pane.scroll_buf = Some(buf_id + 999); // a different buffer's pin
+    }
+    sync_viewport_scroll(&mut ed);
+    let pane = pane_of(&ed);
+    assert_eq!(pane.scroll_left, 0, "a buffer switch re-derives the pan");
+    assert_eq!(pane.scroll_buf, Some(buf_id));
+}
+
+#[test]
+fn horizontal_wheel_pans_and_pins() {
+    let mut ed = make_editor_with_buffer(&"x".repeat(200));
+    ed.view_tree.panes_mut()[0].width = 20;
+    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    let pane = pane_of(&ed);
+    let surface = Surface::new(pane.width, pane.height);
+
+    let wheel = MouseEvent {
+        kind: MouseEventKind::ScrollX(-5),
+        x: pane.x + 5,
+        y: pane.y + 2,
+        button: MouseButton::Left,
+        modifiers: String::new(),
+    };
+    mouse::dispatch_mouse(&mut ed, &surface, &wheel);
+    let pane = pane_of(&ed);
+    assert_eq!(pane.scroll_left, 5, "wheel pan moves the first visible column");
+    assert!(pane.scroll_left_pinned);
+
+    let back = MouseEvent { kind: MouseEventKind::ScrollX(50), ..wheel };
+    mouse::dispatch_mouse(&mut ed, &surface, &back);
+    assert_eq!(pane_of(&ed).scroll_left, 0, "panning back clamps at column 0");
+}
+
+#[test]
+fn click_maps_through_the_horizontal_scroll() {
+    let mut ed = make_editor_with_buffer(&"x".repeat(200));
+    ed.view_tree.panes_mut()[0].width = 40;
+    let buf_id = focused_key(&ed);
+    let total = ed.buffers.get(buf_id).unwrap().lock().unwrap().line_count();
+    let gutter = gutter_cols(&ed, buf_id, total) as u16;
+    {
+        let pane = &mut ed.view_tree.panes_mut()[0];
+        pane.scroll_left = 10;
+        pane.scroll_left_pinned = true;
+        pane.scroll_buf = Some(buf_id);
+    }
+    let pane = pane_of(&ed);
+    // Five cells into the visible text, which is column 15 after the pan.
+    let off = mouse::resolve_click_to_offset(&ed, buf_id, &pane, pane.x + gutter + 5, pane.y);
+    assert_eq!(off, Some(15), "a click maps to scroll_left + clicked column");
+}
+
+#[test]
+fn render_shifts_content_by_the_horizontal_scroll() {
+    let mut ed = make_editor_with_buffer("0123456789ABCDEFGHIJ");
+    ed.view_tree.panes_mut()[0].width = 12;
+    let buf_id = focused_key(&ed);
+    {
+        let pane = &mut ed.view_tree.panes_mut()[0];
+        pane.scroll_left = 10;
+        pane.scroll_left_pinned = true;
+        pane.scroll_buf = Some(buf_id);
+    }
+    let pane = pane_of(&ed);
+    let total = ed.buffers.get(buf_id).unwrap().lock().unwrap().line_count();
+    let gutter = gutter_cols(&ed, buf_id, total) as u16;
+    let mut surface = Surface::new(pane.width, pane.height);
+    render_frame(&ed, &mut surface);
+
+    let cell = surface.cell(gutter, pane.y).expect("first content cell");
+    assert_eq!(cell.ch, 'A',
+        "after panning 10 columns, 'A' (column 10) is the first visible glyph");
 }

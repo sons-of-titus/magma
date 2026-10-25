@@ -35,6 +35,7 @@ pub fn render_decorations(
     gutter_width: usize,
     content_x: u16,
     row_offset: u16,
+    scroll_left: usize,
 ) {
     let view = match editor.view_of_buffer(buf_id) {
         Some(v) => v,
@@ -64,8 +65,9 @@ pub fn render_decorations(
                 }
                 Decoration::InlineText { line, col, text, face } => {
                     if *line < scroll_top || *line >= scroll_top + visible_lines { continue; }
+                    if *col < scroll_left { continue; }
                     let surf_row = row_offset + (*line - scroll_top) as u16;
-                    let sx = content_x + *col as u16;
+                    let sx = content_x + (*col - scroll_left) as u16;
                     if sx >= surface.width { continue; }
                     let style = editor.resolve_face_style(face);
                     let max_cols = (surface.width - sx) as usize;
@@ -76,7 +78,9 @@ pub fn render_decorations(
                     if *line < scroll_top || *line >= scroll_top + visible_lines { continue; }
                     let surf_row = row_offset + (*line - scroll_top) as u16;
                     let line_text = buf.line(*line).unwrap_or_default();
-                    let eol_col = content_x as usize + line_text.chars().count();
+                    let end_col = line_text.chars().count();
+                    if end_col < scroll_left { continue; }
+                    let eol_col = content_x as usize + (end_col - scroll_left);
                     let sx = (eol_col + 1) as u16;
                     if sx >= surface.width { continue; }
                     let style = editor.resolve_face_style(face);

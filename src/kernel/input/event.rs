@@ -22,6 +22,9 @@ pub enum MouseEventKind {
     Drag,
     /// Scroll wheel moved.  Positive delta = scroll down.
     Scroll(i32),
+    /// Horizontal scroll.  Positive delta = reveal content to the right
+    /// (the viewport moves right).
+    ScrollX(i32),
     /// Button released.
     Release,
 }

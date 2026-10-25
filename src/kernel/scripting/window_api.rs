@@ -125,6 +125,46 @@ unsafe extern "C-unwind" fn c_window_set_scroll_top(argc: i32, argv: *mut Janet)
     })
 }
 
+/// (window/set-scroll-left &opt window-id col)
+/// Pin the horizontal scroll offset for a window to an explicit first column.
+unsafe extern "C-unwind" fn c_window_set_scroll_left(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let id = conv::get_int(argc, argv, 0);
+        let left = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
+        let wid = id
+            .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
+            .or_else(|| ed.view_tree.focused_window());
+        if let Some(wid) = wid {
+            let buf = ed.view_tree.buffer(wid);
+            let cursor = buf
+                .and_then(|b| ed.view_of_buffer(b))
+                .map(|v| v.cursor.offset);
+            if let Some(win) = ed.view_tree.window_mut(wid) {
+                win.scroll_left = left;
+                win.scroll_left_pinned = true;
+                win.scroll_buf = buf;
+                win.scroll_cursor = cursor;
+            }
+        }
+        conv::nil()
+    })
+}
+
+/// (window/scroll-left &opt window-id) → int
+/// First visible content column of the window.
+unsafe extern "C-unwind" fn c_window_scroll_left(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let arg_id = conv::get_int(argc, argv, 0);
+        let wid = arg_id
+            .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
+            .or_else(|| ed.view_tree.focused_window());
+        match wid.and_then(|wid| ed.view_tree.window(wid)) {
+            Some(win) => conv::integer(win.scroll_left as i32),
+            None => conv::nil(),
+        }
+    })
+}
+
 /// (window/unpin-scroll &opt window-id)
 /// Release the pinned scroll offset so cursor-following resumes.
 unsafe extern "C-unwind" fn c_window_unpin_scroll(argc: i32, argv: *mut Janet) -> Janet {
@@ -343,6 +383,16 @@ pub fn register() -> Vec<JanetReg> {
             name: c"window/set-scroll-top".as_ptr() as *const _,
             cfun: Some(c_window_set_scroll_top as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Pin the scroll top for a window".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"window/set-scroll-left".as_ptr() as *const _,
+            cfun: Some(c_window_set_scroll_left as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Pin the first visible content column for a window".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"window/scroll-left".as_ptr() as *const _,
+            cfun: Some(c_window_scroll_left as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Get the first visible content column of a window".as_ptr() as *const _,
         },
         JanetReg {
             name: c"window/unpin-scroll".as_ptr() as *const _,

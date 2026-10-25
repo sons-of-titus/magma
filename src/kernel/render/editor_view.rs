@@ -6,7 +6,9 @@ use crate::kernel::state::Editor;
 use crate::kernel::state::id::WindowId;
 use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{View, ViewKind, RenderCtx};
-use crate::kernel::render::frame::{int_option, pane_scroll_top_synced, scroll_state_for_buffer};
+use crate::kernel::render::frame::{
+    int_option, pane_scroll_left, pane_scroll_top_synced, scroll_state_for_buffer,
+};
 use crate::kernel::render::decorations::{prefix_margin_width, render_decorations};
 use crate::kernel::render::highlight_pass::apply_highlights;
 use crate::kernel::render::gutter::{GutterCtx, GutterRegistry};
@@ -57,6 +59,7 @@ impl View for EditorView {
         let total_lines = buf.line_count();
         let gutter_width = prefix_cols + editor.gutter.total_width(total_lines);
         let content_x = area.x + gutter_width as u16;
+        let content_cols = (area.width as usize).saturating_sub(gutter_width);
 
         let scrolloff = int_option(editor, "scrolloff", 0);
 
@@ -73,6 +76,11 @@ impl View for EditorView {
         let scroll_top = editor.view_tree.window(self.pane_id)
             .and_then(|p| pane_scroll_top_synced(p, buf_id))
             .unwrap_or(st.scroll_top);
+        // First visible content column (0 = line start).  The gutter stays
+        // fixed; only text columns pan.
+        let scroll_left = editor.view_tree.window(self.pane_id)
+            .map(|p| pane_scroll_left(p, buf_id))
+            .unwrap_or(0);
         // The cursor may sit above a manually scrolled viewport.
         let cursor_vis_row = cursor_line.checked_sub(scroll_top);
         let cursor_col = st.cursor_col;
@@ -181,7 +189,7 @@ impl View for EditorView {
             // one segmentation per (line, revision), reused by the
             // highlight passes.  Fold rows render synthetic text and stay
             // uncached — their key would collide with the real line.
-            let max_col = area.width.saturating_sub(gutter_width as u16) as usize;
+            let max_col = content_cols;
             {
                 let layout = if is_fold_start {
                     std::sync::Arc::new(crate::kernel::render::row_layout::RowLayout::build(
@@ -192,14 +200,16 @@ impl View for EditorView {
                 };
                 for i in 0..layout.widths.len() {
                     let col = layout.cols[i] as usize;
-                    if col >= max_col { break; }
+                    if col < scroll_left { continue; }
+                    let screen = col - scroll_left;
+                    if screen >= max_col { break; }
                     let w = layout.widths[i] as usize;
-                    surface.set_cell(content_x + col as u16, surf_row, layout.leads[i], None);
+                    surface.set_cell(content_x + screen as u16, surf_row, layout.leads[i], None);
                     // Zero-width trailing marks stay on the lead cell; wide
                     // glyphs blank their second cell so highlights look right.
                     for k in 1..w {
-                        if col + k < max_col {
-                            surface.set_cell(content_x + (col + k) as u16, surf_row, ' ', None);
+                        if screen + k < max_col {
+                            surface.set_cell(content_x + (screen + k) as u16, surf_row, ' ', None);
                         }
                     }
                 }
@@ -223,7 +233,8 @@ impl View for EditorView {
                 }
             }).collect();
         apply_highlights(editor, view, surface, &row_refs, &row_layouts,
-                         scroll_top, max_visible, content_x, row_offset, cursor_offset);
+                         scroll_top, max_visible, content_x, row_offset, cursor_offset,
+                         scroll_left);
 
         // ── Current execution line — the stopped debuggee's location ──────
         if let Some((path, line)) = editor.debug.active_session()
@@ -246,8 +257,8 @@ impl View for EditorView {
 
         // ── Column ruler ──────────────────────────────────────────────────
         let col_col = int_option(editor, "colorcolumn", 0);
-        if col_col > 0 {
-            let ruler_x = col_col as u16 + content_x;
+        if col_col > 0 && col_col >= scroll_left {
+            let ruler_x = content_x + (col_col - scroll_left) as u16;
             if ruler_x < area.x + area.width {
                 for row in 0..visible_lines.min(area.height as usize) {
                     let surf_row = row_offset + row as u16;
@@ -261,7 +272,8 @@ impl View for EditorView {
 
         // ── Decorations ───────────────────────────────────────────────────
         render_decorations(editor, buf_id, &*buf, surface,
-            scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset);
+            scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset,
+            scroll_left);
 
         // ── Cursor + multi-cursor + completion popup (focused pane only) ──
         // With `cursor_overlay` the GUI paints a native cursor rect on top;
@@ -269,14 +281,15 @@ impl View for EditorView {
         if is_focused && editor.cursor_visible && !editor.cursor_overlay {
             if let Some(vis_row) = cursor_vis_row
                 && vis_row < visible_lines
-                && cursor_col < area.width.saturating_sub(gutter_width as u16) as usize
+                && cursor_col >= scroll_left
+                && cursor_col - scroll_left < content_cols
             {
                 let cursor_ch = match editor.cursor_shape.as_str() {
                     "underline" => '▔',
                     "beam" => '▏',
                     _ => '█',
                 };
-                surface.set_cell(content_x + cursor_col as u16,
+                surface.set_cell(content_x + (cursor_col - scroll_left) as u16,
                     row_offset + vis_row as u16, cursor_ch, None);
             }
 
@@ -296,8 +309,8 @@ impl View for EditorView {
                             tab_w,
                             &editor.font_config.glyph_widths,
                         );
-                        if ec_col < area.width.saturating_sub(gutter_width as u16) as usize {
-                            surface.set_cell(content_x + ec_col as u16,
+                        if ec_col >= scroll_left && ec_col - scroll_left < content_cols {
+                            surface.set_cell(content_x + (ec_col - scroll_left) as u16,
                                 row_offset + ec_vis as u16, '▌', None);
                         }
                     }

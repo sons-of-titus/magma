@@ -91,6 +91,16 @@
 (keymap/set "page-up"   "scroll-page-up"   :editor)
 (keymap/set "page-down" "scroll-page-down" :editor)
 
+# Horizontal pan.  ctrl/meta + left/right used to collapse to plain cursor
+# movement; they now carry a prefix, so bind them to keep that behavior and
+# give the shifted form to the column scrolls.
+(keymap/set "ctrl-left"  "cursor-left"  :editor)
+(keymap/set "ctrl-right" "cursor-right" :editor)
+(keymap/set "meta-left"  "cursor-left"  :editor)
+(keymap/set "meta-right" "cursor-right" :editor)
+(keymap/set "ctrl-shift-left"  "scroll-column-left"  :editor)
+(keymap/set "ctrl-shift-right" "scroll-column-right" :editor)
+
 # Selection (shift + movement)
 (keymap/set "shift-left"  "select-left"  :editor)
 (keymap/set "shift-right" "select-right" :editor)

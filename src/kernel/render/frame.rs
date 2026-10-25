@@ -5,7 +5,7 @@
 //! is native GUI and rendered outside this pipeline.
 
 use crate::kernel::state::Editor;
-use crate::kernel::render::surface::Surface;
+use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{Rect, RenderCtx, View};
 use crate::kernel::render::view_tree::Pane;
 use crate::kernel::render::editor_view::EditorView;
@@ -156,9 +156,56 @@ pub fn pane_scroll_state(ed: &Editor, pane: &Pane, buf_id: usize, visible_lines:
     }
 }
 
+/// A pane's effective first visible column, when the pane has synced state.
+pub fn pane_scroll_left_synced(pane: &Pane, buf_id: usize) -> Option<usize> {
+    (pane.scroll_buf == Some(buf_id) || pane.scroll_left_pinned).then_some(pane.scroll_left)
+}
+
+/// A pane's effective first visible column for callers that do not hold the
+/// buffer lock.  Falls back to 0 (line start) before the first sync.
+pub fn pane_scroll_left(pane: &Pane, buf_id: usize) -> usize {
+    pane_scroll_left_synced(pane, buf_id).unwrap_or(0)
+}
+
+/// Width in cells of the buffer's fixed gutter (line numbers, fold signs,
+/// diff marks) including any line-prefix margin.
+pub fn gutter_cols(ed: &Editor, buf_id: usize, total_lines: usize) -> usize {
+    let prefix_margin = crate::kernel::render::decorations::prefix_margin_width(ed, buf_id);
+    let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
+    prefix_cols + ed.gutter.total_width(total_lines)
+}
+
+/// Width in cells of the text area — pane width minus the fixed gutter.
+fn content_width(ed: &Editor, pane_width: u16, buf_id: usize, total_lines: usize) -> usize {
+    (pane_width as usize).saturating_sub(gutter_cols(ed, buf_id, total_lines))
+}
+
+/// Widest currently-visible line in display cells — the horizontal pan bound
+/// and the extent the scrollbar reflects.  Bounded by the viewport height,
+/// never a whole-file scan.
+pub fn horizontal_extent(ed: &Editor, buf_id: usize) -> usize {
+    let Some(arc) = ed.buffers.get(buf_id) else { return 0 };
+    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+    let total_lines = buf.line_count();
+    let pane = ed.view_tree.panes().iter().find(|p| p.buffer_id == Some(buf_id));
+    let visible = pane.map(|p| (p.height as usize).saturating_sub(1)).unwrap_or(1).max(1);
+    let top = pane.map(|p| p.scroll_offset).unwrap_or(0).min(total_lines.saturating_sub(1));
+    let tab_w = int_option(ed, "tab-width", 4);
+    let mut max_cells = 0usize;
+    for line in top..(top + visible).min(total_lines) {
+        if let Some(text) = buf.line(line) {
+            max_cells = max_cells.max(
+                crate::kernel::render::row_layout::RowLayout::build(
+                    &text, 0, tab_w, &ed.font_config.glyph_widths).cells());
+        }
+    }
+    max_cells
+}
+
 /// Sticky cursor-following scroll, per pane.
 ///
-/// Runs once per frame with `&mut Editor` before `render_frame`.  While the
+/// Runs once per frame with `&mut Editor` before `render_frame`.
+/// While the
 /// cursor stays inside the viewport the top line does not move — clicking or
 /// arrowing inside the view must never jump the text.  The viewport snaps by
 /// `scrolloff` only when the cursor leaves it.  A manual scroll (wheel,
@@ -179,31 +226,47 @@ pub fn sync_viewport_scroll(ed: &mut Editor) {
         let Some(view) = ed.view_of_buffer(buf_id) else { continue };
         let cursor_offset = view.cursor.offset;
         let Some(arc) = ed.buffers.get(buf_id) else { continue };
-        let (total_lines, cursor_line) = {
+        let (total_lines, cursor_line, cursor_col) = {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            (buf.line_count(), buf.position_of(cursor_offset.min(buf.len())).line)
+            let (line, col) = cursor_metrics(&buf, cursor_offset.min(buf.len()),
+                int_option(ed, "tab-width", 4), &ed.font_config.glyph_widths);
+            (buf.line_count(), line, col)
         };
         let cursor_line = cursor_line.min(total_lines.saturating_sub(1));
         let visible = (ed.view_tree.panes()[i].height as usize).saturating_sub(1).max(1);
+        let pane_width = ed.view_tree.panes()[i].width;
+        let content_w = content_width(ed, pane_width, buf_id, total_lines);
+        let h_margin = int_option(ed, "sidescrolloff", 0)
+            .min(content_w.saturating_sub(1) / 2);
         let pane = &mut ed.view_tree.panes_mut()[i];
 
         if pane.scroll_buf != Some(buf_id) {
             pane.scroll_buf = Some(buf_id);
             pane.scroll_cursor = Some(cursor_offset);
             pane.scroll_pinned = false;
+            pane.scroll_left_pinned = false;
+            // Derive both axes from the cursor so a freshly-shown buffer is
+            // already scrolled to it.
+            pane.scroll_left = follow_col(0, cursor_col, content_w, h_margin);
             pane.scroll_offset = follow_from_scratch(cursor_line, total_lines, visible, scrolloff);
             continue;
         }
         if pane.scroll_cursor != Some(cursor_offset) {
             pane.scroll_cursor = Some(cursor_offset);
             pane.scroll_pinned = false;
+            pane.scroll_left_pinned = false;
         }
         if pane.scroll_pinned {
             pane.scroll_offset = pane.scroll_offset.min(total_lines.saturating_sub(1));
-            continue;
+        } else {
+            pane.scroll_offset = follow_line(pane.scroll_offset, cursor_line, visible, scrolloff)
+                .min(total_lines.saturating_sub(1));
         }
-        pane.scroll_offset = follow_line(pane.scroll_offset, cursor_line, visible, scrolloff)
-            .min(total_lines.saturating_sub(1));
+        // Horizontal: the caret always stays inside the pane unless a manual
+        // pan pinned the view (released when the cursor moves above).
+        if !pane.scroll_left_pinned {
+            pane.scroll_left = follow_col(pane.scroll_left, cursor_col, content_w, h_margin);
+        }
     }
 }
 
@@ -223,12 +286,35 @@ fn follow_line(top: usize, cursor_line: usize, visible: usize, scrolloff: usize)
     }
 }
 
+/// Keep `left` unless the cursor crosses a margin at either edge (the
+/// horizontal twin of `follow_line`).
+fn follow_col(left: usize, col: usize, width: usize, margin: usize) -> usize {
+    if width == 0 {
+        return 0;
+    }
+    if col < left.saturating_add(margin) {
+        col.saturating_sub(margin)
+    } else if col + margin >= left + width {
+        (col + margin + 1).saturating_sub(width)
+    } else {
+        left
+    }
+}
+
 /// Populate `surface` from editor state by traversing the ViewTree.
 ///
 /// The surface contains editor pane content only — tab bar, status bar, and
 /// dialogs are native GUI widgets rendered around it.
 pub fn render_frame(editor: &Editor, surface: &mut Surface) {
     surface.clear();
+    // Seed the grid with the editor background: any cell no view paints (a
+    // bufferless pane, a short/gappy pane, a trailing row) must show the
+    // editor background, not `Style::default()`'s black.
+    surface.fill_style(Style {
+        fg: editor.theme_color("fg"),
+        bg: editor.theme_color("bg"),
+        ..Default::default()
+    });
 
     // ── Render each pane through its view ────────────────────────────────
     let focused = editor.view_tree.focused_window();

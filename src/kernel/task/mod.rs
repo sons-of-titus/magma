@@ -134,49 +134,92 @@ pub fn apply_tool_diagnostics(ed: &mut Editor, command: &str, output: &str, cwd:
     ed.frame_dirty = true;
 }
 
-/// Jump to the next quickfix entry.
-pub fn quickfix_next(editor: &mut Editor) -> Result<(), String> {
-    if editor.quickfix_list.is_empty() {
-        return Err("No quickfix entries".to_string());
-    }
-    if editor.quickfix_index + 1 >= editor.quickfix_list.len() {
-        return Err("Already at last entry".to_string());
-    }
-    editor.quickfix_index += 1;
-    jump_to_quickfix(editor, editor.quickfix_index);
-    Ok(())
+/// Which quickfix-style list a navigation command walks.  The GUI mirrors the
+/// focused tool window into `Editor::quickfix_focus`; a command with no panel
+/// in mind walks build problems.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuickfixList {
+    /// Build/compiler problems (the Output tool's PROBLEMS section).
+    #[default]
+    Problems,
+    /// Find-in-files / grep hits (the Find in Files tool).
+    Search,
 }
 
-/// Jump to the previous quickfix entry.
+impl QuickfixList {
+    /// The entries and current cursor for this list.
+    pub fn entries(self, ed: &Editor) -> (&[QuickfixEntry], usize) {
+        match self {
+            QuickfixList::Problems => (&ed.quickfix_list, ed.quickfix_index),
+            QuickfixList::Search => (&ed.search.results, ed.search.index),
+        }
+    }
+
+    fn set_index(self, ed: &mut Editor, index: usize) {
+        match self {
+            QuickfixList::Problems => ed.quickfix_index = index,
+            QuickfixList::Search => ed.search.index = index,
+        }
+    }
+}
+
+/// Jump to the next entry in the focused list (`:cn`).
+pub fn quickfix_next(editor: &mut Editor) -> Result<(), String> {
+    navigate_quickfix(editor, 1)
+}
+
+/// Jump to the previous entry in the focused list (`:cp`).
 pub fn quickfix_prev(editor: &mut Editor) -> Result<(), String> {
-    if editor.quickfix_list.is_empty() {
+    navigate_quickfix(editor, -1)
+}
+
+fn navigate_quickfix(editor: &mut Editor, step: isize) -> Result<(), String> {
+    let kind = editor.quickfix_focus;
+    let (len, index) = {
+        let (list, index) = kind.entries(editor);
+        (list.len(), index)
+    };
+    if len == 0 {
         return Err("No quickfix entries".to_string());
     }
-    if editor.quickfix_index == 0 {
+    let next = index as isize + step;
+    if next < 0 {
         return Err("Already at first entry".to_string());
     }
-    editor.quickfix_index -= 1;
-    jump_to_quickfix(editor, editor.quickfix_index);
+    let next = next as usize;
+    if next >= len {
+        return Err("Already at last entry".to_string());
+    }
+    kind.set_index(editor, next);
+    jump_to_quickfix(editor, next, kind);
     Ok(())
 }
 
-fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
-    let qf = &editor.quickfix_list[idx].clone();
+fn jump_to_quickfix(editor: &mut Editor, idx: usize, kind: QuickfixList) {
+    let (list, qf) = match kind {
+        QuickfixList::Problems => (&editor.quickfix_list, editor.quickfix_list[idx].clone()),
+        QuickfixList::Search => (&editor.search.results, editor.search.results[idx].clone()),
+    };
     let path = qf.filename.clone();
 
-    // Collect all diagnostics for this file from the quickfix list
-    let diags: Vec<crate::kernel::semantic::provider::Diagnostic> =
-        editor.quickfix_list.iter()
-        .filter(|e| e.filename == path)
-        .map(|e| {
-            let (line, col) = (e.line.saturating_sub(1), e.col.saturating_sub(1));
-            crate::kernel::semantic::provider::Diagnostic {
-                message: e.message.clone(),
-                severity: crate::kernel::semantic::provider::DiagnosticSeverity::Error,
-                line, column: col, end_line: line, end_column: col,
-            }
-        })
-        .collect();
+    // Only build problems seed the target file's tool diagnostics — a search
+    // hit must not paint the file with build errors.
+    let seed_tool_diags = kind == QuickfixList::Problems;
+    let diags: Vec<crate::kernel::semantic::provider::Diagnostic> = if seed_tool_diags {
+        list.iter()
+            .filter(|e| e.filename == path)
+            .map(|e| {
+                let (line, col) = (e.line.saturating_sub(1), e.col.saturating_sub(1));
+                crate::kernel::semantic::provider::Diagnostic {
+                    message: e.message.clone(),
+                    severity: crate::kernel::semantic::provider::DiagnosticSeverity::Error,
+                    line, column: col, end_line: line, end_column: col,
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // Try to find an existing buffer for this file
     let existing_key = editor.buffers.iter()
@@ -187,7 +230,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
         if let Some(arc) = editor.buffers.get_mut(key) {
             let (target, char_offset) = {
                 let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                buf.set_tool_diagnostics(diags);
+                if seed_tool_diags { buf.set_tool_diagnostics(diags); }
                 let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
                 let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
                 let char_offset: usize = line_text.chars()
@@ -214,7 +257,7 @@ fn jump_to_quickfix(editor: &mut Editor, idx: usize) {
                 crate::kernel::state::id::BufferId(id), &name, &content,
             );
             buf.path = Some(path.clone());
-            buf.set_tool_diagnostics(diags);
+            if seed_tool_diags { buf.set_tool_diagnostics(diags); }
             let target = buf.line_start_offset(qf.line.saturating_sub(1)).unwrap_or(0);
             let line_text = buf.line(qf.line.saturating_sub(1)).unwrap_or_default();
             let char_offset: usize = line_text.chars()

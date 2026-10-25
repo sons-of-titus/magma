@@ -32,12 +32,12 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         }
         BackgroundEvent::GrepResultsBatch { generation, entries }
             if generation == ed.search.generation => {
-                ed.quickfix_list.extend(entries);
-                ed.quickfix_list.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
+                ed.search.results.extend(entries);
+                ed.search.results.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
             }
         BackgroundEvent::GrepDone { generation }
             if generation == ed.search.generation => {
-                ed.quickfix_index = 0;
+                ed.search.index = 0;
             }
         BackgroundEvent::WorkProgress { id, done, total } => {
             ed.scheduler.update_progress(id, done, total);

@@ -66,6 +66,6 @@ impl ToolWindow for OutputToolWindow {
             .color(theme.overlay0)
             .strong(),
         );
-        quickfix_rows(ui, editor, theme)
+        quickfix_rows(ui, editor, theme, crate::kernel::task::QuickfixList::Problems)
     }
 }

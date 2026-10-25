@@ -74,7 +74,7 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("keyword-context", "List every line containing the word under the cursor in the quickfix list",
+    cmds.register_fn("keyword-context", "List every line containing the word under the cursor in the Find in Files panel",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -115,15 +115,13 @@ pub(super) fn register(editor: &mut Editor) {
                 (word, entries)
             };
             let count = entries.len();
-            editor.quickfix_list = entries;
-            editor.quickfix_list.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
-            editor.quickfix_index = 0;
+            editor.search.set_results(entries);
             if count == 0 {
                 editor.show_message(crate::kernel::state::MessageKind::Info,
                     format!("no other matches for “{word}”"));
             } else {
                 editor.show_message(crate::kernel::state::MessageKind::Info,
-                    format!("{count} match(es) for “{word}” — quickfix-next to navigate"));
+                    format!("{count} match(es) for “{word}”"));
             }
             Ok(())
         },

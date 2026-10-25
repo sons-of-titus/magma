@@ -1086,15 +1086,19 @@ Signals an error if no `run` configuration exists.
 
 ---
 
-## quickfix/ — Quickfix List
+## quickfix/ — Find-in-Files Results
+
+The find-in-files result list (backed by `SearchState`) — grep.janet writes its
+hits here. Build/compiler problems live in a separate list the Output tool
+shows; `:cn`/`:cp` walk whichever of the two the focused panel points at.
 
 ### `(quickfix/set entries)` → nil
 
-Replace the quickfix list. Each entry is a table with `:filename`, `:line`, `:col`, `:message`. Pass an empty array to clear.
+Replace the find-in-files result list. Each entry is a table with `:filename`, `:line`, `:col`, `:message`. Pass an empty array to clear.
 
 ### `(quickfix/get)` → `[{:filename :line :col :message} …]`
 
-Return the current quickfix list.
+Return the current find-in-files result list.
 
 ---
 

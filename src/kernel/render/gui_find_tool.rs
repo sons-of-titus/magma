@@ -1,8 +1,8 @@
 //! Find-in-files tool window — project-wide content search.
 //!
 //! Enter runs ripgrep (`--vimgrep`) against the project root on a background
-//! thread; results land in the shared quickfix list, so the panel, `:cn/:cp`,
-//! and compiler output all navigate the same way.
+//! thread; results land in the `SearchState`-owned list, so the Find panel and
+//! `:cn/:cp` (while it is focused) navigate them, separate from build problems.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
 use crate::kernel::state::Editor;
@@ -24,16 +24,22 @@ fn parse_vimgrep(line: &str) -> Option<crate::kernel::task::QuickfixEntry> {
     Some(crate::kernel::task::QuickfixEntry { filename, line: line_no, col, message, ..Default::default() })
 }
 
-/// The shared results renderer for every quickfix consumer (find-in-files,
-/// the output panel, `:cn/:cp`).  Rows are clickable.
-pub(crate) fn quickfix_rows(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Vec<ToolAction> {
+/// The results renderer for a quickfix-style list (build problems or find
+/// hits).  Rows are clickable.
+pub(crate) fn quickfix_rows(
+    ui: &mut egui::Ui,
+    editor: &Editor,
+    theme: &GuiTheme,
+    kind: crate::kernel::task::QuickfixList,
+) -> Vec<ToolAction> {
     let mut actions = Vec::new();
-    if editor.quickfix_list.is_empty() {
+    let (list, index) = kind.entries(editor);
+    if list.is_empty() {
         ui.label(RichText::new("No results.").font(prop(12.0)).color(theme.overlay0));
         return actions;
     }
-    for (i, entry) in editor.quickfix_list.iter().enumerate() {
-        let is_current = i == editor.quickfix_index;
+    for (i, entry) in list.iter().enumerate() {
+        let is_current = i == index;
         let short = entry.filename.rsplit('/').next().unwrap_or(&entry.filename);
         let label = RichText::new(format!(
             "{}:{}  {}",
@@ -93,7 +99,7 @@ impl FindInFilesToolWindow {
             }
         editor.search.generation += 1;
         let generation = editor.search.generation;
-        editor.quickfix_list.clear();
+        editor.search.set_results(Vec::new());
 
         let sender = bg.sender.clone();
         let running = self.running.clone();
@@ -174,7 +180,7 @@ impl ToolWindow for FindInFilesToolWindow {
         }
         ui.separator();
 
-        if editor.quickfix_list.is_empty() {
+        if editor.search.results.is_empty() {
             ui.label(
                 RichText::new("No results yet.  Type a pattern and press Enter.")
                     .font(prop(12.0))
@@ -183,10 +189,10 @@ impl ToolWindow for FindInFilesToolWindow {
             return Vec::new();
         }
         ui.label(
-            RichText::new(format!("{} matches — click to jump, :cn/:cp to step", editor.quickfix_list.len()))
+            RichText::new(format!("{} matches — click to jump, :cn/:cp to step", editor.search.results.len()))
                 .font(prop(11.0))
                 .color(theme.overlay0),
         );
-        quickfix_rows(ui, editor, theme)
+        quickfix_rows(ui, editor, theme, crate::kernel::task::QuickfixList::Search)
     }
 }

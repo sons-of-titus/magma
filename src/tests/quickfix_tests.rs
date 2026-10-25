@@ -16,7 +16,7 @@ fn editor() -> Editor {
 }
 
 #[test]
-fn grep_results_replace_the_quickfix_list() {
+fn grep_results_land_in_the_search_list() {
     let mut ed = editor();
     ed.search.generation += 1;
     let generation = ed.search.generation;
@@ -33,9 +33,9 @@ fn grep_results_replace_the_quickfix_list() {
             ..Default::default() },
         ],
     });
-    assert_eq!(ed.quickfix_list.len(), 1);
-    assert_eq!(ed.quickfix_list[0].filename, "src/main.rs");
-    assert_eq!(ed.quickfix_index, 0);
+    assert_eq!(ed.search.results.len(), 1);
+    assert_eq!(ed.search.results[0].filename, "src/main.rs");
+    assert_eq!(ed.search.index, 0);
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn stale_search_generations_are_dropped() {
         generation: 3,
         entries: vec![entry],
     });
-    assert!(ed.quickfix_list.is_empty(), "stale search results must never land");
+    assert!(ed.search.results.is_empty(), "stale search results must never land");
 
     let fresh = QuickfixEntry {
         filename: "new.rs".into(),
@@ -111,6 +111,77 @@ fn stale_search_generations_are_dropped() {
         generation: 5,
         entries: vec![fresh],
     });
+    assert_eq!(ed.search.results.len(), 1);
+    assert_eq!(ed.search.results[0].filename, "new.rs");
+}
+
+#[test]
+fn build_problems_and_find_results_are_separate() {
+    let mut ed = editor();
+    crate::kernel::task::apply_tool_diagnostics(&mut ed, "cargo build",
+        "error[E0308]: mismatched types\n --> src/main.rs:1:1\n",
+        std::path::Path::new("/repo"));
     assert_eq!(ed.quickfix_list.len(), 1);
-    assert_eq!(ed.quickfix_list[0].filename, "new.rs");
+
+    ed.search.generation += 1;
+    let generation = ed.search.generation;
+    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
+        generation,
+        entries: vec![QuickfixEntry {
+            filename: "a.rs".into(), line: 3, col: 1, message: "hit".into(),
+        ..Default::default() }],
+    });
+
+    assert_eq!(ed.search.results.len(), 1);
+    assert_eq!(ed.quickfix_list.len(), 1, "a grep must not clear build problems");
+    assert_eq!(ed.quickfix_list[0].filename, "/repo/src/main.rs");
+}
+
+#[test]
+fn quickfix_focus_selects_the_navigated_list() {
+    let mut ed = editor();
+    ed.quickfix_list = vec![QuickfixEntry {
+        filename: "build.rs".into(), line: 1, col: 1, message: "e".into(),
+    ..Default::default() }];
+    ed.search.set_results(vec![
+        QuickfixEntry { filename: "s1.rs".into(), line: 1, col: 1, message: "h".into(), ..Default::default() },
+        QuickfixEntry { filename: "s2.rs".into(), line: 1, col: 1, message: "h".into(), ..Default::default() },
+    ]);
+
+    // No relevant panel focused → build problems (conventional quickfix).
+    assert_eq!(ed.quickfix_focus, crate::kernel::task::QuickfixList::Problems);
+    assert!(crate::kernel::task::quickfix_next(&mut ed).is_err(),
+        "one problem, nothing to advance to");
+
+    // Focused Find panel → search results; the problems cursor stays put.
+    ed.quickfix_focus = crate::kernel::task::QuickfixList::Search;
+    crate::kernel::task::quickfix_next(&mut ed).unwrap();
+    assert_eq!(ed.search.index, 1);
+    assert_eq!(ed.quickfix_index, 0, "the problems cursor must not move");
+}
+
+#[test]
+fn find_result_jump_leaves_build_diagnostics_untouched() {
+    let dir = std::env::temp_dir().join(format!("magma-qf-diag-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("hit.txt");
+    std::fs::write(&path, "alpha\nbeta\n").unwrap();
+    let path_str = path.to_string_lossy().into_owned();
+
+    let mut ed = editor();
+    ed.search.set_results(vec![
+        QuickfixEntry { filename: path_str.clone(), line: 1, col: 1, message: "h1".into(), ..Default::default() },
+        QuickfixEntry { filename: path_str.clone(), line: 2, col: 1, message: "h2".into(), ..Default::default() },
+    ]);
+    ed.quickfix_focus = crate::kernel::task::QuickfixList::Search;
+    crate::kernel::task::quickfix_next(&mut ed).unwrap();
+
+    let key = ed.buffers.iter()
+        .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(path_str.as_str()))
+        .map(|(k, _)| k)
+        .expect("the hit file opens");
+    let buf = ed.buffers.get(key).unwrap().lock().unwrap();
+    assert!(buf.tool_diagnostics.is_empty(),
+        "a find result must not paint the file with build errors");
+    std::fs::remove_dir_all(&dir).ok();
 }

@@ -84,10 +84,10 @@ fn quickfix_set_replaces_list() {
     let r = scripting::eval(
         r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "err"}])"#);
     assert_eq!(r, "ok");
-    assert_eq!(ed.quickfix_list.len(), 1);
-    assert_eq!(ed.quickfix_list[0].filename, "a.rs");
-    assert_eq!(ed.quickfix_list[0].line, 1);
-    assert_eq!(ed.quickfix_list[0].message, "err");
+    assert_eq!(ed.search.results.len(), 1);
+    assert_eq!(ed.search.results[0].filename, "a.rs");
+    assert_eq!(ed.search.results[0].line, 1);
+    assert_eq!(ed.search.results[0].message, "err");
 }
 
 #[test]
@@ -98,9 +98,9 @@ fn quickfix_set_clears_with_empty_array() {
     let _editor_scope = crate::kernel::scripting::EditorScope::new(&mut ed);
     scripting::eval(
         r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "e"}])"#);
-    assert_eq!(ed.quickfix_list.len(), 1);
+    assert_eq!(ed.search.results.len(), 1);
     scripting::eval("(quickfix/set [])");
-    assert_eq!(ed.quickfix_list.len(), 0);
+    assert_eq!(ed.search.results.len(), 0);
 }
 
 #[test]
@@ -115,9 +115,9 @@ fn quickfix_get_returns_all_entries() {
              {:filename "y.rs" :line 5 :col 1 :message "error"}])"#);
     let r = scripting::eval("(= 2 (length (quickfix/get)))");
     assert_eq!(r, "ok");
-    assert_eq!(ed.quickfix_list.len(), 2);
-    assert_eq!(ed.quickfix_list[0].filename, "x.rs");
-    assert_eq!(ed.quickfix_list[1].filename, "y.rs");
+    assert_eq!(ed.search.results.len(), 2);
+    assert_eq!(ed.search.results[0].filename, "x.rs");
+    assert_eq!(ed.search.results[1].filename, "y.rs");
 }
 
 // ── editor/mark-ring-push / pop ───────────────────────────────────────────────

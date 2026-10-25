@@ -56,20 +56,19 @@ unsafe extern "C-unwind" fn c_keymap_list_layer(argc: i32, argv: *mut Janet) -> 
 // ── Quickfix list ─────────────────────────────────────────────────────────────
 
 /// (quickfix/set [{:filename f :line l :col c :message m} ...])
-/// Replaces the quickfix list. Accepts arrays or tuples of tables or structs.
+/// Replaces the find-in-files result list.  Accepts arrays or tuples of tables
+/// or structs.  Compatibility contract: grep.janet writes its hits here.
 unsafe extern "C-unwind" fn c_quickfix_set(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         if argc < 1 {
-            ed.quickfix_list.clear();
-            ed.quickfix_index = 0;
+            ed.search.set_results(Vec::new());
             return conv::nil();
         }
         let v = *argv.add(0);
         let entries = ds_iter(v)
             .filter_map(|item| parse_qf_entry(item))
             .collect();
-        ed.quickfix_list = entries;
-        ed.quickfix_index = 0;
+        ed.search.set_results(entries);
         conv::nil()
     })
 }
@@ -77,8 +76,8 @@ unsafe extern "C-unwind" fn c_quickfix_set(argc: i32, argv: *mut Janet) -> Janet
 /// (quickfix/get) → [{:filename f :line l :col c :message m} ...]
 unsafe extern "C-unwind" fn c_quickfix_get(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let arr = janet_array(ed.quickfix_list.len() as i32);
-        for entry in &ed.quickfix_list {
+        let arr = janet_array(ed.search.results.len() as i32);
+        for entry in &ed.search.results {
             let tbl = janet_table(4);
             janet_table_put(tbl, conv::keyword("filename"), conv::string(&entry.filename));
             janet_table_put(tbl, conv::keyword("line"), conv::integer(entry.line as i32));

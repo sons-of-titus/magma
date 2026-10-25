@@ -151,6 +151,9 @@ pub struct Editor {
     pub theme: std::collections::HashMap<String, (u8, u8, u8)>,
     pub quickfix_list: Vec<crate::kernel::task::QuickfixEntry>,
     pub quickfix_index: usize,
+    /// Which list `:cn`/`:cp` walk: mirrored from the focused tool window by
+    /// the GUI (commands only see the editor).  Falls back to build problems.
+    pub quickfix_focus: crate::kernel::task::QuickfixList,
     pub vc: crate::kernel::vc::VcState,
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
@@ -257,7 +260,7 @@ impl Editor {
             registers: std::collections::HashMap::new(),
             marks: std::collections::HashMap::new(),
             command_history: Vec::new(),
-            search: crate::kernel::state::search::SearchState { pattern: None, forward: true, generation: 0 },
+            search: crate::kernel::state::search::SearchState { pattern: None, forward: true, ..Default::default() },
             editing: EditingState::default(),
             clipboard: Clipboard::new(),
             alternate_buffer: None,
@@ -266,6 +269,7 @@ impl Editor {
             theme,
             quickfix_list: Vec::new(),
             quickfix_index: 0,
+            quickfix_focus: crate::kernel::task::QuickfixList::Problems,
             vc: crate::kernel::vc::VcState::new(),
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),

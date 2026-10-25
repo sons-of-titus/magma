@@ -38,7 +38,7 @@ fn document_history_is_capped_and_old_revisions_report_none() {
 }
 
 #[test]
-fn quickfix_list_truncates_at_five_hundred() {
+fn find_results_truncate_at_five_hundred() {
     let mut ed = make_editor();
     ed.search.generation += 1;
     let generation = ed.search.generation;
@@ -50,7 +50,7 @@ fn quickfix_list_truncates_at_five_hundred() {
         .collect();
     crate::kernel::runtime::process_background_event(&mut ed,
         crate::kernel::runtime::BackgroundEvent::GrepResultsBatch { generation, entries });
-    assert_eq!(ed.quickfix_list.len(), 500, "the quickfix list must cap at 500");
+    assert_eq!(ed.search.results.len(), 500, "the find-results list must cap at 500");
 }
 
 #[test]

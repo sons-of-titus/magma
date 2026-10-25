@@ -164,10 +164,14 @@ JetBrains plugin-ecosystem parity.
 2. **Tool-output parser reads human rustc output**, not
    `--message-format=json` — correct clickable errors today; JSON mode
    remains a roadmap candidate.
-3. **Tool and LSP diagnostics are separate stores** (`Buffer.tool_diagnostics`
-   / `lsp_diagnostics`, merged on read); a clean build clears only the tool
-   store, so LSP results survive.  `quickfix_list` still holds both build
-   problems and search/find results — splitting that is future work.
+3. **Diagnostics and result lists are split by owner.** Tool and LSP
+   diagnostics are separate stores (`Buffer.tool_diagnostics` /
+   `lsp_diagnostics`, merged on read), so a clean build clears only the tool
+   store while LSP results survive.  Build problems (`quickfix_list`) and
+   find results (`SearchState.results`) are likewise separate: a build and a
+   grep no longer overwrite each other.  `:cn`/`:cp` walk whichever list the
+   focused panel points at (build problems when neither is focused);
+   `quickfix/set` writes the find-results list (grep.janet's contract).
 4. **CJK glyphs on the GPU path** render through the CPU paint fallback
    (fixed-grid atlas cannot hold CJK); Latin/Greek/Cyrillic are baked.
 5. **Bidi scope:** per-line L2 reordering with grapheme granularity;
@@ -192,7 +196,5 @@ JetBrains plugin-ecosystem parity.
 
 The audit program is complete.  Candidate follow-ups, in value order:
 1. Interactive verification pass of the GUI surfaces listed in note 1.
-2. R-24 continuation (editing-state consolidation) following the
-   SearchState pattern.
-3. `quickfix_list` split (note 3): build problems and search/find results
-   still share one list, so a build and a grep overwrite each other.
+2. R-24 continuation (register/mark/history state) following the
+   SearchState/EditingState pattern.

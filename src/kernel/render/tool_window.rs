@@ -48,6 +48,8 @@ pub trait ToolWindow: Send {
 
 /// The terminal dock's index in the manager's entry list.
 pub const TERMINAL_TOOL: usize = 0;
+/// The Find-in-files window's index.
+pub const FIND_TOOL: usize = 1;
 /// The output window's index.
 pub const OUTPUT_TOOL: usize = 2;
 /// The debug window's index.

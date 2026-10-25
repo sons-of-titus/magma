@@ -82,7 +82,7 @@ fn diagnostics_without_version_apply() {
 }
 
 #[test]
-fn keyword_context_fills_the_quickfix_list() {
+fn keyword_context_fills_the_search_list() {
     let mut ed = helpers::make_editor_with_buffer(
         "fn main() {}\nlet x = main;\nplain line\nuse main here\n",
     );
@@ -92,11 +92,11 @@ fn keyword_context_fills_the_quickfix_list() {
     }
     crate::kernel::command::execute_command(&mut ed, "keyword-context", &HashMap::new()).unwrap();
 
-    let lines: Vec<usize> = ed.quickfix_list.iter().map(|e| e.line).collect();
+    let lines: Vec<usize> = ed.search.results.iter().map(|e| e.line).collect();
     assert_eq!(lines, vec![1, 2, 4],
-        "every line containing the word lands as a quickfix entry");
-    assert_eq!(ed.quickfix_index, 0);
-    for entry in &ed.quickfix_list {
+        "every line containing the word lands as a find entry");
+    assert_eq!(ed.search.index, 0);
+    for entry in &ed.search.results {
         assert_eq!(entry.filename, "test", "entries carry the buffer name when no path");
     }
 }
@@ -108,7 +108,7 @@ fn keyword_context_with_no_other_matches_lists_only_the_origin_line() {
         view.set_cursor(0); // "unique"
     }
     crate::kernel::command::execute_command(&mut ed, "keyword-context", &HashMap::new()).unwrap();
-    assert_eq!(ed.quickfix_list.len(), 1, "the word's own line is the one match");
+    assert_eq!(ed.search.results.len(), 1, "the word's own line is the one match");
     // The status message is the visible surface (nothing goes to stderr).
     let msg = ed.status_message.as_ref().map(|m| m.text.clone()).unwrap_or_default();
     assert!(msg.contains("unique"), "the status message names the word");

@@ -26,7 +26,7 @@ use super::gui_sidebar_state::SidebarAction;
 use super::gui_status::{StatusAction, StatusBar};
 use super::gui_tabs::{TabAction, TabBar};
 use super::gui_theme::{GuiTheme, icons};
-use super::tool_window::{AGENT_TOOL, OUTPUT_TOOL, TERMINAL_TOOL, ToolAction, ToolWindowManager};
+use super::tool_window::{AGENT_TOOL, FIND_TOOL, OUTPUT_TOOL, TERMINAL_TOOL, ToolAction, ToolWindowManager};
 use super::tool_window_view::dock_button;
 
 /// Actions collected from the chrome panels, applied by `editor_shell`.
@@ -141,6 +141,17 @@ pub(crate) fn show_panels(app: &mut GuiApp, ui: &mut egui::Ui, line_h: f32) -> P
 
     // Docked-bottom tool windows.
     out.tool.extend(app.tool_windows.show_docked_bottom(ui, &mut app.editor, &app.theme));
+
+    // Mirror the focused bottom panel into the editor so `:cn`/`:cp` walk the
+    // list the user is looking at (commands only see the editor state).
+    let find_focused = app.tool_windows.entries.get(FIND_TOOL)
+        .is_some_and(|e| e.visible)
+        && app.tool_windows.active_bottom == FIND_TOOL;
+    app.editor.quickfix_focus = if find_focused {
+        crate::kernel::task::QuickfixList::Search
+    } else {
+        crate::kernel::task::QuickfixList::Problems
+    };
 
     // Navigation band — tabs and breadcrumb.  Registered after the top row so
     // it is the last band above the editor: the tab strip sits directly on the

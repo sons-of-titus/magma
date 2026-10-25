@@ -125,6 +125,95 @@ fn bundled_font_bootstrap_installs_jetbrains_mono() {
 }
 
 #[test]
+fn default_bootstrap_installs_a_resolvable_primary_family() {
+    let mut fc = FontConfig::default();
+    fc.bootstrap_default_font();
+    assert!(!fc.loaded_fonts.is_empty(), "a default font must be installed");
+    // Either the system monospace (Monaco) or the bundled fallback wins,
+    // but the family must always name a font we actually loaded.
+    assert!(
+        fc.family == "system-mono" || fc.family == "magma-mono",
+        "unexpected default family {:?}", fc.family
+    );
+    assert!(fc.loaded_fonts.contains_key(&fc.family));
+    assert!(fc.primary_font().is_some(), "primary font bytes must resolve");
+}
+
+#[test]
+fn default_bootstrap_respects_an_existing_choice() {
+    let mut fc = FontConfig::default();
+    fc.loaded_fonts.insert("user-font".to_string(), vec![9u8; 2048]);
+    fc.family = "user-font".to_string();
+    fc.bootstrap_default_font();
+    assert_eq!(fc.family, "user-font");
+    assert_eq!(fc.primary_font().map(|b| b.len()), Some(2048));
+}
+
+// ── Nerd Font default (icons render in the buffer grid) ─────────────────
+
+#[test]
+fn nerd_font_default_covers_icon_glyphs_when_present() {
+    use ab_glyph::{Font as _, FontRef, ScaleFont as _};
+
+    let Some(path) = crate::kernel::state::font::default_font_candidates()
+        .into_iter()
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().contains("Nerd"))
+                .unwrap_or(false)
+                && p.exists()
+        })
+    else {
+        eprintln!("no Nerd Font installed; skipping icon-coverage check");
+        return;
+    };
+
+    let bytes = std::fs::read(&path).unwrap();
+    let font = FontRef::try_from_slice(&bytes)
+        .unwrap_or_else(|e| panic!("Nerd Font {path:?} must parse: {e}"));
+    let scaled = font.as_scaled(ab_glyph::PxScale::from(15.0));
+    // Powerline, devicons, Font-Awesome, and box-drawing must all be real
+    // glyphs, not .notdef — that is what makes a Nerd Font worth defaulting to.
+    for (name, cp) in [
+        ("powerline", '\u{E0B0}'),
+        ("devicons", '\u{E0A0}'),
+        ("font-awesome", '\u{F015}'),
+        ("box-drawing", '\u{2500}'),
+    ] {
+        assert_ne!(
+            scaled.glyph_id(cp).0, 0,
+            "Nerd Font {path:?} is missing {name} glyph U+{:04X}", cp as u32
+        );
+    }
+}
+
+#[test]
+fn nerd_font_default_rasterizes_into_the_atlas_when_present() {
+    let Some(path) = crate::kernel::state::font::default_font_candidates()
+        .into_iter()
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().contains("Nerd"))
+                .unwrap_or(false)
+                && p.exists()
+        })
+    else {
+        eprintln!("no Nerd Font installed; skipping rasterization check");
+        return;
+    };
+    let bytes = std::fs::read(&path).unwrap();
+    let mut atlas = crate::kernel::render::gpu_atlas::GpuGlyphAtlas::new();
+    atlas.rasterize(&bytes, 15.0);
+    assert!(atlas.needs_rebuild());
+    // A Nerd Font must still cover the ASCII the atlas is built from.
+    for ch in ['A', 'z', '0', '~'] {
+        assert!(atlas.contains(ch), "atlas must contain {ch:?}");
+    }
+    let px = atlas.generate_atlas_pixels();
+    assert_eq!(px.len(), (atlas.atlas_width * atlas.atlas_height * 4) as usize);
+}
+
+#[test]
 fn bundled_font_parses_and_rasterizes_with_extended_charset() {
     let bytes = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
     let mut atlas = crate::kernel::render::gpu_atlas::GpuGlyphAtlas::new();

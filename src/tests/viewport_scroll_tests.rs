@@ -229,7 +229,6 @@ fn fold_collapsed_rows_map_clicks_to_visible_lines() {
 
 // ── GUI selection idioms ─────────────────────────────────────────────────────
 
-use crate::kernel::state::MouseEventKind as _MK;
 use std::time::Duration;
 
 fn click(ed: &mut Editor, surface: &crate::kernel::render::surface::Surface, x: u16, y: u16, gap_ms: u64) {
@@ -303,7 +302,7 @@ fn right_click_does_not_move_the_cursor() {
 
 #[test]
 fn word_range_at_scopes_to_the_word_run() {
-    let mut ed = make_editor_with_buffer("fn snake_case_name():\n");
+    let ed = make_editor_with_buffer("fn snake_case_name():\n");
     let buf_id = focused_key(&ed);
     let arc = ed.buffers.get(buf_id).unwrap();
     let buf = arc.lock().unwrap();

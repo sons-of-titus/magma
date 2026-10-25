@@ -392,10 +392,6 @@ mod tests {
         TerminalScreen::with_size(10, 4)
     }
 
-    fn text(s: &TerminalScreen) -> String {
-        (0..s.line_count()).map(|i| s.line(i)).collect::<Vec<_>>().join("|")
-    }
-
     #[test]
     fn plain_text_fills_the_grid() {
         let mut s = screen();

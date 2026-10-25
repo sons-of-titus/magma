@@ -3,8 +3,6 @@
 //! explanation.  Scenario numbering follows the audit's cross-feature list.
 
 use crate::kernel::command::execute_command;
-use crate::kernel::event::keys;
-use crate::kernel::event::payload::GutterClickedPayload;
 use crate::kernel::scripting;
 
 fn temp_root(tag: &str) -> std::path::PathBuf {
@@ -24,7 +22,6 @@ fn s6_gutter_click_toggles_a_real_breakpoint() {
         std::fs::write(&file, "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n").unwrap();
         let path = file.to_string_lossy().into_owned();
         open_file_cmd(&mut ed, &path);
-        let key = crate::tests::helpers::focused_key(&ed);
 
         // A real click in the breakpoints gutter column (first column,
         // width 2), routed through the mouse layer exactly like the GUI.

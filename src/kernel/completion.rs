@@ -379,13 +379,12 @@ mod tests {
             win.buffer_id = Some(key);
         }
 
-        let mut prefix_hit = false;
         // Drive the trigger through the same entry the insert path uses.
         if let Some(view) = ed.view_of_buffer_mut(key) {
             view.set_cursor(4); // inside "alpha"
         }
         trigger(&mut ed);
-        prefix_hit = ed.completion.visible;
+        let prefix_hit = ed.completion.visible;
 
         assert!(!ed.completion.word_cache.contains_key(&key),
             "a mid-size buffer must not build its word set inline");

@@ -379,7 +379,7 @@ fn selection_paints_tab_expanded_cell_columns() {
     let rows: Vec<(usize, usize, &str)> = vec![(0, 2, line.as_str())];
     let mut surface = Surface::new(20, 1);
     let layouts: Vec<std::sync::Arc<crate::kernel::render::row_layout::RowLayout>> =
-        rows.iter().map(|(s, e, t)| std::sync::Arc::new(
+        rows.iter().map(|(_, _, t)| std::sync::Arc::new(
             crate::kernel::render::row_layout::RowLayout::build(t, 0, 4, &ed.font_config.glyph_widths)))
         .collect();
     apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 2, 0);
@@ -405,7 +405,7 @@ fn highlight_layer_covers_wide_glyph_trailing_cell() {
     use crate::kernel::render::highlight_pass::apply_highlights;
     use crate::kernel::render::surface::Surface;
 
-    let mut ed = crate::tests::helpers::make_editor_with_buffer("字x");
+    let ed = crate::tests::helpers::make_editor_with_buffer("字x");
     let key = crate::tests::helpers::focused_key(&ed);
     let mut view = ed.views.get(&key).unwrap().clone();
     // Highlight just the wide glyph.
@@ -415,7 +415,7 @@ fn highlight_layer_covers_wide_glyph_trailing_cell() {
     let rows: Vec<(usize, usize, &str)> = vec![(0, 4, line.as_str())];
     let mut surface = Surface::new(20, 1);
     let layouts: Vec<std::sync::Arc<crate::kernel::render::row_layout::RowLayout>> =
-        rows.iter().map(|(s, e, t)| std::sync::Arc::new(
+        rows.iter().map(|(_, _, t)| std::sync::Arc::new(
             crate::kernel::render::row_layout::RowLayout::build(t, 0, 4, &ed.font_config.glyph_widths)))
         .collect();
     apply_highlights(&ed, Some(&view), &mut surface, &rows, &layouts, 0, 1, 0, 0, 0, 0);

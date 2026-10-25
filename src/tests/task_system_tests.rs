@@ -274,7 +274,7 @@ fn cancelling_a_task_kills_its_grandchildren() {
     // The task runs `sh -c` which backgrounds a long-lived child with a
     // unique marker; before process groups, killing the task orphaned
     // that child.  pgrep proves the marker process is gone after cancel.
-    use crate::kernel::runtime::{process_background_event, BackgroundEvent};
+    use crate::kernel::runtime::process_background_event;
     use std::time::{Duration, Instant};
 
     let dir = std::env::temp_dir().join("magma_proctree");

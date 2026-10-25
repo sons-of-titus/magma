@@ -30,7 +30,7 @@ unsafe extern "C-unwind" fn c_register_set(argc: i32, argv: *mut Janet) -> Janet
 }
 
 unsafe extern "C-unwind" fn c_register_yanked_text(_argc: i32, _argv: *mut Janet) -> Janet {
-    with_editor(|ed| match &ed.yanked_text {
+    with_editor(|ed| match &ed.editing.yanked_text {
         Some(t) => conv::string(t),
         None => conv::nil(),
     })

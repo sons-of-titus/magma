@@ -92,7 +92,7 @@ pub(super) fn register(editor: &mut Editor) {
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
-            editor.last_find = Some((ch, true, false));
+            editor.editing.last_find = Some((ch, true, false));
             emit_cursor_moved(editor);
             Ok(())
         },
@@ -115,7 +115,7 @@ pub(super) fn register(editor: &mut Editor) {
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
-            editor.last_find = Some((ch, false, false));
+            editor.editing.last_find = Some((ch, false, false));
             emit_cursor_moved(editor);
             Ok(())
         },
@@ -142,7 +142,7 @@ pub(super) fn register(editor: &mut Editor) {
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
-            editor.last_find = Some((ch, true, true));
+            editor.editing.last_find = Some((ch, true, true));
             emit_cursor_moved(editor);
             Ok(())
         },
@@ -168,7 +168,7 @@ pub(super) fn register(editor: &mut Editor) {
                 };
                 if let Some(np) = new_pos { view.set_cursor(np); }
             }
-            editor.last_find = Some((ch, false, true));
+            editor.editing.last_find = Some((ch, false, true));
             emit_cursor_moved(editor);
             Ok(())
         },
@@ -177,7 +177,7 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("repeat-last-find", "Repeat last f/t/F/T search (;)",
         vec![],
         |editor, _args| {
-            if let Some((ch, forward, till)) = editor.last_find {
+            if let Some((ch, forward, till)) = editor.editing.last_find {
                 let buf_id = get_current_buffer_id(editor);
                 if editor.views.contains_key(&buf_id) {
                     let cmd = if forward {
@@ -198,7 +198,7 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("reverse-last-find", "Repeat last f/t/F/T search reversed (,)",
         vec![],
         |editor, _args| {
-            if let Some((ch, forward, till)) = editor.last_find {
+            if let Some((ch, forward, till)) = editor.editing.last_find {
                 let buf_id = get_current_buffer_id(editor);
                 if editor.views.contains_key(&buf_id) {
                     let cmd = if forward {

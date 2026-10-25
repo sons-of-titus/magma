@@ -27,7 +27,7 @@ unsafe extern "C-unwind" fn c_search_forward(_argc: i32, _argv: *mut Janet) -> J
 
 unsafe extern "C-unwind" fn c_search_last_find(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        match ed.last_find {
+        match ed.editing.last_find {
             Some((ch, fwd, till)) => {
                 let tbl = janet_table(3);
                 let mut buf = [0u8; 4];

@@ -265,11 +265,11 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("goto-older-change", "Jump to older change in change list (g;)",
         vec![],
         |editor, _args| {
-            if editor.change_list.is_empty() { return Ok(()); }
-            if editor.change_list_idx > 0 {
-                editor.change_list_idx -= 1;
+            if editor.editing.change_list.is_empty() { return Ok(()); }
+            if editor.editing.change_list_idx > 0 {
+                editor.editing.change_list_idx -= 1;
             }
-            let pos = editor.change_list[editor.change_list_idx];
+            let pos = editor.editing.change_list[editor.editing.change_list_idx];
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
@@ -283,11 +283,11 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("goto-newer-change", "Jump to newer change in change list (g,)",
         vec![],
         |editor, _args| {
-            if editor.change_list.is_empty() { return Ok(()); }
-            if editor.change_list_idx < editor.change_list.len().saturating_sub(1) {
-                editor.change_list_idx += 1;
+            if editor.editing.change_list.is_empty() { return Ok(()); }
+            if editor.editing.change_list_idx < editor.editing.change_list.len().saturating_sub(1) {
+                editor.editing.change_list_idx += 1;
             }
-            let pos = editor.change_list[editor.change_list_idx];
+            let pos = editor.editing.change_list[editor.editing.change_list_idx];
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
@@ -302,7 +302,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let last_insert_pos = editor.last_insert_pos;
+            let last_insert_pos = editor.editing.last_insert_pos;
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 view.set_cursor(last_insert_pos);
             }

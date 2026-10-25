@@ -56,7 +56,7 @@ fn yank_selection_copies_and_clears() {
     ed.selection = Some(crate::kernel::state::mode::Selection::char(0));
     helpers::run(&mut ed, "cursor-right");
     helpers::run(&mut ed, "yank-selection");
-    assert_eq!(ed.yanked_text.as_deref(), Some("he"));
+    assert_eq!(ed.editing.yanked_text.as_deref(), Some("he"));
     assert_eq!(visual_anchor(&ed), None);
     assert_eq!(helpers::buf_text(&ed), "hello world", "yank does not delete");
 }
@@ -69,7 +69,7 @@ fn cut_selection_copies_then_deletes() {
     ed.selection = Some(crate::kernel::state::mode::Selection::char(0));
     helpers::run(&mut ed, "cursor-right");
     helpers::run(&mut ed, "cut-selection");
-    assert_eq!(ed.yanked_text.as_deref(), Some("he"));
+    assert_eq!(ed.editing.yanked_text.as_deref(), Some("he"));
     assert_eq!(helpers::buf_text(&ed), "llo world");
 }
 

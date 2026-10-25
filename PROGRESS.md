@@ -182,7 +182,9 @@ JetBrains plugin-ecosystem parity.
    scoped `#[allow]`s (render-pass arity, module inception,
    `should_implement_trait`, `type_complexity`).
 8. **R-24 (Editor consolidation)** is deliberately incremental: the
-   search-state slice landed; editing/io state follow the same shape.
+   search-state and editing-state slices have landed (`SearchState`,
+   `EditingState`); the register/mark/history fields still live flat on
+   `Editor` and follow the same shape next.
 
 ---
 

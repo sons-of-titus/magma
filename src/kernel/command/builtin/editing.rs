@@ -179,7 +179,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 if pos < line_end {
                     let yanked = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(pos, line_end);
-                    editor.yanked_text = Some(yanked.to_string());
+                    editor.editing.yanked_text = Some(yanked.to_string());
                 }
             }
             emit_cursor_moved(editor);

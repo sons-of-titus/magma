@@ -27,7 +27,7 @@ pub(super) fn register(editor: &mut Editor) {
                 };
                 view.set_cursor(start);
                 view.delete(start, eol);
-                editor.yanked_text = Some(deleted.clone());
+                editor.editing.yanked_text = Some(deleted.clone());
                 editor.clipboard.set_text(&deleted);
             }
             emit_cursor_moved(editor);
@@ -61,7 +61,7 @@ pub(super) fn register(editor: &mut Editor) {
                     let eol = if end < buf.len() { end + 1 } else { end };
                     buf.slice(start, eol).to_string()
                 };
-                editor.yanked_text = Some(yanked.clone());
+                editor.editing.yanked_text = Some(yanked.clone());
                 editor.clipboard.set_text(&yanked);
             }
             emit_cursor_moved(editor);
@@ -73,7 +73,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.yanked_text.clone()
+            let text = editor.editing.yanked_text.clone()
                 .or_else(|| editor.clipboard.get_text());
             if let Some(content) = text
                 && let Some(view) = editor.view_of_buffer_mut(buf_id) {
@@ -95,7 +95,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.yanked_text.clone()
+            let text = editor.editing.yanked_text.clone()
                 .or_else(|| editor.clipboard.get_text());
             if let Some(content) = text
                 && let Some(view) = editor.view_of_buffer_mut(buf_id) {
@@ -112,7 +112,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.yanked_text.clone()
+            let text = editor.editing.yanked_text.clone()
                 .or_else(|| editor.clipboard.get_text())
                 .unwrap_or_default();
             if text.is_empty() { return Ok(()); }
@@ -130,7 +130,7 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.yanked_text.clone()
+            let text = editor.editing.yanked_text.clone()
                 .or_else(|| editor.clipboard.get_text())
                 .unwrap_or_default();
             if text.is_empty() { return Ok(()); }
@@ -152,7 +152,7 @@ pub(super) fn register(editor: &mut Editor) {
             let reg = args.get("register").and_then(|a| a.as_string())
                 .unwrap_or("\"");
             let text = if reg == "\"" || reg == "0" {
-                editor.yanked_text.clone()
+                editor.editing.yanked_text.clone()
             } else {
                 editor.registers.get(reg).cloned()
             };
@@ -175,8 +175,8 @@ pub(super) fn register(editor: &mut Editor) {
             let reg = args.get("register").and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "register required".to_string())?;
-            editor.recording_macro = Some(reg.to_string());
-            editor.macros.entry(reg.to_string()).or_insert_with(Vec::new);
+            editor.editing.recording_macro = Some(reg.to_string());
+            editor.editing.macros.entry(reg.to_string()).or_insert_with(Vec::new);
             Ok(())
         },
     );
@@ -184,7 +184,7 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("stop-macro-recording", "Stop recording macro (q while recording)",
         vec![],
         |editor, _args| {
-            editor.recording_macro = None;
+            editor.editing.recording_macro = None;
             Ok(())
         },
     );
@@ -197,8 +197,8 @@ pub(super) fn register(editor: &mut Editor) {
             ArgSpec::new("char", ArgType::String),
         ],
         |editor, args| {
-            if editor.recording_macro.is_some() {
-                editor.recording_macro = None;
+            if editor.editing.recording_macro.is_some() {
+                editor.editing.recording_macro = None;
             } else {
                 let reg = args.get("char").or_else(|| args.get("register"))
                     .and_then(|a| a.as_string())
@@ -206,8 +206,8 @@ pub(super) fn register(editor: &mut Editor) {
                     .map(|c| c.to_string())
                     .unwrap_or_default();
                 if !reg.is_empty() {
-                    editor.macros.remove(&reg);
-                    editor.recording_macro = Some(reg);
+                    editor.editing.macros.remove(&reg);
+                    editor.editing.recording_macro = Some(reg);
                 }
             }
             Ok(())
@@ -222,7 +222,7 @@ pub(super) fn register(editor: &mut Editor) {
             let reg = args.get("register").and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "register required".to_string())?;
-            let keys = editor.macros.get(&reg.to_string()).cloned()
+            let keys = editor.editing.macros.get(&reg.to_string()).cloned()
                 .unwrap_or_default();
             for key in &keys {
                 dispatch_key(editor, key);

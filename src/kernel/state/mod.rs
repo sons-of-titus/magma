@@ -15,6 +15,7 @@ pub mod gutter;
 pub mod overlay;
 pub mod minimap;
 pub mod search;
+pub mod editing;
 
 use std::sync::{Arc, Mutex};
 
@@ -47,6 +48,7 @@ pub use io::IoState;
 pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
 pub use overlay::{Overlay, LayoutSnapshot};
 pub use search::SearchState;
+pub use editing::EditingState;
 pub use crate::kernel::input::event::{MouseButton, MouseEventKind};
 
 /// Tracks mouse press/drag state across frames.
@@ -134,23 +136,18 @@ pub struct Editor {
     pub plugin_state: std::collections::HashMap<String, String>,
     pub next_buffer_id: u64,
     pub next_window_id: u64,
-    pub yanked_text: Option<String>,
+    /// Named registers (vim `"a`…); the unnamed register lives in `editing`.
     pub registers: std::collections::HashMap<String, String>,
     pub marks: std::collections::HashMap<char, usize>,
-    pub last_insert_pos: usize,
     pub command_history: Vec<String>,
-    pub last_find: Option<(char, bool, bool)>,
     /// Search dialog / repeat-search / grep pipeline state (R-24).
     pub search: SearchState,
-    pub recording_macro: Option<String>,
-    pub macros: std::collections::HashMap<String, Vec<String>>,
-    pub insert_pending_register: bool,
+    /// Yank/put, macro, change-list, and last-motion state (R-24).
+    pub editing: EditingState,
     pub clipboard: Clipboard,
     pub alternate_buffer: Option<usize>,
     pub background: Option<BackgroundHandle>,
     pub options: std::collections::HashMap<String, String>,
-    pub change_list: Vec<usize>,
-    pub change_list_idx: usize,
     pub theme: std::collections::HashMap<String, (u8, u8, u8)>,
     pub quickfix_list: Vec<crate::kernel::task::QuickfixEntry>,
     pub quickfix_index: usize,
@@ -257,22 +254,15 @@ impl Editor {
             plugin_state: std::collections::HashMap::new(),
             next_buffer_id: 1,
             next_window_id: 1,
-            yanked_text: None,
             registers: std::collections::HashMap::new(),
             marks: std::collections::HashMap::new(),
-            last_insert_pos: 0,
             command_history: Vec::new(),
-            last_find: None,
             search: crate::kernel::state::search::SearchState { pattern: None, forward: true, generation: 0 },
-            recording_macro: None,
-            macros: std::collections::HashMap::new(),
-            insert_pending_register: false,
+            editing: EditingState::default(),
             clipboard: Clipboard::new(),
             alternate_buffer: None,
             background: None,
             options: std::collections::HashMap::new(),
-            change_list: Vec::new(),
-            change_list_idx: 0,
             theme,
             quickfix_list: Vec::new(),
             quickfix_index: 0,

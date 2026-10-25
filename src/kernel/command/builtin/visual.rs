@@ -53,7 +53,7 @@ pub(super) fn register(editor: &mut Editor) {
                         let end = anchor.max(cursor) + end_char_len;
                         buf.slice(start, end).to_string()
                     };
-                    editor.yanked_text = Some(yanked.clone());
+                    editor.editing.yanked_text = Some(yanked.clone());
                     editor.clipboard.set_text(&yanked);
                 }
             editor.selection = None;
@@ -82,7 +82,7 @@ pub(super) fn register(editor: &mut Editor) {
                 None => None,
             };
             if let Some((start, end, yanked)) = cut {
-                editor.yanked_text = Some(yanked.clone());
+                editor.editing.yanked_text = Some(yanked.clone());
                 editor.clipboard.set_text(&yanked);
                 if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                     view.set_cursor(start);

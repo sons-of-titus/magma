@@ -139,8 +139,8 @@ pub fn execute_command(
             .unwrap_or(0);
         if editor.buffers.contains(buf_id) {
             let pos = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            editor.change_list.push(pos);
-            editor.change_list_idx = editor.change_list.len();
+            editor.editing.change_list.push(pos);
+            editor.editing.change_list_idx = editor.editing.change_list.len();
         }
     }
 

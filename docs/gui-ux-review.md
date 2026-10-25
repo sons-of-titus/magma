@@ -153,7 +153,7 @@ Low density, high noise. On an idle screen: tab bar, breadcrumb, sidebar, a six-
 - **Fix a bug:** no go-to-def, no references, no LSP affordances rendered in the GUI (not hover); `:build` → `✗` in a void, compiler error invisible. Dead at the build.
 - **Large refactor:** no rename surface. Unstartable.
 - **Debugging:** stale adapter, step with no frames/variables. Theater.
-- **Git:** staging/diff/commit work via `:vc`; best workflow in the app, colon-only and mouse-barren.
+- **Git:** the Commit tool window lists changes with click-to-stage, a commit box, and fetch/pull/push/log/blame buttons; selecting a file opens it side by side (HEAD vs working tree) in two linked editor panes, with per-hunk stage/discard and per-conflict accept-ours/accept-theirs.
 
 ---
 

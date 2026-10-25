@@ -159,8 +159,8 @@ full transcript.
 ### 1.9 VCS — status refresh is async
 
 `vc-refresh` no longer shells out on the UI thread: the status fetch runs
-on the blocking pool and lands via `VcStatusFetched`, redrawing the
-`*vc*` buffer from the foreground. Explicit user-invoked repo mutations
+on the blocking pool and lands via `VcStatusFetched`, repopulating the
+Commit tool window from the foreground. Explicit user-invoked repo mutations
 (stage/unstage/diff/log/blame) remain synchronous — they are one-shot
 commands, not the interactive path, and are noted as remaining work for
 full async treatment.

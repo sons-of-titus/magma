@@ -91,6 +91,8 @@ pub(crate) mod gui_menu;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_commit_tool;
 #[cfg(feature = "gui")]
+pub(crate) mod gui_commit_sections;
+#[cfg(feature = "gui")]
 pub(crate) mod gui_commit_actions;
 
 pub use view_tree::{ViewTree, Pane, LayoutConstraint, SplitDirection};

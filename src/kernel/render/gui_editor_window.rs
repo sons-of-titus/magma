@@ -62,6 +62,14 @@ impl GuiApp {
         // unlike key input, nothing else would drain them this frame.
         self.editor.dispatch_events_scoped();
 
+        // `:vc` asks for the Version Control tool window; reveal it before the
+        // panels are built so it appears in the same frame.
+        if self.editor.vc.request_open {
+            self.editor.vc.request_open = false;
+            self.layout.left_tool = LeftTool::Commit;
+            self.layout.sidebar_open = true;
+        }
+
         // ── Key + mouse + IME events ───────────────────────────────────────
         let (key_events, mut raw_mouse_events, ime_events) =
             gui_input::collect(ctx, line_h, &mut self.wheel_remain, &mut self.wheel_remain_x);

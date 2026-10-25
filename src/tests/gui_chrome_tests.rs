@@ -155,11 +155,33 @@ fn goto_pickers_survive_the_palette_removal() {
 fn commit_window_commands_are_registered() {
     let ed = make_editor();
     for cmd in [
+        "vc", "vc-refresh", "vc-fetch", "vc-pull", "vc-push", "vc-log", "vc-blame",
         "vc-stage-file", "vc-unstage-file", "vc-discard-file", "vc-diff-file",
         "vc-commit-message", "vc-amend-message", "vc-branch-list", "vc-checkout-branch",
+        "vc-branch-create", "vc-open-diff", "vc-stage-hunk", "vc-discard-hunk", "vc-close-diff",
+        "vc-take-ours", "vc-take-theirs",
+        "vc-stash", "vc-stash-pop", "vc-stash-apply", "vc-stash-drop",
     ] {
         assert!(ed.commands.exists(cmd), "{cmd} must be registered for the Commit window");
     }
-    assert!(ed.commands.exists("vc-amend"),
-        "vc-amend is bound in the vc layer and must actually exist (regression)");
+}
+
+#[test]
+fn vc_is_a_gui_panel_with_no_modal_layer_or_status_buffer() {
+    // The regression: opening VC used to push a *global* `vc` keymap layer and
+    // open a magit-style `*vc*` text buffer, hijacking typing in every other
+    // buffer — most visibly the scratch buffer it dropped you into.
+    let mut ed = make_editor();
+    let _ = crate::kernel::command::execute_command(
+        &mut ed, "vc", &std::collections::HashMap::new());
+
+    assert!(!ed.keymaps.is_layer_active("vc"),
+        "VC must not activate a global keymap layer");
+    assert!(!ed.keymaps.is_layer_active("vc-hunks"),
+        "hunk staging must not activate a global keymap layer");
+    for layer in ed.keymaps.active_layers() {
+        assert!(!layer.starts_with("vc"), "no vc* layer may stay active: {layer}");
+    }
+    assert!(ed.buffers.iter().all(|(_, a)| a.lock().unwrap().name != "*vc*"),
+        "VC must not open a text status buffer");
 }

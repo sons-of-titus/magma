@@ -1,15 +1,15 @@
 //! Shell, make, quickfix, and version-control commands.
+//!
+//! Version control is a GUI surface: `:vc` reveals the Commit tool window and
+//! refreshes the status it renders.  Nothing here opens a text buffer for VC
+//! status, and no keymap layer is pushed — the Commit panel's buttons drive
+//! every mutation through the path-parameterized commands in `vc_actions`.
 
 use crate::kernel::command::CommandResult;
 use crate::kernel::command::args::{ArgSpec, ArgType, ArgValue};
-use crate::kernel::state::Editor;
+use crate::kernel::state::{Editor, MessageKind};
 
 use super::helpers::*;
-
-/// Scratch-buffer names for the F-23 list surfaces.
-pub(crate) const VC_BRANCHES_BUF: &str = "*vc-branches*";
-pub(crate) const VC_HUNKS_BUF: &str = "*vc-hunks*";
-pub(crate) const VC_STASH_BUF: &str = "*vc-stash*";
 
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
@@ -53,79 +53,33 @@ pub(super) fn register(editor: &mut Editor) {
     );
 
     cmds.register_fn("vc",
-        "Open the VC status buffer for the current buffer's repository",
+        "Open the Version Control tool window for the current buffer's repository",
         vec![],
-        |editor, _args| vc_open(editor),
-    );
+        |editor, _args| vc_open(editor));
 
     cmds.register_fn("vc-refresh",
-        "Refresh the VC status buffer",
+        "Refresh Version Control status, branches, and stashes",
         vec![],
-        |editor, _args| vc_refresh(editor),
-    );
-
-    cmds.register_fn("vc-stage",
-        "Stage the file under the cursor in the VC buffer",
-        vec![],
-        |editor, _args| vc_file_op(editor, VcOp::Stage),
-    );
-
-    cmds.register_fn("vc-unstage",
-        "Unstage the file under the cursor in the VC buffer",
-        vec![],
-        |editor, _args| vc_file_op(editor, VcOp::Unstage),
-    );
-
-    cmds.register_fn("vc-diff",
-        "Show diff for the file under the cursor (or all changes)",
-        vec![ArgSpec::optional("file", ArgType::String, ArgValue::String(String::new()))],
-        |editor, args| {
-            let file_arg = args.get("file").and_then(|a| a.as_string())
-                .filter(|s| !s.is_empty()).map(|s| s.to_string());
-            vc_show(editor, VcShow::Diff(file_arg))
-        },
-    );
-
-    cmds.register_fn("vc-diff-cursor",
-        "Show diff for the file under the cursor in the VC buffer",
-        vec![],
-        |editor, _args| vc_file_op(editor, VcOp::Diff),
-    );
+        |editor, _args| vc_refresh(editor));
 
     cmds.register_fn("vc-log",
-        "Show the recent commit log",
+        "Show the recent commit log in a read-only buffer",
         vec![],
-        |editor, _args| vc_show(editor, VcShow::Log),
-    );
-
-    cmds.register_fn("vc-commit",
-        "Commit with the message in the *vc-commit* buffer, or open it if empty",
-        vec![ArgSpec::optional("message", ArgType::String, ArgValue::String(String::new()))],
-        |editor, args| {
-            let msg = args.get("message").and_then(|a| a.as_string())
-                .filter(|s| !s.is_empty()).map(|s| s.to_string());
-            if let Some(m) = msg {
-                vc_commit(editor, &m)
-            } else {
-                vc_open_commit_buf(editor)
-            }
-        },
-    );
-
-    cmds.register_fn("vc-commit-save",
-        "Commit using the message written in the *vc-commit* buffer",
-        vec![],
-        |editor, _args| {
-            let msg = vc_read_commit_buf(editor)?;
-            vc_commit(editor, &msg)
-        },
-    );
+        |editor, _args| vc_show(editor, VcShow::Log));
 
     cmds.register_fn("vc-push",
         "Push to the remote",
         vec![],
-        |editor, _args| vc_show(editor, VcShow::Push),
-    );
+        |editor, _args| vc_show(editor, VcShow::Push));
+
+    cmds.register_fn("vc-diff",
+        "Show the working-tree diff in a read-only buffer (optionally one file)",
+        vec![ArgSpec::optional("file", ArgType::String, ArgValue::String(String::new()))],
+        |editor, args| {
+            let file = args.get("file").and_then(|a| a.as_string())
+                .filter(|s| !s.is_empty()).map(|s| s.to_string());
+            vc_show(editor, VcShow::Diff(file))
+        });
 
     cmds.register_fn("vc-blame",
         "Show blame/annotate for the current file",
@@ -138,46 +92,15 @@ pub(super) fn register(editor: &mut Editor) {
                     .ok_or_else(|| "current buffer has no file path".to_string())?
             };
             vc_show(editor, VcShow::Blame(path))
-        },
-    );
+        });
 
-    cmds.register_fn("vc-close",
-        "Close the VC buffer and pop the vc keymap layer",
-        vec![],
-        |editor, _args| {
-            editor.keymaps.pop_layer("vc");
-            editor.vc.buf_key = None;
-            editor.vc.active_backend = None;
-            Ok(())
-        },
-    );
-
-    // VC keymap layer
-    editor.keymaps.set_layer("vc", "g",      "vc-refresh");
-    editor.keymaps.set_layer("vc", "r",      "vc-refresh");
-    editor.keymaps.set_layer("vc", "s",      "vc-stage");
-    editor.keymaps.set_layer("vc", "u",      "vc-unstage");
-    editor.keymaps.set_layer("vc", "d",      "vc-diff-cursor");
-    editor.keymaps.set_layer("vc", "D",      "vc-diff");
-    editor.keymaps.set_layer("vc", "h",      "vc-hunks");
-    editor.keymaps.set_layer("vc", "c",      "vc-commit");
-    editor.keymaps.set_layer("vc", "A",      "vc-amend");
-    editor.keymaps.set_layer("vc", "p",      "vc-push");
-    editor.keymaps.set_layer("vc", "l",      "vc-log");
-    editor.keymaps.set_layer("vc", "S",      "vc-stash");
-    editor.keymaps.set_layer("vc", "b",      "vc-branches");
-    editor.keymaps.set_layer("vc", "R",      "vc-resolve");
-    editor.keymaps.set_layer("vc", "q",      "vc-close");
-
-    // Branch / hunk / stash surfaces (F-23).
     super::vc_ops::register(editor);
 }
 
-enum VcOp { Stage, Unstage, Diff }
 enum VcShow { Diff(Option<String>), Log, Push, Blame(String) }
 
 /// Determine the working directory from the focused buffer's path or cwd.
-fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
+pub(crate) fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
     let buf_id = get_current_buffer_id(editor);
     editor.buffers.get(buf_id)
         .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
@@ -187,140 +110,70 @@ fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 
-/// Return the 0-indexed line the VC buffer cursor is on.
-pub(crate) fn vc_cursor_line(editor: &Editor) -> usize {
-    let Some(key) = editor.vc.buf_key else { return 0 };
-    let cursor = editor.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
-    let Some(arc) = editor.buffers.get(key) else { return 0 };
-    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-    buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
-}
-
-/// Write `text` into the VC buffer, preserving cursor line.
-fn vc_write_buf(editor: &mut Editor, text: &str) -> CommandResult {
-    let Some(key) = editor.vc.buf_key else { return Ok(()); };
-    if !editor.buffers.contains(key) { return Ok(()); }
-    let saved_line = {
-        let cursor = editor.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
-        let buf = editor.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner());
-        buf.slice(0, cursor).chars().filter(|&c| c == '\n').count()
-    };
-    {
-        let arc = editor.buffers.get_mut(key).unwrap();
-        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let len = buf.len();
-        if len > 0 { buf.delete(0, len); }
-        buf.insert(0, text);
-    }
-    let offset = editor.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(saved_line);
-    if let Some(off) = offset
-        && let Some(view) = editor.view_of_buffer_mut(key) {
-            view.set_cursor(off);
-        }
-    Ok(())
-}
-
-/// Open or refresh the `*vc*` status buffer for the current buffer's repo.
+/// Detect the repository for the current buffer and open the Commit panel on
+/// it.  The GUI consumes `vc.request_open` to reveal the tool window.
 fn vc_open(editor: &mut Editor) -> CommandResult {
     let dir = vc_working_dir(editor);
-
     let (backend_idx, root) = editor.vc.detect_for(&dir)
         .ok_or_else(|| "No version-control repository found".to_string())?;
 
     editor.vc.active_backend = Some(backend_idx);
     editor.vc.active_backend_name = Some(editor.vc.backends[backend_idx].name().to_string());
-    editor.vc.repo_root = Some(root.clone());
-
-    let status = editor.vc.backends[backend_idx].status(&root)?;
-    let text = crate::kernel::vc::build_display(&root, &status);
-    editor.vc.last_status = Some(status);
-
-    // Find or create *vc* buffer
-    let buf_key = editor.vc.buf_key
-        .and_then(|k| editor.buffers.get(k).map(|_| k))
-        .unwrap_or_else(|| {
-            editor.create_buffer("*vc*")
-        });
-    editor.vc.buf_key = Some(buf_key);
-
-    {
-        let arc = editor.buffers.get_mut(buf_key).unwrap();
-        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let len = buf.len();
-        if len > 0 { buf.delete(0, len); }
-        buf.insert(0, &text);
-    }
-    let header_offset = editor.buffers.get(buf_key).unwrap().lock().unwrap_or_else(|e| e.into_inner())
-        .line_start_offset(crate::kernel::vc::VC_HEADER_LINES);
-    if let Some(off) = header_offset
-        && let Some(view) = editor.view_of_buffer_mut(buf_key) {
-            view.set_cursor(off);
-        }
-
-    if let Some(win) = editor.view_tree.focused_window_mut() {
-        win.buffer_id = Some(buf_key);
-    }
-    editor.keymaps.push_layer("vc");
-    Ok(())
+    editor.vc.repo_root = Some(root);
+    editor.vc.request_open = true;
+    // Derived state belongs to the previous repository; the diff view and the
+    // branch/stash lists are cleared so nothing stale is ever rendered.
+    super::vc_diff::close_diff(editor);
+    editor.vc.branches.clear();
+    editor.vc.stashes.clear();
+    vc_refresh(editor)
 }
 
-/// Re-fetch status off the foreground thread; the `VcStatusFetched` event
-/// redraws the *vc* buffer when the shell-out completes (rework.md §1: no
-/// blocking IO on the interactive path).
-fn vc_refresh(editor: &mut Editor) -> CommandResult {
+/// Re-fetch status, branches, and stashes off the interactive path; the
+/// `Vc*` events repopulate the Commit panel when the shell-outs complete.
+pub(crate) fn vc_refresh(editor: &mut Editor) -> CommandResult {
     let (backend_idx, root) = match (editor.vc.active_backend, editor.vc.repo_root.clone()) {
         (Some(i), Some(r)) => (i, r),
         _ => return vc_open(editor),
     };
-    let Some(bg) = editor.background.clone() else {
-        // No background pool (tests, server-less embed): synchronous.
-        let status = editor.vc.backends[backend_idx].status(&root)?;
-        let text = crate::kernel::vc::build_display(&root, &status);
-        editor.vc.last_status = Some(status);
-        vc_write_buf(editor, &text)?;
-        return Ok(());
-    };
     // The backend registry is not clonable (trait objects); the background
     // job re-detects from the repo root — backends are stateless CLI
     // wrappers, so detection is exact and cheap.
-    let sender = bg.sender.clone();
-    bg.spawn_blocking(move || {
-        let result = crate::kernel::vc::status_for_root(&root);
-        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::VcStatusFetched {
-            backend_idx, root, result,
+    if let Some(bg) = editor.background.clone() {
+        let sender = bg.sender.clone();
+        bg.spawn_blocking(move || {
+            let result = crate::kernel::vc::status_for_root(&root);
+            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::VcStatusFetched {
+                backend_idx, root, result,
+            });
         });
-    });
+    } else {
+        match crate::kernel::vc::status_for_root(&root) {
+            Ok(status) => editor.vc.last_status = Some(status),
+            Err(e) => editor.show_message(MessageKind::Error, e),
+        }
+    }
+    super::vc_ops::spawn_branch_list(editor)?;
+    super::vc_ops::spawn_stash_list(editor)?;
     Ok(())
 }
 
-/// Redraw the *vc* buffer from `vc.last_status` (the async status path).
-pub(crate) fn redraw_vc_buffer(editor: &mut Editor) {
-    let Some(root) = editor.vc.repo_root.clone() else { return };
-    let Some(status) = editor.vc.last_status.clone() else { return };
-    let text = crate::kernel::vc::build_display(&root, &status);
-    if let Err(e) = vc_write_buf(editor, &text) {
-        editor.show_message(crate::kernel::state::MessageKind::Error, e);
-    }
-}
-
-/// Apply a file operation (stage / unstage / diff) to the entry under the cursor.
-fn vc_file_op(editor: &mut Editor, op: VcOp) -> CommandResult {
-    let line = vc_cursor_line(editor);
-    let path = editor.vc.last_status.as_ref()
-        .and_then(|s| crate::kernel::vc::path_at_line(s, line))
-        .ok_or_else(|| "No file on this line".to_string())?;
-
-    let remote = match op {
-        VcOp::Stage => crate::kernel::vc::VcRemoteOp::Stage(path),
-        VcOp::Unstage => crate::kernel::vc::VcRemoteOp::Unstage(path),
-        VcOp::Diff => crate::kernel::vc::VcRemoteOp::Diff(Some(path)),
+/// Show output (diff, log, push result, blame) in a read-only buffer.  A
+/// single file's diff opens the side-by-side view (per-hunk actions); the
+/// whole-tree diff stays a plain read-only view.
+fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
+    let (name, remote) = match show {
+        VcShow::Diff(Some(file)) => return super::vc_diff::spawn_diff(editor, file),
+        VcShow::Diff(None) => ("*vc-diff-all*", crate::kernel::vc::VcRemoteOp::Diff(None)),
+        VcShow::Log => ("*vc-log*", crate::kernel::vc::VcRemoteOp::Log),
+        VcShow::Push => ("*vc-push*", crate::kernel::vc::VcRemoteOp::Push),
+        VcShow::Blame(path) => ("*vc-blame*", crate::kernel::vc::VcRemoteOp::Blame(path)),
     };
-    vc_spawn_op(editor, remote, Some("*vc-diff*"), matches!(op, VcOp::Stage | VcOp::Unstage))
+    vc_spawn_op(editor, remote, Some(name), false)
 }
 
-/// Dispatch a repository operation on the maintenance lane; the
-/// `VcOpDone` event writes the scratch buffer and refreshes status from
-/// the foreground (rework.md §1: no blocking IO on the interactive path).
+/// Dispatch a repository operation on the maintenance lane; the `VcOpDone`
+/// event writes output and refreshes the panel from the foreground.
 pub(crate) fn vc_spawn_op(
     editor: &mut Editor,
     op: crate::kernel::vc::VcRemoteOp,
@@ -364,6 +217,9 @@ pub(crate) fn apply_vc_op(
             }
             if then_refresh {
                 vc_refresh(editor)?;
+                // A stage/discard/commit rewrites the worktree: reload the
+                // diff view so its hunks are never stale.
+                super::vc_diff::reload_diff(editor);
             }
             Ok(())
         }
@@ -371,31 +227,20 @@ pub(crate) fn apply_vc_op(
     }
 }
 
-/// Show output (diff, log, push result, blame) in a scratch buffer.
-fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
-    let (scratch, remote) = match show {
-        VcShow::Diff(file) => ("*vc-diff*", crate::kernel::vc::VcRemoteOp::Diff(file)),
-        VcShow::Log => ("*vc-log*", crate::kernel::vc::VcRemoteOp::Log),
-        VcShow::Push => ("*vc-push*", crate::kernel::vc::VcRemoteOp::Push),
-        VcShow::Blame(path) => ("*vc-blame*", crate::kernel::vc::VcRemoteOp::Blame(path)),
-    };
-    vc_spawn_op(editor, remote, Some(scratch), false)
-}
-
-/// Write `text` into a named scratch buffer and display it.
+/// Write `text` into a named read-only output buffer and display it.
 pub(crate) fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
     let key = editor.buffers.iter()
         .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).name == name)
         .map(|(k, _)| k)
-        .unwrap_or_else(|| {
-            editor.create_buffer(name)
-        });
+        .unwrap_or_else(|| editor.create_buffer(name));
     {
         let arc = editor.buffers.get_mut(key).unwrap();
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let len = buf.len();
         if len > 0 { buf.delete(0, len); }
         buf.insert(0, text);
+        buf.read_only = true;
+        buf.ephemeral = true;
     }
     if let Some(view) = editor.view_of_buffer_mut(key) {
         view.set_cursor(0);
@@ -403,57 +248,5 @@ pub(crate) fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> Comm
     if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
-    Ok(())
-}
-
-/// Open a `*vc-commit*` buffer and drop to insert mode.
-fn vc_open_commit_buf(editor: &mut Editor) -> CommandResult {
-    vc_output_buf(editor, "*vc-commit*",
-        "# Enter commit message above. Run :VCcommit-save when done.\n")?;
-    editor.editor_mode = crate::kernel::state::mode::EditorMode::new("insert", true);
-    editor.keymaps.pop_layer("editor");
-    editor.keymaps.push_layer("insert");
-    Ok(())
-}
-
-/// Read and return the trimmed commit message from `*vc-commit*`, stripping `#` lines.
-fn vc_read_commit_buf(editor: &mut Editor) -> Result<String, String> {
-    let key = editor.buffers.iter()
-        .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).name == "*vc-commit*")
-        .map(|(k, _)| k)
-        .ok_or_else(|| "No *vc-commit* buffer open".to_string())?;
-    let text = {
-        let arc = editor.buffers.get(key).unwrap();
-        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        buf.slice(0, buf.len())
-    };
-    let msg: String = text.lines()
-        .filter(|l| !l.trim_start().starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let msg = msg.trim().to_string();
-    if msg.is_empty() { return Err("Commit message is empty".to_string()); }
-    Ok(msg)
-}
-
-/// Commit — or amend, when a previous `vc-amend` armed it — with the
-/// given message and refresh the VC buffer.  An empty message in amend
-/// mode keeps the previous one (`--no-edit`).
-fn vc_commit(editor: &mut Editor, message: &str) -> CommandResult {
-    if editor.vc.amend_pending {
-        editor.vc.amend_pending = false;
-        let msg = if message.trim().is_empty() { None } else { Some(message.to_string()) };
-        return vc_spawn_op(editor, crate::kernel::vc::VcRemoteOp::Amend(msg), None, true);
-    }
-    vc_spawn_op(editor, crate::kernel::vc::VcRemoteOp::Commit(message.to_string()), None, true)
-}
-
-/// Open the `*vc-commit*` buffer in amend mode (armed by `vc-amend`).
-pub(crate) fn vc_open_commit_buf_amend(editor: &mut Editor) -> CommandResult {
-    vc_output_buf(editor, "*vc-commit*",
-        "# Amend mode: edit the message above, then :VCcommit-save.\n# An empty message keeps the previous one.\n")?;
-    editor.editor_mode = crate::kernel::state::mode::EditorMode::new("insert", true);
-    editor.keymaps.pop_layer("editor");
-    editor.keymaps.push_layer("insert");
     Ok(())
 }

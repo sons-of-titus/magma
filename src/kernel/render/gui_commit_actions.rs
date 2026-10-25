@@ -18,6 +18,10 @@ pub(crate) fn apply_commit_actions(ed: &mut Editor, actions: Vec<CommitAction>) 
             CommitAction::Unstage(path) => run(ed, "vc-unstage-file", "path", path),
             CommitAction::Discard(path) => run(ed, "vc-discard-file", "path", path),
             CommitAction::ShowDiff(path) => run(ed, "vc-diff-file", "path", path),
+            CommitAction::StashPush(message) => run(ed, "vc-stash", "message", message),
+            CommitAction::StashPop(index) => run_int(ed, "vc-stash-pop", "index", index as i64),
+            CommitAction::StashApply(index) => run_int(ed, "vc-stash-apply", "index", index as i64),
+            CommitAction::StashDrop(index) => run_int(ed, "vc-stash-drop", "index", index as i64),
             CommitAction::Checkout(branch) => run(ed, "vc-checkout-branch", "branch", branch),
             CommitAction::NewBranch(name) => run(ed, "vc-branch-create", "name", name),
             CommitAction::Commit { message, amend } => {
@@ -40,13 +44,34 @@ pub(crate) fn apply_commit_actions(ed: &mut Editor, actions: Vec<CommitAction>) 
                 ed.clipboard.set_text(&path);
                 ed.show_message(MessageKind::Info, format!("Copied: {path}"));
             }
+            CommitAction::Fetch => run0(ed, "vc-fetch"),
+            CommitAction::Pull => run0(ed, "vc-pull"),
+            CommitAction::Push => run0(ed, "vc-push"),
+            CommitAction::Log => run0(ed, "vc-log"),
+            CommitAction::Blame => run0(ed, "vc-blame"),
+            CommitAction::TakeOurs(path) => run(ed, "vc-take-ours", "path", path),
+            CommitAction::TakeTheirs(path) => run(ed, "vc-take-theirs", "path", path),
         }
+    }
+}
+
+fn run0(ed: &mut Editor, cmd: &str) {
+    if let Err(e) = execute_command(ed, cmd, &HashMap::new()) {
+        ed.show_message(MessageKind::Error, e);
     }
 }
 
 fn run(ed: &mut Editor, cmd: &str, arg: &str, value: String) {
     let mut args = HashMap::new();
     args.insert(arg.to_string(), ArgValue::String(value));
+    if let Err(e) = execute_command(ed, cmd, &args) {
+        ed.show_message(MessageKind::Error, e);
+    }
+}
+
+fn run_int(ed: &mut Editor, cmd: &str, arg: &str, value: i64) {
+    let mut args = HashMap::new();
+    args.insert(arg.to_string(), ArgValue::Integer(value));
     if let Err(e) = execute_command(ed, cmd, &args) {
         ed.show_message(MessageKind::Error, e);
     }

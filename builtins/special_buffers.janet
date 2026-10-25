@@ -1,21 +1,6 @@
 # Special buffer management — Sprint 2
 # Loaded after init.janet so command/define is available.
 
-# ── *scratch* initialisation ──────────────────────────────────────────────────
-#
-# The *scratch* buffer is created at startup by Rust with MajorMode::Prog.
-# We insert a welcome comment on editor-ready so the user sees something useful.
-
-(event/on "editor-ready"
-  (fn [_data]
-    (def scratch (buffer/get-by-name "*scratch*"))
-    (when scratch
-      (def welcome ";; This is *scratch* — a temporary space for notes and Janet evaluation.\n;; Changes here are not saved.\n\n")
-      (when (= (buffer/len scratch) 0)
-        (buffer/set-read-only scratch false)
-        (buffer/insert scratch 0 welcome)
-        (buffer/set-read-only scratch false)))))
-
 # ── *Messages* helpers ────────────────────────────────────────────────────────
 
 (defn messages/open

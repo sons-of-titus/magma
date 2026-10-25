@@ -90,21 +90,26 @@ pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
     if let Some(arc) = editor.buffers.get(key) {
         arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(path.to_string());
     }
-    // A newly opened file opens its own tab — never over the file
-    // already on screen.  The one exception is an untouched scratch
-    // tab, which the open replaces (JetBrains Untitled behavior).
+    // A newly opened file opens its own tab — never over the file already on
+    // screen.  Two exceptions reuse the focused pane: an untouched, empty
+    // scratch buffer (JetBrains Untitled behavior), and an empty editor pane
+    // with no buffer at all — otherwise a bufferless pane would linger
+    // underneath the file, swallowing clicks and wheel events.
     let reusable = editor.view_tree.focused_window().and_then(|wid| {
         let pane = editor.view_tree.window(wid)?;
-        let buf_key = pane.buffer_id?;
-        let arc = editor.buffers.get(buf_key)?.lock().unwrap_or_else(|e| e.into_inner());
-        (arc.path.is_none() && !arc.modified() && arc.slice(0, arc.len()).is_empty())
-            .then_some((wid, buf_key))
+        match pane.buffer_id {
+            None => Some((wid, None)),
+            Some(buf_key) => {
+                let arc = editor.buffers.get(buf_key)?.lock().unwrap_or_else(|e| e.into_inner());
+                (arc.path.is_none() && !arc.modified() && arc.slice(0, arc.len()).is_empty())
+                    .then_some((wid, Some(buf_key)))
+            }
+        }
     });
     match reusable {
-        Some((wid, old_key)) => {
+        Some((wid, _old)) => {
             editor.view_tree.set_buffer(wid, key);
             editor.view_tree.focus(wid);
-            let _ = old_key;
         }
         None => {
             editor.view_tree.open_tab(Some(key));

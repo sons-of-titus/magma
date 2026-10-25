@@ -47,14 +47,15 @@ fn resize_moves_weight_between_panes() {
 }
 
 #[test]
-fn closing_the_last_tab_lands_on_scratch() {
+fn closing_the_last_tab_leaves_an_empty_editor() {
     let mut ed = make_editor();
     TabAction::Close(WindowId(1)).apply(&mut ed);
     let buf = ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .and_then(|key| ed.buffers.get(key))
         .map(|arc| arc.lock().unwrap().name.clone());
-    assert_eq!(buf.as_deref(), Some("*scratch*"), "there is always somewhere to type");
+    assert!(buf.is_none(),
+        "closing the last tab leaves an empty editor area, not a scratch buffer");
 }
 
 // ── Tab layout — files open as stacked tabs, not over the current pane ──────
@@ -118,6 +119,31 @@ fn open_file_lands_in_a_new_tab_and_focuses_it() {
     let opened = helpers::focused_key(&ed);
     let opened_path = ed.buffers.get(opened).unwrap().lock().unwrap().path.clone();
     assert_eq!(opened_path.as_deref(), Some(path.to_string_lossy().as_ref()));
+}
+
+#[test]
+fn opening_a_file_fills_a_bufferless_pane_instead_of_stacking() {
+    // The empty-editor startup state: one pane, no buffer.
+    let mut ed = make_editor();
+    if let Some(w) = ed.view_tree.focused_window_mut() { w.buffer_id = None; }
+    let panes_before = ed.view_tree.panes().len();
+
+    let dir = std::env::temp_dir().join("magma_open_empty_pane");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("first.rs");
+    std::fs::write(&path, "// first\n").unwrap();
+
+    let mut args = std::collections::HashMap::new();
+    args.insert("path".to_string(),
+        crate::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
+    crate::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
+
+    assert_eq!(ed.view_tree.panes().len(), panes_before,
+        "an empty editor pane is filled, not stacked over");
+    let opened = helpers::focused_key(&ed);
+    assert_ne!(opened, 0, "the pane now shows the opened file");
+    assert_eq!(ed.buffers.get(opened).unwrap().lock().unwrap().path.as_deref(),
+        Some(path.to_string_lossy().as_ref()));
 }
 
 #[test]

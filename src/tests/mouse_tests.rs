@@ -28,6 +28,42 @@ fn mouse_event_drag_variant() {
     assert!(s.contains("Drag"));
 }
 
+// ── Hit testing never lands on a pane that shows nothing ─────────────────────
+
+/// Regression: with no startup `*scratch*`, the initial pane can be empty.  If
+/// that bufferless pane sits underneath a tab, it used to win the hit test and
+/// swallow every click and wheel event — the editor looked frozen.
+#[test]
+fn click_and_scroll_ignore_a_bufferless_pane_underneath() {
+    let mut ed = make_editor();
+    ed.options.insert("mouse-support".to_string(), "true".to_string());
+
+    // Stack a visible tab showing real content over the first pane, then
+    // empty the first pane (the "no buffer" editor state).
+    let visible = ed.create_buffer_from_str("visible", "one\ntwo\nthree\nfour\nfive\nsix\n");
+    let visible_pane = ed.view_tree.open_tab(Some(visible));
+    let first = ed.view_tree.panes()[0].id;
+    if let Some(p) = ed.view_tree.window_mut(first) { p.buffer_id = None; }
+    ed.view_tree.resize(80, 24);
+    ed.view_tree.focus(visible_pane);
+
+    let (pane, _) = mouse::hit_test_pane(&ed, 5, 3).expect("the visible pane must be hit");
+    assert_eq!(pane.buffer_id, Some(visible),
+        "a bufferless pane must never swallow the hit");
+
+    let surface = crate::kernel::render::surface::Surface::new(80, 24);
+    let ev = MouseEvent {
+        kind: MouseEventKind::Scroll(-10),
+        x: 5,
+        y: 3,
+        button: MouseButton::Left,
+        modifiers: String::new(),
+    };
+    mouse::dispatch_mouse(&mut ed, &surface, &ev);
+    let scrolled = ed.view_tree.pane(visible_pane).map(|p| p.scroll_offset).unwrap_or(0);
+    assert!(scrolled > 0, "the wheel must scroll the visible buffer, got {scrolled}");
+}
+
 #[test]
 fn mouse_event_modifiers_roundtrip() {
     let ev = MouseEvent {

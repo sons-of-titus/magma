@@ -486,18 +486,20 @@ fn dispatch_release(ed: &mut Editor) {
 
 /// Find the pane at `(x, y)` screen coordinates.
 ///
-/// Stacked tab panes share the same area; only the focused one is visible
-/// and clickable.
+/// Panes paint in registration order, so the last match is the topmost one; a
+/// pane showing no buffer must never swallow a click or a wheel event meant
+/// for the visible buffer.  Stacked tab panes share an area and only the
+/// focused one is visible and clickable.
 pub(crate) fn hit_test_pane(ed: &Editor, x: u16, y: u16) -> Option<(Pane, usize)> {
     let focused = ed.view_tree.focused_window();
-    for (i, pane) in ed.view_tree.panes().iter().enumerate() {
-        if pane.layout == crate::kernel::render::view_tree::LayoutConstraint::Tab
-            && focused != Some(pane.id) {
+    for (i, pane) in ed.view_tree.panes().iter().enumerate().rev() {
+        if pane.buffer_id.is_none()
+            || (pane.layout == crate::kernel::render::view_tree::LayoutConstraint::Tab
+                && focused != Some(pane.id)) {
             continue;
         }
         if x >= pane.x && x < pane.x + pane.width
-            && y >= pane.y && y < pane.y + pane.height
-        {
+            && y >= pane.y && y < pane.y + pane.height {
             return Some((pane.clone(), i));
         }
     }

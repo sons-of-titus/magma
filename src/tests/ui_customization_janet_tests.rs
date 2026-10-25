@@ -95,18 +95,6 @@ fn editor_ready_enters_standard_editor_mode() {
 }
 
 #[test]
-fn editor_ready_scratch_has_content() {
-    janet_test!(ed, {
-        let key = ed.create_buffer("*scratch*");
-        let data = std::collections::HashMap::new();
-        ed.events.emit("editor-ready", data.clone());
-        ed.events.drain_and_dispatch();
-        assert!(!ed.buffers.get(key).unwrap().lock().unwrap().is_empty(), "scratch should have content after init");
-        let _ = data;
-    });
-}
-
-#[test]
 fn buffer_modified_c_fn_tracks_edits_from_a_clean_baseline() {
     janet_test!(ed, {
         let key = make_buf_local(&mut ed);

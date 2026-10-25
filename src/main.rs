@@ -4,11 +4,9 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-use magma::kernel::text_engine::Buffer;
 use magma::kernel::command::builtin;
 use magma::kernel::storage::DiskFileSystem;
 use magma::kernel::runtime::{BackgroundEvent, BackgroundHandle};
-use magma::kernel::state::id::BufferId;
 use magma::kernel::state::persist;
 #[cfg(feature = "janet")]
 use magma::kernel::scripting::ScriptRuntime;
@@ -27,19 +25,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         editor.marks.insert(m.name, m.byte_offset);
     }
     editor.project_manager.recent_projects = persist::load_recent_projects();
-
-    let id = editor.allocate_buffer_id();
-    let mut buffer = Buffer::new(BufferId(id), "*scratch*");
-    buffer.major_mode = magma::kernel::text_engine::MajorMode::Prog;
-    let arc = std::sync::Arc::new(std::sync::Mutex::new(buffer));
-    let entry = editor.buffers.vacant_entry();
-    let buf_key = entry.key();
-    entry.insert(arc.clone());
-    editor.views.insert(buf_key, magma::kernel::text_engine::BufferView::new(arc));
-
-    if let Some(win) = editor.view_tree.focused_window_mut() {
-        win.buffer_id = Some(buf_key);
-    }
 
     let runtime = Arc::new(tokio::runtime::Runtime::new()?);
     let (bg_sender, bg_receiver) = mpsc::unbounded_channel();

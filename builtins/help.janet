@@ -16,7 +16,7 @@
   (def cur-buf (get win-tbl :buffer))
   (def buf-name (when cur-buf (buffer/name cur-buf)))
   (when (= buf-name "*Help*")
-    # Switch back to *scratch* or the first available non-help buffer
+    # Switch back to the first available non-help buffer
     (def all-bufs (editor/buffer-list))
     (def other (find (fn [k] (not= (buffer/name k) "*Help*")) all-bufs))
     (when (and other win-id)

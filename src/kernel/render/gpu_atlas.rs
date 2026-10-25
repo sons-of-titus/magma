@@ -65,12 +65,28 @@ pub const ATLAS_CHARS: &str = concat!(
      \u{00E8}\u{00E9}\u{00EA}\u{00EB}\u{00EC}\u{00ED}\u{00EE}\u{00EF}",
     "\u{00F0}\u{00F1}\u{00F2}\u{00F3}\u{00F4}\u{00F5}\u{00F6}\u{00F7}\
      \u{00F8}\u{00F9}\u{00FA}\u{00FB}\u{00FC}\u{00FD}\u{00FE}\u{00FF}",
+    // Greek and Cyrillic (F-35: the GPU path is not ASCII-only) — the
+    // CJK ranges stay off the atlas; they exceed a fixed-grid texture and
+    // fall back to the CPU paint path per glyph.
+    "\u{0391}\u{0392}\u{0393}\u{0394}\u{0395}\u{0396}\u{0397}\u{0398}\
+     \u{0399}\u{039A}\u{039B}\u{039C}\u{039D}\u{039E}\u{039F}\u{03A0}",
+    "\u{03A1}\u{03A3}\u{03A4}\u{03A5}\u{03A6}\u{03A7}\u{03A8}\u{03A9}\
+     \u{03B1}\u{03B2}\u{03B3}\u{03B4}\u{03B5}\u{03B6}\u{03B7}\u{03B8}",
+    "\u{03B9}\u{03BA}\u{03BB}\u{03BC}\u{03BD}\u{03BE}\u{03BF}\u{03C0}\
+     \u{03C1}\u{03C2}\u{03C3}\u{03C4}\u{03C5}\u{03C6}\u{03C7}\u{03C8}",
+    "\u{03C9}\u{0401}\u{0410}\u{0411}\u{0412}\u{0413}\u{0414}\u{0415}\
+     \u{0416}\u{0417}\u{0418}\u{0419}\u{041A}\u{041B}\u{041C}\u{041D}",
+    "\u{041E}\u{041F}\u{0420}\u{0421}\u{0422}\u{0423}\u{0424}\u{0425}\
+     \u{0426}\u{0427}\u{0428}\u{0429}\u{042A}\u{042B}\u{042C}\u{042D}",
+    "\u{042E}\u{042F}\u{0430}\u{0431}\u{0432}\u{0433}\u{0434}\u{0435}\
+     \u{0436}\u{0437}\u{0438}\u{0439}\u{043A}\u{043B}\u{043C}\u{043D}",
+    "\u{043E}\u{043F}\u{0440}\u{0441}\u{0442}\u{0443}\u{0444}\u{0445}\
+     \u{0446}\u{0447}\u{0448}\u{0449}\u{044A}\u{044B}\u{044C}\u{044D}",
+    "\u{044E}\u{044F}\u{0451}",
 );
 
-// 95 ASCII + 1 box + 96 Latin-1 = 192 chars → 12 rows of 16
-pub const ATLAS_CHAR_COUNT: u32 = 192;
-pub const ATLAS_ROWS: u32 = 12; // = ceil(192 / 16)
 
+// 95 ASCII + 1 box + 96 Latin-1 = 192 chars → 12 rows of 16
 // ── Data structures ───────────────────────────────────────────────────────────
 
 /// Pixel-space UV coordinates of one glyph cell in the atlas texture.
@@ -134,6 +150,9 @@ impl GpuGlyphAtlas {
     pub fn new() -> Self {
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
         let total = chars.len() as u32;
+        // The grid derives from the live character set — no hand-maintained
+        // row constant to drift (the old 12-row constant silently clipped
+        // the 331-char set the GPU path had grown to).
         let rows = (total + ATLAS_COLS - 1) / ATLAS_COLS;
         let atlas_width  = ATLAS_COLS * ATLAS_CELL_W;
         let atlas_height = rows * ATLAS_CELL_H;
@@ -164,6 +183,15 @@ impl GpuGlyphAtlas {
             font_bytes, font_size, &chars, ATLAS_CELL_W, ATLAS_CELL_H, ATLAS_COLS,
         );
         self.dirty = true;
+    }
+
+    /// Rasterize at device resolution (F-35): `pixels_per_point` scales the
+    /// font so HiDPI displays sample denser texels instead of stretching
+    /// the 1× atlas.  Quads and UVs stay in point coordinates, so nothing
+    /// else changes when the scale factor moves.
+    #[cfg(feature = "gui")]
+    pub fn rasterize_at_ppx(&mut self, font_bytes: &[u8], font_size: f32, ppx: f32) {
+        self.rasterize(font_bytes, font_size * ppx.max(1.0));
     }
 
     /// Return the atlas pixel data (RGBA, row-major) for GPU texture upload.

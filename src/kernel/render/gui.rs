@@ -38,6 +38,9 @@ pub struct GuiApp {
     pub(crate) atlas:           GpuGlyphAtlas,
     /// True once the atlas has been rasterized with real font data.
     pub(crate) atlas_rasterized: bool,
+    /// Pixels-per-point the atlas was last rasterized at (F-35 HiDPI):
+    /// a change re-rasterizes the atlas at device resolution.
+    pub(crate) atlas_ppx: f32,
     /// True when `atlas_pixels` must be re-uploaded to the GPU this frame.
     pub(crate) atlas_dirty:     bool,
     pub(crate) target_format:   Option<eframe::wgpu::TextureFormat>,
@@ -114,6 +117,7 @@ impl GuiApp {
             bg_receiver,
             atlas,
             atlas_rasterized,
+            atlas_ppx: 1.0,
             atlas_dirty: true,
             target_format: None,
             tool_windows: ToolWindowManager::new(),

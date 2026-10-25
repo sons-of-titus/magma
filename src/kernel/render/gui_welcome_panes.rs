@@ -101,7 +101,7 @@ pub(crate) fn projects(
             clip.text(
                 Pos2::new(rect.left() + 12.0, rect.top() + 31.0),
                 Align2::LEFT_CENTER,
-                &fit_text(ui, path, &path_font, max_w),
+                fit_text(ui, path, &path_font, max_w),
                 path_font,
                 theme.overlay0,
             );

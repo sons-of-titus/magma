@@ -8,6 +8,12 @@ use crate::kernel::scripting::ScriptRuntime;
 
 pub struct JanetRuntime;
 
+impl Default for JanetRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JanetRuntime {
     pub fn new() -> Self {
         JanetRuntime
@@ -16,7 +22,7 @@ impl JanetRuntime {
 
 impl ScriptRuntime for JanetRuntime {
     fn init(&mut self, editor: &mut crate::kernel::state::Editor) {
-        super::scoped_editor(editor, || super::loader::init_vm());
+        super::scoped_editor(editor, super::loader::init_vm);
     }
 
     fn eval(&mut self, editor: &mut crate::kernel::state::Editor, expr: &str) -> String {

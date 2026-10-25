@@ -46,11 +46,10 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some((word, next)) = found {
                 editor.search.pattern = Some(word);
                 editor.search.forward = true;
-                if let Some(np) = next {
-                    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+                if let Some(np) = next
+                    && let Some(view) = editor.view_of_buffer_mut(buf_id) {
                         view.set_cursor(np);
                     }
-                }
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -65,11 +64,10 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some((word, prev)) = found {
                 editor.search.pattern = Some(word);
                 editor.search.forward = false;
-                if let Some(np) = prev {
-                    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+                if let Some(np) = prev
+                    && let Some(view) = editor.view_of_buffer_mut(buf_id) {
                         view.set_cursor(np);
                     }
-                }
             }
             emit_cursor_moved(editor);
             Ok(())

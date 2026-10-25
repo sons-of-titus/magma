@@ -101,7 +101,7 @@ fn editor_ready_scratch_has_content() {
         let data = std::collections::HashMap::new();
         ed.events.emit("editor-ready", data.clone());
         ed.events.drain_and_dispatch();
-        assert!(ed.buffers.get(key).unwrap().lock().unwrap().len() > 0, "scratch should have content after init");
+        assert!(!ed.buffers.get(key).unwrap().lock().unwrap().is_empty(), "scratch should have content after init");
         let _ = data;
     });
 }

@@ -512,7 +512,6 @@ fn build_hover_card(ed: &mut Editor, word: String, diag: Option<String>, px: f32
             .into_iter()
             .filter(|(_, sym)| sym.name == word)
             .take(3)
-            .map(|(path, sym)| (path, sym))
             .collect();
     if defs.is_empty() {
         lines.push(format!("{word} — no indexed definition"));
@@ -666,7 +665,7 @@ fn draw_quickfix_menu(
             painter.text(
                 Pos2::new(row.right() - 8.0, row.center().y),
                 Align2::RIGHT_CENTER,
-                &action.kind.rsplit('.').next().unwrap_or(&action.kind),
+                action.kind.rsplit('.').next().unwrap_or(&action.kind),
                 FontId::new(line_h * 0.62, FontFamily::Monospace),
                 theme.subtext0,
             );

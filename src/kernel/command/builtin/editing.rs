@@ -140,13 +140,12 @@ pub(super) fn register(editor: &mut Editor) {
                         (lc, None, None)
                     }
                 };
-                if let (Some(eol), Some(next_start)) = (eol, next_start) {
-                    if line + 1 < line_count {
+                if let (Some(eol), Some(next_start)) = (eol, next_start)
+                    && line + 1 < line_count {
                         view.delete(eol, next_start);
                         view.insert(eol, " ");
                         view.set_cursor(eol);
                     }
-                }
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -199,7 +198,7 @@ pub(super) fn register(editor: &mut Editor) {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // Rope scans: skip the trailing non-word run, then the
                     // word run before it.
-                    match buf.rfind_char_before(pos, |c| is_word_char(c)) {
+                    match buf.rfind_char_before(pos, is_word_char) {
                         None => {
                             // Nothing but non-word chars: one char goes.
                             buf.rfind_char_before(pos, |_| true).unwrap_or(pos)

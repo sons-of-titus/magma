@@ -29,6 +29,7 @@ impl Capability {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "filesystem"        => Some(Capability::Filesystem),
@@ -116,7 +117,7 @@ impl ExtensionRegistry {
     pub fn has_capability(&self, name: &str, capability: &Capability) -> bool {
         self.extensions
             .get(name)
-            .map_or(false, |m| m.has_capability(capability))
+            .is_some_and(|m| m.has_capability(capability))
     }
 
     pub fn count(&self) -> usize {

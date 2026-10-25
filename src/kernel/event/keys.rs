@@ -83,6 +83,7 @@ pub mod events {
     pub const LANGUAGE_UNREGISTERED: &str = "language-unregistered";
 }
 
+#[allow(clippy::module_inception)]
 pub mod keys {
     pub const ACTIONS: &str = "actions";
     pub const BODY: &str = "body";

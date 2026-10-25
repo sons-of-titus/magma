@@ -88,52 +88,6 @@ impl SearchQuery {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::kernel::state::id::BufferId;
-
-    fn buf(text: &str) -> crate::kernel::text_engine::Buffer {
-        crate::kernel::text_engine::Buffer::from_string(BufferId(1), "t", text)
-    }
-
-    #[test]
-    fn smart_case_literal_matches_insensitively_when_lowercase() {
-        let q = SearchQuery::compile("hello", false).unwrap();
-        let matches = q.find_all(&buf("Hello hello HELLO"), 0, 100);
-        assert_eq!(matches.len(), 3);
-    }
-
-    #[test]
-    fn mixed_case_literal_is_case_sensitive() {
-        let q = SearchQuery::compile("Hello", false).unwrap();
-        let matches = q.find_all(&buf("Hello hello HELLO"), 0, 100);
-        assert_eq!(matches, vec![(0, 5)]);
-    }
-
-    #[test]
-    fn literal_special_characters_are_not_regex() {
-        let q = SearchQuery::compile("a.c*", false).unwrap();
-        let b = buf("a.c* abc*");
-        let matches = q.find_all(&b, 0, 100);
-        assert_eq!(matches, vec![(0, 4)], "the literal dots and star match verbatim");
-    }
-
-    #[test]
-    fn regex_mode_compiles_patterns() {
-        let q = SearchQuery::compile(r"\bfn\s+\w+", true).unwrap();
-        let b = buf("fn  main() {} fn x()");
-        let matches = q.find_all(&b, 0, 100);
-        assert_eq!(matches.len(), 2);
-        assert_eq!(b.slice(matches[0].0, matches[0].1), "fn  main");
-    }
-
-    #[test]
-    fn invalid_regex_reports_an_error() {
-        assert!(SearchQuery::compile("(unclosed", true).is_err());
-    }
-}
-
 /// Replace every match in the focused buffer.  One undo step for the
 /// whole operation; returns the replacement count.
 pub fn replace_all(
@@ -199,4 +153,50 @@ pub fn replace_next(
     view.set_cursor(start + replacement.len());
     ed.frame_dirty = true;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kernel::state::id::BufferId;
+
+    fn buf(text: &str) -> crate::kernel::text_engine::Buffer {
+        crate::kernel::text_engine::Buffer::from_string(BufferId(1), "t", text)
+    }
+
+    #[test]
+    fn smart_case_literal_matches_insensitively_when_lowercase() {
+        let q = SearchQuery::compile("hello", false).unwrap();
+        let matches = q.find_all(&buf("Hello hello HELLO"), 0, 100);
+        assert_eq!(matches.len(), 3);
+    }
+
+    #[test]
+    fn mixed_case_literal_is_case_sensitive() {
+        let q = SearchQuery::compile("Hello", false).unwrap();
+        let matches = q.find_all(&buf("Hello hello HELLO"), 0, 100);
+        assert_eq!(matches, vec![(0, 5)]);
+    }
+
+    #[test]
+    fn literal_special_characters_are_not_regex() {
+        let q = SearchQuery::compile("a.c*", false).unwrap();
+        let b = buf("a.c* abc*");
+        let matches = q.find_all(&b, 0, 100);
+        assert_eq!(matches, vec![(0, 4)], "the literal dots and star match verbatim");
+    }
+
+    #[test]
+    fn regex_mode_compiles_patterns() {
+        let q = SearchQuery::compile(r"\bfn\s+\w+", true).unwrap();
+        let b = buf("fn  main() {} fn x()");
+        let matches = q.find_all(&b, 0, 100);
+        assert_eq!(matches.len(), 2);
+        assert_eq!(b.slice(matches[0].0, matches[0].1), "fn  main");
+    }
+
+    #[test]
+    fn invalid_regex_reports_an_error() {
+        assert!(SearchQuery::compile("(unclosed", true).is_err());
+    }
 }

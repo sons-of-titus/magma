@@ -213,7 +213,7 @@ unsafe extern "C-unwind" fn c_editor_set_glyph_width(argc: i32, argv: *mut Janet
         if janet_checktype(v1, JanetType_JANET_NUMBER) == 0 {
             conv::signal_err("editor/set-glyph-width: second arg must be a width integer")
         }
-        let w = (janet_unwrap_number(v1) as i32).max(0).min(255) as u8;
+        let w = (janet_unwrap_number(v1) as i32).clamp(0, 255) as u8;
         if ch != '\0' {
             ed.font_config.glyph_widths.insert(ch, w);
         }
@@ -239,7 +239,7 @@ unsafe extern "C-unwind" fn c_editor_set_glyph_width_range(argc: i32, argv: *mut
         }
         let start = janet_unwrap_number(v0) as u32;
         let end   = janet_unwrap_number(v1) as u32;
-        let w     = (janet_unwrap_number(v2) as i32).max(0).min(255) as u8;
+        let w     = (janet_unwrap_number(v2) as i32).clamp(0, 255) as u8;
         for cp in start..=end {
             if let Some(c) = char::from_u32(cp) {
                 ed.font_config.glyph_widths.insert(c, w);

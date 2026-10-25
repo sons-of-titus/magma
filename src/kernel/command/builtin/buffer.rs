@@ -98,7 +98,7 @@ pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
         let buf_key = pane.buffer_id?;
         let arc = editor.buffers.get(buf_key)?.lock().unwrap_or_else(|e| e.into_inner());
         (arc.path.is_none() && !arc.modified() && arc.slice(0, arc.len()).is_empty())
-            .then(|| (wid, buf_key))
+            .then_some((wid, buf_key))
     });
     match reusable {
         Some((wid, old_key)) => {

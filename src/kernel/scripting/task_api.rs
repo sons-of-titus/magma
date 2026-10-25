@@ -92,7 +92,7 @@ unsafe extern "C-unwind" fn c_task_run(argc: i32, argv: *mut Janet) -> Janet {
             || janet_checktype(first, JanetType_JANET_KEYWORD) != 0
         {
             let name = conv::get_str(argc, argv, 0).unwrap_or_default();
-            ed.task_scheduler.run_by_name(&name, &bg).map(|id| id)
+            ed.task_scheduler.run_by_name(&name, &bg)
         } else if janet_checktype(first, JanetType_JANET_NUMBER) != 0 {
             let id = janet_unwrap_number(first) as u64;
             ed.task_scheduler.run_id(id, &bg).map(|_| id)

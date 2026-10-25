@@ -218,21 +218,19 @@ impl WorkScheduler {
 
     /// Mark a work item completed (called from `process_background_event`).
     pub fn mark_completed(&mut self, id: WorkId) {
-        if let Some(item) = self.items.get_mut(&id) {
-            if item.status == WorkStatus::Running {
+        if let Some(item) = self.items.get_mut(&id)
+            && item.status == WorkStatus::Running {
                 item.status = WorkStatus::Completed;
                 item.progress.done = item.progress.total.max(1);
             }
-        }
     }
 
     /// Mark a work item failed.
     pub fn mark_failed(&mut self, id: WorkId, error: String) {
-        if let Some(item) = self.items.get_mut(&id) {
-            if item.status == WorkStatus::Running {
+        if let Some(item) = self.items.get_mut(&id)
+            && item.status == WorkStatus::Running {
                 item.status = WorkStatus::Failed(error);
             }
-        }
     }
 
     /// Update the progress counters of a work item.

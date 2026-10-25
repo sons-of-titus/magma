@@ -99,15 +99,13 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
         if !std::path::Path::new(&entry.path).exists() {
             continue;
         }
-        if open_path(ed, &entry.path) {
-            if let Some((key, _)) = ed.buffers.iter().find(|(_, arc)| {
+        if open_path(ed, &entry.path)
+            && let Some((key, _)) = ed.buffers.iter().find(|(_, arc)| {
                 arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(entry.path.as_str())
-            }) {
-                if let Some(view) = ed.views.get_mut(&key) {
+            })
+                && let Some(view) = ed.views.get_mut(&key) {
                     view.set_cursor(entry.cursor);
                 }
-            }
-        }
     }
 
     for bp in &state.breakpoints {

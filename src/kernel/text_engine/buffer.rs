@@ -374,6 +374,7 @@ impl Buffer {
     /// `(revision_before, revision_after, [(start, old_end, new_end)])`.
     /// `None` when `rev` has fallen out of the retention window and the
     /// caller must re-sync from the document.
+    #[allow(clippy::type_complexity)]
     pub fn changes_since(
         &self,
         rev: u64,

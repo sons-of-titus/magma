@@ -22,7 +22,7 @@ thread_local! {
     /// revoked context fails every check.  Handlers and commands capture
     /// the context at registration and re-enter it at invocation, so the
     /// gate holds at runtime, not just load time.
-    static CONTEXT_STACK: RefCell<Vec<ExecContext>> = RefCell::new(Vec::new());
+    static CONTEXT_STACK: RefCell<Vec<ExecContext>> = const { RefCell::new(Vec::new()) };
 }
 
 #[derive(Debug, Clone)]

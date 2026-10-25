@@ -5,6 +5,12 @@ use super::ScriptRuntime;
 
 pub struct NullRuntime;
 
+impl Default for NullRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NullRuntime {
     pub fn new() -> Self {
         NullRuntime

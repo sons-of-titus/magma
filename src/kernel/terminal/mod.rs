@@ -66,7 +66,7 @@ impl TerminalManager {
             cmd_builder.arg(a);
         }
         cmd_builder.env("TERM", "xterm-256color");
-        cmd_builder.cwd(cwd.to_path_buf());
+        cmd_builder.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd_builder)
             .map_err(|e| format!("Failed to spawn command in PTY: {}", e))?;

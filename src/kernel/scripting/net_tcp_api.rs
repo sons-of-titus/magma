@@ -225,12 +225,11 @@ unsafe extern "C-unwind" fn c_tcp_send_to(argc: i32, argv: *mut Janet) -> Janet 
             Some(s) => s,
             None => conv::signal_err("net/tcp-send-to: data string required"),
         };
-        if let Some(srv) = ed.io.net_servers.get(&server_id) {
-            if let Some(tx) = srv.clients.get(&client_id) {
+        if let Some(srv) = ed.io.net_servers.get(&server_id)
+            && let Some(tx) = srv.clients.get(&client_id) {
                 debug!("net/tcp-send-to server_id={server_id} client_id={client_id} len={}", data.len());
                 let _ = tx.send(data);
             }
-        }
         conv::nil()
     })
 }

@@ -30,13 +30,12 @@ unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Ja
         ed.editor_mode.name = name.clone();
         ed.editor_mode.accepts_text = accepts_text;
         match name.as_str() {
-            "visual" => {
-                if ed.selection.is_none() {
+            "visual"
+                if ed.selection.is_none() => {
                     let buf_id = crate::kernel::input::focused_buffer_id(ed);
                     let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                     ed.selection = Some(Selection { anchor, kind: "char".into() });
                 }
-            }
             "visual-line" => {
                 let buf_id = crate::kernel::input::focused_buffer_id(ed);
                 let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);

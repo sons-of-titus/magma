@@ -213,11 +213,10 @@ fn vc_write_buf(editor: &mut Editor, text: &str) -> CommandResult {
         buf.insert(0, text);
     }
     let offset = editor.buffers.get(key).unwrap().lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(saved_line);
-    if let Some(off) = offset {
-        if let Some(view) = editor.view_of_buffer_mut(key) {
+    if let Some(off) = offset
+        && let Some(view) = editor.view_of_buffer_mut(key) {
             view.set_cursor(off);
         }
-    }
     Ok(())
 }
 
@@ -253,11 +252,10 @@ fn vc_open(editor: &mut Editor) -> CommandResult {
     }
     let header_offset = editor.buffers.get(buf_key).unwrap().lock().unwrap_or_else(|e| e.into_inner())
         .line_start_offset(crate::kernel::vc::VC_HEADER_LINES);
-    if let Some(off) = header_offset {
-        if let Some(view) = editor.view_of_buffer_mut(buf_key) {
+    if let Some(off) = header_offset
+        && let Some(view) = editor.view_of_buffer_mut(buf_key) {
             view.set_cursor(off);
         }
-    }
 
     if let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = Some(buf_key);

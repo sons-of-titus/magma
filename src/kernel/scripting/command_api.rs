@@ -128,7 +128,7 @@ fn register_janet_command_wrapper(ed: &mut crate::kernel::state::Editor, name: &
                     return Ok(());
                 }
                 let table = janet_unwrap_table(root);
-                let key = janet_string(lookup_name.as_ptr() as *const u8, lookup_name.len() as i32);
+                let key = janet_string(lookup_name.as_ptr(), lookup_name.len() as i32);
                 let func_val = janet_table_get(table, janet_wrap_string(key));
                 if janet_checktype(func_val, JanetType_JANET_FUNCTION) == 0 {
                     return Ok(());

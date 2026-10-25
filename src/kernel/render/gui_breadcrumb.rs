@@ -54,9 +54,9 @@ impl BreadcrumbBar {
     /// Render the breadcrumb bar.  Returns a sidebar-reveal action when a
     /// path segment is clicked.
     pub fn show(ui: &mut egui::Ui, editor: &Editor, theme: &GuiTheme) -> Option<BreadcrumbAction> {
-        let Some(wid)    = editor.view_tree.focused_window() else { return None };
-        let Some(buf_id) = editor.view_tree.buffer(wid)      else { return None };
-        let Some(arc)    = editor.buffers.get(buf_id)         else { return None };
+        let wid    = editor.view_tree.focused_window()?;
+        let buf_id = editor.view_tree.buffer(wid)?;
+        let arc    = editor.buffers.get(buf_id)?;
 
         let (path, cursor_offset) = {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());

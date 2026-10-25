@@ -30,17 +30,15 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 count: files.len().to_string(),
             });
         }
-        BackgroundEvent::GrepResultsBatch { generation, entries } => {
-            if generation == ed.search.generation {
+        BackgroundEvent::GrepResultsBatch { generation, entries }
+            if generation == ed.search.generation => {
                 ed.quickfix_list.extend(entries);
                 ed.quickfix_list.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
             }
-        }
-        BackgroundEvent::GrepDone { generation } => {
-            if generation == ed.search.generation {
+        BackgroundEvent::GrepDone { generation }
+            if generation == ed.search.generation => {
                 ed.quickfix_index = 0;
             }
-        }
         BackgroundEvent::WorkProgress { id, done, total } => {
             ed.scheduler.update_progress(id, done, total);
             let name = ed.scheduler.name(id).unwrap_or("").to_string();

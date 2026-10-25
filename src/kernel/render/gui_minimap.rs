@@ -23,7 +23,7 @@ const MIN_BAR_PX:     f32 = 1.0;
 /// `MIN_ROW_H`, growing once `total_lines` exceeds `max_rows`.
 pub fn minimap_step(total_lines: usize, max_rows: usize) -> usize {
     if total_lines <= max_rows { return 1; }
-    (total_lines + max_rows - 1) / max_rows
+    total_lines.div_ceil(max_rows)
 }
 
 /// Map a click `frac_y` pixels below the strip top to a 0-based line.
@@ -58,7 +58,7 @@ impl Minimap {
         scroll_top:   usize,
         visible_rows: usize,
     ) -> Option<usize> {
-        let Some(arc) = editor.buffers.get(buf_id) else { return None };
+        let arc = editor.buffers.get(buf_id)?;
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let total = buf.line_count();
         if total == 0 || rect.height() < 8.0 { return None; }
@@ -82,7 +82,7 @@ impl Minimap {
             let mut lines = Vec::with_capacity(total / step + 1);
             let mut line_idx = 0usize;
             while line_idx < total {
-                if line_idx % step == 0 {
+                if line_idx.is_multiple_of(step) {
                     let span = buf.line_span(line_idx).unwrap_or(0..0);
                     lines.push((span.start, buf.slice(span.start, span.end)));
                 }

@@ -66,7 +66,7 @@ fn provider_update_stores_cells_in_sign_cache() {
     janet_test!(ed, {
         let key = ed.create_buffer("test.rs");
         scripting::eval(r#"(gutter/add-provider "my-marks")"#);
-        let cells = format!(r#"@[{{:line 3 :text "●" :face "default"}}]"#);
+        let cells = r#"@[{:line 3 :text "●" :face "default"}]"#.to_string();
         scripting::eval(&format!(r#"(gutter/provider-update "my-marks" {key} {cells})"#));
         let cached = ed.gutter.cached_cell("my-marks", key, 3);
         assert!(cached.is_some(), "cell should be cached after provider-update");
@@ -79,8 +79,8 @@ fn provider_update_replaces_previous_cells() {
     janet_test!(ed, {
         let key = ed.create_buffer("test.rs");
         scripting::eval(r#"(gutter/add-provider "my-marks")"#);
-        let ca = format!(r#"@[{{:line 0 :text "A" :face "default"}}]"#);
-        let cb = format!(r#"@[{{:line 0 :text "B" :face "default"}}]"#);
+        let ca = r#"@[{:line 0 :text "A" :face "default"}]"#.to_string();
+        let cb = r#"@[{:line 0 :text "B" :face "default"}]"#.to_string();
         scripting::eval(&format!(r#"(gutter/provider-update "my-marks" {key} {ca})"#));
         scripting::eval(&format!(r#"(gutter/provider-update "my-marks" {key} {cb})"#));
         let cached = ed.gutter.cached_cell("my-marks", key, 0).unwrap();

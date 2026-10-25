@@ -25,11 +25,10 @@ pub fn atomic_write(path: &str, content: &str) -> Result<(), FsError> {
     }
     std::fs::rename(&tmp, target)?;
     #[cfg(unix)]
-    if let Some(parent) = target.parent() {
-        if let Ok(dir) = std::fs::File::open(parent) {
+    if let Some(parent) = target.parent()
+        && let Ok(dir) = std::fs::File::open(parent) {
             let _ = dir.sync_all();
         }
-    }
     Ok(())
 }
 

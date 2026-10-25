@@ -135,6 +135,7 @@ pub struct TsTreeState {
 /// and run the query on the updated tree (docs/core-redesign.md §7.2).
 /// `query_text` must be the buffer's current full text (queries with
 /// predicates need contiguous bytes).
+#[allow(clippy::type_complexity)]
 pub fn highlight_incremental(
     lang_name: &str,
     rope: &crate::kernel::text_engine::rope::Rope,
@@ -174,7 +175,7 @@ pub fn highlight_incremental(
                 while b > 0 && !cur.is_char_boundary(b) {
                     b -= 1;
                 }
-                cur[b..].as_bytes()
+                &cur.as_bytes()[b..]
             },
             old_tree.as_ref(),
         )

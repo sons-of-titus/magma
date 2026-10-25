@@ -113,14 +113,11 @@ pub fn apply_reload(ed: &mut Editor, buf_key: usize, content: Result<String, Str
             let start = buf.line_start_offset(l).unwrap_or(0);
             let end = buf.line_start_offset(l + 1).unwrap_or(buf.len());
             let line_text = buf.slice(start, end);
-            let mut off = start;
-            let mut chars = 0usize;
-            for c in line_text.chars() {
-                if c == '\n' || chars >= column { break; }
-                off += c.len_utf8();
-                chars += 1;
-            }
-            off
+            start + line_text.chars()
+                .take_while(|c| *c != '\n')
+                .take(column)
+                .map(|c| c.len_utf8())
+                .sum::<usize>()
         };
         view.set_cursor(offset);
     }

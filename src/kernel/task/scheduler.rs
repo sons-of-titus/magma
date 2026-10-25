@@ -192,7 +192,7 @@ impl TaskScheduler {
                         sender: tokio::sync::mpsc::UnboundedSender<crate::kernel::runtime::BackgroundEvent>,
                     ) -> std::thread::JoinHandle<String> {
                         let Some(s) = stream else {
-                            return std::thread::spawn(|| String::new());
+                            return std::thread::spawn(String::new);
                         };
                         std::thread::spawn(move || {
                             use std::io::BufRead;
@@ -279,31 +279,28 @@ impl TaskScheduler {
                 let _ = child.kill();
             }
         self.running.remove(&id);
-        if let Some(task) = self.tasks.get_mut(&id) {
-            if matches!(task.status, TaskStatus::Running | TaskStatus::Pending) {
+        if let Some(task) = self.tasks.get_mut(&id)
+            && matches!(task.status, TaskStatus::Running | TaskStatus::Pending) {
                 task.status = TaskStatus::Cancelled;
             }
-        }
     }
 
     /// Called from `process_background_event` when a task exits with code 0.
     pub fn mark_completed(&mut self, id: TaskId, output: TaskOutput) {
-        if let Some(task) = self.tasks.get_mut(&id) {
-            if task.status == TaskStatus::Running {
+        if let Some(task) = self.tasks.get_mut(&id)
+            && task.status == TaskStatus::Running {
                 task.status = TaskStatus::Completed;
                 task.output = Some(output);
             }
-        }
     }
 
     /// Called from `process_background_event` when a task exits with non-zero code.
     pub fn mark_failed(&mut self, id: TaskId, error: String, output: TaskOutput) {
-        if let Some(task) = self.tasks.get_mut(&id) {
-            if task.status == TaskStatus::Running {
+        if let Some(task) = self.tasks.get_mut(&id)
+            && task.status == TaskStatus::Running {
                 task.status = TaskStatus::Failed(error);
                 task.output = Some(output);
             }
-        }
     }
 
     pub fn status(&self, id: TaskId) -> Option<&TaskStatus> {

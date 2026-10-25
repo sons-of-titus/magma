@@ -98,7 +98,7 @@ mod tests {
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
 
-        assert_eq!(find_in("fake-tool", &[dir.clone()]), Some(bin));
+        assert_eq!(find_in("fake-tool", std::slice::from_ref(&dir)), Some(bin));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -107,7 +107,7 @@ mod tests {
         let dir = std::env::temp_dir().join("toolchain_noexec");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("not-a-tool"), "data").unwrap();
-        assert_eq!(find_in("not-a-tool", &[dir.clone()]), None);
+        assert_eq!(find_in("not-a-tool", std::slice::from_ref(&dir)), None);
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -21,11 +21,10 @@ unsafe extern "C-unwind" fn c_editor_save_layout(argc: i32, argv: *mut Janet) ->
 /// Restore a previously saved window tree.
 unsafe extern "C-unwind" fn c_editor_restore_layout(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        if let Some(name) = unsafe { conv::get_str(argc, argv, 0) } {
-            if let Some((windows, focused_idx)) = ed.saved_layouts.get(&name).cloned() {
+        if let Some(name) = unsafe { conv::get_str(argc, argv, 0) }
+            && let Some((windows, focused_idx)) = ed.saved_layouts.get(&name).cloned() {
                 ed.view_tree.restore(windows, focused_idx);
             }
-        }
         conv::nil()
     })
 }

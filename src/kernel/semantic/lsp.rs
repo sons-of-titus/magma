@@ -399,7 +399,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                     },
                     "textDocument/definition" => {
                         let mut loc = result.as_ref()
-                            .and_then(|r| first_location(r));
+                            .and_then(first_location);
                         if loc.is_none() {
                             // Also consume the empty result as "nowhere".
                             loc = None;

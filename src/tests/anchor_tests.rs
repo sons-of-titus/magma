@@ -93,7 +93,7 @@ fn single_edit_transform_matches_multi_edit_form() {
             let a = at(offset, affinity);
             assert_eq!(
                 transform_anchor(a, &edit),
-                transform_anchor_through_edits(a, &[edit.clone()]),
+                transform_anchor_through_edits(a, std::slice::from_ref(&edit)),
                 "offset {offset} {affinity:?}"
             );
         }

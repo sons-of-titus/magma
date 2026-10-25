@@ -20,8 +20,8 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(crate::kernel::state::mode::Selection { anchor, .. }) = editor.selection {
-                if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            if let Some(crate::kernel::state::mode::Selection { anchor, .. }) = editor.selection
+                && let Some(view) = editor.view_of_buffer_mut(buf_id) {
                     let cursor = view.cursor_offset();
                     let (start, end) = {
                         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
@@ -32,7 +32,6 @@ pub(super) fn register(editor: &mut Editor) {
                     view.set_cursor(start);
                     view.delete(start, end);
                 }
-            }
             editor.selection = None;
             emit_cursor_moved(editor);
             Ok(())
@@ -43,8 +42,8 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(crate::kernel::state::mode::Selection { anchor, .. }) = editor.selection {
-                if let Some(view) = editor.view_of_buffer(buf_id) {
+            if let Some(crate::kernel::state::mode::Selection { anchor, .. }) = editor.selection
+                && let Some(view) = editor.view_of_buffer(buf_id) {
                     let cursor = view.cursor_offset();
                     let yanked = {
                         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
@@ -57,7 +56,6 @@ pub(super) fn register(editor: &mut Editor) {
                     editor.yanked_text = Some(yanked.clone());
                     editor.clipboard.set_text(&yanked);
                 }
-            }
             editor.selection = None;
             emit_cursor_moved(editor);
             Ok(())
@@ -71,15 +69,15 @@ pub(super) fn register(editor: &mut Editor) {
             let cut = match editor.selection {
                 Some(crate::kernel::state::mode::Selection { anchor, .. }) => {
                     let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-                    let out = editor.view_of_buffer(buf_id).map(|view| {
+                    
+                    editor.view_of_buffer(buf_id).map(|view| {
                         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         let end_char_len = buf.char_at(anchor.max(cursor))
                             .map(|c| c.len_utf8()).unwrap_or(1);
                         let start = anchor.min(cursor);
                         let end = anchor.max(cursor) + end_char_len;
                         (start, end, buf.slice(start, end).to_string())
-                    });
-                    out
+                    })
                 }
                 None => None,
             };

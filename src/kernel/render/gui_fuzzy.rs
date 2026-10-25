@@ -28,9 +28,8 @@ pub fn fuzzy_score(query: &str, text: &str) -> Option<i32> {
         }
         let mi = found?;
         score += 10;
-        if let Some(pm) = prev_match {
-            if mi == pm + 1 { score += 15; }             // consecutive run
-        }
+        if let Some(pm) = prev_match
+            && mi == pm + 1 { score += 15; }             // consecutive run
         if mi == 0 || is_word_boundary(t[mi - 1]) { score += 20; }  // word start
         if text.chars().nth(mi).map(|c| c.is_uppercase()) == Some(true) {
             score += 5;                                   // case match bonus

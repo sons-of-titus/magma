@@ -242,7 +242,7 @@ pub(crate) fn word_range_at(buf: &crate::kernel::text_engine::Buffer, offset: us
     let cursor_char = text[..(offset - start).min(text.len())].chars().count();
     let under = chars.get(cursor_char).copied();
     let before = if cursor_char > 0 { chars.get(cursor_char - 1).copied() } else { None };
-    if !under.map_or(false, is_word) && !before.map_or(false, is_word) {
+    if !under.is_some_and(is_word) && !before.is_some_and(is_word) {
         return None;
     }
     let mut lo = cursor_char;

@@ -8,10 +8,13 @@ use args::{ArgSpec, ArgValue};
 
 pub type CommandResult = Result<(), String>;
 
+pub(crate) type CommandFn =
+    dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync;
+
 pub(crate) struct CommandEntry {
     pub(crate) description: String,
     pub(crate) args: Vec<ArgSpec>,
-    pub(crate) handler: Arc<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
+    pub(crate) handler: Arc<CommandFn>,
 }
 
 pub struct CommandRegistry {
@@ -36,7 +39,7 @@ impl CommandRegistry {
         name: &str,
         description: &str,
         args: Vec<ArgSpec>,
-        handler: Box<dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync>,
+        handler: Box<CommandFn>,
     ) {
         self.commands.insert(name.to_string(), CommandEntry {
             description: description.to_string(),

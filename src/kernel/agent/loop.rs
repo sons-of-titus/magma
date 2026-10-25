@@ -56,7 +56,7 @@ pub fn start_turn(ed: &mut Editor, session_id: u64) -> Result<(), String> {
     let Some(cfg) = LlmConfig::from_options(&ed.options) else {
         return Err("agent: no API key configured".to_string());
     };
-    let Some(bg) = ed.background.as_ref().map(|b| b.clone()) else {
+    let Some(bg) = ed.background.clone() else {
         return Err("agent: no background runtime available".to_string());
     };
     let messages = ed.agent.messages_of(session_id)
@@ -246,7 +246,7 @@ fn run_builtin_session(
     ctx: &AgentContext,
 ) -> Result<(), String> {
     use crate::kernel::agent::BuiltinPlanner;
-    let Some(bg) = ed.background.as_ref().map(|b| b.clone()) else {
+    let Some(bg) = ed.background.clone() else {
         return Err("agent: no background runtime available".to_string());
     };
     let prompt = prompt.to_string();

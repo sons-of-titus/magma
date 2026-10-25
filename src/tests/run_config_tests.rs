@@ -389,12 +389,11 @@ fn failing_cargo_build_lands_as_clickable_diagnostics() {
     let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
         while let Ok(ev) = rx.try_recv() {
-            if let BackgroundEvent::TaskRunCompleted { id: fid, exit_code, .. } = &ev {
-                if *fid == id {
+            if let BackgroundEvent::TaskRunCompleted { id: fid, exit_code, .. } = &ev
+                && *fid == id {
                     assert_ne!(*exit_code, 0, "the fixture crate must fail to build");
                     done = true;
                 }
-            }
             crate::kernel::runtime::process_background_event(&mut ed, ev);
         }
         if done { break; }

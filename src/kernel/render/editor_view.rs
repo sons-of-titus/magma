@@ -271,7 +271,7 @@ impl View for EditorView {
         }
 
         // ── Decorations ───────────────────────────────────────────────────
-        render_decorations(editor, buf_id, &*buf, surface,
+        render_decorations(editor, buf_id, &buf, surface,
             scroll_top, visible_lines, prefix_margin, gutter_width, content_x, row_offset,
             scroll_left);
 

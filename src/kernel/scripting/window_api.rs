@@ -173,11 +173,10 @@ unsafe extern "C-unwind" fn c_window_unpin_scroll(argc: i32, argv: *mut Janet) -
         let wid = id
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
-        if let Some(wid) = wid {
-            if let Some(win) = ed.view_tree.window_mut(wid) {
+        if let Some(wid) = wid
+            && let Some(win) = ed.view_tree.window_mut(wid) {
                 win.scroll_pinned = false;
             }
-        }
         conv::nil()
     })
 }
@@ -295,13 +294,11 @@ unsafe extern "C-unwind" fn c_window_scroll_top(argc: i32, argv: *mut Janet) -> 
         let wid = arg_id
             .map(|id| crate::kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
-        if let Some(wid) = wid {
-            if let Some(win) = ed.view_tree.window(wid) {
-                if win.scroll_pinned {
+        if let Some(wid) = wid
+            && let Some(win) = ed.view_tree.window(wid)
+                && win.scroll_pinned {
                     return conv::integer(win.scroll_offset as i32);
                 }
-            }
-        }
         match resolve_window(&mut *ed, arg_id) {
             Some((Some(bid), _w, h)) => {
                 let st = window_scroll_state(&mut *ed, bid, h);

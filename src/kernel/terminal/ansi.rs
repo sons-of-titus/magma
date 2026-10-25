@@ -120,7 +120,7 @@ struct CsiRef<'a> {
 
 impl CsiRef<'_> {
     fn parts(&self) -> impl Iterator<Item = Option<u16>> + '_ {
-        self.params.split(|c| c == ':' || c == ';').map(|p| {
+        self.params.split([':', ';']).map(|p| {
             if p.is_empty() { None } else { p.parse().ok() }
         })
     }
@@ -206,7 +206,7 @@ fn dispatch_csi(screen: &mut TerminalScreen, final_byte: char) {
         }
         'S' => screen.scroll_up(csi.count(0)),
         'T' => screen.scroll_down(csi.count(0)),
-        'm' => sgr(screen, &csi.params),
+        'm' => sgr(screen, csi.params),
         'r' => {
             let top = csi.param(0, 1).saturating_sub(1);
             let bottom = csi.param(1, screen.rows).saturating_sub(1).min(screen.rows - 1);

@@ -90,15 +90,12 @@ impl WorkspaceManager {
         let mut count = 0usize;
         for pb in &state.buffers {
             if let Some(ref file_path) = pb.path {
-                match std::fs::read_to_string(file_path) {
-                    Ok(content) => {
-                        let key = editor.create_buffer_from_str(&pb.name, &content);
-                        if let Some(arc) = editor.buffers.get(key) {
-                            arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(file_path.clone());
-                        }
-                        count += 1;
+                if let Ok(content) = std::fs::read_to_string(file_path) {
+                    let key = editor.create_buffer_from_str(&pb.name, &content);
+                    if let Some(arc) = editor.buffers.get(key) {
+                        arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(file_path.clone());
                     }
-                    Err(_) => {}
+                    count += 1;
                 }
             } else if let Some(ref content) = pb.content {
                 editor.create_buffer_from_str(&pb.name, content);

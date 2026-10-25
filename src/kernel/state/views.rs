@@ -41,13 +41,11 @@ impl Editor {
     /// Resolve the view of a buffer: the focused window's fork if it shows
     /// this buffer, else any window's fork, else the default view.
     pub fn view_of_buffer(&self, buf: usize) -> Option<&crate::kernel::text_engine::BufferView> {
-        if let Some(win) = self.view_tree.focused_window() {
-            if self.view_tree.buffer(win) == Some(buf) {
-                if let Some(v) = self.window_views.get(&(win, buf)) {
+        if let Some(win) = self.view_tree.focused_window()
+            && self.view_tree.buffer(win) == Some(buf)
+                && let Some(v) = self.window_views.get(&(win, buf)) {
                     return Some(v);
                 }
-            }
-        }
         if let Some((_, v)) = self.window_views.iter().find(|((_, b), _)| *b == buf) {
             return Some(v);
         }
@@ -58,11 +56,10 @@ impl Editor {
     pub fn view_of_buffer_mut(&mut self, buf: usize) -> Option<&mut crate::kernel::text_engine::BufferView> {
         let focused = self.view_tree.focused_window();
         let focused_buf = focused.and_then(|w| self.view_tree.buffer(w));
-        if let (Some(win), Some(shown)) = (focused, focused_buf) {
-            if shown == buf && self.window_views.contains_key(&(win, buf)) {
+        if let (Some(win), Some(shown)) = (focused, focused_buf)
+            && shown == buf && self.window_views.contains_key(&(win, buf)) {
                 return self.window_views.get_mut(&(win, buf));
             }
-        }
         let forked = self
             .window_views
             .iter()

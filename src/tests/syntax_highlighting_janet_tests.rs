@@ -196,7 +196,7 @@ fn buffer_clear_highlights_layer_removes_named_layer() {
     assert_eq!(result, "ok");
 
     let view = ed.views.get(&key).unwrap();
-    assert!(view.highlight_layers.get("syntax").is_none());
+    assert!(!view.highlight_layers.contains_key("syntax"));
 }
 
 #[test]
@@ -215,8 +215,8 @@ fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
         &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
 
     let view = ed.views.get(&key).unwrap();
-    assert!(view.highlight_layers.get("syntax").is_none());
-    assert!(view.highlight_layers.get("search").is_some());
+    assert!(!view.highlight_layers.contains_key("syntax"));
+    assert!(view.highlight_layers.contains_key("search"));
 }
 
 // ── Default faces from init.janet ──────────────────────────────────────

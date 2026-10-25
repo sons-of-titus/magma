@@ -68,11 +68,10 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 items: items.join("\n"),
             });
         }
-        BackgroundEvent::LspResponse { path, method, result, request_id: _, buf_key, revision } => {
-            if revision_current(ed, buf_key, revision) {
+        BackgroundEvent::LspResponse { path, method, result, request_id: _, buf_key, revision }
+            if revision_current(ed, buf_key, revision) => {
                 ed.events.emit_typed(keys::events::LSP_RESPONSE, LspResponsePayload { path, method, result });
             }
-        }
         BackgroundEvent::LspServerExited { language } => {
             ed.lsp.exited(&language);
             ed.show_message(crate::kernel::state::MessageKind::Error,
@@ -99,8 +98,8 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                     ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
             }
         }
-        BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col, buf_key, revision } => {
-            if revision_current(ed, buf_key, revision) {
+        BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col, buf_key, revision }
+            if revision_current(ed, buf_key, revision) => {
                 ed.events.emit_typed(keys::events::LSP_DEFINITION, LspDefinitionPayload {
                     path,
                     uri,
@@ -110,9 +109,8 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                     end_col: end_col.to_string(),
                 });
             }
-        }
-        BackgroundEvent::LspCodeActions { path, actions, buf_key, revision } => {
-            if revision_current(ed, buf_key, revision) {
+        BackgroundEvent::LspCodeActions { path, actions, buf_key, revision }
+            if revision_current(ed, buf_key, revision) => {
                 // The quick-fix picker is the primary consumer: open it on
                 // the focused buffer when there is anything to choose.
                 let parsed = overlay::parse_code_actions(&actions);
@@ -129,9 +127,8 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
                 ed.events.emit_typed(keys::events::LSP_CODE_ACTIONS, LspCodeActionsPayload { path, actions });
             }
-        }
-        BackgroundEvent::LspCompletionItems { path, items, buf_key, revision } => {
-            if revision_current(ed, buf_key, revision) {
+        BackgroundEvent::LspCompletionItems { path, items, buf_key, revision }
+            if revision_current(ed, buf_key, revision) => {
                 // The popup is the primary consumer: merge server items in
                 // (they lead, duplicates drop).  The event stays available
                 // to Janet observers.
@@ -141,12 +138,10 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
                 ed.events.emit_typed(keys::events::LSP_COMPLETION_ITEMS, LspCompletionItemsPayload { path, items });
             }
-        }
-        BackgroundEvent::LspRenameResult { path, edit, buf_key, revision } => {
-            if revision_current(ed, buf_key, revision) {
+        BackgroundEvent::LspRenameResult { path, edit, buf_key, revision }
+            if revision_current(ed, buf_key, revision) => {
                 ed.events.emit_typed(keys::events::LSP_RENAME_RESULT, LspRenameResultPayload { path, edit });
             }
-        }
         BackgroundEvent::LspProgress { token, message, percentage } => {
             ed.events.emit_typed(keys::events::LSP_PROGRESS, LspProgressPayload { token, message, percentage });
         }

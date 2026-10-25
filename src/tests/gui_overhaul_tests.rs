@@ -163,7 +163,7 @@ fn smart_case_predicate() {
     }
     assert!(matches!(SearchQuery::compile("Abc", false).unwrap(), SearchQuery::Literal(_)),
         "mixed-case queries are exact literals");
-    assert!(matches!(SearchQuery::compile("", false), Err(_)), "empty queries are rejected");
+    assert!(SearchQuery::compile("", false).is_err(), "empty queries are rejected");
 }
 
 // ── SettingsDialog helpers ───────────────────────────────────────────────────

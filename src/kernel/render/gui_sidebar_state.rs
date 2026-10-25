@@ -31,6 +31,7 @@ impl PendingOp {
 }
 
 /// Interaction state for the project tree sidebar.
+#[derive(Default)]
 pub struct SidebarState {
     /// Project root the state was built for; a change resets everything.
     pub root:          Option<String>,
@@ -62,16 +63,3 @@ impl SidebarState {
     }
 }
 
-impl Default for SidebarState {
-    fn default() -> Self {
-        Self {
-            tree_cache: None,
-            root: None,
-            expanded_dirs: HashSet::new(),
-            selected: None,
-            pending: None,
-            pending_name: String::new(),
-            confirm_delete: None,
-        }
-    }
-}

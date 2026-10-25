@@ -20,7 +20,7 @@ fn open_project_restores_the_previous_session() {
         scripting::eval(&format!("(editor/run-command \"open-project\" \"{}\")", tmp.to_string_lossy()));
         scripting::eval(&format!("(editor/run-command \"open-file\" \"{}\")", file_path));
         scripting::eval(&format!("(debug/add-breakpoint \"{}\" 2)", file_path));
-        scripting::eval(&format!("(debug/watch-add \"len\")"));
+        scripting::eval("(debug/watch-add \"len\")");
 
         let state = crate::kernel::session::capture(&ed);
         crate::kernel::session::save(&ed, &tmp).unwrap();

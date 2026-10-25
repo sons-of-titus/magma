@@ -28,7 +28,7 @@ fn main() {
         let start = std::time::Instant::now();
         for i in 0..1_000 {
             let pos = (i * 10) % r.len().max(1);
-            if pos + 1 <= r.len() {
+            if pos < r.len() {
                 r.delete(pos, pos + 1);
             }
         }

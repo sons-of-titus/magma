@@ -46,7 +46,7 @@ fn insert(nodes: &mut Vec<FileNode>, parts: &[&str], prefix: &str) {
     }
 }
 
-fn sort_nodes(nodes: &mut Vec<FileNode>) {
+fn sort_nodes(nodes: &mut [FileNode]) {
     nodes.sort_by(|a, b| match (a.is_dir, b.is_dir) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,

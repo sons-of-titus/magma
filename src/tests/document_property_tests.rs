@@ -446,7 +446,7 @@ fn random_multibyte_edits_match_a_string_model_and_undo_restores() {
                     // Insert a random multibyte fragment.
                     let frag = ["αβγ", "中", "π", "👀a", "é"][rng.next() as usize % 5];
                     buf.insert(s, frag);
-                    model.insert_str(s, &frag);
+                    model.insert_str(s, frag);
                 }
                 1 if len > 0 => {
                     let end = snap(&model, pos.max(s).saturating_add(1 + (rng.next() as usize) % 7));

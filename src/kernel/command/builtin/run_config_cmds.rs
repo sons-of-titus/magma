@@ -50,7 +50,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, args| {
             let name = args.get("name").and_then(|a| a.as_string())
                 .ok_or_else(|| "name required".to_string())?;
-            if editor.project_manager.run_configs.named(&name).is_none() {
+            if editor.project_manager.run_configs.named(name).is_none() {
                 return Err(format!("no run configuration named '{name}'"));
             }
             editor.project_manager.run_configs.active = Some(name.to_string());

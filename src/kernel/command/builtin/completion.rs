@@ -120,15 +120,14 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
         (ws, trig)
     };
 
-    if let Some(expansion) = crate::kernel::snippet::expand_snippet(editor, &trigger) {
-        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+    if let Some(expansion) = crate::kernel::snippet::expand_snippet(editor, &trigger)
+        && let Some(view) = editor.view_of_buffer_mut(buf_id) {
             view.replace(word_start, word_start + trigger.len(), &expansion);
             view.set_cursor(word_start);
             editor.snippet.active = true;
             editor.snippet.tabstops = crate::kernel::snippet::parse_tabstops(&expansion);
             editor.snippet.tabstop_idx = 0;
         }
-    }
     emit_cursor_moved(editor);
     Ok(())
 }

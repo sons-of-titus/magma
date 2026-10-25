@@ -50,6 +50,7 @@ fn normalize_rejects_overlapping_edits() {
 }
 
 #[test]
+#[allow(clippy::reversed_empty_ranges)]
 fn normalize_rejects_inverted_ranges() {
     for builder in [
         TransactionBuilder::new().replace(5..3, "x"),

@@ -229,24 +229,22 @@ impl TabBar {
             }
 
             // ── Drag: release — apply reorder ───────────────────────────────
-            if let Some(from_id) = dragging {
-                if ui.ctx().input(|i| i.pointer.primary_released()) {
-                    if let Some(to_id) = drag_over {
-                        if action.is_none() {
+            if let Some(from_id) = dragging
+                && ui.ctx().input(|i| i.pointer.primary_released()) {
+                    if let Some(to_id) = drag_over
+                        && action.is_none() {
                             action = Some(TabAction::Reorder { from: from_id, to: to_id });
                         }
-                    }
                     ui.ctx().data_mut(|d| {
                         d.remove::<WindowId>(drag_id);
                         d.remove::<WindowId>(drag_over_id);
                     });
                 }
-            }
 
             // ── Drag ghost label ────────────────────────────────────────────
-            if let Some(from_id) = dragging {
-                if let Some(p) = ptr {
-                    if let Some(lbl) = tabs.iter()
+            if let Some(from_id) = dragging
+                && let Some(p) = ptr
+                    && let Some(lbl) = tabs.iter()
                         .find(|t| t.window_id == from_id)
                         .map(|t| t.label.as_str())
                     {
@@ -259,8 +257,6 @@ impl TabBar {
                         );
                         ui.ctx().request_repaint();
                     }
-                }
-            }
         });
 
         action

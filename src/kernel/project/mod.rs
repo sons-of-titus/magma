@@ -122,11 +122,10 @@ impl ProjectManager {
     /// — the registry snapshot would otherwise go stale the moment
     /// detection or indexing enriches the active project.
     pub fn sync_active_to_registry(&mut self) {
-        if let (Some(name), proj) = (self.current_project.clone(), self.project.clone()) {
-            if self.projects.get(&name).is_some() {
+        if let (Some(name), proj) = (self.current_project.clone(), self.project.clone())
+            && self.projects.contains_key(&name) {
                 self.projects.insert(name, proj);
             }
-        }
     }
 
     /// Launch one of the project's run configurations through the Task

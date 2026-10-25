@@ -15,6 +15,7 @@ use crate::kernel::render::surface::{Style, Surface};
 /// pass, but the restyle must not drop it) and blanks on trailing cells.
 /// `scroll_left` is the pane's first visible column: cells left of it stay
 /// off-screen, and everything else shifts left by it.
+#[allow(clippy::too_many_arguments)]
 fn paint_cells(surface: &mut Surface, content_x: u16, surf_row: u16, col: usize, w: usize,
                lead: char, style: Style, scroll_left: usize) {
     for k in 0..w {
@@ -30,6 +31,7 @@ fn paint_cells(surface: &mut Surface, content_x: u16, surf_row: u16, col: usize,
 
 /// Apply all highlight layers (base → syntax → semantic → search → custom) and
 /// the visual selection highlight onto `surface`.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_highlights(
     editor: &Editor,
     view: Option<&BufferView>,

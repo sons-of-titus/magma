@@ -153,7 +153,7 @@ impl GpuGlyphAtlas {
         // The grid derives from the live character set — no hand-maintained
         // row constant to drift (the old 12-row constant silently clipped
         // the 331-char set the GPU path had grown to).
-        let rows = (total + ATLAS_COLS - 1) / ATLAS_COLS;
+        let rows = total.div_ceil(ATLAS_COLS);
         let atlas_width  = ATLAS_COLS * ATLAS_CELL_W;
         let atlas_height = rows * ATLAS_CELL_H;
 

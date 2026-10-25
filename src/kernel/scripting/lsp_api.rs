@@ -25,7 +25,7 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
             None => return conv::nil(),
         };
         let args: Vec<String> = (2..argc)
-            .filter_map(|i| conv::get_str(argc, argv, i).map(String::from))
+            .filter_map(|i| conv::get_str(argc, argv, i))
             .collect();
 
         if ed.lsp.get(&language).is_some() {
@@ -161,7 +161,7 @@ unsafe fn with_server_and_doc(
     f: impl FnOnce(&std::sync::Arc<crate::kernel::semantic::lsp::LspHandle>, usize, &std::sync::Arc<std::sync::Mutex<crate::kernel::text_engine::Buffer>>, String),
 ) {
     unsafe {
-        let Some(language) = conv::get_str(argc, argv, 0).map(String::from) else { return };
+        let Some(language) = conv::get_str(argc, argv, 0)else { return };
         let buf_key = if argc > 1 {
             conv::get_int(argc, argv, 1).unwrap_or(-1).max(0) as usize
         } else {
@@ -251,7 +251,7 @@ unsafe fn request_at_cursor(
     params: impl FnOnce(usize, usize) -> serde_json::Value,
 ) {
     unsafe {
-        let Some(language) = conv::get_str(argc, argv, 0).map(String::from) else { return };
+        let Some(language) = conv::get_str(argc, argv, 0)else { return };
         let Some(server) = ed.lsp.get(&language).cloned() else { return };
         let buf_key = crate::kernel::input::focused_buffer_id(ed);
         let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
@@ -269,11 +269,10 @@ unsafe fn request_at_cursor(
         let (buf_key, revision) = focused_revision(ed);
         let mut params = params(line, character);
         if let Some(obj) = params.as_object_mut()
-            && let Some(doc) = obj.get_mut("textDocument") {
-                if let Some(uri_field) = doc.get_mut("uri") {
+            && let Some(doc) = obj.get_mut("textDocument")
+                && let Some(uri_field) = doc.get_mut("uri") {
                     *uri_field = serde_json::Value::String(uri);
                 }
-            }
         server.request(method, params, buf_key, revision);
     }
 }
@@ -281,7 +280,7 @@ unsafe fn request_at_cursor(
 /// (lsp/shutdown language-id) → nil
 unsafe extern "C-unwind" fn c_lsp_shutdown(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        if let Some(language) = conv::get_str(argc, argv, 0).map(String::from) {
+        if let Some(language) = conv::get_str(argc, argv, 0){
             if let Some(server) = ed.lsp.get(&language) {
                 server.shutdown();
             }

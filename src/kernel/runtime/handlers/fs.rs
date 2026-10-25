@@ -61,9 +61,9 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 let label = name.unwrap_or_else(|| path.clone());
                 let dir2 = dir.clone();
                 let path2 = path.clone();
-                ed.background.as_ref().map(|bg| bg.spawn_blocking(move || {
+                if let Some(bg) = ed.background.as_ref() { bg.spawn_blocking(move || {
                     crate::kernel::storage::crash_recovery::drop_snapshot(&dir2, &label, Some(&path2));
-                }));
+                }) }
             }
             ed.events.emit_typed(keys::events::FILE_SAVED, FileSavedPayload { path: path.clone() });
             crate::kernel::debug::resync_after_save(ed, &path);
@@ -116,9 +116,9 @@ fn crash_snapshot_dirty_buffers(ed: &mut Editor) {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             buf.modified() && !buf.ephemeral && !buf.read_only
         })
-        .filter_map(|(_key, arc)| {
+        .map(|(_key, arc)| {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            Some((buf.name.clone(), buf.path.clone(), buf.slice(0, buf.len())))
+            (buf.name.clone(), buf.path.clone(), buf.slice(0, buf.len()))
         })
         .collect();
     if dirty.is_empty() { return };

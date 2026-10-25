@@ -77,6 +77,7 @@ pub trait GutterProvider: Send + Sync {
 
 // ── GutterRegistry ────────────────────────────────────────────────────────────
 
+#[derive(Default)]
 pub struct GutterRegistry {
     pub providers: Vec<Box<dyn GutterProvider>>,
     pub fold_icons: FoldIcons,
@@ -87,16 +88,6 @@ pub struct GutterRegistry {
     pub sign_cache: HashMap<(String, usize, usize), (String, Style)>,
 }
 
-impl Default for GutterRegistry {
-    fn default() -> Self {
-        GutterRegistry {
-            providers: Vec::new(),
-            fold_icons: FoldIcons::default(),
-            line_number_fn: None,
-            sign_cache: HashMap::new(),
-        }
-    }
-}
 
 impl GutterRegistry {
     /// Resolve the display width of a provider, handling dynamic sizing.

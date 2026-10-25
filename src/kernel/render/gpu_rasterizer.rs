@@ -23,7 +23,7 @@ pub fn rasterize_font_atlas(
     cell_h: u32,
     cols: u32,
 ) -> Vec<u8> {
-    let rows   = (chars.len() as u32 + cols - 1) / cols;
+    let rows   = (chars.len() as u32).div_ceil(cols);
     let width  = cols * cell_w;
     let height = rows * cell_h;
     let mut pixels = vec![0u8; (width * height * 4) as usize];

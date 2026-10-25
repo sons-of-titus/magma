@@ -61,7 +61,7 @@ fn plugin_state_set_get_del() {
         scripting::eval(r#"(plugin-state/set "k" "v")"#);
         assert_eq!(ed.plugin_state.get("k").map(|s| s.as_str()), Some("v"));
         scripting::eval(r#"(plugin-state/del "k")"#);
-        assert!(ed.plugin_state.get("k").is_none());
+        assert!(!ed.plugin_state.contains_key("k"));
     });
 }
 

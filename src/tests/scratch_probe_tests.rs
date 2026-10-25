@@ -10,7 +10,7 @@ fn probe_syntax_event_path() {
         }
         for expr in [
             format!(r#"(string (file-extension (buffer/path {key})))"#),
-            format!(r#"(string (length (get *syntax-rules* "rust")))"#),
+            r#"(string (length (get *syntax-rules* "rust")))"#.to_string(),
         ] {
             let r = scripting::eval_result(&expr);
             println!("EXPR: {expr}\n  -> {:?}", r);

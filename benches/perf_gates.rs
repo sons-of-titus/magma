@@ -97,7 +97,7 @@ fn bench_startup(doc_bytes: usize) -> f64 {
     let text = synthetic_doc(doc_bytes / 40);
     // Warm the allocator so the measurement is editor work, not libc init.
     {
-        let mut ed = editor_with(&text);
+        let ed = editor_with(&text);
         let mut surface = Surface::new(120, 40);
         render_frame(&ed, &mut surface);
     }
@@ -105,7 +105,7 @@ fn bench_startup(doc_bytes: usize) -> f64 {
     const RUNS: usize = 10;
     for _ in 0..RUNS {
         let t0 = Instant::now();
-        let mut ed = editor_with(&text);
+        let ed = editor_with(&text);
         let mut surface = Surface::new(120, 40);
         render_frame(&ed, &mut surface); // "ready to type" = first frame painted
         total += t0.elapsed().as_secs_f64() * 1000.0;

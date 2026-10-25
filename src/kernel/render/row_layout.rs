@@ -153,13 +153,12 @@ impl RowLayoutCache {
         glyph_widths: &std::collections::HashMap<char, u8>,
     ) -> Arc<RowLayout> {
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(cached) = map.get(&key) {
-            if cached.revision == revision
+        if let Some(cached) = map.get(&key)
+            && cached.revision == revision
                 && cached.line_len == line_text.len()
                 && cached.tab_width == tab_width {
                     return cached.clone();
                 }
-        }
         let layout = Arc::new(RowLayout::build(line_text, revision, tab_width, glyph_widths));
         if map.len() >= 8_192 {
             // Dropping arbitrary entries is safe — the next frame rebuilds

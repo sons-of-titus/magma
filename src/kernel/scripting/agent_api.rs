@@ -132,7 +132,7 @@ unsafe extern "C-unwind" fn c_agent_list(_argc: i32, _argv: *mut Janet) -> Janet
             janet_table_put(t, conv::keyword("prompt"), conv::string(&s.prompt));
             janet_table_put(t, conv::keyword("status"), conv::keyword(s.status.as_str()));
             let result_val = s.result.as_deref()
-                .map(|r| conv::string(r))
+                .map(conv::string)
                 .unwrap_or_else(conv::nil);
             janet_table_put(t, conv::keyword("result"), result_val);
             janet_array_push(janet_unwrap_array(arr), tbl);

@@ -309,7 +309,7 @@ pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
 /// The automatic popup: only after a word prefix long enough to be useful.
 pub fn auto_trigger_if_word(editor: &mut Editor, key: &str) {
     let word_char = key.chars().count() == 1
-        && key.chars().next().is_some_and(|c| is_word_char(c));
+        && key.chars().next().is_some_and(is_word_char);
     if word_char && word_prefix_len(editor) >= AUTO_TRIGGER_PREFIX {
         trigger(editor);
     }

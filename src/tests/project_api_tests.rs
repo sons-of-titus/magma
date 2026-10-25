@@ -102,7 +102,7 @@ fn project_options_isolated() {
         ed.project_manager.project.options.get("lsp-server").map(|s| s.as_str()),
         Some("rust-analyzer")
     );
-    assert!(ed.project_manager.project.options.get("nonexistent").is_none());
+    assert!(!ed.project_manager.project.options.contains_key("nonexistent"));
 
     std::fs::remove_dir_all(&tmp).ok();
 }
@@ -199,7 +199,7 @@ fn project_buffer_association() {
         ed.project_manager.buffer_projects.get(&key).map(|s| s.as_str()),
         Some("my-project")
     );
-    assert!(ed.project_manager.buffer_projects.get(&999).is_none());
+    assert!(!ed.project_manager.buffer_projects.contains_key(&999));
 
     std::fs::remove_dir_all(&tmp).ok();
 }

@@ -46,7 +46,7 @@ fn main() {
         let start = std::time::Instant::now();
         for i in 0..1_000 {
             let pos = (i * 10) % (buf.len().saturating_sub(1)).max(1);
-            if pos + 1 <= buf.len() {
+            if pos < buf.len() {
                 buf.delete(pos, pos + 1);
             }
         }

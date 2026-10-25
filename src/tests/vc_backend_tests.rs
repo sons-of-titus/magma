@@ -406,7 +406,7 @@ index 1111111..2222222 100644
     for p in &patches {
         assert!(p.starts_with("diff --git a/f.rs b/f.rs"),
             "each patch carries the file header: {p}");
-        assert_eq!(p.matches("@@").count() >= 2, true, "exactly one hunk header");
+        assert!(p.matches("@@").count() >= 2, "exactly one hunk header");
     }
     let hunk_starts = patches.iter().map(|p| p.matches("\n@@").count() + p.starts_with("@@") as usize).sum::<usize>();
     assert_eq!(hunk_starts, 2);

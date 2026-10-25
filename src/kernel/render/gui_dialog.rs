@@ -168,6 +168,7 @@ impl DialogAction {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn upsert_run_config(
     ed: &mut Editor,
     original: Option<String>,

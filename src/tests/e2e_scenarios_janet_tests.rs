@@ -81,7 +81,7 @@ fn s11_switching_projects_isolates_state() {
         // per-project session state restored on open.
         let file = p2.join("main.go");
         std::fs::write(&file, "package main\n").unwrap();
-        open_file_cmd(&mut ed, &file.to_string_lossy().as_ref());
+        open_file_cmd(&mut ed, file.to_string_lossy().as_ref());
         scripting::eval(&format!("(debug/add-breakpoint \"{}\" 1)", file.to_string_lossy()));
         assert_eq!(ed.debug.breakpoints.len(), 1);
         crate::kernel::session::save_if_project(&ed);

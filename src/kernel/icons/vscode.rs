@@ -32,13 +32,11 @@ fn find_manifest(dir: &Path) -> Result<PathBuf, String> {
         .collect();
     files.sort();
     for file in files {
-        if let Ok(bytes) = std::fs::read(&file) {
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                if v.get("iconDefinitions").is_some() {
+        if let Ok(bytes) = std::fs::read(&file)
+            && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes)
+                && v.get("iconDefinitions").is_some() {
                     return Ok(file);
                 }
-            }
-        }
     }
     Err(format!("no icon-theme manifest in {}", dir.display()))
 }

@@ -104,8 +104,8 @@ fn buffer_clear_highlights_layer_removes_only_that_layer() {
     ed.views.get_mut(&key).unwrap().set_highlights_layer("search", vec![(0, 3, "search-face".to_string())]);
     ed.views.get_mut(&key).unwrap().clear_highlights_layer("syntax");
     let view = ed.views.get(&key).unwrap();
-    assert!(view.highlight_layers.get("syntax").is_none());
-    assert!(view.highlight_layers.get("search").is_some());
+    assert!(!view.highlight_layers.contains_key("syntax"));
+    assert!(view.highlight_layers.contains_key("search"));
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn scope_faces_resolve_longest_prefix_wins() {
     let mut ed = helpers::make_editor();
     ed.scope_faces.push(("string".to_string(), "string-face".to_string()));
     ed.scope_faces.push(("string.quoted".to_string(), "quoted-face".to_string()));
-    ed.scope_faces.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    ed.scope_faces.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
 
     // Resolve should match longest prefix first
     let resolved = ed.scope_faces.iter()

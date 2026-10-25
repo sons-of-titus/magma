@@ -16,7 +16,8 @@ about status, this file wins — findings.md narrates, this file tracks.
 | After Wave 1 — correctness fixes | 1,446 pass | 0 warnings |
 | After Wave 2 — semantic loops | 1,459 pass | 0 warnings |
 | After Wave 3 — editor quality + trust | 1,494 pass / 0 fail | 0 warnings |
-| **After Wave 4 — backlog close-out (this program)** | **1,551 pass / 0 fail** | **0 warnings; `--no-default-features` builds again** |
+| **After Wave 4 — backlog close-out** | **1,551 pass / 0 fail** | **0 warnings; `--no-default-features` builds again** |
+| **After GUI overhaul + follow-ups** | **1,590 pass / 0 fail** | **0 warnings; `cargo clippy --all-targets` clean** |
 
 Wave 4 closed every open finding and roadmap item from the audit
 (including the ones the roadmap had marked "deliberately not planned"),
@@ -176,8 +177,10 @@ JetBrains plugin-ecosystem parity.
    machine under concurrent compile load; the isolated core stays flat
    (≤ 14 µs typing p99).  Run `cargo bench --bench perf_gates` on a
    quiet machine when gating.
-7. **clippy**: ~114 lint warnings (up from 92 — new code added some);
-   a lint pass remains a good first-time-contributor task.
+7. **Lints**: `cargo build`, the test build, and `cargo clippy
+   --all-targets` are all warning-free.  A few structural lints keep
+   scoped `#[allow]`s (render-pass arity, module inception,
+   `should_implement_trait`, `type_complexity`).
 8. **R-24 (Editor consolidation)** is deliberately incremental: the
    search-state slice landed; editing/io state follow the same shape.
 
@@ -189,5 +192,5 @@ The audit program is complete.  Candidate follow-ups, in value order:
 1. Interactive verification pass of the GUI surfaces listed in note 1.
 2. R-24 continuation (editing-state consolidation) following the
    SearchState pattern.
-3. LSP-owned vs tool-owned diagnostics merge on the typed substrate.
-4. A clippy lint pass (the 114 warnings are mostly trivial).
+3. `quickfix_list` split (note 3): build problems and search/find results
+   still share one list, so a build and a grep overwrite each other.

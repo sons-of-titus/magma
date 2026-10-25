@@ -438,7 +438,7 @@ pub fn execute_task_complete_callback_scoped(task_id: u64) {
 
 #[cfg(not(feature = "janet"))]
 pub fn init(_editor: &mut Editor) {
-    println!("Janet runtime not available (compile with --features janet)");
+    warn!("Janet runtime not available (compile with --features janet)");
 }
 
 #[cfg(not(feature = "janet"))]

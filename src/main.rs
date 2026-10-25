@@ -11,6 +11,9 @@ use magma::kernel::state::persist;
 #[cfg(feature = "janet")]
 use magma::kernel::scripting::ScriptRuntime;
 use magma::kernel::state::Editor;
+#[cfg(not(feature = "gui"))]
+use logging::error;
+use logging::{info, warn};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -67,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.insert("path".to_string(),
                 magma::kernel::command::args::ArgValue::Path(path));
             if let Err(e) = magma::kernel::command::execute_command(&mut editor, "open-project", &args) {
-                eprintln!("Could not reopen last project: {e}");
+                warn!("Could not reopen last project: {e}");
             }
     }
 
@@ -77,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nth(1)
             .map(|s| s.as_str())
             .unwrap_or("127.0.0.1:7890");
-        eprintln!("Starting Magma server on {addr} (headless)");
+        info!("Starting Magma server on {addr} (headless)");
         return runtime.block_on(async move {
             magma::kernel::server::run_server(editor, bg_receiver, addr).await
         });
@@ -89,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nth(1)
             .map(|s| s.as_str())
             .unwrap_or("127.0.0.1:7890");
-        eprintln!("Connecting to Magma server at {addr}");
+        info!("Connecting to Magma server at {addr}");
         return runtime.block_on(async move {
             client_connect(addr).await
         });
@@ -158,7 +161,7 @@ async fn client_connect(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
                         stdout.flush().await?;
                     }
                     None => {
-                        eprintln!("Server disconnected");
+                        warn!("Server disconnected");
                         break;
                     }
                 }
@@ -213,6 +216,6 @@ fn run_gui(
     _bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let _ = _bg_receiver;
-    eprintln!("Magma requires the 'gui' feature for interactive use; recompile with --features gui, or run --server for headless mode.");
+    error!("Magma requires the 'gui' feature for interactive use; recompile with --features gui, or run --server for headless mode.");
     Ok(())
 }

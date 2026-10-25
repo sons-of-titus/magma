@@ -709,6 +709,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipboard"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1139,6 +1146,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "event"
+version = "0.1.0"
+dependencies = [
+ "logging",
+]
+
+[[package]]
 name = "event-listener"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1169,6 +1183,10 @@ dependencies = [
  "cc",
  "libc",
 ]
+
+[[package]]
+name = "extension"
+version = "0.1.0"
 
 [[package]]
 name = "fastrand"
@@ -1940,6 +1958,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "keymap"
+version = "0.1.0"
+
+[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2091,17 +2113,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "logging"
+version = "0.1.0"
+
+[[package]]
 name = "magma"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
- "arboard",
  "bytemuck",
+ "clipboard",
  "eframe",
+ "event",
  "evil-janet",
+ "extension",
+ "keymap",
  "libc",
  "libloading",
+ "logging",
+ "net",
  "notify",
  "paste",
  "portable-pty",
@@ -2122,6 +2153,7 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "ureq",
+ "util",
 ]
 
 [[package]]
@@ -2252,6 +2284,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "net"
+version = "0.1.0"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]
@@ -4152,6 +4191,13 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "util"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "uuid"

@@ -54,7 +54,7 @@ pub async fn run_server(
         }
         token
     });
-    eprintln!("Magma server token: {token}");
+    info!("Magma server token: {token}");
     debug!("Magma server listening on {addr}");
 
     let (op_tx, op_rx) = mpsc::unbounded_channel::<(ServerOp, Responder)>();

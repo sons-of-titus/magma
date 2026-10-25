@@ -88,7 +88,7 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(arc) = editor.buffers.get(buf_id) {
-                println!("{}", arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name());
+                info!("{}", arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name());
             }
             Ok(())
         },

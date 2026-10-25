@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/logging"]
+resolver = "3"
+
 [package]
 name = "magma"
 version = "0.1.0"
@@ -5,6 +9,7 @@ edition = "2024"
 description = "A programmable text editor – Rust kernel, Janet userland"
 
 [dependencies]
+logging = { path = "crates/logging" }
 anyhow = "1.0"
 thiserror = "1.0"
 regex = "1"

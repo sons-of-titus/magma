@@ -58,7 +58,7 @@ unsafe fn call_janet_fn_with_arg(fn_val: Janet, arg: Janet) { unsafe {
     // error state with the message on the return slot.
     let status = janet_fiber_status(fiber);
     if status != 0 && let Some(text) = janet_to_string(out) {
-        eprintln!("janet event handler error (status {status}): {text}");
+        error!("janet event handler error (status {status}): {text}");
     }
 }}
 

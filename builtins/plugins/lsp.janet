@@ -166,12 +166,13 @@
 
 (event/on "lsp-response"
   (fn [ev]
-    (def method (get ev :method)) (def result (get ev :result))
-    (editor/log-message (string "[lsp/" method "] " (slice result 0 200)))
+    # clamp: responses are routinely shorter than the truncation width
+    (def method (get ev :method)) (def result (or (get ev :result) ""))
+    (editor/log-message (string "[lsp/" method "] " (string/slice result 0 (min 200 (length result)))))
     # Hover and definition results answer a question the user asked —
     # they surface as transient messages, not just the log.
     (when (or (= method "textDocument/hover") (= method "textDocument/definition"))
-      (editor/echo (slice result 0 160)))))
+      (editor/echo (string/slice result 0 (min 160 (length result)))))))
 
 (defn attach-from-event [ev]
   (when-let [id (scan-number (get ev :buffer-id))]

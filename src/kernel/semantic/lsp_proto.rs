@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone)]
 pub enum Inbound {
     Request { id: u64, method: String, params: Value },
-    Response { id: u64, result: Option<Value>, error: Option<String> },
+    Response { id: u64, result: Option<Value>, error: Option<Value> },
     Notification { method: String, params: Value },
 }
 

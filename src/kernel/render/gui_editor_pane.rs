@@ -469,11 +469,17 @@ fn update_hover_card(ui: &egui::Ui, ed: &mut Editor, rect: Rect, char_w: f32, li
             Some((buf.slice(ws, we), diag, offset, buf_id))
         });
 
-    // Ask the attached language server for hover at the dwell position; the
-    // response event splices its text into the visible card.
-    if let Some((_, _, offset, buf_id)) = &target {
-        request_lsp_hover(ed, *buf_id, *offset);
-    }
+    // Ask the language server once per dwelling word.  Requesting on every
+    // repaint would supersede the previous request each frame, and the server
+    // answers each superseded one with ContentModified — a `[lsp/error]` wall.
+    let same_word = matches!(
+        (&target, ed.hover.as_ref()),
+        (Some((w, _, _, _)), Some(card)) if &card.word == w
+    );
+    if !same_word
+        && let Some((_, _, offset, buf_id)) = &target {
+            request_lsp_hover(ed, *buf_id, *offset);
+        }
 
     let new_card = match (&target, ed.hover.as_ref()) {
         (None, _) => None,

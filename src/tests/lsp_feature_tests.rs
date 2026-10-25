@@ -402,3 +402,26 @@ fn stale_code_actions_never_open_the_picker() {
     });
     assert!(ed.quickfix_menu.is_none(), "superseded responses are dropped");
 }
+
+// ── Cancellation errors are not failures ─────────────────────────────────
+
+/// Regression: servers answer superseded requests with ContentModified /
+/// ServerCancelled.  Treating those as errors turned ordinary typing into a
+/// wall of `[lsp/error]` lines.
+#[test]
+fn cancellation_codes_are_recognised() {
+    for code in [-32800, -32801, -32802] {
+        assert!(lsp::is_cancellation(&json!({"code": code, "message": "content modified"})),
+            "code {code} is a cancellation");
+    }
+}
+
+#[test]
+fn real_errors_are_not_cancellations() {
+    for code in [-32700, -32600, -32601, -32602, -32603, -32000] {
+        assert!(!lsp::is_cancellation(&json!({"code": code, "message": "boom"})),
+            "code {code} is a genuine error");
+    }
+    // A malformed error without a numeric code must not be swallowed.
+    assert!(!lsp::is_cancellation(&json!({"message": "no code"})));
+}

@@ -323,7 +323,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
         if let Some(method) = msg.get("method").and_then(Value::as_str) {
             Inbound::Request { id, method: method.into(), params: msg.get("params").cloned().unwrap_or(Value::Null) }
         } else {
-            let error = msg.get("error").map(|e| e.to_string());
+            let error = msg.get("error").cloned();
             Inbound::Response { id, result: msg.get("result").cloned(), error }
         }
     } else if let Some(method) = msg.get("method").and_then(Value::as_str) {
@@ -372,10 +372,17 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
             if let Some(err) = error {
                 // initialize errors complete the handshake with failure.
                 if let Ok(tx) = core.init_signal.lock() {
-                    let _ = tx.send(Err(err.clone()));
+                    let _ = tx.send(Err(err.to_string()));
                 }
                 if let Some(p) = core.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
-                    bg.send_event(lsp_response_event(language_id, "error", &err, p));
+                    // A cancellation means the server moved on (our document
+                    // changed under it), not that anything is broken.  Logging
+                    // it as an error spams the message log on every keystroke.
+                    if is_cancellation(&err) {
+                        debug!("LSP {language_id}: {} cancelled", p.method);
+                    } else {
+                        bg.send_event(lsp_response_event(language_id, "error", &err.to_string(), p));
+                    }
                 }
                 return;
             }
@@ -454,6 +461,16 @@ fn lsp_response_event(language_id: &str, method: &str, result: &str, p: Pending)
         buf_key: p.buf_key,
         revision: p.revision,
     }
+}
+
+/// Is this JSON-RPC error a cancellation rather than a failure?
+///
+/// `-32800` RequestCancelled, `-32801` ContentModified, `-32802`
+/// ServerCancelled.  Servers emit these whenever an in-flight request is
+/// superseded by an edit; surfacing them as errors turns ordinary typing into
+/// a wall of `[lsp/error]` lines.
+pub(crate) fn is_cancellation(err: &Value) -> bool {
+    matches!(err.get("code").and_then(Value::as_i64), Some(-32802..=-32800))
 }
 
 /// Flatten a hover response to display text.

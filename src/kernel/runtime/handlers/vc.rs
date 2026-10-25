@@ -24,6 +24,13 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             }
             let _ = (backend_idx, root);
         }
+        BackgroundEvent::VcPreviewReady { path, text } => {
+            ed.vc.preview_path = Some(path);
+            ed.vc.preview = Some(text);
+        }
+        BackgroundEvent::VcBranchesReady { branches } => {
+            ed.vc.branches = branches;
+        }
         _ => {}
     }
 }

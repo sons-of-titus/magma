@@ -185,6 +185,10 @@ pub enum BackgroundEvent {
         then_refresh: bool,
         result: Result<String, String>,
     },
+    /// An inline diff preview for the Commit tool window finished.
+    VcPreviewReady { path: String, text: String },
+    /// A branch list for the Commit window's branch widget finished.
+    VcBranchesReady { branches: Vec<String> },
     /// An external-change reload read finished off the foreground thread.
     BufferReloaded { buf_key: usize, content: Result<String, String> },
     /// An explicit save's disk write finished; only this exact revision

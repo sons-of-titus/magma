@@ -15,6 +15,7 @@ mod window;
 mod file;
 pub mod vcs;
 pub(crate) mod vc_ops;
+pub(crate) mod vc_actions;
 mod completion;
 mod misc;
 mod project_cmds;
@@ -37,6 +38,7 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     window::register(editor);
     file::register(editor);
     vcs::register(editor);
+    vc_actions::register(editor);
     completion::register(editor);
     misc::register(editor);
     project_cmds::register(editor);

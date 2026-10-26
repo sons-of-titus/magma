@@ -9,41 +9,17 @@
 //!   and foreign schema versions are discarded on load.
 //! - **Observable**: `stats()` exposes files/symbols/queue depth.
 //!
-//! The store lives on the foreground `Editor`; background walk/extract jobs
-//! send typed `IndexRecord` events that are merged here.
+//! The extractor, the record shape, and the JSON-lines format live in the
+//! `index` crate.  The store lives on the foreground `Editor`; background
+//! walk/extract jobs send typed `IndexRecord` events that are merged here.
 
-pub mod extract;
-pub mod store;
+pub use index::{IndexRecord, IndexStats, extract, record_from_text, store};
 
 use std::collections::HashMap;
 
 use crate::kernel::runtime::BackgroundEvent;
 use crate::kernel::state::Editor;
 use extract::IndexedSymbol;
-
-/// A completed per-file index result (also the event payload shape).
-#[derive(Debug, Clone)]
-pub struct IndexRecord {
-    pub path: String,
-    pub mtime_secs: u64,
-    pub size: u64,
-    pub hash: u64,
-    pub language: String,
-    pub symbols: Vec<IndexedSymbol>,
-}
-
-/// Extract an IndexRecord from file content.
-pub fn record_from_text(path: &str, mtime_secs: u64, text: &str) -> IndexRecord {
-    let language = path.rsplit('.').next().unwrap_or("").to_string();
-    IndexRecord {
-        path: path.to_string(),
-        mtime_secs,
-        size: text.len() as u64,
-        hash: store::content_hash(text),
-        language,
-        symbols: extract::extract(path, text),
-    }
-}
 
 /// Reconcile the persistent symbol index with a fresh project walk: keep
 /// only surviving paths, then re-extract the files whose size/mtime stamps
@@ -99,14 +75,6 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
     }
 }
 
-/// Query statistics for the status surface.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct IndexStats {
-    pub files: usize,
-    pub symbols: usize,
-    pub pending: usize,
-}
-
 #[derive(Debug, Default)]
 pub struct IndexStore {
     records: HashMap<String, store::FileRecord>,
@@ -123,7 +91,7 @@ impl IndexStore {
         if self.loaded_root.as_deref() == Some(root) {
             return;
         }
-        self.records = store::load(&store::index_path_for_root(root));
+        self.records = store::load(&store::index_path_for_root(root, &crate::kernel::state::persist::state_dir()));
         self.loaded_root = Some(root.to_string());
         self.dirty = false;
         self.pending = 0;
@@ -209,7 +177,7 @@ impl IndexStore {
             return Ok(());
         }
         let Some(root) = &self.loaded_root else { return Ok(()) };
-        let path = store::index_path_for_root(root);
+        let path = store::index_path_for_root(root, &crate::kernel::state::persist::state_dir());
         let result = store::save(&path, &self.records);
         if result.is_ok() {
             self.dirty = false;

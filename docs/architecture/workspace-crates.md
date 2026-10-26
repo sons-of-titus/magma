@@ -28,6 +28,7 @@ without call-site changes:
 | `kernel::storage::{FileSystem, …}` | `pub use fs::{…}` in `src/kernel/storage/mod.rs` |
 | `kernel::storage::disk::…` | `pub use fs::{DiskFileSystem, atomic_write};` in `src/kernel/storage/disk.rs` |
 | `kernel::session::…` | `pub use session::{SessionState, …};` in `src/kernel/session/mod.rs` |
+| `kernel::index::{extract, store, …}` | `pub use index::{IndexRecord, IndexStats, extract, record_from_text, store};` in `src/kernel/index/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -37,7 +38,8 @@ these paths and must keep compiling unchanged.
 ```
    id ──▶ text ──▶ semantic          vt
 
-   vcs   bgpool   scheduler   snippet   icons   fs   session   logging
+   vcs   bgpool   scheduler   snippet   icons   fs   session   index
+   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -232,6 +234,27 @@ walks buffers/views/breakpoints to build the state, `restore(&mut Editor)`,
 which reopens files and re-applies the state, `save`/`save_if_project`, and
 the `open-file` call those use.
 
+### `crates/index`
+
+The project symbol index format: `IndexedSymbol`, the text-level `extract`
+(keyword patterns per language family, comment lines skipped, qualifiers like
+`pub(crate)` stripped), `IndexRecord` with `record_from_text`, `IndexStats`,
+and the `store` module — `FileRecord`, `SCHEMA_VERSION`, `content_hash`
+(FNV-1a 64), `load`/`save` (JSON lines, temp+rename, foreign schema versions
+discarded, corrupt lines skipped), and
+`index_path_for_root(root, state_dir)`.
+
+`index_path_for_root` takes the state directory as a parameter instead of
+reading it, so the crate never touches global configuration; the kernel
+passes `persist::state_dir()` at its two call sites.
+
+Kept in the kernel (`src/kernel/index/mod.rs`): `IndexStore` (the `Editor`
+field that merges records, tracks pending work and dirty state, and flushes)
+and `reconcile_project_index`, which walks the project, finds stale stamps,
+and spawns chunked extraction on the indexing lane. Both are re-exported
+paths, so `kernel::index::extract::…` and `kernel::index::store::…` still
+resolve.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -268,7 +291,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1676 passed (1610 pre-existing + 66 new crate tests)
+cargo test --workspace          # 1684 passed (1610 pre-existing + 74 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -279,6 +302,7 @@ cargo test -p snippet           # tab stops, placeholders, built-in expansions
 cargo test -p icons             # lookup precedence, folder icons, VS Code manifests
 cargo test -p fs                # sync/async round trips, atomic write, error mapping
 cargo test -p session           # session file round trip, defaults, corrupt-file handling
+cargo test -p index             # extraction per language family, index format round trip/versioning
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

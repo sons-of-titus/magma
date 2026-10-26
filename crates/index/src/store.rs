@@ -3,7 +3,7 @@
 //! skipped on load — the index rebuilds that file instead of failing.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::extract::IndexedSymbol;
 
@@ -22,14 +22,14 @@ pub struct FileRecord {
     pub symbols: Vec<IndexedSymbol>,
 }
 
-/// Where the index for a project root lives, under the Magma data dir.
-pub fn index_path_for_root(root: &str) -> PathBuf {
+/// Where the index for a project root lives, under the given state dir.
+pub fn index_path_for_root(root: &str, state_dir: &Path) -> PathBuf {
     let mut hash: u64 = 0xcbf29ce484222325;
     for b in root.as_bytes() {
         hash ^= *b as u64;
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    crate::kernel::state::persist::state_dir()
+    state_dir
         .join("index")
         .join(format!("{hash:016x}"))
         .join("index.jsonl")
@@ -37,7 +37,7 @@ pub fn index_path_for_root(root: &str) -> PathBuf {
 
 /// Load every well-formed record.  A wrong schema version discards
 /// everything (the caller re-indexes); a corrupted line only skips itself.
-pub fn load(path: &std::path::Path) -> HashMap<String, FileRecord> {
+pub fn load(path: &Path) -> HashMap<String, FileRecord> {
     let Ok(text) = std::fs::read_to_string(path) else {
         return HashMap::new();
     };
@@ -64,7 +64,7 @@ pub fn load(path: &std::path::Path) -> HashMap<String, FileRecord> {
 }
 
 /// Persist atomically.  A failed write leaves the previous index intact.
-pub fn save(path: &std::path::Path, records: &HashMap<String, FileRecord>) -> Result<(), String> {
+pub fn save(path: &Path, records: &HashMap<String, FileRecord>) -> Result<(), String> {
     let mut text = format!("{HEADER} v{SCHEMA_VERSION}\n");
     let mut recs: Vec<&FileRecord> = records.values().collect();
     recs.sort_by(|a, b| a.path.cmp(&b.path));
@@ -89,50 +89,4 @@ pub fn content_hash(text: &str) -> u64 {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     hash
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn save_then_load_round_trips_and_is_versioned() {
-        let dir = std::env::temp_dir().join(format!("magma-index-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("index.jsonl");
-
-        let mut records = HashMap::new();
-        records.insert("a.rs".into(), FileRecord {
-            path: "a.rs".into(), mtime_secs: 1, size: 2, hash: 3,
-            language: "rust".into(),
-            symbols: vec![IndexedSymbol { name: "f".into(), kind: "fn".into(), line: 0 }],
-        });
-        save(&path, &records).unwrap();
-        let loaded = load(&path);
-        assert_eq!(loaded, records);
-
-        // Schema bump discards the old world instead of misreading it.
-        let mixed = format!("{HEADER} v99\n{}\n", serde_json::to_string(&records["a.rs"]).unwrap());
-        std::fs::write(&path, mixed).unwrap();
-        assert!(load(&path).is_empty(), "a foreign schema version must not load");
-
-        // A corrupted line skips itself; good lines survive.
-        let good = serde_json::to_string(&records["a.rs"]).unwrap();
-        std::fs::write(&path, format!("{HEADER} v{SCHEMA_VERSION}\n{{corrupt\n{good}\n")).unwrap();
-        let loaded = load(&path);
-        assert_eq!(loaded.len(), 1);
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn missing_file_loads_empty() {
-        assert!(load(std::path::Path::new("/nonexistent/index.jsonl")).is_empty());
-    }
-
-    #[test]
-    fn content_hash_is_stable_and_discriminating() {
-        assert_eq!(content_hash("abc"), content_hash("abc"));
-        assert_ne!(content_hash("abc"), content_hash("abd"));
-    }
 }

@@ -23,6 +23,7 @@ without call-site changes:
 | `kernel::terminal::ansi::…`, `kernel::terminal::screen::…` | `pub use vt::{ansi, screen};` in `src/kernel/terminal/mod.rs` |
 | `kernel::vc::…` | `pub use vcs::…` in `src/kernel/vc/mod.rs` |
 | `kernel::scheduler::…` | `pub use scheduler::…` in `src/kernel/scheduler/mod.rs` |
+| `kernel::snippet::…` | `pub use snippet::{TabStop, parse_tabstops};` in `src/kernel/snippet/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -32,8 +33,8 @@ these paths and must keep compiling unchanged.
 ```
    id ──▶ text ──▶ semantic          vt
 
-   vcs   bgpool   scheduler   logging   util
-   event   keymap   extension   net   clipboard
+   vcs   bgpool   scheduler   snippet   logging
+   util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
      │                         magma (kernel)                      │
@@ -167,6 +168,22 @@ variant the foreground already handles. Call sites still read
 incoming events (`update_progress`, `mark_completed`, `mark_failed`) so the
 event bus subscribers see them in the same order as before.
 
+### `crates/snippet`
+
+The snippet engine: `TabStop`, `parse_tabstops` (brace placeholders,
+`$N` stops, `$0` final cursor), `expand(trigger)`, and the built-in snippet
+table. It is pure — no editor state, no buffer access.
+
+Kept in the kernel (`src/kernel/snippet/mod.rs`): the two editor-facing
+stubs the command layer already calls, `expand_snippet(&Editor, trigger)`
+and `register_snippet(&mut Editor, …)`. The first delegates to
+`snippet::expand`; the second is still a no-op because snippets are not yet
+stored on `Editor`.
+
+Known limitation carried over unchanged: a bare multi-digit stop (`$12`)
+does not terminate in `parse_tabstops`. Built-in expansions use only the
+`${…}` form, so it is unreachable from the current UI.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -203,13 +220,14 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1626 passed (1610 pre-existing + 16 scheduler)
+cargo test --workspace          # 1638 passed (1610 pre-existing + 16 scheduler + 12 snippet)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
 cargo test -p vcs               # backends, parsers, live-git round trips
 cargo test -p bgpool            # lane submission and event-channel tests
 cargo test -p scheduler         # work bookkeeping, progress, cancellation, host wiring
+cargo test -p snippet           # tab stops, placeholders, built-in expansions
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

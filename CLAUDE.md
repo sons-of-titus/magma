@@ -73,6 +73,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/vcs` | Version-control layer: `VcBackend` trait, git/hg/svn/jj backends, shell-template backends, remote-operation dispatch and command helpers (no editor state) |
 | `crates/bgpool` | Background work pool: tokio runtime handle, priority lanes, coalescing, and the event channel to the foreground; generic over the event type |
 | `crates/scheduler` | Work bookkeeping: stable work ids, status, progress, cooperative cancellation, and task/process id mapping; no runtime, no editor types |
+| `crates/snippet` | Snippet engine: tab-stop parsing, `${…}` placeholders, and the built-in snippet table; no editor state |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

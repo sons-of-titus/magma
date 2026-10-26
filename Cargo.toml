@@ -21,6 +21,7 @@ members = [
     "crates/font",
     "crates/view_tree",
     "crates/surface",
+    "crates/gpu",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -58,6 +59,7 @@ debug_model = { path = "crates/debug_model" }
 font = { path = "crates/font" }
 view_tree = { path = "crates/view_tree" }
 surface = { path = "crates/surface" }
+gpu = { path = "crates/gpu" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }
@@ -137,4 +139,4 @@ harness = false
 [features]
 default = ["janet", "gui"]
 janet = ["dep:evil-janet"]
-gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph", "dep:rfd", "dep:resvg"]
+gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph", "dep:rfd", "dep:resvg", "gpu/gui"]

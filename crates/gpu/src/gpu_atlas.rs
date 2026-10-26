@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::kernel::render::surface::Surface;
+use surface::Surface;
 
 // ── Atlas geometry constants ──────────────────────────────────────────────────
 
@@ -179,7 +179,7 @@ impl GpuGlyphAtlas {
     #[cfg(feature = "gui")]
     pub fn rasterize(&mut self, font_bytes: &[u8], font_size: f32) {
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
-        self.atlas_pixels = crate::kernel::render::gpu_rasterizer::rasterize_font_atlas(
+        self.atlas_pixels = crate::gpu_rasterizer::rasterize_font_atlas(
             font_bytes, font_size, &chars, ATLAS_CELL_W, ATLAS_CELL_H, ATLAS_COLS,
         );
         self.dirty = true;

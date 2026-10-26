@@ -10,10 +10,10 @@ pub mod gutter;
 pub mod gutter_providers;
 pub(crate) mod highlight_pass;
 pub mod row_layout;
-pub mod gpu_atlas;
+pub use gpu::gpu_atlas;
 pub mod decorations;
 #[cfg(feature = "gui")]
-pub mod gpu_paint_callback;
+pub use gpu::gpu_paint_callback;
 #[cfg(feature = "gui")]
 pub mod gui;
 #[cfg(feature = "gui")]
@@ -78,8 +78,6 @@ pub(crate) mod gui_debug_tool;
 mod gui_agent_tool;
 #[cfg(feature = "gui")]
 pub(crate) mod gui_terminal_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod gpu_rasterizer;
 #[cfg(feature = "gui")]
 pub(crate) mod tool_window;
 #[cfg(feature = "gui")]

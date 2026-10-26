@@ -37,6 +37,7 @@ without call-site changes:
 | `kernel::state::{font, FontConfig, ContextFont}` | `pub use font;` + `pub use font::{ContextFont, FontConfig};` in `src/kernel/state/mod.rs` |
 | `kernel::render::view_tree::…` | `pub use view_tree;` in `src/kernel/render/mod.rs` |
 | `kernel::render::surface::…` | `pub use surface;` in `src/kernel/render/mod.rs` |
+| `kernel::render::gpu_atlas::…`, `gpu_paint_callback::…` | `pub use gpu::gpu_atlas;` / `pub use gpu::gpu_paint_callback;` in `src/kernel/render/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -48,7 +49,7 @@ these paths and must keep compiling unchanged.
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
    project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
-   debug_model   font   view_tree ──▶ id   surface   logging
+   debug_model   font   view_tree ──▶ id   surface ◀── gpu   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -413,6 +414,30 @@ renderer and the GUI paint callback read the grid.
 `kernel::render::surface::{Surface, Cell, Style}` still resolves for every
 view and test.
 
+### `crates/gpu`
+
+The GPU text path, split from the kernel's render layer:
+
+- `gpu_atlas` — the CPU-side atlas: `GpuGlyphAtlas` with its UV grid for the
+  baked character set (printable ASCII, box-drawing, arrows, Latin-1), the
+  placeholder solid-white pixel buffer, the dirty flag, `build_glyph_instances`
+  and `build_rect_instances` from a `Surface`, and the vertex expanders.  No
+  wgpu types, so it is testable without a device.
+- `gpu_rasterizer` (`gui` feature) — `ab_glyph` rasterization of the atlas,
+  centred per cell with a baseline from the font's ascent metrics and a
+  solid-white fallback when the face fails to parse.
+- `gpu_paint_callback` (`gui` feature) — the `egui_wgpu` paint callback that
+  creates the atlas texture and draws glyph and rect vertices.
+
+The crate depends on `surface` for the grid and enables its `gui` feature
+from the kernel's `gui` feature, so `--no-default-features` builds only the
+atlas.  `src/kernel/render/mod.rs` re-exports `gpu_atlas` and
+`gpu_paint_callback`, so `kernel::render::gpu_atlas::…` and
+`kernel::render::gpu_paint_callback::…` still resolve.  `gpu_rasterizer` was
+`pub(crate)` and is now reached through `gpu::gpu_rasterizer` (its one test
+call site moved with it).
+
+## Remaining blockers
 ## Remaining blockers
 ## Remaining blockers
 ## Remaining blockers
@@ -451,7 +476,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1729 passed (1610 pre-existing + 119 new crate tests)
+cargo test --workspace          # 1737 passed (1610 pre-existing + 127 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -471,6 +496,8 @@ cargo test -p debug_model       # session lifecycle, console cap, sequence numbe
 cargo test -p font              # defaults, bundled bootstrap, candidate ordering
 cargo test -p view_tree         # geometry, splits, tabs, focus, reorder
 cargo test -p surface           # bounded writes, text, clear, fill, resize
+cargo test -p gpu               # atlas layout, instance builders, vertex expansion
+cargo test -p gpu --features gui  # + glyph rasterization and the paint callback
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

@@ -249,7 +249,7 @@ fn rasterizer_draws_all_glyphs_not_one_cell() {
     // fix composes bounds().min with the draw coordinates.
     let bytes = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
     let chars: Vec<char> = crate::kernel::render::gpu_atlas::ATLAS_CHARS.chars().collect();
-    let px = crate::kernel::render::gpu_rasterizer::rasterize_font_atlas(bytes, 15.0, &chars, 16, 24, 16);
+    let px = gpu::gpu_rasterizer::rasterize_font_atlas(bytes, 15.0, &chars, 16, 24, 16);
 
     // The reserved solid-white first cell is intact.
     assert_eq!(&px[0..4], &[255, 255, 255, 255]);

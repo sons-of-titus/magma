@@ -10,8 +10,12 @@
 //! operation on a background thread without moving a trait object.
 
 pub mod backends;
+pub mod diff;
+pub mod event;
 pub mod remote;
 
+pub use diff::DiffData;
+pub use event::Event;
 pub use remote::{VcRemoteOp, run_cmd, run_cmd_stdin, run_op, status_for_root};
 
 #[cfg(test)]

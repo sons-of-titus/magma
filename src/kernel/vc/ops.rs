@@ -1,19 +1,11 @@
 //! Editor-side model for the side-by-side diff view.
 //!
 //! The repository operations that produce these values live in the `vcs`
-//! crate; the types here describe editor layout, so they reference window IDs
-//! and layout constraints and stay in the kernel.
+//! crate; the layout types here reference window IDs and layout constraints,
+//! so they stay in the kernel.  `DiffData` itself is pure data and lives in
+//! `vcs`, re-exported here so `kernel::vc::DiffData` still resolves.
 
-/// The three pieces the side-by-side editor diff renders.
-#[derive(Debug, Clone, Default)]
-pub struct DiffData {
-    /// File content at HEAD — the left pane.
-    pub head: String,
-    /// Working-tree content — the right pane.
-    pub work: String,
-    /// Zero-context diff; its hunks drive per-hunk stage/discard.
-    pub patch: String,
-}
+pub use vcs::DiffData;
 
 /// One pane the diff view concealed while open — enough to put the user's
 /// editor layout back exactly as it was.

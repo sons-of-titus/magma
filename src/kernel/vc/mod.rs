@@ -8,13 +8,10 @@
 pub use vcs::backends;
 pub mod ops;
 
-mod event;
-pub use event::Event;
-
 pub use ops::{DiffData, DiffView, HiddenPane};
 pub use vcs::{
-    BranchInfo, FileStatus, StashEntry, VcBackend, VcRemoteOp, VcStatus, run_cmd, run_cmd_stdin,
-    run_op, status_for_root,
+    BranchInfo, Event, FileStatus, StashEntry, VcBackend, VcRemoteOp, VcStatus, run_cmd,
+    run_cmd_stdin, run_op, status_for_root,
 };
 
 use std::path::{Path, PathBuf};

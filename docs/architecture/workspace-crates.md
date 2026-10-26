@@ -117,9 +117,10 @@ still resolve.
 ### `crates/vcs`
 
 The version-control abstraction: the `VcBackend` trait, its data types
-(`VcStatus`, `FileStatus`, `BranchInfo`, `StashEntry`), the git/hg/svn/jj
-backends, shell-template backends for plugin-registered VCSes, and the
-status/diff/branch/stash/hunk parsers.
+(`VcStatus`, `FileStatus`, `BranchInfo`, `StashEntry`, `DiffData`), the
+git/hg/svn/jj backends, shell-template backends for plugin-registered VCSes,
+the status/diff/branch/stash/hunk parsers, and the background-event
+vocabulary (`Event`).
 
 `remote.rs` holds `VcRemoteOp`, `run_op`, `status_for_root`, and the
 `run_cmd`/`run_cmd_stdin` process primitives. Backends are stateless CLI
@@ -129,7 +130,8 @@ across threads.
 Kept in the kernel (`src/kernel/vc/`): `VcState` — the session state on
 `Editor` (active backend, repo root, last status, diff view, branches,
 stashes) — and `ops.rs` with the side-by-side diff layout
-(`DiffData`/`HiddenPane`/`DiffView`). Both are editor state.
+(`HiddenPane`/`DiffView`). Both are editor state; `DiffData` is re-exported
+from the crate so `kernel::vc::DiffData` still resolves.
 
 Parsers the kernel calls (`split_hunks`, `parse_branch_lines`,
 `parse_stash_lines`) are `pub` in the crate and reached through the re-export
@@ -253,7 +255,8 @@ The project subsystem follows the same recipe:
 
 The version-control subsystem follows the same recipe:
 
-- `kernel::vc::Event` (`src/kernel/vc/event.rs`) owns `StatusFetched`,
+- `vc::Event` (`crates/vcs/src/event.rs`, re-exported as `kernel::vc::Event`)
+  owns `StatusFetched`,
   `OpDone`, `BranchesReady`, `StashListed`, and `DiffReady`.
 - The status/op/branch/stash/diff workers send
   `BackgroundEvent::Vc(vc::Event)` on the same channel.
@@ -587,7 +590,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1762 passed (1742 baseline + 20 event-boundary regression tests)
+cargo test --workspace          # 1768 passed (1742 baseline + 20 event-boundary regression tests + 6 crate-level vocabulary tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

@@ -1,0 +1,5 @@
+[package]
+name = "vcs"
+version = "0.1.0"
+edition = "2024"
+description = "Version-control backend abstraction for Magma (git, hg, svn, jj)"

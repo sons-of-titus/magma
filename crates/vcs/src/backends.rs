@@ -50,7 +50,7 @@ pub(crate) fn parse_porcelain_z(raw: &str)
 }
 
 /// Parse `git branch --list` lines: `* current`, `  other`.
-pub(crate) fn parse_branch_lines(raw: &str) -> Vec<BranchInfo> {
+pub fn parse_branch_lines(raw: &str) -> Vec<BranchInfo> {
     raw.lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| BranchInfo {
@@ -61,7 +61,7 @@ pub(crate) fn parse_branch_lines(raw: &str) -> Vec<BranchInfo> {
 }
 
 /// Parse `git stash list` records `stash@{N}: msg on branch: detail`.
-pub(crate) fn parse_stash_lines(raw: &str) -> Vec<StashEntry> {
+pub fn parse_stash_lines(raw: &str) -> Vec<StashEntry> {
     raw.lines()
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| {
@@ -76,7 +76,7 @@ pub(crate) fn parse_stash_lines(raw: &str) -> Vec<StashEntry> {
 
 /// Split a unified diff into single-hunk patches, each carrying the full
 /// file header so `git apply --cached` accepts it verbatim.
-pub(crate) fn split_hunks(diff: &str) -> Vec<String> {
+pub fn split_hunks(diff: &str) -> Vec<String> {
     let mut header = String::new();
     let mut hunks: Vec<Vec<&str>> = Vec::new();
     for line in diff.lines() {

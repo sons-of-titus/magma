@@ -2161,6 +2161,7 @@ dependencies = [
  "unicode-width",
  "ureq",
  "util",
+ "vcs",
  "vt",
 ]
 
@@ -4241,6 +4242,10 @@ dependencies = [
  "serde_core",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "vcs"
+version = "0.1.0"
 
 [[package]]
 name = "vello_common"

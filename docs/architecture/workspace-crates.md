@@ -21,6 +21,7 @@ without call-site changes:
 | `kernel::text_engine::…` | `pub use text as text_engine;` |
 | `kernel::semantic::<core module>::…` | `pub use semantic::<module>;` in `src/kernel/semantic/mod.rs` |
 | `kernel::terminal::ansi::…`, `kernel::terminal::screen::…` | `pub use vt::{ansi, screen};` in `src/kernel/terminal/mod.rs` |
+| `kernel::vc::…` | `pub use vcs::…` in `src/kernel/vc/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -30,7 +31,7 @@ these paths and must keep compiling unchanged.
 ```
                        logging
                           |
-   util   event   keymap  extension   net   clipboard   id
+   util   event   keymap  extension   net   clipboard   id   vcs
                                                     |
                                                   text        vt
                                                     |
@@ -93,6 +94,28 @@ The kernel's `kernel::terminal` keeps the PTY sessions
 `kernel::terminal::ansi::feed` and `kernel::terminal::screen::TerminalScreen`
 still resolve.
 
+### `crates/vcs`
+
+The version-control abstraction: the `VcBackend` trait, its data types
+(`VcStatus`, `FileStatus`, `BranchInfo`, `StashEntry`), the git/hg/svn/jj
+backends, shell-template backends for plugin-registered VCSes, and the
+status/diff/branch/stash/hunk parsers.
+
+`remote.rs` holds `VcRemoteOp`, `run_op`, `status_for_root`, and the
+`run_cmd`/`run_cmd_stdin` process primitives. Backends are stateless CLI
+wrappers, so `run_op` re-detects one by name instead of moving a trait object
+across threads.
+
+Kept in the kernel (`src/kernel/vc/`): `VcState` — the session state on
+`Editor` (active backend, repo root, last status, diff view, branches,
+stashes) — and `ops.rs` with the side-by-side diff layout
+(`DiffData`/`HiddenPane`/`DiffView`). Both are editor state.
+
+Parsers the kernel calls (`split_hunks`, `parse_branch_lines`,
+`parse_stash_lines`) are `pub` in the crate and reached through the re-export
+as `kernel::vc::backends::…`; the status parser (`parse_porcelain_z`) stays
+crate-internal.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -127,6 +150,7 @@ cargo test --workspace          # 1604 passed before and after the extraction
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
+cargo test -p vcs               # backends, parsers, live-git round trips
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

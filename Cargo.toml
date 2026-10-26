@@ -5,6 +5,7 @@ members = [
     "crates/text",
     "crates/semantic",
     "crates/vt",
+    "crates/vcs",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -26,6 +27,7 @@ id = { path = "crates/id" }
 text = { path = "crates/text" }
 semantic = { path = "crates/semantic" }
 vt = { path = "crates/vt" }
+vcs = { path = "crates/vcs" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

@@ -1,0 +1,10 @@
+[package]
+name = "pty"
+version = "0.1.0"
+edition = "2024"
+description = "PTY-backed terminal sessions for Magma: child lifetime, screen, and tab naming"
+
+[dependencies]
+portable-pty = "0.9.0"
+util = { path = "../util" }
+vt = { path = "../vt" }

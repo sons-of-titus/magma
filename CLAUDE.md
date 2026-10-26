@@ -87,6 +87,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/view_tree` | Pane layout tree: splits, tabs, floats, weights, geometry redistribution, focus, and scroll markers; no rendering |
 | `crates/surface` | Char-grid draw target: `Surface`, `Cell`, `Style`, bounded writes, and style fills; no painting |
 | `crates/gpu` | GPU text path: glyph atlas and UV layout, `ab_glyph` rasterization, and the wgpu paint callback (`gui` feature); no editor state |
+| `crates/pty` | PTY terminal sessions: child/PTY handles, input, resize, tree kill, and tab naming (`rename`, gapless `renumber_all`); no manager registry |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

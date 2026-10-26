@@ -22,6 +22,7 @@ members = [
     "crates/view_tree",
     "crates/surface",
     "crates/gpu",
+    "crates/pty",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -60,6 +61,7 @@ font = { path = "crates/font" }
 view_tree = { path = "crates/view_tree" }
 surface = { path = "crates/surface" }
 gpu = { path = "crates/gpu" }
+pty = { path = "crates/pty" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

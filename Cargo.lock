@@ -2205,6 +2205,7 @@ dependencies = [
  "paste",
  "portable-pty",
  "project",
+ "pty",
  "regex",
  "resvg",
  "rfd",
@@ -3128,6 +3129,15 @@ name = "project"
 version = "0.1.0"
 dependencies = [
  "run_config",
+]
+
+[[package]]
+name = "pty"
+version = "0.1.0"
+dependencies = [
+ "portable-pty",
+ "util",
+ "vt",
 ]
 
 [[package]]

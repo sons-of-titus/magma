@@ -91,17 +91,17 @@ impl TerminalManager {
         } else {
             format!("{base} {}", args.join(" "))
         };
-        self.sessions.push(TerminalSession {
+        self.sessions.push(TerminalSession::new(
             id,
-            title: label.clone(),
-            auto_label: Some(label),
-            cwd: cwd.to_path_buf(),
-            screen: screen::TerminalScreen::default(),
-            writer: Arc::new(Mutex::new(writer)),
-            master: Mutex::new(pair.master),
-            child_killer: Mutex::new(killer),
+            label.clone(),
+            Some(label),
+            cwd.to_path_buf(),
+            screen::TerminalScreen::default(),
+            Arc::new(Mutex::new(writer)),
+            Mutex::new(pair.master),
             pid,
-        });
+            Mutex::new(killer),
+        ));
         self.renumber();
 
         let reader_sender = sender.clone();
@@ -163,26 +163,14 @@ impl TerminalManager {
     /// a double-click accident.
     pub fn rename(&mut self, id: usize, name: &str) {
         if let Some(s) = self.get_mut(id) {
-            if s.title == name {
-                return;
-            }
-            s.title = name.to_string();
-            s.auto_label = None;
+            s.rename(name);
         }
     }
 
     /// Regenerate default tab names as "{label} {index}" with gapless,
     /// per-label numbering; user-renamed tabs are skipped untouched.
     fn renumber(&mut self) {
-        let mut counters: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
-        for s in &mut self.sessions {
-            if let Some(label) = s.auto_label.as_deref() {
-                let n = counters.entry(label).or_insert(0);
-                *n += 1;
-                s.title = format!("{label} {}", *n);
-            }
-        }
+        TerminalSession::renumber_all(&mut self.sessions);
     }
 
     /// Kill and remove a session for good.  If it held the keyboard, focus

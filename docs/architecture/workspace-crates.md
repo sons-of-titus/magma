@@ -38,6 +38,7 @@ without call-site changes:
 | `kernel::render::view_tree::…` | `pub use view_tree;` in `src/kernel/render/mod.rs` |
 | `kernel::render::surface::…` | `pub use surface;` in `src/kernel/render/mod.rs` |
 | `kernel::render::gpu_atlas::…`, `gpu_paint_callback::…` | `pub use gpu::gpu_atlas;` / `pub use gpu::gpu_paint_callback;` in `src/kernel/render/mod.rs` |
+| `kernel::terminal::session::TerminalSession` | `pub use pty::TerminalSession;` in `src/kernel/terminal/session.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -50,6 +51,7 @@ these paths and must keep compiling unchanged.
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
    project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
    debug_model   font   view_tree ──▶ id   surface ◀── gpu   logging
+   pty ──▶ util, vt
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -437,9 +439,32 @@ atlas.  `src/kernel/render/mod.rs` re-exports `gpu_atlas` and
 `pub(crate)` and is now reached through `gpu::gpu_rasterizer` (its one test
 call site moved with it).
 
-## Remaining blockers
-## Remaining blockers
-## Remaining blockers
+### `crates/pty`
+
+One managed PTY session: the child's pid, the writer half of the master, the
+master itself (behind a `Mutex`, since `dyn MasterPty` is `Send` but not
+`Sync` and `Editor` must stay `Sync`), the `ChildKiller` handle used after the
+child moves to the waiter thread, and the `TerminalScreen` the reader thread
+fills.  Sessions never live in the buffer slab.
+
+The crate owns the lifecycle seam: `TerminalSession::new`, `send_input`,
+`resize`, and `kill` (a whole-group kill through `util::proctree`, then the
+kill handle).  It also owns tab naming: `rename` marks the name user-owned and
+returns whether it changed, and `renumber_all` regenerates `"{label} {index}"`
+with gapless per-label numbering while skipping renamed tabs.
+
+`TerminalManager` — the session vector, the focused id, key routing, spawning,
+and event pumping — stays in the kernel at `src/kernel/terminal/mod.rs`, which
+now builds sessions through the constructor and delegates `rename`/`renumber`
+to the crate.  `src/kernel/terminal/session.rs` is a re-export shim, so
+`kernel::terminal::session::TerminalSession` and
+`kernel::terminal::TerminalSession` still resolve.
+
+Crate tests spawn real `sh -c 'read _'` / `sleep 30` children under a PTY:
+renumbering (gapless per label, renamed tabs untouched), the rename
+changed/unchanged return, input and resize reaching the master, kill
+terminating the child, and kill through the handle when the pid is absent.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -476,7 +501,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1737 passed (1610 pre-existing + 127 new crate tests)
+cargo test --workspace          # 1742 passed (1610 pre-existing + 132 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -498,6 +523,7 @@ cargo test -p view_tree         # geometry, splits, tabs, focus, reorder
 cargo test -p surface           # bounded writes, text, clear, fill, resize
 cargo test -p gpu               # atlas layout, instance builders, vertex expansion
 cargo test -p gpu --features gui  # + glyph rasterization and the paint callback
+cargo test -p pty               # real PTY children: input, resize, kill, tab naming
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

@@ -2174,10 +2174,12 @@ dependencies = [
  "notify",
  "paste",
  "portable-pty",
+ "project",
  "regex",
  "resvg",
  "rfd",
  "ropey",
+ "run_config",
  "scheduler",
  "semantic",
  "serde",
@@ -3089,6 +3091,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
+name = "project"
+version = "0.1.0"
+dependencies = [
+ "run_config",
+]
+
+[[package]]
 name = "pxfm"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3335,6 +3344,14 @@ name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
+name = "run_config"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "rustc-hash"

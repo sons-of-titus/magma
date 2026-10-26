@@ -29,6 +29,8 @@ without call-site changes:
 | `kernel::storage::disk::…` | `pub use fs::{DiskFileSystem, atomic_write};` in `src/kernel/storage/disk.rs` |
 | `kernel::session::…` | `pub use session::{SessionState, …};` in `src/kernel/session/mod.rs` |
 | `kernel::index::{extract, store, …}` | `pub use index::{IndexRecord, IndexStats, extract, record_from_text, store};` in `src/kernel/index/mod.rs` |
+| `kernel::run_config::{RunConfig, defaults_for}` | `pub use run_config::{RunConfig, defaults_for};` in `src/kernel/run_config/mod.rs` |
+| `kernel::project::{detect, gitignore, toolchain}` | `pub use project::{detect, gitignore, toolchain};` in `src/kernel/project/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -39,7 +41,7 @@ these paths and must keep compiling unchanged.
    id ──▶ text ──▶ semantic          vt
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
-   logging
+   project ──▶ run_config   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -255,6 +257,43 @@ and spawns chunked extraction on the indexing lane. Both are re-exported
 paths, so `kernel::index::extract::…` and `kernel::index::store::…` still
 resolve.
 
+### `crates/run_config`
+
+The run-configuration shape: `RunConfig` (name, command, args, cwd, env,
+`build_before_run`, `debuggable`), `to_launch_args` for the DAP `launch`
+request, `resolve_cwd` (absent/blank = project root, relative joins the root,
+absolute as-is), and `defaults_for(language)` — the build/test/run seeds for
+rust, go, node, make, python, cmake, maven, and gradle.
+
+Kept in the kernel (`src/kernel/run_config/mod.rs`): `RunConfigManager`
+(`configs`/`active`/`pending`, `named`, `names`, `upsert`, `remove`,
+`load`/`save`/`load_or_defaults`, and the `launch`/`launch_direct`/`stop`
+paths that need the task scheduler and background handle), plus the
+editor-facing `upsert_config`, `continue_pending`, and `announce_launch`.
+`RunConfig` and `defaults_for` are re-exported.
+
+### `crates/project`
+
+Three editor-free helpers used by the project layer:
+
+- `detect` — the marker-file table (`Cargo.toml`, `go.mod`, …) with first
+  match winning, DAP adapter candidates per language, and `find_adapter`,
+  which resolves the first installed candidate through `toolchain`.
+- `gitignore` — the common `.gitignore` subset: comments, blanks, `*`/`?`
+  within a segment, `**` across segments, directory-only rules, anchoring,
+  and negation with last-rule-wins, plus the root-first `IgnoreStack`.
+- `toolchain` — `find`/`find_in`/`find_extended`: `$PATH`, then well-known
+  install roots (keg-only Homebrew LLVM, MacPorts, CodeLLDB), then `xcrun
+  --find` on macOS.
+
+`detect`'s "every detected language has defaults" guard depends on
+`run_config::defaults_for`, which is why this crate sits on top of
+`run_config`.
+
+Kept in the kernel (`src/kernel/project/mod.rs`): `Project`,
+`ProjectManager`, workspace membership, and `refresh_files` — the walk that
+drives `gitignore::IgnoreStack` and needs editor state and Janet handlers.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -291,7 +330,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1684 passed (1610 pre-existing + 74 new crate tests)
+cargo test --workspace          # 1697 passed (1610 pre-existing + 87 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -303,6 +342,8 @@ cargo test -p icons             # lookup precedence, folder icons, VS Code manif
 cargo test -p fs                # sync/async round trips, atomic write, error mapping
 cargo test -p session           # session file round trip, defaults, corrupt-file handling
 cargo test -p index             # extraction per language family, index format round trip/versioning
+cargo test -p run_config        # defaults per language, cwd resolution, DAP launch args
+cargo test -p project           # detection priority, .gitignore rules, toolchain lookup
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

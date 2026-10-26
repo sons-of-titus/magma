@@ -43,7 +43,7 @@ pub fn adapter_candidates(language: &str) -> &'static [&'static str] {
 /// outside `$PATH` cannot be spawned by name.
 pub fn find_adapter(language: &str) -> Option<std::path::PathBuf> {
     adapter_candidates(language).iter()
-        .find_map(|candidate| super::toolchain::find_extended(candidate))
+        .find_map(|candidate| crate::toolchain::find_extended(candidate))
 }
 
 #[cfg(test)]
@@ -74,7 +74,7 @@ mod tests {
     #[test]
     fn every_detector_language_has_defaults() {
         for (lang, _) in DETECTORS {
-            assert!(!crate::kernel::run_config::defaults_for(lang).is_empty(),
+            assert!(!run_config::defaults_for(lang).is_empty(),
                 "{lang} is detected but has no default run configs");
         }
     }

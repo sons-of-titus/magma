@@ -1,0 +1,8 @@
+[package]
+name = "project"
+version = "0.1.0"
+edition = "2024"
+description = "Project detection, .gitignore matching, and toolchain discovery for Magma"
+
+[dependencies]
+run_config = { path = "../run_config" }

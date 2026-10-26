@@ -6,12 +6,9 @@
 //! `<root>/.magma/run-configs.json`; detection seeds in-memory defaults for
 //! recognized marker files.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-
-pub mod defaults;
 
 use crate::kernel::event::keys;
 use crate::kernel::event::payload::TaskStartedPayload;
@@ -19,39 +16,8 @@ use crate::kernel::runtime::BackgroundHandle;
 use crate::kernel::state::{Editor, MessageKind};
 use crate::kernel::task::TaskScheduler;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RunConfig {
-    pub name: String,
-    pub command: String,
-    #[serde(default)]
-    pub args: Vec<String>,
-    /// Working directory; relative paths resolve against the project root.
-    #[serde(default)]
-    pub cwd: Option<String>,
-    #[serde(default)]
-    pub env: HashMap<String, String>,
-    /// Name of another config to run to completion first; this config only
-    /// launches when that one exits 0.
-    #[serde(default)]
-    pub build_before_run: Option<String>,
-    /// Whether a debug session can launch from this config.
-    #[serde(default)]
-    pub debuggable: bool,
-}
-
-impl RunConfig {
-    /// The DAP `launch` request arguments for this configuration, with a
-    /// relative `cwd` resolved against the project `root`.
-    pub fn to_launch_args(&self, root: &Path) -> serde_json::Value {
-        serde_json::json!({
-            "request": "launch",
-            "program": self.command,
-            "args": self.args,
-            "cwd": resolve_cwd(self, root).to_string_lossy(),
-            "name": self.name,
-        })
-    }
-}
+pub use run_config::{RunConfig, defaults_for};
+use run_config::resolve_cwd;
 
 #[derive(Debug, Clone, Default)]
 pub struct RunConfigManager {
@@ -209,18 +175,6 @@ impl RunConfigManager {
         Ok(())
     }
 }
-
-fn resolve_cwd(cfg: &RunConfig, root: &Path) -> PathBuf {
-    match cfg.cwd.as_deref().map(str::trim) {
-        None | Some("") => root.to_path_buf(),
-        Some(cwd) => {
-            let p = Path::new(cwd);
-            if p.is_absolute() { p.to_path_buf() } else { root.join(p) }
-        }
-    }
-}
-
-pub use defaults::defaults_for;
 
 /// Create or update a config from the editor dialog: validates, renames when
 /// `original` differs, makes the saved config active, and persists to the

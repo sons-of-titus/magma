@@ -13,6 +13,8 @@ members = [
     "crates/fs",
     "crates/session",
     "crates/index",
+    "crates/run_config",
+    "crates/project",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -42,6 +44,8 @@ icons = { path = "crates/icons" }
 fs = { path = "crates/fs" }
 session = { path = "crates/session" }
 index = { path = "crates/index" }
+run_config = { path = "crates/run_config" }
+project = { path = "crates/project" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

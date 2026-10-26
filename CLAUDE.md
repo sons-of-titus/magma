@@ -78,6 +78,8 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/fs` | File system traits (`FileSystem`, `AsyncFileSystem`, `FsError`), the disk implementation, and the atomic-write path |
 | `crates/session` | Per-project session file format: buffers with cursors, focus, breakpoints, watches, and the `<root>/.magma/session.json` reader/writer |
 | `crates/index` | Project symbol index: text-level extraction, the `IndexRecord` shape, and the schema-versioned JSON-lines format; no editor state |
+| `crates/run_config` | Run configuration shape (`RunConfig`, DAP launch args, cwd resolution) and detection-seeded defaults; no task scheduler |
+| `crates/project` | Project detection by marker file, `.gitignore` matching for the walk, and toolchain binary discovery; no editor state |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

@@ -6,5 +6,8 @@
 //! editor — they hold state and run Janet handlers.
 
 pub mod detect;
+pub mod event;
 pub mod gitignore;
 pub mod toolchain;
+
+pub use event::Event;

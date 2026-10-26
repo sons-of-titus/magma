@@ -6,3 +6,4 @@ description = "Project detection, .gitignore matching, and toolchain discovery f
 
 [dependencies]
 run_config = { path = "../run_config" }
+tool_diag = { path = "../tool_diag" }

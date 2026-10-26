@@ -241,7 +241,8 @@ The index subsystem follows the same recipe:
 
 The project subsystem follows the same recipe:
 
-- `kernel::project::Event` (`src/kernel/project/event.rs`) owns
+- `project::Event` (`crates/project/src/event.rs`, re-exported as
+  `kernel::project::Event`) owns
   `FileSearchListed`, `GrepResultsBatch`, and `GrepDone`.
 - The find-files walk and the ripgrep worker send
   `BackgroundEvent::Project(project::Event)` on the same channel.
@@ -379,8 +380,11 @@ editor-facing `upsert_config`, `continue_pending`, and `announce_launch`.
 
 ### `crates/project`
 
-Three editor-free helpers used by the project layer:
+Three editor-free helpers used by the project layer, plus the background-event
+vocabulary:
 
+- `event` — `Event::{FileSearchListed, GrepResultsBatch, GrepDone}`, the
+  payloads the find-files walk and the ripgrep worker hand to the foreground.
 - `detect` — the marker-file table (`Cargo.toml`, `go.mod`, …) with first
   match winning, DAP adapter candidates per language, and `find_adapter`,
   which resolves the first installed candidate through `toolchain`.
@@ -393,7 +397,7 @@ Three editor-free helpers used by the project layer:
 
 `detect`'s "every detected language has defaults" guard depends on
 `run_config::defaults_for`, which is why this crate sits on top of
-`run_config`.
+`run_config`.  The event payloads reuse `tool_diag::QuickfixEntry`.
 
 Kept in the kernel (`src/kernel/project/mod.rs`): `Project`,
 `ProjectManager`, workspace membership, and `refresh_files` — the walk that

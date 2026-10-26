@@ -15,10 +15,7 @@ use std::path::PathBuf;
 
 use crate::kernel::run_config::RunConfigManager;
 
-pub use project::{detect, gitignore, toolchain};
-
-mod event;
-pub use event::Event;
+pub use project::{Event, detect, gitignore, toolchain};
 
 // ── Supporting types ──────────────────────────────────────────────────────────
 

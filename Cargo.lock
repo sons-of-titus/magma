@@ -3129,6 +3129,7 @@ name = "project"
 version = "0.1.0"
 dependencies = [
  "run_config",
+ "tool_diag",
 ]
 
 [[package]]

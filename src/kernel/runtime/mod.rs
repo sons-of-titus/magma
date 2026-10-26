@@ -57,6 +57,8 @@ pub enum BackgroundEvent {
     ProcessExited { id: u64, exit_code: i32, cmd: String },
     /// A background task is ready for its Janet function to be called on the main thread (Sprint 3).
     TaskReady { id: u64 },
+    /// The task subsystem's own event vocabulary.
+    Task(crate::kernel::task::Event),
     /// Project file index completed (Sprint 4).
     FileIndexed { project_name: String, files: Vec<String> },
     /// A streamed batch of project-search results; appended to the
@@ -115,8 +117,6 @@ pub enum BackgroundEvent {
         result: Result<std::sync::Arc<crate::kernel::semantic::lsp::LspHandle>, String>,
     },
     // ─────────────────────────────────────────────────────────────────────
-    /// A task defined in the TaskScheduler has completed (Phase 4).
-    TaskRunCompleted { id: u64, exit_code: i32, stdout: String, stderr: String, duration_ms: u64 },
     /// DAP: the debuggee stopped (breakpoint hit, step complete, etc.) — Phase 6.
     DapStopped { session_id: u64, reason: String, thread_id: u64 },
     /// DAP: a line of console/stdout output from the debuggee — Phase 6.
@@ -167,8 +167,6 @@ pub enum BackgroundEvent {
     BufferWords { buf_key: usize, revision: u64, words: Vec<String> },
     /// One file's symbol extraction finished for the project index.
     IndexRecordArrived(crate::kernel::index::IndexRecord),
-    /// One streamed output line from a running task.
-    TaskOutputLine { id: u64, stream: String, line: String },
     /// A VCS status fetch finished off the foreground thread.
     VcStatusFetched {
         backend_idx: usize,

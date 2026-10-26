@@ -155,7 +155,9 @@ fn wait_for_completions(
     let mut done = Vec::new();
     for _ in 0..300 {
         while let Ok(ev) = rx.try_recv() {
-            if let BackgroundEvent::TaskRunCompleted { id: _, exit_code, ref stdout, .. } = ev {
+            if let BackgroundEvent::Task(
+                crate::kernel::task::Event::RunCompleted { id: _, exit_code, ref stdout, .. }
+            ) = ev {
                 done.push((exit_code, stdout.clone()));
                 // Full runtime path: marks the task finished and runs the
                 // run-config continuation hook.
@@ -389,7 +391,9 @@ fn failing_cargo_build_lands_as_clickable_diagnostics() {
     let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
         while let Ok(ev) = rx.try_recv() {
-            if let BackgroundEvent::TaskRunCompleted { id: fid, exit_code, .. } = &ev
+            if let BackgroundEvent::Task(
+                crate::kernel::task::Event::RunCompleted { id: fid, exit_code, .. }
+            ) = &ev
                 && *fid == id {
                     assert_ne!(*exit_code, 0, "the fixture crate must fail to build");
                     done = true;

@@ -255,7 +255,9 @@ fn stderr_heavy_task_with_no_stdout_completes() {
     let deadline = Instant::now() + Duration::from_secs(20);
     while Instant::now() < deadline {
         while let Ok(ev) = rx.try_recv() {
-            if let BackgroundEvent::TaskRunCompleted { id: 0, exit_code, stderr, .. } = &ev {
+            if let BackgroundEvent::Task(
+                crate::kernel::task::Event::RunCompleted { id: 0, exit_code, stderr, .. }
+            ) = &ev {
                 assert_eq!(*exit_code, 0);
                 assert!(stderr.lines().count() >= 2000,
                     "all stderr must be captured, got {}", stderr.lines().count());

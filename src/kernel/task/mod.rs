@@ -1,5 +1,7 @@
 pub mod diag_parse;
+mod event;
 pub mod scheduler;
+pub use event::Event;
 pub use scheduler::{OutputSink, Task, TaskId, TaskOutput, TaskScheduler, TaskStatus};
 
 use crate::kernel::state::Editor;

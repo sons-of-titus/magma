@@ -210,7 +210,7 @@ fn save_active(ed: &mut Editor) -> Result<String, String> {
     Ok(name)
 }
 
-/// TaskRunCompleted continuation: when the finished task was a build step,
+/// Task run-completion continuation: when the finished task was a build step,
 /// launch the config waiting on it (only on success).
 pub fn continue_pending(ed: &mut Editor, task_id: u64, exit_code: i32) {
     let Some((dep_id, name)) = ed.project_manager.run_configs.pending.clone() else { return };

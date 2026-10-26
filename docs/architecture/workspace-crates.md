@@ -186,6 +186,43 @@ variant the foreground already handles. Call sites still read
 incoming events (`update_progress`, `mark_completed`, `mark_failed`) so the
 event bus subscribers see them in the same order as before.
 
+### The background-event hub
+
+`runtime::BackgroundEvent` remains the editor's single merged vocabulary and
+the foreground drains one channel from it. What changed is ownership: a
+subsystem defines its own `Event`, and the merged enum wraps it instead of
+restating its payloads.
+
+The task subsystem is the first boundary:
+
+- `kernel::task::Event` (`src/kernel/task/event.rs`) owns `OutputLine` and
+  `RunCompleted`.
+- `TaskScheduler` sends `BackgroundEvent::Task(task::Event)` on the shared
+  `BackgroundHandle` channel.
+- `runtime::handlers::task` matches the inner enum and applies it to `Editor`.
+- `src/tests/task_event_tests.rs` pins payload round trips, asserts a mixed
+  task/fs/custom sequence arrives complete and in send order, and checks
+  success and failure completion dispatch.
+
+The wrapper changes neither transport nor order: both constructors send on the
+same channel they used before, and `process_background_event` still marks the
+frame dirty and dispatches through one exhaustive match. `TaskReady` remains a
+`BackgroundEvent` variant — it is the scripting/process subsystem's readiness
+signal, not a task-result event.
+
+Still merged in the central enum:
+
+- `debug` (`DapStarted`, `DapStopped`, …)
+- `semantic::lsp` (`LspStarted`, `LspDiagnostics`, …)
+- `index`, `project`, `vc`
+
+Each follows the task recipe: define `<subsystem>::Event`, add one
+`BackgroundEvent::<Subsystem>(…)` wrapper, route the existing constructor
+sites, and keep the single channel. The sender still names
+`runtime::BackgroundEvent`, which is deliberate: `bgpool` stays generic and
+the kernel owns transport composition, while a subsystem crate needs only its
+own event type.
+
 ### `crates/snippet`
 
 The snippet engine: `TabStop`, `parse_tabstops` (brace placeholders,
@@ -467,26 +504,13 @@ terminating the child, and kill through the handle when the pid is absent.
 
 ## Remaining blockers
 
-### The background-event hub
+### Background-event adoption
 
-`runtime::BackgroundEvent` is one enum containing every subsystem's async
-results. The scheduling half is now the `bgpool` crate (`Pool<E>` is generic
-over the event type), but the vocabulary itself still ties subsystems to the
-kernel:
-
-- `task` ↔ `runtime` (task scheduler sends `TaskOutputLine`, `TaskRunCompleted`)
-- `debug` ↔ `runtime` (`DapStarted`, `DapStopped`, …)
-- `semantic::lsp` ↔ `runtime` (`LspStarted`, `LspDiagnostics`, …)
-- `index`, `project`, `vc` also send variants through it
-
-Extracting any of those subsystems requires splitting the vocabulary into
-per-subsystem event enums and giving each subsystem its own `bgpool::Pool`
-over its own type, with the foreground either merging channels (a forwarding
-task changes cross-subsystem delivery order) or keeping one channel and
-wrapping the sub-events (`BackgroundEvent::Task(TaskEvent)`), which still
-leaves the sender naming the kernel type. Both are real design changes, not
-file moves. Until one is chosen those subsystems stay in `kernel` and the
-enum remains the primary blocker.
+The task vocabulary is now namespaced (see above), which proves the
+single-channel wrapper without changing delivery order. The same split is
+still pending for `debug`, `semantic::lsp`, `index`, `project`, and `vc`;
+until then those subsystems keep their variants in the central enum and stay
+in the kernel.
 
 ### `Editor` coupling
 
@@ -501,7 +525,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1742 passed (1610 pre-existing + 132 new crate tests)
+cargo test --workspace          # 1746 passed (1742 baseline + 4 task-event regression tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

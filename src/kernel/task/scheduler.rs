@@ -128,8 +128,8 @@ impl TaskScheduler {
 
     /// Spawn the task on the background thread pool.  A finished task may be
     /// launched again (status resets to Pending); only a Running task
-    /// refuses.  The background thread sends `BackgroundEvent::TaskRunCompleted`
-    /// when done.
+    /// refuses.  The background thread sends
+    /// `BackgroundEvent::Task(task::Event::RunCompleted)` when done.
     pub fn launch(
         &mut self,
         id: TaskId,
@@ -200,9 +200,10 @@ impl TaskScheduler {
                             for line in std::io::BufReader::new(s).lines().map_while(Result::ok) {
                                 sink.push_str(&line);
                                 sink.push('\n');
-                                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::TaskOutputLine {
-                                    id, stream: stream_name.into(), line,
-                                });
+                                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Task(
+                                    super::Event::OutputLine {
+                                        id, stream: stream_name.into(), line,
+                                    }));
                             }
                             sink
                         })
@@ -232,9 +233,9 @@ impl TaskScheduler {
                 Err(e) => (-1, String::new(), e.to_string()),
             };
             let duration_ms = start.elapsed().as_millis() as u64;
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::TaskRunCompleted {
-                id, exit_code, stdout, stderr, duration_ms,
-            });
+            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Task(
+                super::Event::RunCompleted { id, exit_code, stdout, stderr, duration_ms },
+            ));
         });
 
         Ok(())

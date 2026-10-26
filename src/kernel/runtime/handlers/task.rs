@@ -80,7 +80,15 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::TsTreeReady { buf_key, revision } => {
             crate::kernel::semantic::ts_schedule::take_ready_tree(ed, buf_key, revision);
         }
-        BackgroundEvent::TaskOutputLine { id, stream, line } => {
+        BackgroundEvent::Task(event) => handle_task_event(ed, event),
+        _ => {}
+    }
+}
+
+fn handle_task_event(ed: &mut Editor, event: crate::kernel::task::Event) {
+    use crate::kernel::task::Event;
+    match event {
+        Event::OutputLine { id, stream, line } => {
             // Output-buffer tasks stream straight into their buffer so long
             // builds show progress as they run.
             if let Some(sink) = ed.task_scheduler.output_sinks.get(&id).cloned() {
@@ -92,10 +100,9 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             data.insert("line".to_string(), line);
             ed.events.emit("task-output-line", data);
         }
-        BackgroundEvent::TaskRunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
+        Event::RunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
             handle_task_run_completed(ed, id, exit_code, stdout, stderr, duration_ms);
         }
-        _ => {}
     }
 }
 

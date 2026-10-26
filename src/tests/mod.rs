@@ -72,6 +72,7 @@ test_pairs!(
 #[cfg(feature = "janet")] mod keymap_janet_tests;
 #[cfg(feature = "janet")] mod builtin_parse_tests;
 mod scratch_probe_tests;
+mod task_event_tests;
 #[cfg(feature = "janet")]
 mod perf_probe_tests;
 mod memory_budget_tests;

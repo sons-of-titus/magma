@@ -80,8 +80,7 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::BufferWords { .. }
         | BackgroundEvent::IndexRecordArrived(_)
         | BackgroundEvent::TsTreeReady { .. }
-        | BackgroundEvent::TaskOutputLine { .. }
-        | BackgroundEvent::TaskRunCompleted { .. } => task::handle(ed, event),
+        | BackgroundEvent::Task(_) => task::handle(ed, event),
 
         // ── Version control ──────────────────────────────────────────────
         BackgroundEvent::VcOpDone { .. }

@@ -1,0 +1,5 @@
+[package]
+name = "vt"
+version = "0.1.0"
+edition = "2024"
+description = "VT/ANSI screen model for Magma terminal buffers"

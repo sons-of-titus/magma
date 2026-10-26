@@ -4,8 +4,9 @@
 //! output → exit → close).  The GUI's terminal dock is the only surface that
 //! renders sessions; the central pane and the tab bar never see them.
 
-pub mod ansi;
-pub mod screen;
+pub use vt::{ansi, screen};
+pub use vt::screen::{Cell, Color, TerminalScreen};
+
 pub mod session;
 
 pub use session::TerminalSession;

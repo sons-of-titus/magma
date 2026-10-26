@@ -4,6 +4,7 @@ members = [
     "crates/id",
     "crates/text",
     "crates/semantic",
+    "crates/vt",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -24,6 +25,7 @@ logging = { path = "crates/logging" }
 id = { path = "crates/id" }
 text = { path = "crates/text" }
 semantic = { path = "crates/semantic" }
+vt = { path = "crates/vt" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

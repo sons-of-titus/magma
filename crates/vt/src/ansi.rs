@@ -15,7 +15,7 @@ pub enum Phase {
     Charset,
 }
 
-pub(super) fn feed(screen: &mut TerminalScreen, data: &str) {
+pub fn feed(screen: &mut TerminalScreen, data: &str) {
     if data.is_empty() { return; }
     for ch in data.chars() {
         match screen.parser.phase {

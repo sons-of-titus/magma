@@ -20,6 +20,7 @@ without call-site changes:
 | `kernel::state::id::…` | `pub use id;` in `src/kernel/state` |
 | `kernel::text_engine::…` | `pub use text as text_engine;` |
 | `kernel::semantic::<core module>::…` | `pub use semantic::<module>;` in `src/kernel/semantic/mod.rs` |
+| `kernel::terminal::ansi::…`, `kernel::terminal::screen::…` | `pub use vt::{ansi, screen};` in `src/kernel/terminal/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -31,7 +32,7 @@ these paths and must keep compiling unchanged.
                           |
    util   event   keymap  extension   net   clipboard   id
                                                     |
-                                                  text
+                                                  text        vt
                                                     |
                                                  semantic
                                                     |
@@ -80,6 +81,18 @@ Kept in the kernel (`src/kernel/semantic/`), because they are editor-coupled:
 | `edit_apply.rs` | mutates `Editor.buffers` |
 | `ts_schedule.rs` | mutates `Editor`, submits to `runtime::BackgroundHandle` |
 
+### `crates/vt`
+
+The terminal emulation core: `TerminalScreen` (cells, colors, styles,
+scrollback, cursor), the `feed` escape-sequence parser, and their unit tests.
+It has no dependency on PTYs, `Editor`, or the background runtime.
+
+The kernel's `kernel::terminal` keeps the PTY sessions
+(`TerminalSession`/`TerminalManager`), process-group cleanup, and the
+`BackgroundEvent` plumbing; it re-exports `ansi` and `screen` so
+`kernel::terminal::ansi::feed` and `kernel::terminal::screen::TerminalScreen`
+still resolve.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -113,6 +126,7 @@ cargo check --workspace --all-targets
 cargo test --workspace          # 1604 passed before and after the extraction
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
+cargo test -p vt                # terminal screen/ANSI parser tests
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

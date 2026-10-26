@@ -9,7 +9,7 @@ use super::marks::MarkSet;
 use super::transaction::{EditTransaction, TransactionBuilder, TransactionOrigin};
 use super::undo::UndoHistory;
 use super::{MajorMode, Position};
-use crate::kernel::state::id::{BufferId, MarkId};
+use id::{BufferId, MarkId};
 
 #[derive(Debug)]
 pub struct Buffer {
@@ -32,9 +32,9 @@ pub struct Buffer {
     /// output so an empty LSP publish cannot wipe build errors, and a clean
     /// build cannot wipe LSP results.  Render through `Diagnostic::display` —
     /// nothing parses display strings back apart.
-    pub lsp_diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+    pub lsp_diagnostics: Vec<crate::diagnostic::Diagnostic>,
     /// Tool (build/compiler) diagnostics for this buffer, typed.
-    pub tool_diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+    pub tool_diagnostics: Vec<crate::diagnostic::Diagnostic>,
     /// Per-buffer options that shadow global `editor.options`.
     pub local_options: std::collections::HashMap<String, String>,
     /// When true, `buffer/insert` and `buffer/delete` are no-ops via the Janet API.
@@ -304,7 +304,7 @@ impl Buffer {
     pub fn redo(&mut self) -> Option<usize> {
         let (start, end, restore) = self.undo.redo_step()?;
         for i in start..=end {
-            let edits: Vec<crate::kernel::text_engine::edit::Edit> = self
+            let edits: Vec<crate::edit::Edit> = self
                 .undo
                 .entry(i)
                 .txn
@@ -384,7 +384,7 @@ impl Buffer {
         &self,
         rev: u64,
     ) -> Option<Vec<(u64, u64, Vec<(usize, usize, usize)>)>> {
-        use crate::kernel::text_engine::revision::Revision;
+        use crate::revision::Revision;
         self.doc
             .changes_since(Revision(rev))
             .map(|txns| {
@@ -414,7 +414,7 @@ impl Buffer {
     /// Replace the LSP-owned diagnostics for this buffer.
     pub fn set_lsp_diagnostics(
         &mut self,
-        diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+        diagnostics: Vec<crate::diagnostic::Diagnostic>,
     ) {
         self.lsp_diagnostics = diagnostics;
     }
@@ -422,13 +422,13 @@ impl Buffer {
     /// Replace the tool-owned (build/compiler) diagnostics for this buffer.
     pub fn set_tool_diagnostics(
         &mut self,
-        diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic>,
+        diagnostics: Vec<crate::diagnostic::Diagnostic>,
     ) {
         self.tool_diagnostics = diagnostics;
     }
 
     /// Every diagnostic on the buffer: LSP first, then tool output.
-    pub fn get_diagnostics(&self) -> Vec<crate::kernel::semantic::provider::Diagnostic> {
+    pub fn get_diagnostics(&self) -> Vec<crate::diagnostic::Diagnostic> {
         let mut all = self.lsp_diagnostics.clone();
         all.extend(self.tool_diagnostics.iter().cloned());
         all

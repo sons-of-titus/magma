@@ -115,7 +115,7 @@ impl Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel::state::id::BufferId;
+    use id::BufferId;
 
     fn buf(text: &str) -> Buffer {
         Buffer::from_string(BufferId(1), "t", text)

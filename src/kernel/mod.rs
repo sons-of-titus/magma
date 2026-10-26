@@ -10,7 +10,7 @@ pub mod project;
 pub mod run_config;
 pub mod session;
 pub mod state;
-pub mod text_engine;
+pub use text as text_engine;
 pub mod index;
 pub mod semantic;
 pub mod task;

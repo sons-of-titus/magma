@@ -66,6 +66,8 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | Path | Responsibility |
 |------|----------------|
 | `crates/logging` | Leveled `error!`/`warn!`/`info!`/`debug!`/`trace!` macros, gated on `MAGMA_LOG`; imported crate-wide in `src/lib.rs` |
+| `crates/id` | Typed `u64` identifiers (`BufferId`, `WindowId`, `MarkId`, …) shared by every subsystem |
+| `crates/text` | Text engine: rope, `Document`, `Buffer`, `BufferView`, transactions, undo, marks, folds, and the buffer diagnostic model |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |
@@ -75,8 +77,10 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 
 The kernel re-exports these crates as modules in `src/kernel/mod.rs`
 (`pub use event;`, `pub use keymap;`, …) so `crate::kernel::<x>::…` paths keep
-resolving. Extract a module into a crate only when it has no `crate::kernel::*`
-dependencies; `Editor` currently couples the remaining subsystems in cycles.
+resolving. Extract a module into a crate only when its dependencies point
+downward: `text` reaches the kernel only through `id`, and `src/kernel/state`
+re-exports `id` so `state::id::…` still resolves. Subsystems still coupled to
+`Editor` or to the `runtime::BackgroundEvent` channel remain in `src/kernel`.
 
 ### Janet side
 

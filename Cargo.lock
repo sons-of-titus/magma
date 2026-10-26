@@ -1757,6 +1757,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "id"
+version = "0.1.0"
+
+[[package]]
 name = "id-arena"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2128,6 +2132,7 @@ dependencies = [
  "event",
  "evil-janet",
  "extension",
+ "id",
  "keymap",
  "libc",
  "libloading",
@@ -2145,6 +2150,7 @@ dependencies = [
  "slab",
  "smallstr",
  "streaming-iterator",
+ "text",
  "thiserror 1.0.69",
  "tokio",
  "tree-sitter",
@@ -3816,6 +3822,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "text"
+version = "0.1.0"
+dependencies = [
+ "id",
+ "ropey",
+ "thiserror 1.0.69",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

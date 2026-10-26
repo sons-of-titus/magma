@@ -1,5 +1,5 @@
 use super::*;
-use crate::kernel::state::id::BufferId;
+use id::BufferId;
 use std::sync::{Arc, Mutex};
 
 fn buf_view(content: &str) -> BufferView {

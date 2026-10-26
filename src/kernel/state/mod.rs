@@ -1,6 +1,5 @@
 //! Editor state — the central `Editor` struct and all sub-modules.
 
-pub mod id;
 pub mod views;
 pub mod mode;
 pub mod persist;
@@ -20,6 +19,7 @@ pub mod editing;
 use std::sync::{Arc, Mutex};
 
 use crate::kernel::text_engine::{Buffer, BufferView};
+pub use id;
 use crate::kernel::clipboard::Clipboard;
 use crate::kernel::command::CommandRegistry;
 use crate::kernel::event::EventBus;

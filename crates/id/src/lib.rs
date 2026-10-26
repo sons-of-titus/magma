@@ -1,5 +1,7 @@
-/// Typed IDs for all editor objects.
-/// IDs are simple u64 values. No pointer crosses the Rust↔Janet boundary.
+//! Typed IDs for all editor objects.
+//!
+//! IDs are simple `u64` values. No pointer crosses the Rust↔Janet boundary,
+//! and no subsystem needs to depend on the concrete `Editor` to name one.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferId(pub u64);
@@ -78,3 +80,4 @@ impl MarkId {
         self.0
     }
 }
+

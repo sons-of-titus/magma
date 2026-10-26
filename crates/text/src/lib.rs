@@ -1,9 +1,10 @@
-//! Buffer layer — the editor-facing facade over the kernel `Document`.
+//! Text engine — the buffer layer the kernel composes.
 //!
 //! Every mutation is one canonical `Document::commit` (docs/core-redesign.md
 //! §2.1); marks transform through transactions; undo history stores
 //! transactions grouped explicitly; save state is revision-based.
 
+pub mod diagnostic;
 pub mod rope;
 pub mod scan;
 pub mod undo;
@@ -16,8 +17,9 @@ mod breakpoint_anchors;
 pub use buffer::Buffer;
 mod fold;
 
-// Phase-1 kernel (docs/core-redesign.md): exercised by src/tests/ only until
-// Buffer integration lands in Phase 2+.
+// Phase-1 primitives (docs/core-redesign.md): the transaction core below
+// `Buffer`, exercised by both this crate's tests and the editor integration
+// tests that drive full buffer workloads.
 #[allow(dead_code)]
 pub mod anchor;
 #[allow(dead_code)]

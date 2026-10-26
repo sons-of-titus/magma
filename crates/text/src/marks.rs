@@ -6,7 +6,7 @@
 //! (`Affinity::Before`).  There is no eager adjustment and no snapshot
 //! restoration — undo/redo transform marks like any other transaction.
 
-use crate::kernel::state::id::MarkId;
+use id::MarkId;
 use super::anchor::{Affinity, Anchor};
 use super::transaction::EditTransaction;
 

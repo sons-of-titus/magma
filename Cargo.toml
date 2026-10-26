@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "crates/logging",
+    "crates/id",
+    "crates/text",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -18,6 +20,8 @@ description = "A programmable text editor – Rust kernel, Janet userland"
 
 [dependencies]
 logging = { path = "crates/logging" }
+id = { path = "crates/id" }
+text = { path = "crates/text" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

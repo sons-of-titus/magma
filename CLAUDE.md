@@ -80,6 +80,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/index` | Project symbol index: text-level extraction, the `IndexRecord` shape, and the schema-versioned JSON-lines format; no editor state |
 | `crates/run_config` | Run configuration shape (`RunConfig`, DAP launch args, cwd resolution) and detection-seeded defaults; no task scheduler |
 | `crates/project` | Project detection by marker file, `.gitignore` matching for the walk, and toolchain binary discovery; no editor state |
+| `crates/crash_recovery` | Crash-recovery snapshots: per-session dirs, manifest, identity stems, pruning, and the leftover-session scan; no buffer state |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

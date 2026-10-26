@@ -836,6 +836,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "crash_recovery"
+version = "0.1.0"
+dependencies = [
+ "fs",
+ "serde_json",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2158,6 +2166,7 @@ dependencies = [
  "bgpool",
  "bytemuck",
  "clipboard",
+ "crash_recovery",
  "eframe",
  "event",
  "evil-janet",

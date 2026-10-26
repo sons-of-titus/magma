@@ -15,6 +15,7 @@ members = [
     "crates/index",
     "crates/run_config",
     "crates/project",
+    "crates/crash_recovery",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -46,6 +47,7 @@ session = { path = "crates/session" }
 index = { path = "crates/index" }
 run_config = { path = "crates/run_config" }
 project = { path = "crates/project" }
+crash_recovery = { path = "crates/crash_recovery" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

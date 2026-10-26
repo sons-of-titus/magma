@@ -31,6 +31,7 @@ without call-site changes:
 | `kernel::index::{extract, store, …}` | `pub use index::{IndexRecord, IndexStats, extract, record_from_text, store};` in `src/kernel/index/mod.rs` |
 | `kernel::run_config::{RunConfig, defaults_for}` | `pub use run_config::{RunConfig, defaults_for};` in `src/kernel/run_config/mod.rs` |
 | `kernel::project::{detect, gitignore, toolchain}` | `pub use project::{detect, gitignore, toolchain};` in `src/kernel/project/mod.rs` |
+| `kernel::storage::crash_recovery::…` | `pub use crash_recovery::{…}` in `src/kernel/storage/crash_recovery.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -41,7 +42,7 @@ these paths and must keep compiling unchanged.
    id ──▶ text ──▶ semantic          vt
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
-   project ──▶ run_config   logging
+   project ──▶ run_config   crash_recovery ──▶ fs   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -294,6 +295,25 @@ Kept in the kernel (`src/kernel/project/mod.rs`): `Project`,
 `ProjectManager`, workspace membership, and `refresh_files` — the walk that
 drives `gitignore::IgnoreStack` and needs editor state and Janet handlers.
 
+### `crates/crash_recovery`
+
+The snapshot format: `CrashSnapshot`, `RecoverableSession`, per-session
+directories under `<state_dir>/crash`, FNV-1a identity stems, the JSON
+manifest (including its `recovered` flag), `write_snapshot` /
+`drop_snapshot` / `clear_session`, `mark_recovered`, and
+`collect_from`/`collect_recoverable` — the scan that prunes all but the
+newest four sessions and skips ones already handed back. Snapshot writes go
+through `fs::atomic_write`.
+
+Every function takes the state dir or crash root as a parameter, so nothing
+in the crate reads global configuration.
+
+Kept in the kernel (`src/kernel/storage/crash_recovery.rs`): `recover_from`,
+which opens survivors as read-only `*recovered …*` buffers, and
+`recover_into`, the startup path that reports how many came back, plus a
+`new_session_dir()` wrapper that supplies `persist::state_dir()`. The rest
+is re-exported through the same module path.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -330,7 +350,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1697 passed (1610 pre-existing + 87 new crate tests)
+cargo test --workspace          # 1700 passed (1610 pre-existing + 90 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -344,6 +364,7 @@ cargo test -p session           # session file round trip, defaults, corrupt-fil
 cargo test -p index             # extraction per language family, index format round trip/versioning
 cargo test -p run_config        # defaults per language, cwd resolution, DAP launch args
 cargo test -p project           # detection priority, .gitignore rules, toolchain lookup
+cargo test -p crash_recovery    # snapshot round trips, pruning, recovery marking
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

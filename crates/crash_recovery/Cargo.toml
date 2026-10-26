@@ -1,0 +1,9 @@
+[package]
+name = "crash_recovery"
+version = "0.1.0"
+edition = "2024"
+description = "Crash-recovery snapshots for unsaved buffers in Magma"
+
+[dependencies]
+fs = { path = "../fs" }
+serde_json = "1"

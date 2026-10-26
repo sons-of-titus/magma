@@ -31,18 +31,7 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::AutoSaveWritten { .. } => fs::handle(ed, event),
 
         // ── LSP ──────────────────────────────────────────────────────────
-        BackgroundEvent::LspDiagnostics { .. }
-        | BackgroundEvent::LspCompletion { .. }
-        | BackgroundEvent::LspResponse { .. }
-        | BackgroundEvent::LspHover { .. }
-        | BackgroundEvent::LspDefinition { .. }
-        | BackgroundEvent::LspCodeActions { .. }
-        | BackgroundEvent::LspCompletionItems { .. }
-        | BackgroundEvent::LspRenameResult { .. }
-        | BackgroundEvent::LspProgress { .. }
-        | BackgroundEvent::LspServerExited { .. }
-        | BackgroundEvent::LspStarted { .. }
-        | BackgroundEvent::LspApplyEdit { .. } => lsp::handle(ed, event),
+        BackgroundEvent::Lsp(_) => lsp::handle(ed, event),
 
         // ── Debug Adapter Protocol ───────────────────────────────────────
         BackgroundEvent::Dap(_) => dap::handle(ed, event),

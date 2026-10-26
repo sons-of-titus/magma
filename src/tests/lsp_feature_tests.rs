@@ -243,12 +243,13 @@ fn lsp_hover_splices_into_visible_card() {
     });
     let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
 
-    process_background_event(&mut ed, BackgroundEvent::LspHover {
-        path: "rust".into(),
-        contents: "```rust\nfn foo()\n```\ndoes a thing".into(),
-        buf_key: Some(key),
-        revision: rev,
-    });
+    process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::Hover {
+            path: "rust".into(),
+            contents: "```rust\nfn foo()\n```\ndoes a thing".into(),
+            buf_key: Some(key),
+            revision: rev,
+        }));
 
     let card = ed.hover.as_ref().expect("card survives the splice");
     assert!(card.lines.iter().take(2).any(|l| l.contains("fn foo()")),
@@ -269,12 +270,13 @@ fn lsp_hover_without_card_becomes_a_status_message() {
     ed.hover = None; // manual lsp-hover with no pointer dwell
     let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
 
-    process_background_event(&mut ed, BackgroundEvent::LspHover {
-        path: "rust".into(),
-        contents: "fn foo() — does a thing".into(),
-        buf_key: Some(key),
-        revision: rev,
-    });
+    process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::Hover {
+            path: "rust".into(),
+            contents: "fn foo() — does a thing".into(),
+            buf_key: Some(key),
+            revision: rev,
+        }));
     let msg = ed.status_message.as_ref().expect("manual hover surfaces");
     assert!(msg.text.contains("does a thing"));
 }
@@ -293,12 +295,13 @@ fn stale_lsp_hover_is_dropped() {
         lines: vec!["index only".into()],
     });
 
-    process_background_event(&mut ed, BackgroundEvent::LspHover {
-        path: "rust".into(),
-        contents: "stale!".into(),
-        buf_key: Some(key),
-        revision: 999_999, // buffer has moved on
-    });
+    process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::Hover {
+            path: "rust".into(),
+            contents: "stale!".into(),
+            buf_key: Some(key),
+            revision: 999_999, // buffer has moved on
+        }));
     let card = ed.hover.as_ref().unwrap();
     assert!(card.lines.iter().all(|l| !l.contains("stale")),
         "responses for superseded revisions never render");
@@ -315,15 +318,16 @@ fn code_actions_response_opens_the_picker() {
     let key = helpers::focused_key(&ed);
     let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
 
-    process_background_event(&mut ed, BackgroundEvent::LspCodeActions {
-        path: "rust".into(),
-        actions: r#"[
+    process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::CodeActions {
+            path: "rust".into(),
+            actions: r#"[
             {"title":"Qualify `x`","kind":"quickfix","edit":{"changes":{}}},
             {"title":"Inline variable","kind":"refactor.inline"}
         ]"#.into(),
-        buf_key: Some(key),
-        revision: rev,
-    });
+            buf_key: Some(key),
+            revision: rev,
+        }));
 
     let menu = ed.quickfix_menu.as_ref().expect("picker opened");
     assert_eq!(menu.buf_key, key);
@@ -373,13 +377,14 @@ fn server_apply_edit_request_applies_and_answers() {
         arc.lock().unwrap().path = Some("/tmp/qf_apply_edit.rs".to_string());
     }
 
-    process_background_event(&mut ed, BackgroundEvent::LspApplyEdit {
-        language: "rust".into(),
-        request_id: 7,
-        edit_json: r#"{"changes":{"/tmp/qf_apply_edit.rs":[{"range":{
+    process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::ApplyEdit {
+            language: "rust".into(),
+            request_id: 7,
+            edit_json: r#"{"changes":{"/tmp/qf_apply_edit.rs":[{"range":{
             "start":{"line":0,"character":0},"end":{"line":0,"character":10}},
             "newText":"let z = 3;"}]}}"#.into(),
-    });
+        }));
 
     let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
     assert_eq!(text, "let z = 3;", "server-pushed edit applied");
@@ -394,12 +399,13 @@ fn stale_code_actions_never_open_the_picker() {
 
     let mut ed = helpers::make_editor_with_buffer("let x = 1;");
     let key = helpers::focused_key(&ed);
-    process_background_event(&mut ed, BackgroundEvent::LspCodeActions {
-        path: "rust".into(),
-        actions: r#"[{"title":"stale","kind":"quickfix"}]"#.into(),
-        buf_key: Some(key),
-        revision: 999_999,
-    });
+    process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::CodeActions {
+            path: "rust".into(),
+            actions: r#"[{"title":"stale","kind":"quickfix"}]"#.into(),
+            buf_key: Some(key),
+            revision: 999_999,
+        }));
     assert!(ed.quickfix_menu.is_none(), "superseded responses are dropped");
 }
 

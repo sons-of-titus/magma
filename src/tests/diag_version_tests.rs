@@ -38,11 +38,12 @@ fn diagnostics_with_stale_version_are_dropped() {
         arc.lock().unwrap_or_else(|e| e.into_inner()).insert(0, "more text ");
     }
 
-    runtime::process_background_event(&mut ed, BackgroundEvent::LspDiagnostics {
-        path: "/tmp/stale.rs".to_string(),
-        version: Some(rev_at_request),
-        diagnostics: vec![diag("stale", 0)],
-    });
+    runtime::process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::Diagnostics {
+            path: "/tmp/stale.rs".to_string(),
+            version: Some(rev_at_request),
+            diagnostics: vec![diag("stale", 0)],
+        }));
     assert!(ed.buffers.get(key).unwrap()
         .lock().unwrap_or_else(|e| e.into_inner()).get_diagnostics().is_empty(),
         "a publish older than the buffer revision must not land");
@@ -57,11 +58,12 @@ fn diagnostics_with_current_version_apply() {
     let rev = ed.buffers.get(key).unwrap()
         .lock().unwrap_or_else(|e| e.into_inner()).revision();
 
-    runtime::process_background_event(&mut ed, BackgroundEvent::LspDiagnostics {
-        path: "/tmp/current.rs".to_string(),
-        version: Some(rev),
-        diagnostics: vec![diag("fresh", 1)],
-    });
+    runtime::process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::Diagnostics {
+            path: "/tmp/current.rs".to_string(),
+            version: Some(rev),
+            diagnostics: vec![diag("fresh", 1)],
+        }));
     assert_eq!(ed.buffers.get(key).unwrap()
         .lock().unwrap_or_else(|e| e.into_inner()).get_diagnostics().len(), 1);
     assert_eq!(ed.semantic.diagnostics_for_path("/tmp/current.rs").len(), 1);
@@ -72,11 +74,12 @@ fn diagnostics_without_version_apply() {
     let mut ed = helpers::make_editor();
     let key = buffer_at_path(&mut ed, "/tmp/nover.rs");
 
-    runtime::process_background_event(&mut ed, BackgroundEvent::LspDiagnostics {
-        path: "/tmp/nover.rs".to_string(),
-        version: None,
-        diagnostics: vec![diag("unversioned", 2)],
-    });
+    runtime::process_background_event(&mut ed, BackgroundEvent::Lsp(
+        crate::kernel::semantic::Event::Diagnostics {
+            path: "/tmp/nover.rs".to_string(),
+            version: None,
+            diagnostics: vec![diag("unversioned", 2)],
+        }));
     assert_eq!(ed.buffers.get(key).unwrap()
         .lock().unwrap_or_else(|e| e.into_inner()).get_diagnostics().len(), 1);
 }

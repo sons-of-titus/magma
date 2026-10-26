@@ -40,11 +40,6 @@ pub struct TaskState {
 pub enum BackgroundEvent {
     FileReadResult { path: String, content: Result<String, String>, request_id: u64 },
     FileWriteResult { path: String, result: Result<(), String>, request_id: u64 },
-    /// LSP diagnostic publish notification — typed, with the server-side
-    /// document version when the server provides one.
-    LspDiagnostics { path: String, version: Option<u64>, diagnostics: Vec<crate::kernel::semantic::provider::Diagnostic> },
-    /// LSP completion response (Sprint 4).
-    LspCompletion { path: String, items: Vec<String>, request_id: u64 },
     /// Terminal output chunk from a background process.
     TerminalOutput { terminal_id: usize, data: String },
     /// A terminal process has exited.
@@ -86,33 +81,10 @@ pub enum BackgroundEvent {
     TcpClientData { server_id: u64, client_id: u64, data: String },
     /// A client disconnected from a listening server.
     TcpClientDisconnected { server_id: u64, client_id: u64 },
-    // ─────────────────────────────────────────────────────────────────────
-    // ── Sprint 5 LSP Power Features ──────────────────────────────────────
-    /// Generic LSP response for arbitrary methods, revision-tagged.
-    LspResponse { path: String, method: String, result: String, request_id: u64, buf_key: Option<usize>, revision: u64 },
-    /// Parsed hover response contents, tagged with the request's buffer and
-    /// revision so stale responses can be rejected on arrival.
-    LspHover { path: String, contents: String, buf_key: Option<usize>, revision: u64 },
-    /// Parsed go-to-definition result, revision-tagged.
-    LspDefinition { path: String, uri: String, start_line: usize, start_col: usize, end_line: usize, end_col: usize, buf_key: Option<usize>, revision: u64 },
-    /// Parsed code actions (JSON array of `{"title","kind"}`), revision-tagged.
-    LspCodeActions { path: String, actions: String, buf_key: Option<usize>, revision: u64 },
-    /// Parsed completion items (JSON array of `{"label","detail","insertText"}`),
-    /// revision-tagged.
-    LspCompletionItems { path: String, items: String, buf_key: Option<usize>, revision: u64 },
-    /// Parsed rename result (WorkspaceEdit JSON), revision-tagged.
-    LspRenameResult { path: String, edit: String, buf_key: Option<usize>, revision: u64 },
-    /// Progress notification from `$/progress`.
-    LspProgress { token: String, message: String, percentage: String },
-    /// A language server process exited (crash or termination).
-    LspServerExited { language: String },
     /// The debug subsystem's own event vocabulary.
     Dap(crate::kernel::debug::Event),
-    /// The awaited initialize handshake finished off-thread.
-    LspStarted {
-        language: String,
-        result: Result<std::sync::Arc<crate::kernel::semantic::lsp::LspHandle>, String>,
-    },
+    /// The LSP subsystem's own event vocabulary.
+    Lsp(crate::kernel::semantic::Event),
     // ─────────────────────────────────────────────────────────────────────
     Custom(String, String),
     // ── Phase 11 AI/Agent Architecture ───────────────────────────────────────
@@ -185,9 +157,6 @@ pub enum BackgroundEvent {
     SaveFailed { buf_key: usize, error: String },
     /// A find-files walk finished off the foreground thread.
     FileSearchListed { pattern: String, files: Vec<String> },
-    /// The server asked us to apply a workspace edit (applyEdit); the
-    /// foreground applies it and answers the request.
-    LspApplyEdit { language: String, request_id: u64, edit_json: String },
 }
 
 /// Process a background event on the main thread, dispatching it to the

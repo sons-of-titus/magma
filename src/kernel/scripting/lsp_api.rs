@@ -37,13 +37,14 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
 
         // The initialize handshake blocks up to 10s — it must never block
         // the foreground, so it runs on its own thread and the result lands
-        // via the `LspStarted` background event.
+        // via the `Lsp(Started)` background event.
         std::thread::Builder::new()
             .name(format!("lsp-init-{language}"))
             .spawn(move || {
                 let result = crate::kernel::semantic::lsp::LspHandle::start(
                     &command, &args, &language, root, bg.clone()).map(std::sync::Arc::new);
-                bg.send_event(crate::kernel::runtime::BackgroundEvent::LspStarted { language, result });
+                bg.send_event(crate::kernel::runtime::BackgroundEvent::Lsp(
+                    crate::kernel::semantic::Event::Started { language, result }));
             })
             .map_err(|e| debug!("lsp-init thread: {e}"))
             .ok();

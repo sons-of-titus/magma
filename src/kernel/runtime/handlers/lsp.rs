@@ -28,7 +28,15 @@ fn lsp_path_matches(buf_path: Option<&str>, diag_path: &str) -> bool {
 
 pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
     match event {
-        BackgroundEvent::LspDiagnostics { path, version, diagnostics } => {
+        BackgroundEvent::Lsp(event) => handle_lsp_event(ed, event),
+        _ => {}
+    }
+}
+
+fn handle_lsp_event(ed: &mut Editor, event: crate::kernel::semantic::Event) {
+    use crate::kernel::semantic::Event;
+    match event {
+        Event::Diagnostics { path, version, diagnostics } => {
             // A publish tagged with a version older than the buffer's current
             // revision describes text that no longer exists — drop it.  The
             // didChange that bumped the revision produces a fresh publish;
@@ -62,22 +70,22 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 items: display.join("\n"),
             });
         }
-        BackgroundEvent::LspCompletion { path, items, request_id: _ } => {
+        Event::Completion { path, items, request_id: _ } => {
             ed.events.emit_typed(keys::events::LSP_COMPLETION, LspCompletionPayload {
                 path,
                 items: items.join("\n"),
             });
         }
-        BackgroundEvent::LspResponse { path, method, result, request_id: _, buf_key, revision }
+        Event::Response { path, method, result, request_id: _, buf_key, revision }
             if revision_current(ed, buf_key, revision) => {
                 ed.events.emit_typed(keys::events::LSP_RESPONSE, LspResponsePayload { path, method, result });
             }
-        BackgroundEvent::LspServerExited { language } => {
+        Event::ServerExited { language } => {
             ed.lsp.exited(&language);
             ed.show_message(crate::kernel::state::MessageKind::Error,
                 format!("language server for {language} exited"));
         }
-        BackgroundEvent::LspStarted { language, result } => {
+        Event::Started { language, result } => {
             match result {
                 Ok(handle) => {
                     ed.lsp.insert(&language, handle);
@@ -91,14 +99,14 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
             }
         }
-        BackgroundEvent::LspHover { path, contents, buf_key, revision } => {
+        Event::Hover { path, contents, buf_key, revision } => {
             if revision_current(ed, buf_key, revision) && !contents.trim().is_empty()
                 && let Some(buf_key) = buf_key {
                     overlay::attach_lsp_hover(ed, buf_key, &contents);
                     ed.events.emit_typed(keys::events::LSP_HOVER, LspHoverPayload { path, contents });
             }
         }
-        BackgroundEvent::LspDefinition { path, uri, start_line, start_col, end_line, end_col, buf_key, revision }
+        Event::Definition { path, uri, start_line, start_col, end_line, end_col, buf_key, revision }
             if revision_current(ed, buf_key, revision) => {
                 ed.events.emit_typed(keys::events::LSP_DEFINITION, LspDefinitionPayload {
                     path,
@@ -109,7 +117,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                     end_col: end_col.to_string(),
                 });
             }
-        BackgroundEvent::LspCodeActions { path, actions, buf_key, revision }
+        Event::CodeActions { path, actions, buf_key, revision }
             if revision_current(ed, buf_key, revision) => {
                 // The quick-fix picker is the primary consumer: open it on
                 // the focused buffer when there is anything to choose.
@@ -127,7 +135,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
                 ed.events.emit_typed(keys::events::LSP_CODE_ACTIONS, LspCodeActionsPayload { path, actions });
             }
-        BackgroundEvent::LspCompletionItems { path, items, buf_key, revision }
+        Event::CompletionItems { path, items, buf_key, revision }
             if revision_current(ed, buf_key, revision) => {
                 // The popup is the primary consumer: merge server items in
                 // (they lead, duplicates drop).  The event stays available
@@ -138,14 +146,14 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
                 ed.events.emit_typed(keys::events::LSP_COMPLETION_ITEMS, LspCompletionItemsPayload { path, items });
             }
-        BackgroundEvent::LspRenameResult { path, edit, buf_key, revision }
+        Event::RenameResult { path, edit, buf_key, revision }
             if revision_current(ed, buf_key, revision) => {
                 ed.events.emit_typed(keys::events::LSP_RENAME_RESULT, LspRenameResultPayload { path, edit });
             }
-        BackgroundEvent::LspProgress { token, message, percentage } => {
+        Event::Progress { token, message, percentage } => {
             ed.events.emit_typed(keys::events::LSP_PROGRESS, LspProgressPayload { token, message, percentage });
         }
-        BackgroundEvent::LspApplyEdit { language, request_id, edit_json } => {
+        Event::ApplyEdit { language, request_id, edit_json } => {
             let applied = match serde_json::from_str::<serde_json::Value>(&edit_json) {
                 Ok(v) => {
                     crate::kernel::semantic::edit_apply::apply_workspace_edit(ed, &v);
@@ -157,6 +165,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 server.respond(request_id, serde_json::json!({ "applied": applied }));
             }
         }
+        // Revision-gated arms fall through here when the buffer moved on.
         _ => {}
     }
 }

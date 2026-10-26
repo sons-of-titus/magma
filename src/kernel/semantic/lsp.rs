@@ -17,11 +17,16 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::Event as LspEvent;
 use super::lsp_proto::{self, Inbound};
 use crate::kernel::runtime::BackgroundEvent;
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn send_event(bg: &crate::kernel::runtime::BackgroundHandle, event: LspEvent) {
+    bg.send_event(BackgroundEvent::Lsp(event));
+}
 
 /// One in-flight request, kept until its response (or its timeout).
 #[derive(Debug, Clone)]
@@ -306,7 +311,7 @@ fn reader_loop(
         .map(|(_, p)| p)
         .collect();
     for p in pending {
-        bg.send_event(BackgroundEvent::LspResponse {
+        send_event(&bg, LspEvent::Response {
             path: language_id.clone(),
             method: p.method,
             result: "language server exited".to_string(),
@@ -315,7 +320,7 @@ fn reader_loop(
             revision: p.revision,
         });
     }
-    bg.send_event(BackgroundEvent::LspServerExited { language: language_id });
+    send_event(&bg, LspEvent::ServerExited { language: language_id });
 }
 
 fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runtime::BackgroundHandle, msg: Value) {
@@ -338,7 +343,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                 let uri = params.pointer("/uri").and_then(Value::as_str).unwrap_or_default().to_string();
                 let version = params.get("version").and_then(Value::as_u64);
                 let diagnostics = parse_diagnostics(&params);
-                bg.send_event(BackgroundEvent::LspDiagnostics { path: uri, version, diagnostics });
+                send_event(bg, LspEvent::Diagnostics { path: uri, version, diagnostics });
             }
             "$/progress" => {
                 let token = params.pointer("/value/token").and_then(Value::as_str).unwrap_or_default().to_string();
@@ -346,7 +351,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                 let percentage = params.pointer("/value/percentage")
                     .map(|p| p.to_string())
                     .unwrap_or_default();
-                bg.send_event(BackgroundEvent::LspProgress { token, message, percentage });
+                send_event(bg, LspEvent::Progress { token, message, percentage });
             }
             _ => {}
         },
@@ -355,7 +360,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                 // The foreground applies the edit and answers with the
                 // truth; the reader thread must not pre-empt it.
                 let edit = params.get("edit").cloned().unwrap_or(Value::Null);
-                bg.send_event(BackgroundEvent::LspApplyEdit {
+                send_event(bg, LspEvent::ApplyEdit {
                     language: language_id.to_string(),
                     request_id: id,
                     edit_json: edit.to_string(),
@@ -381,7 +386,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                     if is_cancellation(&err) {
                         debug!("LSP {language_id}: {} cancelled", p.method);
                     } else {
-                        bg.send_event(lsp_response_event(language_id, "error", &err.to_string(), p));
+                        send_event(bg, lsp_response_event(language_id, "error", &err.to_string(), p));
                     }
                 }
                 return;
@@ -398,7 +403,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
             if let Some(p) = pending {
                 let method = p.method.clone();
                 let event = match method.as_str() {
-                    "textDocument/hover" => BackgroundEvent::LspHover {
+                    "textDocument/hover" => LspEvent::Hover {
                         path: language_id.to_string(),
                         contents: extract_hover_text(result.as_ref()),
                         buf_key: p.buf_key,
@@ -412,7 +417,7 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                             loc = None;
                         }
                         match loc {
-                            Some((uri, sl, sc, el, ec)) => BackgroundEvent::LspDefinition {
+                            Some((uri, sl, sc, el, ec)) => LspEvent::Definition {
                                 path: language_id.to_string(),
                                 uri, start_line: sl, start_col: sc, end_line: el, end_col: ec,
                                 buf_key: p.buf_key,
@@ -421,19 +426,19 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                             None => lsp_response_event(language_id, "textDocument/definition", "null", p),
                         }
                     }
-                    "textDocument/codeAction" => BackgroundEvent::LspCodeActions {
+                    "textDocument/codeAction" => LspEvent::CodeActions {
                         path: language_id.to_string(),
                         actions: result.map(|r| r.to_string()).unwrap_or_else(|| "[]".into()),
                         buf_key: p.buf_key,
                         revision: p.revision,
                     },
-                    "textDocument/completion" => BackgroundEvent::LspCompletionItems {
+                    "textDocument/completion" => LspEvent::CompletionItems {
                         path: language_id.to_string(),
                         items: result.map(|r| r.to_string()).unwrap_or_else(|| "[]".into()),
                         buf_key: p.buf_key,
                         revision: p.revision,
                     },
-                    "textDocument/rename" => BackgroundEvent::LspRenameResult {
+                    "textDocument/rename" => LspEvent::RenameResult {
                         path: language_id.to_string(),
                         edit: result.map(|r| r.to_string()).unwrap_or_else(|| "null".into()),
                         buf_key: p.buf_key,
@@ -446,14 +451,14 @@ fn handle_message(core: &Arc<Core>, language_id: &str, bg: &crate::kernel::runti
                         event
                     }
                 };
-                bg.send_event(event);
+                send_event(bg, event);
             }
         }
     }
 }
 
-fn lsp_response_event(language_id: &str, method: &str, result: &str, p: Pending) -> BackgroundEvent {
-    BackgroundEvent::LspResponse {
+fn lsp_response_event(language_id: &str, method: &str, result: &str, p: Pending) -> LspEvent {
+    LspEvent::Response {
         path: language_id.to_string(),
         method: method.to_string(),
         result: result.to_string(),

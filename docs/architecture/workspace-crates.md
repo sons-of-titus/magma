@@ -633,10 +633,10 @@ editor state outside the trait, the stub stops compiling.
 
 `render_frame` still takes `Editor` for view painting, but frame
 preparation (`prepare_frame`), dispatch selection (`frame_panes`),
-viewport/scroll synchronization (`sync_viewport_scroll`) and overlay
-painting (`render_overlays`) now run through `FrameHost`/`ViewportHost`/
-`RenderHost` plus borrowed inputs, so each can be exercised from a
-non-Editor stub. `src/tests/render_host_tests.rs` covers all four.
+viewport/scroll synchronization (`sync_viewport_scroll`), overlay
+painting (`render_overlays`) and visible-row construction
+(`build_visible_rows`) now run without an `Editor`, so each can be
+exercised from a non-Editor stub or a `Buffer`. `src/tests/render_host_tests.rs` covers them.
 
 ## Task ownership decision
 

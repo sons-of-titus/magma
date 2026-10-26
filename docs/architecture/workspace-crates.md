@@ -672,6 +672,28 @@ second, editor-independent consumer of task lifecycle appears.
   moving `EventSink` and the DAP vocabulary, which is not justified by the
   current dependency graph.
 
+## BackgroundEvent ownership
+
+`BufferWords` and `TsTreeReady` remain flat variants of the central
+`BackgroundEvent` enum. Both are kernel orchestration events: completion
+word scanning and tree-sitter parse scheduling are not extracted crates and
+have no subsystem event vocabulary of their own. Namespacing them would
+require inventing crate-level event types with no second consumer, adding
+an event hop for no dependency reduction. They stay centralized; delivery,
+ordering, and stale-result validation are unchanged.
+
+## DAP extraction reassessment
+
+The `EventSink` seam (`debug::EventSink`) already lets the DAP reader thread
+report without naming the kernel event enum, and `DapHandle` is covered by
+unit tests. Extraction to a crate is still deferred: `DapHandle` is
+`Arc`-shared with `DebugManager` and embedded in `Event::Started`, so moving
+it would either move `DebugManager` or introduce an awkward façade, and
+would not reduce dependencies today. Prerequisite for future extraction:
+decouple `DebugManager` from the client handle (e.g. an application-owned
+session object keyed by session id) so the handle can move without the
+manager.
+
 ## Verification
 
 The extraction must keep these green:

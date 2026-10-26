@@ -567,6 +567,41 @@ renumbering (gapless per label, renamed tabs untouched), the rename
 changed/unchanged return, input and resize reaching the master, kill
 terminating the child, and kill through the handle when the pid is absent.
 
+## Subsystem extraction assessment (phase 2)
+
+With the event vocabularies namespaced, each subsystem's crate-readiness can be
+stated in terms of what still ties it to `Editor` rather than to its own data.
+
+| Subsystem | Location | Extracted so far | Remaining blocker |
+|---|---|---|---|
+| `index` | `src/kernel/index` + `crates/index` | record format, extractor, store, `Event` | `IndexStore` merge and `reconcile_project_index` drive `Editor` and the indexing lane; they are foreground orchestration, not crate material |
+| `project` | `src/kernel/project` + `crates/project` | detection, ignore rules, toolchain, `Event` | `Project`/`ProjectManager` state, `open_root`/`spawn_file_index` mutate `Editor` |
+| `vc` | `src/kernel/vc` + `crates/vcs` | backends, parsers, `Event`, `DiffData` | `VcState` and the `HiddenPane`/`DiffView` layout are editor state |
+| `semantic` | `src/kernel/semantic` + `crates/semantic` | providers, engine, symbol index, graph, wire protocol, `Event` | `LspHandle` owns the child process and the reader thread; `edit_apply` mutates buffers; `ts_schedule` submits to the lane |
+| `debug` | `src/kernel/debug` | nothing | `DapHandle` is embedded in `Event::Started` and is `Arc`-shared with the session model |
+| `task` | `src/kernel/task` + `crates/scheduler` | nothing | `crates/scheduler` deliberately owns work bookkeeping only; `TaskId`, `TaskStatus`, `OutputSink`, and process spawning still live with the kernel |
+| `terminal` | `src/kernel/terminal` + `crates/pty` + `crates/vt` | sessions, screen | `TerminalManager` pumps `Editor` events |
+| `render` | `src/kernel/render` | surface, GPU atlas, view tree | 48 files, ~10k lines, 140 `Editor` references |
+| `command` | `src/kernel/command` | — | 23 files, 87 `Editor` references |
+| `scripting` | `src/kernel/scripting` | — | 55 files, ~9.8k lines, 45 `Editor` references |
+
+What this says about sequence:
+
+1. `index`, `project`, and `vc` are done: their vocabularies, and every type
+   they name, now live in their crates with `kernel::…` re-exports.  No further
+   move is justified — what remains on the kernel side is state mutation.
+2. `semantic` and `debug` are blocked by the same shape: an owned client handle
+   (`LspHandle`, `DapHandle`) that both spawns a child and is embedded in an
+   event.  The unlock is a transport seam — a trait the client implements and
+   the handler consumes — so the handle type can move without the kernel
+   transport.
+3. `task` needs a decision, not a move.  `crates/scheduler` documents that it
+   owns no event vocabulary; either a `task` crate takes the vocabulary and the
+   process supervision, or the vocabulary stays with the kernel's task state.
+4. `render`, `command`, and `scripting` are `Editor`-coupled by design and need
+   capability interfaces (viewport/text/theme for render; command surface and
+   capabilities for scripting), not crate moves.
+
 ## Remaining blockers
 
 ### Background-event adoption
@@ -579,8 +614,9 @@ all of these keep sharing the one foreground channel.
 
 ### `Editor` coupling
 
-`command` (89 refs), `render` (157), `scripting` (53), and `runtime` (24)
-operate directly on the concrete `Editor`. Extracting them needs a narrow
+`render` (140 refs), `command` (87), `scripting` (45), and `runtime` (34)
+operate directly on the concrete `Editor` (grep counts of `state::Editor`,
+`&Editor`, and `&mut Editor` per module). Extracting them needs a narrow
 context/capability interface (viewport, text snapshots, theme, cursor for
 render; command surface and capabilities for scripting), not a crate move.
 

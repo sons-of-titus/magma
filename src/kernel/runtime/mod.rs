@@ -120,29 +120,11 @@ pub enum BackgroundEvent {
     /// A background word scan finished for completion.  Applied only when
     /// the buffer is still at the scanned revision; otherwise discarded.
     BufferWords { buf_key: usize, revision: u64, words: Vec<String> },
-    /// A VCS status fetch finished off the foreground thread.
-    VcStatusFetched {
-        backend_idx: usize,
-        root: std::path::PathBuf,
-        result: Result<crate::kernel::vc::VcStatus, String>,
-    },
     /// A scheduled tree-sitter parse finished on the lane; pick the tree
     /// up from the bounded handoff store if the revision still matches.
     TsTreeReady { buf_key: usize, revision: u64 },
-    /// A VCS repository operation (stage/diff/log/push/blame/commit)
-    /// finished off the foreground thread.
-    VcOpDone {
-        scratch: Option<String>,
-        then_refresh: bool,
-        result: Result<String, String>,
-    },
-    /// A branch list for the Commit window's branch widget finished.
-    VcBranchesReady { branches: Vec<String> },
-    /// A stash list for the Commit window's stash section finished.
-    VcStashListed { result: Result<Vec<crate::kernel::vc::StashEntry>, String> },
-    /// A one-file diff bundle (HEAD + worktree + patch) finished; the handler
-    /// opens the side-by-side editor diff from it.
-    VcDiffReady { path: String, result: Result<crate::kernel::vc::DiffData, String> },
+    /// The version-control subsystem's own event vocabulary.
+    Vc(crate::kernel::vc::Event),
     /// An external-change reload read finished off the foreground thread.
     BufferReloaded { buf_key: usize, content: Result<String, String> },
     /// An explicit save's disk write finished; only this exact revision

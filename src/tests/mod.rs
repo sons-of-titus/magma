@@ -77,6 +77,7 @@ mod dap_event_tests;
 mod lsp_event_tests;
 mod index_event_tests;
 mod project_event_tests;
+mod vc_event_tests;
 #[cfg(feature = "janet")]
 mod perf_probe_tests;
 mod memory_budget_tests;

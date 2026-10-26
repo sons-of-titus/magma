@@ -70,11 +70,7 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::Task(_) => task::handle(ed, event),
 
         // ── Version control ──────────────────────────────────────────────
-        BackgroundEvent::VcOpDone { .. }
-        | BackgroundEvent::VcStatusFetched { .. }
-        | BackgroundEvent::VcBranchesReady { .. }
-        | BackgroundEvent::VcStashListed { .. }
-        | BackgroundEvent::VcDiffReady { .. } => vc::handle(ed, event),
+        BackgroundEvent::Vc(_) => vc::handle(ed, event),
 
         // ── Agent ────────────────────────────────────────────────────────
         BackgroundEvent::AgentThought { .. }

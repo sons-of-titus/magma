@@ -159,7 +159,7 @@ full transcript.
 ### 1.9 VCS — status refresh is async
 
 `vc-refresh` no longer shells out on the UI thread: the status fetch runs
-on the blocking pool and lands via `VcStatusFetched`, repopulating the
+on the blocking pool and lands via `Vc(StatusFetched)`, repopulating the
 Commit tool window from the foreground. Explicit user-invoked repo mutations
 (stage/unstage/diff/log/blame) remain synchronous — they are one-shot
 commands, not the interactive path, and are noted as remaining work for
@@ -198,7 +198,7 @@ owns the cache.
 ### 1.14 VCS mutations — async
 
 Every repository operation — stage, unstage, diff, log, push, blame,
-commit — runs on the background pool and lands via `VcOpDone`; the
+commit — runs on the background pool and lands via `Vc(OpDone)`; the
 foreground writes the scratch buffer and chains the (also async) status
 refresh.  The backend identity travels by name (`active_backend_name`)
 since trait-object backends cannot cross into the pool by value;

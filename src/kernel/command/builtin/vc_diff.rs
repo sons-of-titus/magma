@@ -85,14 +85,15 @@ pub(super) fn register(editor: &mut Editor) {
 // ── Fetching ─────────────────────────────────────────────────────────────────
 
 /// Fetch the HEAD blob, the working-tree content, and the zero-context patch
-/// off the interactive path; `VcDiffReady` opens the two panes.
+/// off the interactive path; `Vc(DiffReady)` opens the two panes.
 pub(crate) fn spawn_diff(editor: &mut Editor, path: String) -> CommandResult {
     let (backend, root) = active(editor)?;
     if let Some(bg) = editor.background.clone() {
         let sender = bg.sender.clone();
         bg.spawn_blocking(move || {
             let result = fetch_bundle(&root, &backend, &path);
-            let _ = sender.send(BackgroundEvent::VcDiffReady { path, result });
+            let _ = sender.send(BackgroundEvent::Vc(
+                crate::kernel::vc::Event::DiffReady { path, result }));
         });
     } else {
         match fetch_bundle(&root, &backend, &path) {

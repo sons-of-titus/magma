@@ -143,9 +143,10 @@ pub(crate) fn vc_refresh(editor: &mut Editor) -> CommandResult {
         let sender = bg.sender.clone();
         bg.spawn_blocking(move || {
             let result = crate::kernel::vc::status_for_root(&root);
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::VcStatusFetched {
-                backend_idx, root, result,
-            });
+            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Vc(
+                crate::kernel::vc::Event::StatusFetched {
+                    backend_idx, root, result,
+                }));
         });
     } else {
         match crate::kernel::vc::status_for_root(&root) {
@@ -172,7 +173,7 @@ fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
     vc_spawn_op(editor, remote, Some(name), false)
 }
 
-/// Dispatch a repository operation on the maintenance lane; the `VcOpDone`
+/// Dispatch a repository operation on the maintenance lane; the `Vc(OpDone)`
 /// event writes output and refreshes the panel from the foreground.
 pub(crate) fn vc_spawn_op(
     editor: &mut Editor,
@@ -194,11 +195,12 @@ pub(crate) fn vc_spawn_op(
     let scratch_name = scratch.map(String::from);
     bg.spawn_blocking(move || {
         let result = crate::kernel::vc::run_op(&root, &backend, &op);
-        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::VcOpDone {
-            scratch: scratch_name,
-            then_refresh,
-            result,
-        });
+        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Vc(
+            crate::kernel::vc::Event::OpDone {
+                scratch: scratch_name,
+                then_refresh,
+                result,
+            }));
     });
     Ok(())
 }

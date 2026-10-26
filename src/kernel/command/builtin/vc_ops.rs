@@ -65,7 +65,8 @@ pub(crate) fn spawn_branch_list(editor: &mut Editor) -> CommandResult {
             let branches = crate::kernel::vc::run_op(&root, &backend, &VcRemoteOp::ListBranches)
                 .map(|out| parse_branch_lines(&out).into_iter().map(|b| b.name).collect())
                 .unwrap_or_default();
-            let _ = sender.send(BackgroundEvent::VcBranchesReady { branches });
+            let _ = sender.send(BackgroundEvent::Vc(
+                crate::kernel::vc::Event::BranchesReady { branches }));
         });
     } else {
         editor.vc.branches = crate::kernel::vc::run_op(&root, &backend, &VcRemoteOp::ListBranches)
@@ -88,7 +89,8 @@ pub(crate) fn spawn_stash_list(editor: &mut Editor) -> CommandResult {
             let stashes = crate::kernel::vc::run_op(&root, &backend, &VcRemoteOp::StashList)
                 .map(|out| parse_stash_lines(&out))
                 .unwrap_or_default();
-            let _ = sender.send(BackgroundEvent::VcStashListed { result: Ok(stashes) });
+            let _ = sender.send(BackgroundEvent::Vc(
+                crate::kernel::vc::Event::StashListed { result: Ok(stashes) }));
         });
     } else {
         editor.vc.stashes = crate::kernel::vc::run_op(&root, &backend, &VcRemoteOp::StashList)

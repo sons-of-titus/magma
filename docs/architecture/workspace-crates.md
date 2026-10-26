@@ -250,15 +250,28 @@ The project subsystem follows the same recipe:
   mixed project/fs/custom sequence arrives complete and in send order, and
   checks finder presentation, generation-gated grep append, and stale drops.
 
+The version-control subsystem follows the same recipe:
+
+- `kernel::vc::Event` (`src/kernel/vc/event.rs`) owns `StatusFetched`,
+  `OpDone`, `BranchesReady`, `StashListed`, and `DiffReady`.
+- The status/op/branch/stash/diff workers send
+  `BackgroundEvent::Vc(vc::Event)` on the same channel.
+- `runtime::handlers::vc` matches the inner enum.
+- `src/tests/vc_event_tests.rs` pins the wrapper payloads, asserts a mixed
+  VC/fs/custom sequence arrives complete and in send order, and checks status,
+  branch, and stash dispatch.
+
 The wrapper changes neither transport nor order: both constructors send on the
 same channel they used before, and `process_background_event` still marks the
 frame dirty and dispatches through one exhaustive match. `TaskReady` remains a
 `BackgroundEvent` variant — it is the scripting/process subsystem's readiness
 signal, not a task-result event.
 
-Still merged in the central enum:
+Still flat in the central enum, because their owners are outside this phase's
+extraction targets:
 
-- `vc`
+- `BufferWords` (completion word scan)
+- `TsTreeReady` (tree-sitter parse scheduling)
 
 Each follows the task recipe: define `<subsystem>::Event`, add one
 `BackgroundEvent::<Subsystem>(…)` wrapper, route the existing constructor
@@ -550,10 +563,11 @@ terminating the child, and kill through the handle when the pid is absent.
 
 ### Background-event adoption
 
-The task, debug, LSP, index, and project vocabularies are now namespaced (see
-above), which proves the single-channel wrapper without changing delivery
-order. The same split is still pending for `vc`; until then it keeps its
-variants in the central enum and stays in the kernel.
+The task, debug, LSP, index, project, and version-control vocabularies are now
+namespaced (see above), which proves the single-channel wrapper without
+changing delivery order. `BufferWords` and `TsTreeReady` stay flat because
+completion and tree-sitter scheduling are not extraction targets in this phase;
+all of these keep sharing the one foreground channel.
 
 ### `Editor` coupling
 
@@ -568,7 +582,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1759 passed (1742 baseline + 17 event-boundary regression tests)
+cargo test --workspace          # 1762 passed (1742 baseline + 20 event-boundary regression tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

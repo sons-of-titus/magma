@@ -7,35 +7,42 @@ use super::super::BackgroundEvent;
 
 pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
     match event {
-        BackgroundEvent::VcOpDone { scratch, then_refresh, result } => {
+        BackgroundEvent::Vc(event) => handle_vc_event(ed, event),
+        _ => {}
+    }
+}
+
+fn handle_vc_event(ed: &mut Editor, event: crate::kernel::vc::Event) {
+    use crate::kernel::vc::Event;
+    match event {
+        Event::OpDone { scratch, then_refresh, result } => {
             if let Err(e) = crate::kernel::command::builtin::vcs::apply_vc_op(
                 ed, scratch.as_deref(), then_refresh, result,
             ) {
                 ed.show_message(crate::kernel::state::MessageKind::Error, e);
             }
         }
-        BackgroundEvent::VcStatusFetched { backend_idx, root, result } => {
+        Event::StatusFetched { backend_idx, root, result } => {
             match result {
                 Ok(status) => ed.vc.last_status = Some(status),
                 Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
             }
             let _ = (backend_idx, root);
         }
-        BackgroundEvent::VcBranchesReady { branches } => {
+        Event::BranchesReady { branches } => {
             ed.vc.branches = branches;
         }
-        BackgroundEvent::VcStashListed { result } => {
+        Event::StashListed { result } => {
             match result {
                 Ok(stashes) => ed.vc.stashes = stashes,
                 Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
             }
         }
-        BackgroundEvent::VcDiffReady { path, result } => {
+        Event::DiffReady { path, result } => {
             match result {
                 Ok(data) => crate::kernel::command::builtin::vc_diff::open_diff(ed, &path, data),
                 Err(e) => ed.show_message(crate::kernel::state::MessageKind::Error, e),
             }
         }
-        _ => {}
     }
 }

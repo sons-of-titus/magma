@@ -1,5 +1,5 @@
 //! Filesystem background-event handlers — file reads/writes, external
-//! change reloads, async save confirmations, auto-save, and find-files.
+//! change reloads, async save confirmations, and auto-save.
 
 use crate::kernel::state::Editor;
 use crate::kernel::event::keys;
@@ -73,9 +73,6 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             ed.io.saves_in_flight.remove(&buf_key);
             ed.show_message(crate::kernel::state::MessageKind::Error,
                 format!("save failed: {error}"));
-        }
-        BackgroundEvent::FileSearchListed { pattern, files } => {
-            crate::kernel::command::builtin::buffer::present_file_search(ed, &pattern, files);
         }
         BackgroundEvent::AutoSaveTick => {
             // The heartbeat doubles as the maintenance tick: persist the

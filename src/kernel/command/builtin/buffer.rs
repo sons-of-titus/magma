@@ -168,9 +168,10 @@ pub(super) fn find_files_register(cmds: &mut crate::kernel::command::CommandRegi
                 bg.spawn_blocking(move || {
                     let files = walk_matching(&cwd, &pattern);
                     let _ = sender.send(
-                        crate::kernel::runtime::BackgroundEvent::FileSearchListed {
-                            pattern, files,
-                        });
+                        crate::kernel::runtime::BackgroundEvent::Project(
+                            crate::kernel::project::Event::FileSearchListed {
+                                pattern, files,
+                            }));
                 });
                 return Ok(());
             }

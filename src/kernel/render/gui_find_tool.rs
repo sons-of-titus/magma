@@ -129,18 +129,21 @@ impl FindInFilesToolWindow {
                     }
                     if total >= MAX_RESULTS { break; }
                     if batch.len() >= 100 {
-                        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepResultsBatch {
-                            generation, entries: std::mem::take(&mut batch),
-                        });
+                        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Project(
+                            crate::kernel::project::Event::GrepResultsBatch {
+                                generation, entries: std::mem::take(&mut batch),
+                            }));
                     }
                 }
             }
             if !batch.is_empty() {
-                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepResultsBatch {
-                    generation, entries: batch,
-                });
+                let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Project(
+                    crate::kernel::project::Event::GrepResultsBatch {
+                        generation, entries: batch,
+                    }));
             }
-            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::GrepDone { generation });
+            let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Project(
+                crate::kernel::project::Event::GrepDone { generation }));
             if let Ok(mut guard) = running.lock() {
                 if let Some(child) = guard.as_mut() {
                     let _ = child.wait();

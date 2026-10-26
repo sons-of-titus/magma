@@ -239,6 +239,17 @@ The index subsystem follows the same recipe:
   index/fs/custom sequence arrives complete and in send order, and checks
   project-registry and store dispatch.
 
+The project subsystem follows the same recipe:
+
+- `kernel::project::Event` (`src/kernel/project/event.rs`) owns
+  `FileSearchListed`, `GrepResultsBatch`, and `GrepDone`.
+- The find-files walk and the ripgrep worker send
+  `BackgroundEvent::Project(project::Event)` on the same channel.
+- `runtime::handlers::project` matches the inner enum.
+- `src/tests/project_event_tests.rs` pins the wrapper payloads, asserts a
+  mixed project/fs/custom sequence arrives complete and in send order, and
+  checks finder presentation, generation-gated grep append, and stale drops.
+
 The wrapper changes neither transport nor order: both constructors send on the
 same channel they used before, and `process_background_event` still marks the
 frame dirty and dispatches through one exhaustive match. `TaskReady` remains a
@@ -247,7 +258,7 @@ signal, not a task-result event.
 
 Still merged in the central enum:
 
-- `project`, `vc`
+- `vc`
 
 Each follows the task recipe: define `<subsystem>::Event`, add one
 `BackgroundEvent::<Subsystem>(…)` wrapper, route the existing constructor
@@ -539,10 +550,10 @@ terminating the child, and kill through the handle when the pid is absent.
 
 ### Background-event adoption
 
-The task, debug, LSP, and index vocabularies are now namespaced (see above),
-which proves the single-channel wrapper without changing delivery order. The
-same split is still pending for `project` and `vc`; until then those
-subsystems keep their variants in the central enum and stay in the kernel.
+The task, debug, LSP, index, and project vocabularies are now namespaced (see
+above), which proves the single-channel wrapper without changing delivery
+order. The same split is still pending for `vc`; until then it keeps its
+variants in the central enum and stays in the kernel.
 
 ### `Editor` coupling
 
@@ -557,7 +568,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1755 passed (1742 baseline + 13 event-boundary regression tests)
+cargo test --workspace          # 1759 passed (1742 baseline + 17 event-boundary regression tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

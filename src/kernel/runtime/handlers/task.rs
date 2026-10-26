@@ -1,6 +1,5 @@
-//! Task/index/search background-event handlers — task completion with tool
-//! diagnostics, grep batches, scheduler work, completion word scans, the
-//! symbol index, and tree-sitter parse readiness.
+//! Task background-event handlers — task completion with tool diagnostics,
+//! scheduler work, completion word scans, and tree-sitter parse readiness.
 
 use crate::kernel::state::Editor;
 use crate::kernel::event::keys;
@@ -10,15 +9,6 @@ use super::super::BackgroundEvent;
 
 pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
     match event {
-        BackgroundEvent::GrepResultsBatch { generation, entries }
-            if generation == ed.search.generation => {
-                ed.search.results.extend(entries);
-                ed.search.results.truncate(crate::kernel::task::QUICKFIX_MAX_RESULTS);
-            }
-        BackgroundEvent::GrepDone { generation }
-            if generation == ed.search.generation => {
-                ed.search.index = 0;
-            }
         BackgroundEvent::WorkProgress { id, done, total } => {
             ed.scheduler.update_progress(id, done, total);
             let name = ed.scheduler.name(id).unwrap_or("").to_string();

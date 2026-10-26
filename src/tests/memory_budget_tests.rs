@@ -49,7 +49,8 @@ fn find_results_truncate_at_five_hundred() {
         })
         .collect();
     crate::kernel::runtime::process_background_event(&mut ed,
-        crate::kernel::runtime::BackgroundEvent::GrepResultsBatch { generation, entries });
+        crate::kernel::runtime::BackgroundEvent::Project(
+            crate::kernel::project::Event::GrepResultsBatch { generation, entries }));
     assert_eq!(ed.search.results.len(), 500, "the find-results list must cap at 500");
 }
 

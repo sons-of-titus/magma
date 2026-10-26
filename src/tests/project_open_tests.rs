@@ -217,12 +217,13 @@ fn find_files_walks_on_the_pool_and_presents_results() {
     execute_command(&mut ed, "find-files", &args).unwrap();
 
     // The command returns before the walk finishes; the results land as
-    // a finder buffer from the FileSearchListed event.
+    // a finder buffer from the Project(FileSearchListed) event.
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut presented = false;
     while Instant::now() < deadline {
         while let Ok(ev) = rx.try_recv() {
-            if let BackgroundEvent::FileSearchListed { files, .. } = &ev
+            if let BackgroundEvent::Project(
+                crate::kernel::project::Event::FileSearchListed { files, .. }) = &ev
                 && files.iter().any(|f| f.ends_with("util.rs")) {
                 presented = true;
             }

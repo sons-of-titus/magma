@@ -11,6 +11,7 @@ mod index;
 mod lsp;
 mod net;
 mod process;
+mod project;
 mod task;
 mod vc;
 
@@ -27,7 +28,6 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::BufferReloaded { .. }
         | BackgroundEvent::SaveWritten { .. }
         | BackgroundEvent::SaveFailed { .. }
-        | BackgroundEvent::FileSearchListed { .. }
         | BackgroundEvent::AutoSaveTick
         | BackgroundEvent::AutoSaveWritten { .. } => fs::handle(ed, event),
 
@@ -58,10 +58,11 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         // ── Index ────────────────────────────────────────────────────────
         BackgroundEvent::Index(_) => index::handle(ed, event),
 
-        // ── Tasks / search ───────────────────────────────────────────────
-        BackgroundEvent::GrepResultsBatch { .. }
-        | BackgroundEvent::GrepDone { .. }
-        | BackgroundEvent::WorkProgress { .. }
+        // ── Project search ───────────────────────────────────────────────
+        BackgroundEvent::Project(_) => project::handle(ed, event),
+
+        // ── Tasks ────────────────────────────────────────────────────────
+        BackgroundEvent::WorkProgress { .. }
         | BackgroundEvent::WorkCompleted { .. }
         | BackgroundEvent::WorkFailed { .. }
         | BackgroundEvent::BufferWords { .. }

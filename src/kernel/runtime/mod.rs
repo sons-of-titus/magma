@@ -56,11 +56,8 @@ pub enum BackgroundEvent {
     Task(crate::kernel::task::Event),
     /// A project's file list finished indexing.
     Index(crate::kernel::index::Event),
-    /// A streamed batch of project-search results; appended to the
-    /// quickfix list when the generation is still current.
-    GrepResultsBatch { generation: u64, entries: Vec<crate::kernel::task::QuickfixEntry> },
-    /// A project-wide search finished; the quickfix index resets.
-    GrepDone { generation: u64 },
+    /// The project subsystem's own event vocabulary.
+    Project(crate::kernel::project::Event),
     // ── Sprint 13 Network API ─────────────────────────────────────────────
     /// An HTTP request completed successfully.
     HttpResponse { id: u64, status: u16, body: String },
@@ -153,8 +150,6 @@ pub enum BackgroundEvent {
     SaveWritten { buf_key: usize, path: String, saved_rev: u64 },
     /// An explicit save's disk write failed.
     SaveFailed { buf_key: usize, error: String },
-    /// A find-files walk finished off the foreground thread.
-    FileSearchListed { pattern: String, files: Vec<String> },
 }
 
 /// Process a background event on the main thread, dispatching it to the

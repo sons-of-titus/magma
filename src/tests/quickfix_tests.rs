@@ -20,19 +20,22 @@ fn grep_results_land_in_the_search_list() {
     let mut ed = editor();
     ed.search.generation += 1;
     let generation = ed.search.generation;
-    process_background_event(&mut ed, BackgroundEvent::GrepDone { generation });
-    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch { generation, entries: Vec::new() });
-    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
-        generation,
-        entries: vec![
-            QuickfixEntry {
-                filename: "src/main.rs".into(),
-                line: 12,
-                col: 1,
-                message: "let x = todo!".into(),
-            ..Default::default() },
-        ],
-    });
+    process_background_event(&mut ed, BackgroundEvent::Project(
+        crate::kernel::project::Event::GrepDone { generation }));
+    process_background_event(&mut ed, BackgroundEvent::Project(
+        crate::kernel::project::Event::GrepResultsBatch { generation, entries: Vec::new() }));
+    process_background_event(&mut ed, BackgroundEvent::Project(
+        crate::kernel::project::Event::GrepResultsBatch {
+            generation,
+            entries: vec![
+                QuickfixEntry {
+                    filename: "src/main.rs".into(),
+                    line: 12,
+                    col: 1,
+                    message: "let x = todo!".into(),
+                ..Default::default() },
+            ],
+        }));
     assert_eq!(ed.search.results.len(), 1);
     assert_eq!(ed.search.results[0].filename, "src/main.rs");
     assert_eq!(ed.search.index, 0);
@@ -95,10 +98,11 @@ fn stale_search_generations_are_dropped() {
         message: "stale".into(),
     ..Default::default() };
     // A result from generation 3 lands after the search moved to 5: gone.
-    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
-        generation: 3,
-        entries: vec![entry],
-    });
+    process_background_event(&mut ed, BackgroundEvent::Project(
+        crate::kernel::project::Event::GrepResultsBatch {
+            generation: 3,
+            entries: vec![entry],
+        }));
     assert!(ed.search.results.is_empty(), "stale search results must never land");
 
     let fresh = QuickfixEntry {
@@ -107,10 +111,11 @@ fn stale_search_generations_are_dropped() {
         col: 1,
         message: "fresh".into(),
     ..Default::default() };
-    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
-        generation: 5,
-        entries: vec![fresh],
-    });
+    process_background_event(&mut ed, BackgroundEvent::Project(
+        crate::kernel::project::Event::GrepResultsBatch {
+            generation: 5,
+            entries: vec![fresh],
+        }));
     assert_eq!(ed.search.results.len(), 1);
     assert_eq!(ed.search.results[0].filename, "new.rs");
 }
@@ -125,12 +130,13 @@ fn build_problems_and_find_results_are_separate() {
 
     ed.search.generation += 1;
     let generation = ed.search.generation;
-    process_background_event(&mut ed, BackgroundEvent::GrepResultsBatch {
-        generation,
-        entries: vec![QuickfixEntry {
-            filename: "a.rs".into(), line: 3, col: 1, message: "hit".into(),
-        ..Default::default() }],
-    });
+    process_background_event(&mut ed, BackgroundEvent::Project(
+        crate::kernel::project::Event::GrepResultsBatch {
+            generation,
+            entries: vec![QuickfixEntry {
+                filename: "a.rs".into(), line: 3, col: 1, message: "hit".into(),
+            ..Default::default() }],
+        }));
 
     assert_eq!(ed.search.results.len(), 1);
     assert_eq!(ed.quickfix_list.len(), 1, "a grep must not clear build problems");

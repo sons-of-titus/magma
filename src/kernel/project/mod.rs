@@ -17,6 +17,9 @@ use crate::kernel::run_config::RunConfigManager;
 
 pub use project::{detect, gitignore, toolchain};
 
+mod event;
+pub use event::Event;
+
 // ── Supporting types ──────────────────────────────────────────────────────────
 
 /// A member subproject within a workspace (monorepo support).

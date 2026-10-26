@@ -31,7 +31,7 @@ these paths and must keep compiling unchanged.
 ```
                        logging
                           |
-   util   event   keymap  extension   net   clipboard   id   vcs
+   util   event   keymap  extension   net   clipboard   id   vcs   bgpool
                                                     |
                                                   text        vt
                                                     |
@@ -122,22 +122,47 @@ The backends live in `crates/vcs/src/backends/`, one file per VCS
 runtime-registered backends and `parsers.rs` for their shared output
 parsers.
 
+### `crates/bgpool`
+
+The scheduling half of the background system: `Pool<E>` (a cloneable handle
+over a tokio runtime and an event channel), the three priority lanes
+(foreground, indexing, maintenance) with bounded concurrency, and
+ticket-based coalescing so a superseded job skips instead of doing stale
+work. `spawn`, `spawn_blocking`, `spawn_on`, `block_on`, and `send_event`
+are the whole surface.
+
+The pool is generic over the event type and has no Magma dependency, so a
+subsystem crate can own its event vocabulary and still share the scheduling
+policy.
+
+The kernel's `src/kernel/runtime/` keeps `BackgroundEvent` (the editor's
+merged event vocabulary) and the handlers that apply an event to `Editor`.
+`BackgroundHandle` is a thin specialization of `bgpool::Pool<BackgroundEvent>`
+plus the typed file read/write helpers; it derefs to the pool, so call sites
+(`bg.sender`, `bg.spawn_on`, `bg.read_file`) are unchanged.
+
 ## Remaining blockers
 
 ### The background-event hub
 
 `runtime::BackgroundEvent` is one enum containing every subsystem's async
-results. `BackgroundHandle` is parameterised by it:
+results. The scheduling half is now the `bgpool` crate (`Pool<E>` is generic
+over the event type), but the vocabulary itself still ties subsystems to the
+kernel:
 
 - `task` ↔ `runtime` (task scheduler sends `TaskOutputLine`, `TaskRunCompleted`)
 - `debug` ↔ `runtime` (`DapStarted`, `DapStopped`, …)
 - `semantic::lsp` ↔ `runtime` (`LspStarted`, `LspDiagnostics`, …)
 - `index`, `project`, `vc` also send variants through it
 
-Extracting any of those subsystems requires splitting the event vocabulary
-per subsystem or making the channel generic over its event type. Neither is a
-mechanical change; both change signatures at many call sites. Until then the
-subsystems stay in `kernel` and the hub remains the primary blocker.
+Extracting any of those subsystems requires splitting the vocabulary into
+per-subsystem event enums and giving each subsystem its own `bgpool::Pool`
+over its own type, with the foreground either merging channels (a forwarding
+task changes cross-subsystem delivery order) or keeping one channel and
+wrapping the sub-events (`BackgroundEvent::Task(TaskEvent)`), which still
+leaves the sender naming the kernel type. Both are real design changes, not
+file moves. Until one is chosen those subsystems stay in `kernel` and the
+enum remains the primary blocker.
 
 ### `Editor` coupling
 
@@ -152,11 +177,12 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1604 passed before and after the extraction
+cargo test --workspace          # 1610 passed (1604 pre-existing + 6 bgpool)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
 cargo test -p vcs               # backends, parsers, live-git round trips
+cargo test -p bgpool            # lane submission and event-channel tests
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

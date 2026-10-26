@@ -2,7 +2,7 @@
 //! bridges the tokio async runtime with the synchronous editor loop.
 //!
 //! Split per R-22 at the subsystem boundary:
-//!   pool.rs          — `BackgroundHandle`, priority lanes, submission
+//!   pool.rs          — `BackgroundHandle`: `bgpool::Pool<BackgroundEvent>` plus file helpers
 //!   handlers/        — per-subsystem event handlers (one module each)
 //!   mod.rs           — the event vocabulary and the dispatch entry
 //!

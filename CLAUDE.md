@@ -71,6 +71,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/semantic` | Language-intelligence core: language providers, semantic engine, symbol index, project graph, tree-sitter, LSP wire protocol |
 | `crates/vt` | VT/ANSI terminal screen model and escape-sequence parser (no PTY, no editor state) |
 | `crates/vcs` | Version-control layer: `VcBackend` trait, git/hg/svn/jj backends, shell-template backends, remote-operation dispatch and command helpers (no editor state) |
+| `crates/bgpool` | Background work pool: tokio runtime handle, priority lanes, coalescing, and the event channel to the foreground; generic over the event type |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

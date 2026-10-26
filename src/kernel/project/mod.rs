@@ -169,7 +169,7 @@ impl ProjectManager {
     /// Sync the project's current file list into the Semantic Engine's
     /// `ProjectGraph` using the detected language as the file language.
     ///
-    /// Called after file indexing completes (`FileIndexed` background event)
+    /// Called after file indexing completes (`index::Event::ProjectIndexed`)
     /// so the Semantic Engine can route providers to newly indexed files.
     pub fn sync_to_project_graph(
         &self,
@@ -327,8 +327,8 @@ fn walk_inner(
 }
 
 /// Enqueue an async walk of the active project's files.  Results arrive as
-/// `BackgroundEvent::FileIndexed`; the dirty flag clears at enqueue time so
-/// a slow walk never queues duplicates.
+/// `BackgroundEvent::Index(index::Event::ProjectIndexed)`; the dirty flag
+/// clears at enqueue time so a slow walk never queues duplicates.
 pub fn spawn_file_index(ed: &mut crate::kernel::state::Editor) -> bool {
     let Some(root) = ed.project_manager.project.root.clone() else { return false };
     let Some(bg) = ed.background.clone() else { return false };
@@ -337,10 +337,11 @@ pub fn spawn_file_index(ed: &mut crate::kernel::state::Editor) -> bool {
     ed.project_manager.project.file_index_dirty = false;
     bg.spawn_blocking(move || {
         let files = walk_dir(&root, &root).unwrap_or_default();
-        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::FileIndexed {
-            project_name: name,
-            files,
-        });
+        let _ = sender.send(crate::kernel::runtime::BackgroundEvent::Index(
+            crate::kernel::index::Event::ProjectIndexed {
+                project_name: name,
+                files,
+            }));
     });
     true
 }

@@ -7,6 +7,7 @@
 mod agent;
 mod dap;
 mod fs;
+mod index;
 mod lsp;
 mod net;
 mod process;
@@ -54,15 +55,16 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::TcpClientData { .. }
         | BackgroundEvent::TcpClientDisconnected { .. } => net::handle(ed, event),
 
-        // ── Tasks / index / search ───────────────────────────────────────
-        BackgroundEvent::FileIndexed { .. }
-        | BackgroundEvent::GrepResultsBatch { .. }
+        // ── Index ────────────────────────────────────────────────────────
+        BackgroundEvent::Index(_) => index::handle(ed, event),
+
+        // ── Tasks / search ───────────────────────────────────────────────
+        BackgroundEvent::GrepResultsBatch { .. }
         | BackgroundEvent::GrepDone { .. }
         | BackgroundEvent::WorkProgress { .. }
         | BackgroundEvent::WorkCompleted { .. }
         | BackgroundEvent::WorkFailed { .. }
         | BackgroundEvent::BufferWords { .. }
-        | BackgroundEvent::IndexRecordArrived(_)
         | BackgroundEvent::TsTreeReady { .. }
         | BackgroundEvent::Task(_) => task::handle(ed, event),
 

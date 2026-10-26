@@ -228,6 +228,17 @@ The LSP subsystem follows the same recipe:
   LSP/fs/custom sequence arrives complete and in send order, and checks
   diagnostics and completion dispatch.
 
+The index subsystem follows the same recipe:
+
+- `kernel::index::Event` (`src/kernel/index/event.rs`) owns `ProjectIndexed`
+  and `RecordArrived`.
+- `project::spawn_file_index` and the extraction workers send
+  `BackgroundEvent::Index(index::Event)` on the same channel.
+- `runtime::handlers::index` matches the inner enum.
+- `src/tests/index_event_tests.rs` pins the wrapper payloads, asserts a mixed
+  index/fs/custom sequence arrives complete and in send order, and checks
+  project-registry and store dispatch.
+
 The wrapper changes neither transport nor order: both constructors send on the
 same channel they used before, and `process_background_event` still marks the
 frame dirty and dispatches through one exhaustive match. `TaskReady` remains a
@@ -236,7 +247,7 @@ signal, not a task-result event.
 
 Still merged in the central enum:
 
-- `index`, `project`, `vc`
+- `project`, `vc`
 
 Each follows the task recipe: define `<subsystem>::Event`, add one
 `BackgroundEvent::<Subsystem>(…)` wrapper, route the existing constructor
@@ -528,9 +539,9 @@ terminating the child, and kill through the handle when the pid is absent.
 
 ### Background-event adoption
 
-The task, debug, and LSP vocabularies are now namespaced (see above), which
-proves the single-channel wrapper without changing delivery order. The same
-split is still pending for `index`, `project`, and `vc`; until then those
+The task, debug, LSP, and index vocabularies are now namespaced (see above),
+which proves the single-channel wrapper without changing delivery order. The
+same split is still pending for `project` and `vc`; until then those
 subsystems keep their variants in the central enum and stay in the kernel.
 
 ### `Editor` coupling
@@ -546,7 +557,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1752 passed (1742 baseline + 10 event-boundary regression tests)
+cargo test --workspace          # 1755 passed (1742 baseline + 13 event-boundary regression tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

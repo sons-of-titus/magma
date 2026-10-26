@@ -15,6 +15,9 @@
 
 pub use index::{IndexRecord, IndexStats, extract, record_from_text, store};
 
+mod event;
+pub use event::Event;
+
 use std::collections::HashMap;
 
 use crate::kernel::runtime::BackgroundEvent;
@@ -24,7 +27,7 @@ use extract::IndexedSymbol;
 /// Reconcile the persistent symbol index with a fresh project walk: keep
 /// only surviving paths, then re-extract the files whose size/mtime stamps
 /// no longer match their record.  Extraction runs chunked on the blocking
-/// pool; records land as `IndexRecordArrived` and merge on the foreground.
+/// pool; records land as `index::Event::RecordArrived` and merge on the foreground.
 pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
     use std::time::UNIX_EPOCH;
     let Some(root) = ed.project_manager.project.root.clone() else { return };
@@ -69,7 +72,8 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let rec = crate::kernel::index::record_from_text(&rel, mtime, &text);
-                let _ = sender.send(BackgroundEvent::IndexRecordArrived(rec));
+                let _ = sender.send(BackgroundEvent::Index(
+                    crate::kernel::index::Event::RecordArrived(rec)));
             }
         });
     }

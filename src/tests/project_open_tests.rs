@@ -103,11 +103,12 @@ fn open_project_indexes_files_relative_to_root() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let files = loop {
         match rx.try_recv() {
-            Ok(crate::kernel::runtime::BackgroundEvent::FileIndexed { files, .. }) => break files,
+            Ok(crate::kernel::runtime::BackgroundEvent::Index(
+                crate::kernel::index::Event::ProjectIndexed { files, .. })) => break files,
             _ if std::time::Instant::now() < deadline => {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
-            _ => panic!("no FileIndexed event arrived"),
+            _ => panic!("no ProjectIndexed event arrived"),
         }
     };
 

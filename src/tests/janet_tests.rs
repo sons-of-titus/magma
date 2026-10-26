@@ -150,7 +150,7 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
                 _ if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                 }
-                _ => panic!("no FileIndexed event"),
+                _ => panic!("no ProjectIndexed event"),
             }
         }
         assert!(ed.project_manager.project.files.contains(&"src/main.rs".to_string()),

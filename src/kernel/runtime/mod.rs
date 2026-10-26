@@ -54,8 +54,8 @@ pub enum BackgroundEvent {
     TaskReady { id: u64 },
     /// The task subsystem's own event vocabulary.
     Task(crate::kernel::task::Event),
-    /// Project file index completed (Sprint 4).
-    FileIndexed { project_name: String, files: Vec<String> },
+    /// A project's file list finished indexing.
+    Index(crate::kernel::index::Event),
     /// A streamed batch of project-search results; appended to the
     /// quickfix list when the generation is still current.
     GrepResultsBatch { generation: u64, entries: Vec<crate::kernel::task::QuickfixEntry> },
@@ -123,8 +123,6 @@ pub enum BackgroundEvent {
     /// A background word scan finished for completion.  Applied only when
     /// the buffer is still at the scanned revision; otherwise discarded.
     BufferWords { buf_key: usize, revision: u64, words: Vec<String> },
-    /// One file's symbol extraction finished for the project index.
-    IndexRecordArrived(crate::kernel::index::IndexRecord),
     /// A VCS status fetch finished off the foreground thread.
     VcStatusFetched {
         backend_idx: usize,

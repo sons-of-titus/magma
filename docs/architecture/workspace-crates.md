@@ -230,8 +230,8 @@ The LSP subsystem follows the same recipe:
 
 The index subsystem follows the same recipe:
 
-- `kernel::index::Event` (`src/kernel/index/event.rs`) owns `ProjectIndexed`
-  and `RecordArrived`.
+- `index::Event` (`crates/index/src/event.rs`, re-exported as
+  `kernel::index::Event`) owns `ProjectIndexed` and `RecordArrived`.
 - `project::spawn_file_index` and the extraction workers send
   `BackgroundEvent::Index(index::Event)` on the same channel.
 - `runtime::handlers::index` matches the inner enum.
@@ -345,6 +345,7 @@ the `open-file` call those use.
 The project symbol index format: `IndexedSymbol`, the text-level `extract`
 (keyword patterns per language family, comment lines skipped, qualifiers like
 `pub(crate)` stripped), `IndexRecord` with `record_from_text`, `IndexStats`,
+the background-event vocabulary (`Event::{ProjectIndexed, RecordArrived}`),
 and the `store` module — `FileRecord`, `SCHEMA_VERSION`, `content_hash`
 (FNV-1a 64), `load`/`save` (JSON lines, temp+rename, foreign schema versions
 discarded, corrupt lines skipped), and

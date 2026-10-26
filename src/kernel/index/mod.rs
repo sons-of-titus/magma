@@ -13,10 +13,7 @@
 //! `index` crate.  The store lives on the foreground `Editor`; background
 //! walk/extract jobs send typed `IndexRecord` events that are merged here.
 
-pub use index::{IndexRecord, IndexStats, extract, record_from_text, store};
-
-mod event;
-pub use event::Event;
+pub use index::{Event, IndexRecord, IndexStats, extract, record_from_text, store};
 
 use std::collections::HashMap;
 

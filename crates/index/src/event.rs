@@ -1,10 +1,10 @@
-//! The project-index subsystem's background-event vocabulary.
+//! The index subsystem's background-event vocabulary.
 //!
-//! The project walk and the extraction workers send these.  The central
-//! `runtime::BackgroundEvent` wraps them as `BackgroundEvent::Index(_)`, so
-//! the foreground keeps one ordered channel while the index owns its payloads.
+//! The project walk and the per-file extraction workers produce these; the
+//! editor wraps them in its own transport enum so the foreground keeps one
+//! ordered channel while the crate owns the payload shapes.
 
-use crate::kernel::index::IndexRecord;
+use crate::IndexRecord;
 
 /// An event produced by a project walk or a per-file extraction worker.
 #[derive(Debug, Clone)]

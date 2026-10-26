@@ -15,9 +15,11 @@
 #[cfg(test)]
 mod tests;
 
+pub mod event;
 pub mod extract;
 pub mod store;
 
+pub use event::Event;
 pub use extract::IndexedSymbol;
 
 /// A completed per-file index result (also the runtime event payload shape).

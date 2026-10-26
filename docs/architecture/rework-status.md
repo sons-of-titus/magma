@@ -81,7 +81,7 @@ and `parse.rs` deleted):
 - All JSON built/parsed via serde_json — the hand-rolled escaping is gone.
 - The server registry lives on the `Editor` (foreground-owned); the
   `static SERVERS` map is deleted. `lsp/start` registers asynchronously
-  via `LspStarted`; the plugin attaches buffers on `lsp-initialized`
+  via `Lsp(Started)`; the plugin attaches buffers on `lsp-initialized`
   (idempotent across focus events).
 - New C functions documented in `docs/api/janet-api.md`: `lsp/did-open`,
   `lsp/did-change`, `lsp/did-close`, `lsp/shutdown`.
@@ -105,7 +105,7 @@ New `kernel/index` subsystem:
   re-extract after a walk.
 - **Wired**: project open/walk → foreground reconcile (`reconcile_project_index`)
   → chunked background extraction (64 files per blocking job) →
-  `IndexRecordArrived` merges → 30 s maintenance heartbeat persists when
+  `Index(RecordArrived)` merges → 30 s maintenance heartbeat persists when
   dirty; flushed on editor-session close.
 - **Real extraction**: text-level declaration scanner per language family
   (visibility qualifiers, lisp forms, `defn-` markers; comments and

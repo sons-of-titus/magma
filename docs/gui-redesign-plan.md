@@ -41,7 +41,7 @@ Practical rules that follow:
 | P0: `:q`/window close destroy unsaved work | **Fixed** — guarded `quit` command on all three paths + Unsaved Changes dialog + `save-all` (uncommitted) |
 | P0: silent 30s auto-save | **Fixed** — opt-in via `auto-save` option, default off |
 | Fresh buffers report modified | **Fixed** — `UndoHistory` starts at the loaded baseline |
-| Project index walk blocks UI | **Fixed** — `project/index-files` is async (`BackgroundEvent::FileIndexed` → ProjectGraph) |
+| Project index walk blocks UI | **Fixed** — `project/index-files` is async (`BackgroundEvent::Index(ProjectIndexed)` → ProjectGraph) |
 | Recent projects / sessions | Exists (`project/register|recent`, `workspace/session-*`, `~/.magma/projects`) but **recents are not loaded at startup** and there is **no open flow** — Sprint 1 |
 | Colon input invisible in GUI | **Fixed** — `MinibufferWidget` in the status bar |
 | Completion popup missing in GUI | **Half-fixed** — popup renders on the Surface, but nothing in insert mode can trigger or cycle it — Sprint 4 |

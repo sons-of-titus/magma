@@ -3,12 +3,13 @@
 //! Called from `render_frame` after all text and highlights have been drawn.
 
 use crate::kernel::text_engine::{Buffer, Decoration};
+use crate::kernel::render::host::RenderHost;
 use crate::kernel::state::Editor;
 use crate::kernel::render::surface::{Style, Surface};
 
 /// Compute the width of the widest `LinePrefix` decoration across all layers
 /// for the given buffer view.  Returns 0 when no prefix decorations exist.
-pub fn prefix_margin_width(editor: &Editor, buf_id: usize) -> usize {
+pub fn prefix_margin_width(editor: &dyn RenderHost, buf_id: usize) -> usize {
     let view = match editor.view_of_buffer(buf_id) {
         Some(v) => v,
         None => return 0,

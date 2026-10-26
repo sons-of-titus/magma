@@ -82,3 +82,4 @@ mod vc_event_tests;
 mod perf_probe_tests;
 mod memory_budget_tests;
 mod viewport_scroll_tests;
+mod render_host_tests;

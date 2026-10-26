@@ -620,13 +620,28 @@ operate directly on the concrete `Editor` (grep counts of `state::Editor`,
 context/capability interface (viewport, text snapshots, theme, cursor for
 render; command surface and capabilities for scripting), not a crate move.
 
+The first such interface is in place: `RenderHost`
+(`src/kernel/render/host.rs`) names the six reads the frame layer needs — an
+option, a buffer, a buffer's view, glyph widths, gutter width, and the pane
+list — and `Editor` implements it.  `int_option`/`bool_option`,
+`compute_scroll_state`, `pane_scroll_top`/`pane_scroll_state`, `gutter_cols`,
+`horizontal_extent`, and `prefix_margin_width` now take `&dyn RenderHost`, so
+the scroll, gutter, and extent math can run against any host.
+`src/tests/render_host_tests.rs` drives them from a stub that is not an
+`Editor`, which is what keeps the seam honest: if those helpers reach for
+editor state outside the trait, the stub stops compiling.
+
+`render_frame` and `sync_viewport_scroll` still take `Editor` — they mutate
+frame state and dispatch `View`s — so a full render-context seam is the next
+slice, not this one.
+
 ## Verification
 
 The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1768 passed (1742 baseline + 20 event-boundary regression tests + 6 crate-level vocabulary tests)
+cargo test --workspace          # 1772 passed (1742 baseline + 20 event-boundary regression tests + 6 crate-level vocabulary tests + 4 RenderHost tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

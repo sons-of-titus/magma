@@ -3,6 +3,8 @@
 
 pub use surface;
 pub mod frame;
+pub mod host;
+pub use host::RenderHost;
 pub mod view;
 pub use view_tree;
 pub mod editor_view;

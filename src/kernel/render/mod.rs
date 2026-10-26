@@ -1,7 +1,7 @@
 //! Rendering — the `Surface` character-grid pipeline that the GUI editor pane
 //! paints from.
 
-pub mod surface;
+pub use surface;
 pub mod frame;
 pub mod view;
 pub use view_tree;

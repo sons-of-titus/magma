@@ -1,4 +1,12 @@
 //! 2D character grid for rendering.
+//!
+//! `Surface` is the editor pane's draw target: a fixed grid of `Cell`s, each
+//! a character plus a `Style`.  Views write into it, then the renderer walks
+//! it to paint.  Coordinates outside the grid are ignored rather than
+//! clamped, so callers can draw without bounds checks.
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {

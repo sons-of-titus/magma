@@ -36,6 +36,7 @@ without call-site changes:
 | `kernel::debug::{types, session, …}` | `pub use debug_model::{session, types};` in `src/kernel/debug/mod.rs` |
 | `kernel::state::{font, FontConfig, ContextFont}` | `pub use font;` + `pub use font::{ContextFont, FontConfig};` in `src/kernel/state/mod.rs` |
 | `kernel::render::view_tree::…` | `pub use view_tree;` in `src/kernel/render/mod.rs` |
+| `kernel::render::surface::…` | `pub use surface;` in `src/kernel/render/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -47,7 +48,7 @@ these paths and must keep compiling unchanged.
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
    project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
-   debug_model   font   view_tree ──▶ id   logging
+   debug_model   font   view_tree ──▶ id   surface   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -395,6 +396,24 @@ buffer ownership — a pane only stores a `buffer_id`.
 `kernel::render::view_tree::{ViewTree, Pane, …}` still resolves for the
 renderer, the mouse layer, and the existing layout tests.
 
+### `crates/surface`
+
+The character grid the editor pane draws into: `Surface` (width, height,
+cells), `Cell` (character plus style), and `Style` (fg/bg, bold, italic,
+underline, strikethrough, dim).  Writes outside the grid are dropped,
+`set_text` advances one cell per character and keeps the existing style when
+none is given, `clear` resets cells, `fill_style` paints a background while
+keeping characters, and `resize` starts blank (a same-size resize is a
+no-op).
+
+The crate is a container only — nothing here rasterizes or paints.  The
+renderer and the GUI paint callback read the grid.
+
+`src/kernel/render/mod.rs` re-exports the module, so
+`kernel::render::surface::{Surface, Cell, Style}` still resolves for every
+view and test.
+
+## Remaining blockers
 ## Remaining blockers
 ## Remaining blockers
 
@@ -432,7 +451,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1723 passed (1610 pre-existing + 113 new crate tests)
+cargo test --workspace          # 1729 passed (1610 pre-existing + 119 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -451,6 +470,7 @@ cargo test -p tool_diag         # rustc/panic/generic parsing, quickfix conversi
 cargo test -p debug_model       # session lifecycle, console cap, sequence numbers
 cargo test -p font              # defaults, bundled bootstrap, candidate ordering
 cargo test -p view_tree         # geometry, splits, tabs, focus, reorder
+cargo test -p surface           # bounded writes, text, clear, fill, resize
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

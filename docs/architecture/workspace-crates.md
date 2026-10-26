@@ -577,8 +577,8 @@ stated in terms of what still ties it to `Editor` rather than to its own data.
 | `index` | `src/kernel/index` + `crates/index` | record format, extractor, store, `Event` | `IndexStore` merge and `reconcile_project_index` drive `Editor` and the indexing lane; they are foreground orchestration, not crate material |
 | `project` | `src/kernel/project` + `crates/project` | detection, ignore rules, toolchain, `Event` | `Project`/`ProjectManager` state, `open_root`/`spawn_file_index` mutate `Editor` |
 | `vc` | `src/kernel/vc` + `crates/vcs` | backends, parsers, `Event`, `DiffData` | `VcState` and the `HiddenPane`/`DiffView` layout are editor state |
-| `semantic` | `src/kernel/semantic` + `crates/semantic` | providers, engine, symbol index, graph, wire protocol, `Event` | `LspHandle` owns the child process and the reader thread; `edit_apply` mutates buffers; `ts_schedule` submits to the lane |
-| `debug` | `src/kernel/debug` | nothing | `DapHandle` is embedded in `Event::Started` and is `Arc`-shared with the session model |
+| `semantic` | `src/kernel/semantic` + `crates/semantic` | providers, engine, symbol index, graph, wire protocol, `Event`, LSP client (`LspHandle`) | `edit_apply` mutates buffers; `ts_schedule` submits to the lane |
+| `debug` | `src/kernel/debug` | `EventSink` seam for DAP client | `DapHandle` stays in kernel (Arc-shared with session model); extraction deferred |
 | `task` | `src/kernel/task` + `crates/scheduler` | nothing | `crates/scheduler` deliberately owns work bookkeeping only; `TaskId`, `TaskStatus`, `OutputSink`, and process spawning still live with the kernel |
 | `terminal` | `src/kernel/terminal` + `crates/pty` + `crates/vt` | sessions, screen | `TerminalManager` pumps `Editor` events |
 | `render` | `src/kernel/render` | surface, GPU atlas, view tree | 48 files, ~10k lines, 140 `Editor` references |
@@ -631,9 +631,46 @@ the scroll, gutter, and extent math can run against any host.
 `Editor`, which is what keeps the seam honest: if those helpers reach for
 editor state outside the trait, the stub stops compiling.
 
-`render_frame` and `sync_viewport_scroll` still take `Editor` — they mutate
-frame state and dispatch `View`s — so a full render-context seam is the next
-slice, not this one.
+`render_frame` still takes `Editor` — it dispatches `View`s that read
+buffer state — but frame preparation now runs through `FrameHost`
+(`prepare_frame`) and viewport/scroll synchronization through `ViewportHost`
+(`sync_viewport_scroll`), so both can be exercised from a non-Editor stub.
+`src/tests/render_host_tests.rs` drives `prepare_frame` and
+`sync_viewport_scroll` from a stub host.
+
+## Task ownership decision
+
+`crates/scheduler` deliberately owns work bookkeeping only (stable ids,
+status, progress, cooperative cancellation) and no event vocabulary or
+threads. The kernel's `task` module owns `TaskId`, `TaskStatus`,
+`OutputSink`, process spawning, output streaming, quickfix integration and
+the editor-facing `run_shell_command`/`run_make` entry points, all of
+which are coupled to `Editor` (output buffers, quickfix list, background
+runtime).
+
+Decision: **retain task state and vocabulary in the kernel; keep
+`crates/scheduler` focused on bookkeeping.** A dedicated task crate would
+have to re-derive the same Editor capability interfaces (buffers, quickfix,
+background handle) that block extracting `command` and `scripting`, so it
+would not reduce dependencies or improve independent testability today.
+The scheduler crate's `WorkHost`/`WorkSink` seam already lets bookkeeping
+be tested without an editor. Extraction is deferred; revisit only if a
+second, editor-independent consumer of task lifecycle appears.
+
+## LSP/DAP transport boundaries
+
+- `crates/semantic` owns the LSP client (`LspHandle`, `LspRegistry`,
+  `EventSink`); the kernel adapts `semantic::lsp::Event` to
+  `BackgroundEvent::Lsp(_)`. Startup, transport errors, message delivery,
+  cancellation and shutdown are covered by `crates/semantic` tests and
+  `src/tests/lsp_event_tests.rs`.
+- DAP gained the same `EventSink` seam (`debug::EventSink`); `DapHandle`
+  stays in the kernel because it is `Arc`-shared with `DebugManager` and
+  embedded in `Event::Started`. Its reader/dispatch path is covered by
+  `src/kernel/debug/dap_client.rs` tests and `src/tests/dap_event_tests.rs`.
+  Extraction of the DAP client to a crate is deferred: it would require
+  moving `EventSink` and the DAP vocabulary, which is not justified by the
+  current dependency graph.
 
 ## Verification
 

@@ -25,6 +25,8 @@ without call-site changes:
 | `kernel::scheduler::…` | `pub use scheduler::…` in `src/kernel/scheduler/mod.rs` |
 | `kernel::snippet::…` | `pub use snippet::{TabStop, parse_tabstops};` in `src/kernel/snippet/mod.rs` |
 | `kernel::icons::…` | `pub use icons::{…}` and `pub use icons::vscode;` in `src/kernel/icons/mod.rs` |
+| `kernel::storage::{FileSystem, …}` | `pub use fs::{…}` in `src/kernel/storage/mod.rs` |
+| `kernel::storage::disk::…` | `pub use fs::{DiskFileSystem, atomic_write};` in `src/kernel/storage/disk.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -34,7 +36,7 @@ these paths and must keep compiling unchanged.
 ```
    id ──▶ text ──▶ semantic          vt
 
-   vcs   bgpool   scheduler   snippet   icons   logging
+   vcs   bgpool   scheduler   snippet   icons   fs   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -200,6 +202,22 @@ the per-frame follower for the `icon-pack` option. It reads
 load. Everything else is re-exported, including the `vscode` module, so
 `kernel::icons::vscode::load_pack` still resolves.
 
+### `crates/fs`
+
+The file system seam: `FileSystem` (read/write/exists/dir), `AsyncFileSystem`
+(the same four over tokio), `FsError` with its `std::io::Error` mapping,
+`DiskFileSystem`, and `atomic_write` — the temp-file + fsync + rename path
+that makes a crash unable to leave a torn file.
+
+`Editor.fs` is a `Box<dyn FileSystem>`, so the trait has to live below the
+kernel for any test double to implement it without depending on `Editor`.
+
+Kept in the kernel (`src/kernel/storage/`): `crash_recovery`,
+`reload`, `watcher`, and `workspace`, all of which read or write `Editor`
+state.  `disk.rs` is a three-line re-export shim so
+`kernel::storage::disk::DiskFileSystem` and `…::atomic_write` keep
+resolving.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -236,7 +254,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1655 passed (1610 pre-existing + 16 scheduler + 12 snippet + 17 icons)
+cargo test --workspace          # 1666 passed (1610 pre-existing + 56 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -245,6 +263,7 @@ cargo test -p bgpool            # lane submission and event-channel tests
 cargo test -p scheduler         # work bookkeeping, progress, cancellation, host wiring
 cargo test -p snippet           # tab stops, placeholders, built-in expansions
 cargo test -p icons             # lookup precedence, folder icons, VS Code manifests
+cargo test -p fs                # sync/async round trips, atomic write, error mapping
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

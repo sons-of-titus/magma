@@ -75,6 +75,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/scheduler` | Work bookkeeping: stable work ids, status, progress, cooperative cancellation, and task/process id mapping; no runtime, no editor types |
 | `crates/snippet` | Snippet engine: tab-stop parsing, `${…}` placeholders, and the built-in snippet table; no editor state |
 | `crates/icons` | File/folder icon packs: glyph or SVG icons, lookup precedence, and the VS Code icon-theme manifest loader; no editor state |
+| `crates/fs` | File system traits (`FileSystem`, `AsyncFileSystem`, `FsError`), the disk implementation, and the atomic-write path |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

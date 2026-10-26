@@ -1,0 +1,8 @@
+[package]
+name = "fs"
+version = "0.1.0"
+edition = "2024"
+description = "File system traits with a disk-backed implementation for Magma"
+
+[dependencies]
+tokio = { version = "1", features = ["fs", "rt"] }

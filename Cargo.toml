@@ -9,6 +9,7 @@ members = [
     "crates/bgpool",
     "crates/scheduler",
     "crates/snippet",
+    "crates/icons",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -34,6 +35,7 @@ vcs = { path = "crates/vcs" }
 bgpool = { path = "crates/bgpool" }
 scheduler = { path = "crates/scheduler" }
 snippet = { path = "crates/snippet" }
+icons = { path = "crates/icons" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

@@ -24,6 +24,7 @@ without call-site changes:
 | `kernel::vc::…` | `pub use vcs::…` in `src/kernel/vc/mod.rs` |
 | `kernel::scheduler::…` | `pub use scheduler::…` in `src/kernel/scheduler/mod.rs` |
 | `kernel::snippet::…` | `pub use snippet::{TabStop, parse_tabstops};` in `src/kernel/snippet/mod.rs` |
+| `kernel::icons::…` | `pub use icons::{…}` and `pub use icons::vscode;` in `src/kernel/icons/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -33,7 +34,7 @@ these paths and must keep compiling unchanged.
 ```
    id ──▶ text ──▶ semantic          vt
 
-   vcs   bgpool   scheduler   snippet   logging
+   vcs   bgpool   scheduler   snippet   icons   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -184,6 +185,21 @@ Known limitation carried over unchanged: a bare multi-digit stop (`$12`)
 does not terminate in `parse_tabstops`. Built-in expansions use only the
 `${…}` form, so it is unreachable from the current UI.
 
+### `crates/icons`
+
+The icon-pack model and loader: `IconKind` (glyph or SVG), `IconPack` with
+its lookup precedence (exact file name, then longest extension suffix, then
+the pack default), folder icons, `pack_search_dirs`, and `vscode::load_pack`
+for VS Code `icon-theme.json` manifests (`iconDefinitions`, `iconPath`,
+`fontCharacter`, `fontColor`).
+
+Kept in the kernel (`src/kernel/icons/mod.rs`): `sync_option(&mut Editor)`,
+the per-frame follower for the `icon-pack` option. It reads
+`Editor.options`, swaps `Editor.icons`, restores `Editor.default_icons` for
+`"default"`, and clears the option plus reports an error when a pack fails to
+load. Everything else is re-exported, including the `vscode` module, so
+`kernel::icons::vscode::load_pack` still resolves.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -220,7 +236,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1638 passed (1610 pre-existing + 16 scheduler + 12 snippet)
+cargo test --workspace          # 1655 passed (1610 pre-existing + 16 scheduler + 12 snippet + 17 icons)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -228,6 +244,7 @@ cargo test -p vcs               # backends, parsers, live-git round trips
 cargo test -p bgpool            # lane submission and event-channel tests
 cargo test -p scheduler         # work bookkeeping, progress, cancellation, host wiring
 cargo test -p snippet           # tab stops, placeholders, built-in expansions
+cargo test -p icons             # lookup precedence, folder icons, VS Code manifests
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

@@ -105,7 +105,7 @@ impl SymbolIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel::semantic::provider::SymbolKind;
+    use crate::provider::SymbolKind;
 
     fn make_sym(name: &str, kind: SymbolKind) -> Symbol {
         Symbol { name: name.to_string(), kind, file: String::new(), line: 0, column: 0, documentation: None }

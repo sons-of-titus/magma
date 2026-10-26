@@ -129,8 +129,8 @@ impl SemanticEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel::semantic::lsp_provider::LspLanguageProvider;
-    use crate::kernel::semantic::provider::DiagnosticSeverity;
+    use crate::lsp_provider::LspLanguageProvider;
+    use crate::provider::DiagnosticSeverity;
 
     #[test]
     fn register_and_query_provider() {
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn completions_for_prefix_from_index() {
         let mut engine = SemanticEngine::new();
-        use crate::kernel::semantic::provider::{Symbol, SymbolKind};
+        use crate::provider::{Symbol, SymbolKind};
         engine.symbol_index.add_symbols("/a.rs", vec![
             Symbol { name: "format_str".into(), kind: SymbolKind::Function, file: String::new(), line: 0, column: 0, documentation: None },
             Symbol { name: "format_int".into(), kind: SymbolKind::Function, file: String::new(), line: 1, column: 0, documentation: None },

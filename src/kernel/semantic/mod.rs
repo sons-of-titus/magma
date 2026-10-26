@@ -1,34 +1,32 @@
 //! Semantic Engine — language intelligence for Magma.
 //!
-//! Exposes the LanguageProvider abstraction, symbol indexing, project graph,
-//! and the SemanticEngine coordinator.  LSP and tree-sitter are the two
-//! built-in provider implementations.
+//! The provider/engine core (language providers, symbol index, project graph,
+//! tree-sitter registry, LSP wire protocol) lives in the `semantic` workspace
+//! crate.  This module owns the editor-coupled remainder:
+//!
+//!   lsp.rs         — live language-server lifecycle and background events
+//!   edit_apply.rs  — applying an LSP `WorkspaceEdit` to `Editor` buffers
+//!   ts_schedule.rs — scheduling incremental parses onto the background pool
+//!
+//! Those stay here until the background-event vocabulary is split out of
+//! `kernel::runtime`.  The re-exports below keep every existing
+//! `kernel::semantic::<module>::…` path resolving.
 
-pub mod provider;
-pub mod lsp_provider;
-pub mod ts_registry;
-pub mod ts_schedule;
-pub mod treesitter_provider;
-pub mod symbol_index;
-pub mod project_graph;
-pub mod engine;
-pub mod language_registry;
-
-/// LSP client — real server lifecycle, revision-tagged requests.
-pub mod lsp;
-/// LSP wire protocol — framing and JSON-RPC shaping.
-pub mod lsp_proto;
-
-pub use lsp::LspRegistry;
-pub use provider::{
-    CompletionItem, CompletionKind, Diagnostic, DiagnosticSeverity,
-    LanguageProvider, ParseResult, Symbol, SymbolKind,
+pub use semantic::{
+    engine, language_registry, lsp_proto, lsp_provider, project_graph, provider,
+    symbol_index, treesitter_provider, ts_registry,
 };
+
+pub use semantic::{
+    CompletionItem, CompletionKind, Diagnostic, DiagnosticSeverity, FileNode,
+    LanguageInfo, LanguageProvider, LanguageRegistry, LspLanguageProvider,
+    ParseResult, ProjectGraph, SemanticEngine, Symbol, SymbolIndex, SymbolKind,
+    SymbolRef, TreesitterLanguageProvider,
+};
+
 pub mod edit_apply;
+pub mod lsp;
+pub mod ts_schedule;
+
 pub use edit_apply::{apply_workspace_edit, offset_of_lsp_position};
-pub use lsp_provider::LspLanguageProvider;
-pub use treesitter_provider::TreesitterLanguageProvider;
-pub use symbol_index::{SymbolIndex, SymbolRef};
-pub use project_graph::{FileNode, ProjectGraph};
-pub use engine::SemanticEngine;
-pub use language_registry::{LanguageInfo, LanguageRegistry};
+pub use lsp::LspRegistry;

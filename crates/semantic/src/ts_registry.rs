@@ -138,7 +138,7 @@ pub struct TsTreeState {
 #[allow(clippy::type_complexity)]
 pub fn highlight_incremental(
     lang_name: &str,
-    rope: &crate::kernel::text_engine::rope::Rope,
+    rope: &text::rope::Rope,
     query_text: &str,
     query_src: &str,
     edits: &[tree_sitter::InputEdit],

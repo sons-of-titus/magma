@@ -10,8 +10,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::kernel::render::frame::{
     bool_option, compute_scroll_state, gutter_cols, horizontal_extent, int_option, pane_scroll_top,
+    prepare_frame, sync_viewport_scroll,
 };
-use crate::kernel::render::host::RenderHost;
+use crate::kernel::render::host::{FrameHost, PaneMetrics, RenderHost, ViewportHost};
+use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view_tree::Pane;
 use crate::kernel::state::id::{BufferId, WindowId};
 use crate::kernel::text_engine::{Buffer, BufferView, Position};
@@ -23,6 +25,9 @@ struct StubHost {
     glyphs: HashMap<char, u8>,
     gutter: usize,
     panes: Vec<Pane>,
+    focused: Option<WindowId>,
+    pane_metrics: Vec<Option<PaneMetrics>>,
+    theme: HashMap<String, (u8, u8, u8)>,
 }
 
 impl StubHost {
@@ -39,6 +44,9 @@ impl StubHost {
             glyphs: HashMap::new(),
             gutter: 0,
             panes: Vec::new(),
+            focused: None,
+            pane_metrics: Vec::new(),
+            theme: HashMap::new(),
         }
     }
 
@@ -72,6 +80,46 @@ impl RenderHost for StubHost {
 
     fn panes(&self) -> &[Pane] {
         &self.panes
+    }
+}
+
+impl ViewportHost for StubHost {
+    fn option(&self, name: &str) -> Option<&str> {
+        self.options.get(name).map(String::as_str)
+    }
+
+    fn panes(&self) -> &[Pane] {
+        &self.panes
+    }
+
+    fn panes_mut(&mut self) -> &mut [Pane] {
+        &mut self.panes
+    }
+
+    fn focused_window(&self) -> Option<WindowId> {
+        self.focused
+    }
+
+    fn window(&self, id: WindowId) -> Option<&Pane> {
+        self.panes.iter().find(|p| p.id == id)
+    }
+
+    fn pane_metrics(&self, index: usize) -> Option<PaneMetrics> {
+        self.pane_metrics.get(index).copied().flatten()
+    }
+}
+
+impl FrameHost for StubHost {
+    fn theme_color(&self, key: &str) -> (u8, u8, u8) {
+        self.theme.get(key).copied().unwrap_or((0, 0, 0))
+    }
+
+    fn panes(&self) -> &[Pane] {
+        &self.panes
+    }
+
+    fn focused_window(&self) -> Option<WindowId> {
+        self.focused
     }
 }
 
@@ -133,4 +181,25 @@ fn gutter_and_horizontal_extent_use_only_the_host() {
     });
     // Two visible rows (height minus the tab line): "aaa" is the widest.
     assert_eq!(horizontal_extent(&host, 0), 3);
+}
+
+#[test]
+fn prepare_frame_seeds_surface_from_frame_host() {
+    let mut host = StubHost::with_text("");
+    host.theme.insert("fg".into(), (10, 20, 30));
+    host.theme.insert("bg".into(), (40, 50, 60));
+
+    let mut surface = Surface::new(2, 2);
+    prepare_frame(&host, &mut surface);
+
+    let cell = surface.cell(0, 0).unwrap();
+    assert_eq!(cell.style.fg, (10, 20, 30));
+    assert_eq!(cell.style.bg, (40, 50, 60));
+}
+
+#[test]
+fn sync_viewport_scroll_runs_without_editor_when_host_has_no_panes() {
+    let mut host = StubHost::with_text("");
+    // No panes: nothing to sync, must not panic.
+    sync_viewport_scroll(&mut host);
 }

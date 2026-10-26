@@ -5,7 +5,7 @@
 //! is native GUI and rendered outside this pipeline.
 
 use crate::kernel::state::Editor;
-use crate::kernel::render::host::RenderHost;
+use crate::kernel::render::host::{FrameHost, RenderHost, ViewportHost};
 use crate::kernel::render::surface::{Style, Surface};
 use crate::kernel::render::view::{Rect, RenderCtx, View};
 use crate::kernel::render::view_tree::Pane;
@@ -177,7 +177,7 @@ pub fn gutter_cols(ed: &dyn RenderHost, buf_id: usize, total_lines: usize) -> us
 }
 
 /// Width in cells of the text area — pane width minus the fixed gutter.
-fn content_width(ed: &dyn RenderHost, pane_width: u16, buf_id: usize, total_lines: usize) -> usize {
+pub(crate) fn content_width(ed: &dyn RenderHost, pane_width: u16, buf_id: usize, total_lines: usize) -> usize {
     (pane_width as usize).saturating_sub(gutter_cols(ed, buf_id, total_lines))
 }
 
@@ -212,34 +212,28 @@ pub fn horizontal_extent(ed: &dyn RenderHost, buf_id: usize) -> usize {
 /// `scrolloff` only when the cursor leaves it.  A manual scroll (wheel,
 /// scrollbar, `window/set-scroll-top`) pins the offset until the cursor
 /// moves; a buffer switch re-derives the viewport.
-pub fn sync_viewport_scroll(ed: &mut Editor) {
-    let mut scrolloff = int_option(ed, "scrolloff", 0);
+pub fn sync_viewport_scroll(host: &mut dyn ViewportHost) {
+    let mut scrolloff = viewport_int_option(host, "scrolloff", 0);
     if scrolloff > 0 {
         // Cap like vim: a margin of half the viewport or more would
         // oscillate between the top and bottom snap rules.
-        let tallest = ed.view_tree.panes().iter()
+        let tallest = host.panes().iter()
             .map(|p| p.height as usize).max().unwrap_or(1);
         scrolloff = scrolloff.min(tallest.saturating_sub(1) / 2);
     }
 
-    for i in 0..ed.view_tree.len() {
-        let Some(buf_id) = ed.view_tree.panes()[i].buffer_id else { continue };
-        let Some(view) = ed.view_of_buffer(buf_id) else { continue };
-        let cursor_offset = view.cursor.offset;
-        let Some(arc) = ed.buffers.get(buf_id) else { continue };
-        let (total_lines, cursor_line, cursor_col) = {
-            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            let (line, col) = cursor_metrics(&buf, cursor_offset.min(buf.len()),
-                int_option(ed, "tab-width", 4), &ed.font_config.glyph_widths);
-            (buf.line_count(), line, col)
-        };
-        let cursor_line = cursor_line.min(total_lines.saturating_sub(1));
-        let visible = (ed.view_tree.panes()[i].height as usize).saturating_sub(1).max(1);
-        let pane_width = ed.view_tree.panes()[i].width;
-        let content_w = content_width(ed, pane_width, buf_id, total_lines);
-        let h_margin = int_option(ed, "sidescrolloff", 0)
+    for i in 0..host.panes().len() {
+        let Some(m) = host.pane_metrics(i) else { continue };
+        let total_lines = m.total_lines;
+        let cursor_offset = m.cursor_offset;
+        let cursor_line = m.cursor_line.min(total_lines.saturating_sub(1));
+        let cursor_col = m.cursor_col;
+        let visible = (m.height as usize).saturating_sub(1).max(1);
+        let content_w = m.content_width;
+        let h_margin = viewport_int_option(host, "sidescrolloff", 0)
             .min(content_w.saturating_sub(1) / 2);
-        let pane = &mut ed.view_tree.panes_mut()[i];
+        let buf_id = m.buffer_id;
+        let pane = &mut host.panes_mut()[i];
 
         if pane.scroll_buf != Some(buf_id) {
             pane.scroll_buf = Some(buf_id);
@@ -273,12 +267,12 @@ pub fn sync_viewport_scroll(ed: &mut Editor) {
     // ── Linked panes (the two halves of a side-by-side diff) ────────────
     // Whichever half holds the focus drives; the other mirrors it on both
     // axes, so the two file versions stay line-for-line aligned.
-    let source = ed.view_tree.focused_window().and_then(|f| {
-        let p = ed.view_tree.window(f)?;
+    let source = host.focused_window().and_then(|f| {
+        let p = host.window(f)?;
         p.scroll_link.map(|link| (f, link, p.scroll_offset, p.scroll_left))
     });
     if let Some((focused_id, link, top, left)) = source {
-        for pane in ed.view_tree.panes_mut() {
+        for pane in host.panes_mut() {
             if pane.id == focused_id || pane.scroll_link != Some(link) { continue; }
             pane.scroll_offset = top;
             pane.scroll_left = left;
@@ -288,6 +282,10 @@ pub fn sync_viewport_scroll(ed: &mut Editor) {
             pane.scroll_buf = pane.buffer_id;
         }
     }
+}
+
+fn viewport_int_option(host: &dyn ViewportHost, name: &str, default: usize) -> usize {
+    host.option(name).and_then(|s| s.parse().ok()).unwrap_or(default)
 }
 
 /// Viewport top for a cursor entering an unscrolled pane.
@@ -321,24 +319,28 @@ fn follow_col(left: usize, col: usize, width: usize, margin: usize) -> usize {
     }
 }
 
+/// Clear `surface` and seed every cell with the frame background so cells no
+/// view paints show the editor background, not `Style::default()`'s black.
+pub fn prepare_frame(host: &dyn FrameHost, surface: &mut Surface) {
+    surface.clear();
+    surface.fill_style(Style {
+        fg: host.theme_color("fg"),
+        bg: host.theme_color("bg"),
+        ..Default::default()
+    });
+}
+
 /// Populate `surface` from editor state by traversing the ViewTree.
 ///
 /// The surface contains editor pane content only — tab bar, status bar, and
 /// dialogs are native GUI widgets rendered around it.
 pub fn render_frame(editor: &Editor, surface: &mut Surface) {
-    surface.clear();
-    // Seed the grid with the editor background: any cell no view paints (a
-    // bufferless pane, a short/gappy pane, a trailing row) must show the
-    // editor background, not `Style::default()`'s black.
-    surface.fill_style(Style {
-        fg: editor.theme_color("fg"),
-        bg: editor.theme_color("bg"),
-        ..Default::default()
-    });
+    let host: &dyn FrameHost = editor;
+    prepare_frame(host, surface);
 
     // ── Render each pane through its view ────────────────────────────────
-    let focused = editor.view_tree.focused_window();
-    for pane in editor.view_tree.panes() {
+    let focused = host.focused_window();
+    for pane in host.panes() {
         let Some(buf_id) = pane.buffer_id else { continue };
         // Stacked tabs occupy the same area — only the visible one renders.
         if pane.layout == crate::kernel::render::view_tree::LayoutConstraint::Tab

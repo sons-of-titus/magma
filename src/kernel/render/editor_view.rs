@@ -63,6 +63,23 @@ pub fn build_visible_rows(
     rows
 }
 
+fn cached_row_layout(
+    editor: &crate::kernel::state::Editor,
+    buf_id: usize,
+    line_start: usize,
+    line_text: &str,
+    revision: u64,
+    tab_width: usize,
+) -> std::sync::Arc<crate::kernel::render::row_layout::RowLayout> {
+    editor.row_layouts.get_or_build(
+        (buf_id, line_start, tab_width),
+        line_text,
+        revision,
+        tab_width,
+        &editor.font_config.glyph_widths,
+    )
+}
+
 pub struct EditorView {
     pub buf_id: usize,
     pub pane_id: WindowId,
@@ -215,8 +232,7 @@ impl View for EditorView {
                     std::sync::Arc::new(crate::kernel::render::row_layout::RowLayout::build(
                         line_text, 0, tab_w, &editor.font_config.glyph_widths))
                 } else {
-                    crate::kernel::render::row_layout::row_layout(
-                        editor, buf_id, line_start, line_text, buf.revision(), tab_w)
+                    cached_row_layout(editor, buf_id, line_start, line_text, buf.revision(), tab_w)
                 };
                 for i in 0..layout.widths.len() {
                     let col = layout.cols[i] as usize;
@@ -248,8 +264,7 @@ impl View for EditorView {
                     std::sync::Arc::new(crate::kernel::render::row_layout::RowLayout::build(
                         &r.text, 0, tab_w, &editor.font_config.glyph_widths))
                 } else {
-                    crate::kernel::render::row_layout::row_layout(
-                        editor, buf_id, r.start, &r.text, buf.revision(), tab_w)
+                    cached_row_layout(editor, buf_id, r.start, &r.text, buf.revision(), tab_w)
                 }
             }).collect();
         apply_highlights(editor, view, surface, &row_refs, &row_layouts,

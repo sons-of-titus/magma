@@ -20,6 +20,7 @@ members = [
     "crates/debug_model",
     "crates/font",
     "crates/view_tree",
+    "crates/row_layout",
     "crates/surface",
     "crates/gpu",
     "crates/pty",
@@ -59,6 +60,7 @@ tool_diag = { path = "crates/tool_diag" }
 debug_model = { path = "crates/debug_model" }
 font = { path = "crates/font" }
 view_tree = { path = "crates/view_tree" }
+row_layout = { path = "crates/row_layout" }
 surface = { path = "crates/surface" }
 gpu = { path = "crates/gpu" }
 pty = { path = "crates/pty" }

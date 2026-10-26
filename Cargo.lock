@@ -2210,6 +2210,7 @@ dependencies = [
  "resvg",
  "rfd",
  "ropey",
+ "row_layout",
  "run_config",
  "scheduler",
  "semantic",
@@ -3381,6 +3382,14 @@ checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
 dependencies = [
  "smallvec",
  "str_indices",
+]
+
+[[package]]
+name = "row_layout"
+version = "0.1.0"
+dependencies = [
+ "text",
+ "unicode-bidi",
 ]
 
 [[package]]

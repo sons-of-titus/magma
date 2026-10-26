@@ -728,6 +728,30 @@ algorithm with no `Editor` dependency; depends only on `crates/text`
 …)` cache wrapper as a thin shim over `Editor.row_layouts`. Compatibility
 path `kernel::render::row_layout::*` is preserved via re-export.
 
+## GUI frontend extraction audit (Phase 9)
+
+Audit findings:
+- The GUI frontend comprises 37 feature-gated modules under
+  `src/kernel/render/gui*.rs` (~7,900 lines) plus `run_gui` in `src/main.rs`.
+  They read and mutate live `Editor` state throughout (command execution,
+  rendering, input, dialogs, theme, fonts, gutters).
+- Reverse dependencies: `src/main.rs` (binary) calls `GuiApp::new_with_bg`
+  under `cfg(feature = "gui")`; ~10 test files reference
+  `crate::kernel::render::gui*` paths.
+- Dependency direction problem: the GUI modules depend on the kernel, but the
+  kernel's `gui` feature and `main.rs` binary depend on those modules. Moving
+  them to a new crate creates a cycle unless the binary moves with them.
+- Full extraction would require moving all 37 modules, migrating ~10 test
+  files to new import paths, and relocating the binary to `crates/gui`.
+
+Decision: deferred. A partial extraction (moving only `GuiApp`/`run_gui`)
+would leave the bulk of GUI presentation in the kernel and amount to a
+re-export, which is explicitly not a successful extraction. Prerequisite:
+(1) relocate the binary entry point to `crates/gui`; (2) migrate GUI
+  helper modules and their tests; (3) redefine the `gui` feature so the
+  kernel no longer owns GUI presentation. Until then, the GUI frontend
+  remains kernel-owned behind the `gui` feature.
+
 ## Verification
 
 The extraction must keep these green:

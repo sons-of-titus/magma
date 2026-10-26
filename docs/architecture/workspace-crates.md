@@ -33,6 +33,7 @@ without call-site changes:
 | `kernel::project::{detect, gitignore, toolchain}` | `pub use project::{detect, gitignore, toolchain};` in `src/kernel/project/mod.rs` |
 | `kernel::storage::crash_recovery::…` | `pub use crash_recovery::{…}` in `src/kernel/storage/crash_recovery.rs` |
 | `kernel::task::{diag_parse::…, QuickfixEntry}` | `pub use tool_diag::{ToolDiag, parse_tool_output, QuickfixEntry};` split across `src/kernel/task/diag_parse.rs` and `src/kernel/task/mod.rs` |
+| `kernel::debug::{types, session, …}` | `pub use debug_model::{session, types};` in `src/kernel/debug/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -44,7 +45,7 @@ these paths and must keep compiling unchanged.
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
    project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
-   logging
+   debug_model   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -337,6 +338,26 @@ is a re-export shim, and `QuickfixEntry` is re-exported from `task`, so
 `kernel::task::QuickfixEntry` and `kernel::task::diag_parse::…` still
 resolve.
 
+### `crates/debug_model`
+
+The DAP state model: `Breakpoint` (with its `enabled` flag, which DAP itself
+lacks), `StackFrame`, `Variable`, `Thread`, `MemoryRegion`, the id aliases,
+and `DebugSession` — threads, frames, per-`variablesReference` scopes, watch
+results and their dispatch queue, the stopped location, a capped console
+ring, verified breakpoints, and the adapter sequence counter.
+
+The crate is pure state: no adapter process, no channels, no editor.
+`DebugSession::new`/`next_seq`/`push_console`/`note_stopped`/`set_frames`/
+`set_threads`/`set_variables`/`set_verified_breakpoints`/`frame` moved
+verbatim.
+
+Kept in the kernel: `DebugManager` (session registry, per-file breakpoints,
+watches, live `DapHandle` connections) in `src/kernel/debug/mod.rs` and the
+adapter I/O in `dap_client.rs`. The `types` and `session` modules are
+re-exported, so `kernel::debug::types::…`, `kernel::debug::session::…`, and
+the flat `kernel::debug::{Breakpoint, DebugSession, …}` paths all still
+resolve.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -373,7 +394,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1702 passed (1610 pre-existing + 92 new crate tests)
+cargo test --workspace          # 1709 passed (1610 pre-existing + 99 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -389,6 +410,7 @@ cargo test -p run_config        # defaults per language, cwd resolution, DAP lau
 cargo test -p project           # detection priority, .gitignore rules, toolchain lookup
 cargo test -p crash_recovery    # snapshot round trips, pruning, recovery marking
 cargo test -p tool_diag         # rustc/panic/generic parsing, quickfix conversion
+cargo test -p debug_model       # session lifecycle, console cap, sequence numbers
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

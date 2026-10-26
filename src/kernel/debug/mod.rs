@@ -4,12 +4,10 @@
 //! coordination.  The actual async DAP I/O lives in `dap_client.rs`; the
 //! Janet-facing API lives in `kernel/scripting/debug_api.rs`.
 
-pub mod types;
-pub mod session;
 pub mod dap_client;
 
-pub use types::{Breakpoint, FrameId, MemoryRegion, SessionId, StackFrame, Thread, Variable};
-pub use session::DebugSession;
+pub use debug_model::{Breakpoint, DebugSession, FrameId, MemoryRegion, SessionId, StackFrame, Thread, Variable};
+pub use debug_model::{session, types};
 
 use std::collections::HashMap;
 

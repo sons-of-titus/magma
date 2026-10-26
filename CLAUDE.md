@@ -82,6 +82,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/project` | Project detection by marker file, `.gitignore` matching for the walk, and toolchain binary discovery; no editor state |
 | `crates/crash_recovery` | Crash-recovery snapshots: per-session dirs, manifest, identity stems, pruning, and the leftover-session scan; no buffer state |
 | `crates/tool_diag` | Build/test output parser: rustc spans, panic locations, and generic `path:line[:col]` findings, plus the quickfix entry type; no editor state |
+| `crates/debug_model` | DAP model: breakpoints, stack frames, variables, threads, and the per-session state machine; no adapter I/O |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

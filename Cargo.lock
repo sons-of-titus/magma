@@ -1290,6 +1290,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
+name = "font"
+version = "0.1.0"
+
+[[package]]
 name = "font-types"
 version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2176,6 +2180,7 @@ dependencies = [
  "event",
  "evil-janet",
  "extension",
+ "font",
  "fs",
  "icons",
  "id",

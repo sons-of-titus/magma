@@ -1,3 +1,17 @@
+//! Editor font configuration.
+//!
+//! `FontConfig` holds the primary family, size, weight, glyph widths,
+//! ligature preference, per-context overrides, and the bytes of every loaded
+//! face.  It also owns the loading policy: the bundled JetBrains Mono pair,
+//! the preferred system monospace, and the ordered candidate list.  Both
+//! renderers read it; Janet writes it.
+//!
+//! Nothing here draws or rasterizes — the GUI font registry and the GPU
+//! atlas live in the kernel's render layer.
+
+#[cfg(test)]
+mod tests;
+
 /// Per-context font override (e.g. "prose", "code", "status").
 #[derive(Debug, Clone)]
 pub struct ContextFont {

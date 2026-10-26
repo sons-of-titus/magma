@@ -1,0 +1,7 @@
+[package]
+name = "font"
+version = "0.1.0"
+edition = "2024"
+description = "Editor font configuration, bundled faces, and default font resolution for Magma"
+
+[dependencies]

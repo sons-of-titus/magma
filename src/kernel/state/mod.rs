@@ -3,7 +3,7 @@
 pub mod views;
 pub mod mode;
 pub mod persist;
-pub mod font;
+pub use font;
 pub mod options;
 pub mod snippet;
 pub mod cursor;

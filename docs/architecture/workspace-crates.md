@@ -34,6 +34,7 @@ without call-site changes:
 | `kernel::storage::crash_recovery::…` | `pub use crash_recovery::{…}` in `src/kernel/storage/crash_recovery.rs` |
 | `kernel::task::{diag_parse::…, QuickfixEntry}` | `pub use tool_diag::{ToolDiag, parse_tool_output, QuickfixEntry};` split across `src/kernel/task/diag_parse.rs` and `src/kernel/task/mod.rs` |
 | `kernel::debug::{types, session, …}` | `pub use debug_model::{session, types};` in `src/kernel/debug/mod.rs` |
+| `kernel::state::{font, FontConfig, ContextFont}` | `pub use font;` + `pub use font::{ContextFont, FontConfig};` in `src/kernel/state/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -45,7 +46,7 @@ these paths and must keep compiling unchanged.
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
    project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
-   debug_model   logging
+   debug_model   font   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -358,6 +359,25 @@ re-exported, so `kernel::debug::types::…`, `kernel::debug::session::…`, and
 the flat `kernel::debug::{Breakpoint, DebugSession, …}` paths all still
 resolve.
 
+### `crates/font`
+
+`FontConfig` — family, size, weight, fallback list, glyph widths, ligatures,
+per-context overrides, and the loaded face bytes — plus `ContextFont`, the
+two registration aliases (`magma-mono`, `system-mono`), and the loading
+policy: `bootstrap_bundled` (the two embedded JetBrains Mono faces),
+`load_system_mono` (first readable candidate), `bootstrap_default_font`
+(system mono, else bundled, and a no-op once anything is loaded),
+`primary_font`, and `default_font_candidates` (Nerd Font copies under
+`~/Library/Fonts`, then Monaco, DejaVu, and Consolas).
+
+The crate is pure configuration — it never rasterizes. The GUI font registry
+(`render/gui_fonts.rs`) and the GPU atlas stay in the kernel and read the
+config.
+
+`src/kernel/state/mod.rs` re-exports the module and the two public types, so
+`kernel::state::font::default_font_candidates()` and
+`kernel::state::FontConfig` keep resolving.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -394,7 +414,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1709 passed (1610 pre-existing + 99 new crate tests)
+cargo test --workspace          # 1714 passed (1610 pre-existing + 104 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -411,6 +431,7 @@ cargo test -p project           # detection priority, .gitignore rules, toolchai
 cargo test -p crash_recovery    # snapshot round trips, pruning, recovery marking
 cargo test -p tool_diag         # rustc/panic/generic parsing, quickfix conversion
 cargo test -p debug_model       # session lifecycle, console cap, sequence numbers
+cargo test -p font              # defaults, bundled bootstrap, candidate ordering
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

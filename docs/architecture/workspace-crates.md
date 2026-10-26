@@ -631,12 +631,12 @@ the scroll, gutter, and extent math can run against any host.
 `Editor`, which is what keeps the seam honest: if those helpers reach for
 editor state outside the trait, the stub stops compiling.
 
-`render_frame` still takes `Editor` — it dispatches `View`s that read
-buffer state — but frame preparation now runs through `FrameHost`
-(`prepare_frame`) and viewport/scroll synchronization through `ViewportHost`
-(`sync_viewport_scroll`), so both can be exercised from a non-Editor stub.
-`src/tests/render_host_tests.rs` drives `prepare_frame` and
-`sync_viewport_scroll` from a stub host.
+`render_frame` still takes `Editor` for view painting, but frame
+preparation (`prepare_frame`), dispatch selection (`frame_panes`),
+viewport/scroll synchronization (`sync_viewport_scroll`) and overlay
+painting (`render_overlays`) now run through `FrameHost`/`ViewportHost`/
+`RenderHost` plus borrowed inputs, so each can be exercised from a
+non-Editor stub. `src/tests/render_host_tests.rs` covers all four.
 
 ## Task ownership decision
 

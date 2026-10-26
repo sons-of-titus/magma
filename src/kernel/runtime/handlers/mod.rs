@@ -45,12 +45,7 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::LspApplyEdit { .. } => lsp::handle(ed, event),
 
         // ── Debug Adapter Protocol ───────────────────────────────────────
-        BackgroundEvent::DapStarted { .. }
-        | BackgroundEvent::DapStopped { .. }
-        | BackgroundEvent::DapOutput { .. }
-        | BackgroundEvent::DapTerminated { .. }
-        | BackgroundEvent::DapResponse { .. }
-        | BackgroundEvent::DapCommandResult { .. } => dap::handle(ed, event),
+        BackgroundEvent::Dap(_) => dap::handle(ed, event),
 
         // ── Processes / terminals ────────────────────────────────────────
         BackgroundEvent::TerminalOutput { .. }

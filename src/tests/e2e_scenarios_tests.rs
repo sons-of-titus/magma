@@ -203,7 +203,7 @@ fn s5_debug_config_launches_the_configured_program() {
     crate::kernel::debug::spawn_session(&mut ed, fake.script.to_string_lossy().as_ref(), Some(launch))
         .unwrap();
 
-    // The DapStarted bootstrap (configDone after breakpoint sync) is what a
+    // The `Dap(Started)` bootstrap (configDone after breakpoint sync) is what a
     // real session experiences; the launch request precedes it.  Arguments
     // are logged on the tab-indented line after their command.
     let mut lines;
@@ -245,7 +245,7 @@ fn s6_stop_requests_threads_and_populates_the_thread_list() {
     let sid = crate::kernel::debug::spawn_session(
         &mut ed, fake.script.to_string_lossy().as_ref(), Some(launch)).unwrap();
 
-    // The connection registers when DapStarted lands; only then can a stop's
+    // The connection registers when `Dap(Started)` lands; only then can a stop's
     // follow-up requests reach the adapter.
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while !ed.debug.connections.contains_key(&sid) {
@@ -258,9 +258,10 @@ fn s6_stop_requests_threads_and_populates_the_thread_list() {
 
     // A stop must ask the adapter for its thread list — otherwise the Threads
     // pane is permanently empty.
-    crate::kernel::runtime::process_background_event(&mut ed, BackgroundEvent::DapStopped {
-        session_id: sid, reason: "breakpoint".into(), thread_id: 1,
-    });
+    crate::kernel::runtime::process_background_event(&mut ed,
+        BackgroundEvent::Dap(crate::kernel::debug::Event::Stopped {
+            session_id: sid, reason: "breakpoint".into(), thread_id: 1,
+        }));
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         while let Ok(ev) = rx.try_recv() {

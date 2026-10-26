@@ -132,7 +132,7 @@ impl DapHandle {
     }
 
     /// Ordered teardown: `disconnect` request, then kill.  The reader
-    /// observes EOF and emits `DapTerminated`.
+    /// observes EOF and emits `Dap(Terminated)`.
     pub fn disconnect(&self) {
         self.request("disconnect", json!({ "terminateDebuggee": true }));
         std::thread::sleep(Duration::from_millis(100));
@@ -173,7 +173,7 @@ fn reader_loop(
             Ok(msg) => dispatch_dap_message(&core, &msg, &bg, session_id),
         }
     }
-    bg.send_event(BackgroundEvent::DapTerminated { session_id });
+    bg.send_event(BackgroundEvent::Dap(super::Event::Terminated { session_id }));
 }
 
 fn dispatch_dap_message(
@@ -191,28 +191,32 @@ fn dispatch_dap_message(
                     let reason = v.pointer("/body/reason").and_then(Value::as_str)
                         .unwrap_or("unknown").to_string();
                     let thread_id = v.pointer("/body/threadId").and_then(Value::as_u64).unwrap_or(0);
-                    bg.send_event(BackgroundEvent::DapStopped { session_id, reason, thread_id });
+                    bg.send_event(BackgroundEvent::Dap(super::Event::Stopped {
+                        session_id, reason, thread_id,
+                    }));
                 }
                 "output" => {
                     let category = v.pointer("/body/category").and_then(Value::as_str)
                         .unwrap_or("console").to_string();
                     let output = v.pointer("/body/output").and_then(Value::as_str)
                         .unwrap_or("").to_string();
-                    bg.send_event(BackgroundEvent::DapOutput { session_id, category, output });
+                    bg.send_event(BackgroundEvent::Dap(super::Event::Output {
+                        session_id, category, output,
+                    }));
                 }
                 "breakpoint" => {
                     // Adapter confirmed/changed one breakpoint: the session
                     // model updates its verified flag from this.
                     let body = v.get("body").cloned().unwrap_or(Value::Null);
-                    bg.send_event(BackgroundEvent::DapCommandResult {
+                    bg.send_event(BackgroundEvent::Dap(super::Event::CommandResult {
                         session_id,
                         command: "breakpoint".to_string(),
                         success: true,
                         body: body.to_string(),
-                    });
+                    }));
                 }
                 "terminated" | "exited" => {
-                    bg.send_event(BackgroundEvent::DapTerminated { session_id });
+                    bg.send_event(BackgroundEvent::Dap(super::Event::Terminated { session_id }));
                 }
                 _ => {}
             }
@@ -230,21 +234,21 @@ fn dispatch_dap_message(
             if command == "evaluate" && v.get("success").and_then(Value::as_bool).unwrap_or(false) {
                 let result = v.pointer("/body/result").and_then(Value::as_str)
                     .unwrap_or("").to_string();
-                bg.send_event(BackgroundEvent::DapResponse {
+                bg.send_event(BackgroundEvent::Dap(super::Event::Response {
                     session_id,
                     event_type: "evaluate".to_string(),
                     data: result,
-                });
+                }));
                 return;
             }
             let body = serde_json::to_string(v.get("body").unwrap_or(&Value::Null))
                 .unwrap_or_default();
-            bg.send_event(BackgroundEvent::DapCommandResult {
+            bg.send_event(BackgroundEvent::Dap(super::Event::CommandResult {
                 session_id,
                 command: command.to_string(),
                 success: v.get("success").and_then(Value::as_bool).unwrap_or(false),
                 body,
-            });
+            }));
         }
         _ => {}
     }

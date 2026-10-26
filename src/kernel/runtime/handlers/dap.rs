@@ -8,7 +8,15 @@ use super::super::BackgroundEvent;
 
 pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
     match event {
-        BackgroundEvent::DapStarted { session_id, result } => {
+        BackgroundEvent::Dap(event) => handle_dap_event(ed, event),
+        _ => {}
+    }
+}
+
+fn handle_dap_event(ed: &mut Editor, event: crate::kernel::debug::Event) {
+    use crate::kernel::debug::Event;
+    match event {
+        Event::Started { session_id, result } => {
             match result {
                 Ok(handle) => {
                     ed.debug.connections.insert(session_id, handle);
@@ -41,7 +49,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
             }
         }
-        BackgroundEvent::DapStopped { session_id, reason, thread_id } => {
+        Event::Stopped { session_id, reason, thread_id } => {
             let watch_count = ed.debug.watches.len();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.note_stopped(watch_count);
@@ -61,7 +69,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 thread_id: thread_id.to_string(),
             });
         }
-        BackgroundEvent::DapOutput { session_id, category, output } => {
+        Event::Output { session_id, category, output } => {
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.push_console(&output);
             }
@@ -71,7 +79,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 output,
             });
         }
-        BackgroundEvent::DapTerminated { session_id } => {
+        Event::Terminated { session_id } => {
             ed.debug.connections.remove(&session_id);
             ed.debug.sessions.remove(&session_id);
             if ed.debug.active_session == Some(session_id) {
@@ -81,7 +89,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 session_id: session_id.to_string(),
             });
         }
-        BackgroundEvent::DapResponse { session_id, event_type, data } => {
+        Event::Response { session_id, event_type, data } => {
             if event_type == "evaluate" {
                 crate::kernel::runtime_dap::apply_dap_response(ed, session_id, &data);
                 ed.events.emit_typed(keys::events::DEBUG_EVALUATE_RESULT, crate::kernel::event::payload::DebugEvaluateResultPayload {
@@ -96,12 +104,11 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 ed.events.emit("debug-dap-event", payload);
             }
         }
-        BackgroundEvent::DapCommandResult { session_id, command, success, body } => {
+        Event::CommandResult { session_id, command, success, body } => {
             if !success {
                 crate::kernel::runtime_dap::note_request_error(ed, session_id, &command, &body);
             }
             crate::kernel::runtime_dap::apply_dap_command_result(ed, session_id, &command, success, &body);
         }
-        _ => {}
     }
 }

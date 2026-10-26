@@ -204,6 +204,17 @@ The task subsystem is the first boundary:
   task/fs/custom sequence arrives complete and in send order, and checks
   success and failure completion dispatch.
 
+The debug subsystem follows the same recipe:
+
+- `kernel::debug::Event` (`src/kernel/debug/event.rs`) owns `Started`,
+  `Stopped`, `Output`, `Terminated`, `Response`, and `CommandResult`.
+- `dap_client`'s reader thread and `debug::spawn_session` send
+  `BackgroundEvent::Dap(debug::Event)` on the same channel.
+- `runtime::handlers::dap` matches the inner enum.
+- `src/tests/dap_event_tests.rs` pins the wrapper payloads, asserts a mixed
+  DAP/fs/custom sequence arrives complete and in send order, and checks output
+  and termination dispatch.
+
 The wrapper changes neither transport nor order: both constructors send on the
 same channel they used before, and `process_background_event` still marks the
 frame dirty and dispatches through one exhaustive match. `TaskReady` remains a
@@ -212,7 +223,6 @@ signal, not a task-result event.
 
 Still merged in the central enum:
 
-- `debug` (`DapStarted`, `DapStopped`, …)
 - `semantic::lsp` (`LspStarted`, `LspDiagnostics`, …)
 - `index`, `project`, `vc`
 
@@ -506,11 +516,11 @@ terminating the child, and kill through the handle when the pid is absent.
 
 ### Background-event adoption
 
-The task vocabulary is now namespaced (see above), which proves the
-single-channel wrapper without changing delivery order. The same split is
-still pending for `debug`, `semantic::lsp`, `index`, `project`, and `vc`;
-until then those subsystems keep their variants in the central enum and stay
-in the kernel.
+The task and debug vocabularies are now namespaced (see above), which proves
+the single-channel wrapper without changing delivery order. The same split is
+still pending for `semantic::lsp`, `index`, `project`, and `vc`; until then
+those subsystems keep their variants in the central enum and stay in the
+kernel.
 
 ### `Editor` coupling
 
@@ -525,7 +535,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1746 passed (1742 baseline + 4 task-event regression tests)
+cargo test --workspace          # 1749 passed (1742 baseline + 7 event-boundary regression tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests

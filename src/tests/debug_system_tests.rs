@@ -303,7 +303,7 @@ fn session_start_syncs_breakpoints_then_configuration_done() {
     crate::kernel::debug::spawn_session(&mut ed, fake.script.to_string_lossy().as_ref(), None)
         .expect("fake adapter spawns");
 
-    // The DapStarted event runs the bootstrap: breakpoint sync + configDone.
+    // The `Dap(Started)` event runs the bootstrap: breakpoint sync + configDone.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
         while let Ok(ev) = rx.try_recv() {

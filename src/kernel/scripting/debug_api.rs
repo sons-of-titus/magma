@@ -42,7 +42,7 @@ fn buffer_for_path(ed: &mut crate::kernel::state::Editor, file: &str)
 
 /// (debug/start adapter &opt launch-config-json) → session-id
 /// The initialize handshake runs off the foreground; readiness arrives via
-/// the `DapStarted` background event.
+/// the `Dap(Started)` background event.
 unsafe extern "C-unwind" fn c_debug_start(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let adapter = unsafe { conv::get_str(argc, argv, 0) }

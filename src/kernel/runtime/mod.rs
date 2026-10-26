@@ -106,28 +106,14 @@ pub enum BackgroundEvent {
     LspProgress { token: String, message: String, percentage: String },
     /// A language server process exited (crash or termination).
     LspServerExited { language: String },
-    /// The awaited DAP initialize handshake finished off-thread.
-    DapStarted {
-        session_id: u64,
-        result: Result<std::sync::Arc<crate::kernel::debug::dap_client::DapHandle>, String>,
-    },
+    /// The debug subsystem's own event vocabulary.
+    Dap(crate::kernel::debug::Event),
     /// The awaited initialize handshake finished off-thread.
     LspStarted {
         language: String,
         result: Result<std::sync::Arc<crate::kernel::semantic::lsp::LspHandle>, String>,
     },
     // ─────────────────────────────────────────────────────────────────────
-    /// DAP: the debuggee stopped (breakpoint hit, step complete, etc.) — Phase 6.
-    DapStopped { session_id: u64, reason: String, thread_id: u64 },
-    /// DAP: a line of console/stdout output from the debuggee — Phase 6.
-    DapOutput { session_id: u64, category: String, output: String },
-    /// DAP: the debug adapter process terminated — Phase 6.
-    DapTerminated { session_id: u64 },
-    /// DAP: a generic adapter response (evaluate result, unknown event) — Phase 6.
-    DapResponse { session_id: u64, event_type: String, data: String },
-    /// A DAP command response (stackTrace/scopes/variables/threads) — feeds
-    /// the session model the debug pane renders.
-    DapCommandResult { session_id: u64, command: String, success: bool, body: String },
     Custom(String, String),
     // ── Phase 11 AI/Agent Architecture ───────────────────────────────────────
     /// Agent emitted a reasoning step.

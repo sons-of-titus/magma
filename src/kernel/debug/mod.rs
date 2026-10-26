@@ -5,6 +5,9 @@
 //! Janet-facing API lives in `kernel/scripting/debug_api.rs`.
 
 pub mod dap_client;
+mod event;
+
+pub use event::Event;
 
 pub use debug_model::{Breakpoint, DebugSession, FrameId, MemoryRegion, SessionId, StackFrame, Thread, Variable};
 pub use debug_model::{session, types};
@@ -243,7 +246,7 @@ pub fn remove_breakpoints_at(ed: &mut crate::kernel::state::Editor, file: &str, 
 }
 
 /// Spawn an adapter off the foreground and register the session; readiness
-/// arrives via `DapStarted`.  Shared by `debug/start` and `debug-config`.
+/// arrives via `Dap(Started)`.  Shared by `debug/start` and `debug-config`.
 pub fn spawn_session(
     ed: &mut crate::kernel::state::Editor,
     adapter: &str,
@@ -267,7 +270,7 @@ pub fn spawn_session(
         .spawn(move || {
             let result = dap_client::DapHandle::start(
                 &adapter, session_id, launch_config, bg.clone()).map(std::sync::Arc::new);
-            bg.send_event(BackgroundEvent::DapStarted { session_id, result });
+            bg.send_event(BackgroundEvent::Dap(Event::Started { session_id, result }));
         })
         .map_err(|e| format!("dap-init thread: {e}"))?;
     Ok(session_id)

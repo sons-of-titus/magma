@@ -2173,6 +2173,7 @@ dependencies = [
  "semantic",
  "serde",
  "serde_json",
+ "session",
  "slab",
  "smallstr",
  "snippet",
@@ -3558,6 +3559,14 @@ dependencies = [
  "cfg-if",
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "session"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

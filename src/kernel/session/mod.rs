@@ -1,44 +1,13 @@
 //! Project sessions — the per-project working state that survives close and
 //! reopen: open files with cursor positions, the focused file, breakpoints,
 //! and watch expressions.  Persisted to `<root>/.magma/session.json`.
-//! Restored automatically when a project opens; saved when a project closes
-//! or the editor quits.
+//!
+//! The file format lives in the `session` crate; this module captures it from
+//! `Editor`, applies it back, and decides when to save.
 
-use serde::{Deserialize, Serialize};
+pub use session::{SessionBreakpoint, SessionBuffer, SessionState, session_file};
 
 use crate::kernel::state::Editor;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SessionBuffer {
-    pub path: String,
-    pub cursor: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SessionBreakpoint {
-    pub file: String,
-    pub line: usize,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-}
-
-fn default_true() -> bool { true }
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct SessionState {
-    #[serde(default)]
-    pub buffers: Vec<SessionBuffer>,
-    #[serde(default)]
-    pub focused: Option<String>,
-    #[serde(default)]
-    pub breakpoints: Vec<SessionBreakpoint>,
-    #[serde(default)]
-    pub watches: Vec<String>,
-}
-
-pub fn session_file(root: &std::path::Path) -> std::path::PathBuf {
-    root.join(".magma").join("session.json")
-}
 
 /// Snapshot the per-project working state.  Only file-backed buffers are
 /// recorded — scratch buffers are editor-session-local by contract.
@@ -74,12 +43,7 @@ pub fn capture(ed: &Editor) -> SessionState {
 
 /// Write the snapshot to `<root>/.magma/session.json`.
 pub fn save(ed: &Editor, root: &std::path::Path) -> Result<(), String> {
-    let path = session_file(root);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("create .magma: {e}"))?;
-    }
-    let text = serde_json::to_string_pretty(&capture(ed)).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text + "\n").map_err(|e| format!("write {}: {e}", path.display()))
+    session::write(root, &capture(ed))
 }
 
 /// Save when a project is active; a no-op without one.
@@ -92,8 +56,7 @@ pub fn save_if_project(ed: &Editor) {
 /// Reopen the recorded files with their cursors, breakpoints, and watches.
 /// Missing files are skipped; the recorded focus wins at the end.
 pub fn restore(ed: &mut Editor, root: &std::path::Path) {
-    let Ok(text) = std::fs::read_to_string(session_file(root)) else { return };
-    let Ok(state) = serde_json::from_str::<SessionState>(&text) else { return };
+    let Some(state) = session::read(root) else { return };
 
     for entry in &state.buffers {
         if !std::path::Path::new(&entry.path).exists() {

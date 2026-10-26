@@ -27,6 +27,7 @@ without call-site changes:
 | `kernel::icons::…` | `pub use icons::{…}` and `pub use icons::vscode;` in `src/kernel/icons/mod.rs` |
 | `kernel::storage::{FileSystem, …}` | `pub use fs::{…}` in `src/kernel/storage/mod.rs` |
 | `kernel::storage::disk::…` | `pub use fs::{DiskFileSystem, atomic_write};` in `src/kernel/storage/disk.rs` |
+| `kernel::session::…` | `pub use session::{SessionState, …};` in `src/kernel/session/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -36,7 +37,7 @@ these paths and must keep compiling unchanged.
 ```
    id ──▶ text ──▶ semantic          vt
 
-   vcs   bgpool   scheduler   snippet   icons   fs   logging
+   vcs   bgpool   scheduler   snippet   icons   fs   session   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -218,6 +219,19 @@ state.  `disk.rs` is a three-line re-export shim so
 `kernel::storage::disk::DiskFileSystem` and `…::atomic_write` keep
 resolving.
 
+### `crates/session`
+
+The session file format: `SessionState` with `SessionBuffer` (path, cursor),
+`SessionBreakpoint` (file, line, `enabled` defaulting to true), and watches,
+plus `session_file`, `write`, and `read` for
+`<root>/.magma/session.json`. `read` yields `None` for a missing or
+unparsable file — a damaged session is not actionable.
+
+Kept in the kernel (`src/kernel/session/mod.rs`): `capture(&Editor)`, which
+walks buffers/views/breakpoints to build the state, `restore(&mut Editor)`,
+which reopens files and re-applies the state, `save`/`save_if_project`, and
+the `open-file` call those use.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -254,7 +268,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1666 passed (1610 pre-existing + 56 new crate tests)
+cargo test --workspace          # 1676 passed (1610 pre-existing + 66 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -264,6 +278,7 @@ cargo test -p scheduler         # work bookkeeping, progress, cancellation, host
 cargo test -p snippet           # tab stops, placeholders, built-in expansions
 cargo test -p icons             # lookup precedence, folder icons, VS Code manifests
 cargo test -p fs                # sync/async round trips, atomic write, error mapping
+cargo test -p session           # session file round trip, defaults, corrupt-file handling
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

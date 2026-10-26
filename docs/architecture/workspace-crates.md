@@ -113,8 +113,14 @@ stashes) — and `ops.rs` with the side-by-side diff layout
 
 Parsers the kernel calls (`split_hunks`, `parse_branch_lines`,
 `parse_stash_lines`) are `pub` in the crate and reached through the re-export
-as `kernel::vc::backends::…`; the status parser (`parse_porcelain_z`) stays
-crate-internal.
+as `kernel::vc::backends::…`; the crate's own status parser
+(`parse_porcelain_z`) is public too, so backends and tests share one parser
+rather than duplicating it.
+
+The backends live in `crates/vcs/src/backends/`, one file per VCS
+(`git.rs`, `hg.rs`, `svn.rs`, `jj.rs`), with `shell_template.rs` for
+runtime-registered backends and `parsers.rs` for their shared output
+parsers.
 
 ## Remaining blockers
 

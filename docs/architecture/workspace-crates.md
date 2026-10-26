@@ -581,7 +581,7 @@ stated in terms of what still ties it to `Editor` rather than to its own data.
 | `debug` | `src/kernel/debug` | `EventSink` seam for DAP client | `DapHandle` stays in kernel (Arc-shared with session model); extraction deferred |
 | `task` | `src/kernel/task` + `crates/scheduler` | nothing | `crates/scheduler` deliberately owns work bookkeeping only; `TaskId`, `TaskStatus`, `OutputSink`, and process spawning still live with the kernel |
 | `terminal` | `src/kernel/terminal` + `crates/pty` + `crates/vt` | sessions, screen | `TerminalManager` pumps `Editor` events |
-| `render` | `src/kernel/render` | surface, GPU atlas, view tree | 48 files, ~10k lines, 140 `Editor` references |
+| `render` | `src/kernel/render` | surface, GPU atlas, view tree, row layout | 48 files, ~10k lines, 140 `Editor` references |
 | `command` | `src/kernel/command` | — | 23 files, 87 `Editor` references |
 | `scripting` | `src/kernel/scripting` | — | 55 files, ~9.8k lines, 45 `Editor` references |
 
@@ -718,6 +718,15 @@ Hot-path findings:
 
 Remaining architectural dependencies are unchanged: text painting, highlights,
 debug/cursor/completion rendering still read live `Editor` state.
+
+## `crates/row_layout`
+
+Extracted in Phase 8: `RowLayout`, `RowLayoutCache`, `RowKey`, and
+`RowLayout::build` (grapheme→cell mapping plus bidi reordering). Pure
+algorithm with no `Editor` dependency; depends only on `crates/text`
+(text layout) and `unicode-bidi`. The kernel keeps the `row_layout(editor,
+…)` cache wrapper as a thin shim over `Editor.row_layouts`. Compatibility
+path `kernel::render::row_layout::*` is preserved via re-export.
 
 ## Verification
 

@@ -2201,6 +2201,7 @@ dependencies = [
  "text",
  "thiserror 1.0.69",
  "tokio",
+ "tool_diag",
  "tree-sitter",
  "tree-sitter-language",
  "unicode-bidi",
@@ -4081,6 +4082,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2abe9b86193656635d2411dc43050282ca48aa31c2451210f4202550afb7526"
 dependencies = [
  "winnow",
+]
+
+[[package]]
+name = "tool_diag"
+version = "0.1.0"
+dependencies = [
+ "semantic",
 ]
 
 [[package]]

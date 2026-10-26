@@ -1,0 +1,8 @@
+[package]
+name = "tool_diag"
+version = "0.1.0"
+edition = "2024"
+description = "Parse build/test tool output into typed diagnostics and quickfix entries for Magma"
+
+[dependencies]
+semantic = { path = "../semantic" }

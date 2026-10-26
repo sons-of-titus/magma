@@ -4,31 +4,11 @@ pub use scheduler::{OutputSink, Task, TaskId, TaskOutput, TaskScheduler, TaskSta
 
 use crate::kernel::state::Editor;
 
-/// A parsed quickfix entry from compiler error output.
-#[derive(Debug, Clone)]
-pub struct QuickfixEntry {
-    pub filename: String,
-    pub line: usize,
-    pub col: usize,
-    pub message: String,
-    pub severity: crate::kernel::semantic::provider::DiagnosticSeverity,
-}
+pub use tool_diag::QuickfixEntry;
 
 /// Upper bound on quickfix-list entries, applied wherever results stream in
 /// (find-in-files, grep batches, keyword-context).
 pub const QUICKFIX_MAX_RESULTS: usize = 500;
-
-impl Default for QuickfixEntry {
-    fn default() -> Self {
-        QuickfixEntry {
-            filename: String::new(),
-            line: 0,
-            col: 0,
-            message: String::new(),
-            severity: crate::kernel::semantic::provider::DiagnosticSeverity::Error,
-        }
-    }
-}
 
 /// Launch a shell command into the `*shell*` buffer, streaming its output
 /// through the TaskScheduler.  Returns immediately; the buffer fills as the

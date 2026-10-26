@@ -32,6 +32,7 @@ without call-site changes:
 | `kernel::run_config::{RunConfig, defaults_for}` | `pub use run_config::{RunConfig, defaults_for};` in `src/kernel/run_config/mod.rs` |
 | `kernel::project::{detect, gitignore, toolchain}` | `pub use project::{detect, gitignore, toolchain};` in `src/kernel/project/mod.rs` |
 | `kernel::storage::crash_recovery::…` | `pub use crash_recovery::{…}` in `src/kernel/storage/crash_recovery.rs` |
+| `kernel::task::{diag_parse::…, QuickfixEntry}` | `pub use tool_diag::{ToolDiag, parse_tool_output, QuickfixEntry};` split across `src/kernel/task/diag_parse.rs` and `src/kernel/task/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -42,7 +43,8 @@ these paths and must keep compiling unchanged.
    id ──▶ text ──▶ semantic          vt
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
-   project ──▶ run_config   crash_recovery ──▶ fs   logging
+   project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
+   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -314,6 +316,27 @@ which opens survivors as read-only `*recovered …*` buffers, and
 `new_session_dir()` wrapper that supplies `persist::state_dir()`. The rest
 is re-exported through the same module path.
 
+### `crates/tool_diag`
+
+The build/test output parser: `parse_tool_output(command, text, cwd)` turns
+combined compiler and test output into `ToolDiag` findings, which pair a
+resolved file path with a `semantic::Diagnostic`.  It recognises rustc/cargo
+message headers plus their ` --> path:line:col` span, `panicked at`
+locations from `cargo test`, and generic `path:line[:col]: message` lines
+from make, pytest, and `rg --vimgrep`, while rejecting prose that merely
+contains colons.  `ToolDiag::quickfix` converts a finding to a one-based
+`QuickfixEntry` (also defined here, with its empty-error `Default`).
+
+The crate is pure — output text in, findings out.  It reaches diagnostics
+through `semantic`, which re-exports the `text` diagnostic model.
+
+Kept in the kernel: `apply_tool_diagnostics` in `src/kernel/task/mod.rs`,
+which writes findings onto the buffer's tool diagnostics and the editor's
+quickfix list, plus `QUICKFIX_MAX_RESULTS`.  `src/kernel/task/diag_parse.rs`
+is a re-export shim, and `QuickfixEntry` is re-exported from `task`, so
+`kernel::task::QuickfixEntry` and `kernel::task::diag_parse::…` still
+resolve.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -350,7 +373,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1700 passed (1610 pre-existing + 90 new crate tests)
+cargo test --workspace          # 1702 passed (1610 pre-existing + 92 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -365,6 +388,7 @@ cargo test -p index             # extraction per language family, index format r
 cargo test -p run_config        # defaults per language, cwd resolution, DAP launch args
 cargo test -p project           # detection priority, .gitignore rules, toolchain lookup
 cargo test -p crash_recovery    # snapshot round trips, pruning, recovery marking
+cargo test -p tool_diag         # rustc/panic/generic parsing, quickfix conversion
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

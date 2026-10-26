@@ -22,6 +22,7 @@ without call-site changes:
 | `kernel::semantic::<core module>::…` | `pub use semantic::<module>;` in `src/kernel/semantic/mod.rs` |
 | `kernel::terminal::ansi::…`, `kernel::terminal::screen::…` | `pub use vt::{ansi, screen};` in `src/kernel/terminal/mod.rs` |
 | `kernel::vc::…` | `pub use vcs::…` in `src/kernel/vc/mod.rs` |
+| `kernel::scheduler::…` | `pub use scheduler::…` in `src/kernel/scheduler/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -29,20 +30,20 @@ these paths and must keep compiling unchanged.
 ## Dependency graph
 
 ```
-                       logging
-                          |
-   util   event   keymap  extension   net   clipboard   id   vcs   bgpool
-                                                    |
-                                                  text        vt
-                                                    |
-                                                 semantic
-                                                    |
-     ┌──────────────────────────────────────────────┴──────────────┐
+   id ──▶ text ──▶ semantic          vt
+
+   vcs   bgpool   scheduler   logging   util
+   event   keymap   extension   net   clipboard
+
+     ┌─────────────────────────────────────────────────────────────┐
      │                         magma (kernel)                      │
      │  state::Editor · command · render · scripting · runtime ·   │
      │  task · project · debug · index · vc · terminal · …         │
      └─────────────────────────────────────────────────────────────┘
 ```
+
+Only `id → text → semantic` has intra-crate edges; every other crate is a
+leaf the kernel depends on.
 
 Arrows point at dependencies. There are no cycles between workspace crates.
 The kernel may depend on any crate; crates never depend on the kernel.
@@ -141,6 +142,31 @@ merged event vocabulary) and the handlers that apply an event to `Editor`.
 plus the typed file read/write helpers; it derefs to the pool, so call sites
 (`bg.sender`, `bg.spawn_on`, `bg.read_file`) are unchanged.
 
+### `crates/scheduler`
+
+The bookkeeping half of background work: `WorkId`, `WorkStatus`,
+`WorkProgress`, `CancellationToken`, `ProgressReporter`, the `Work` trait, and
+`WorkScheduler`, which tracks items and maps external task/process ids onto
+their work ids. It has no dependencies: not tokio, not the editor.
+
+Execution and delivery are abstracted by two small pieces:
+
+- `WorkEvent` — `Progress { id, done, total }`, `Completed { id }`,
+  `Failed { id, error }`.
+- `WorkHost` — `spawn(job)` plus `sink() -> WorkSink`, where `WorkSink` is a
+  cloneable `Fn(WorkEvent)` handle.
+
+The kernel implements `WorkHost for BackgroundHandle` in
+`src/kernel/scheduler/mod.rs`: `spawn` forwards to the bgpool's blocking
+pool, and `sink` maps each `WorkEvent` onto the matching `BackgroundEvent`
+variant the foreground already handles. Call sites still read
+`ed.scheduler.submit_fn(name, &bg, …)` — `&BackgroundHandle` coerces to
+`&dyn WorkHost`.
+
+`WorkScheduler` tracks status itself; the kernel's handlers still apply the
+incoming events (`update_progress`, `mark_completed`, `mark_failed`) so the
+event bus subscribers see them in the same order as before.
+
 ## Remaining blockers
 
 ### The background-event hub
@@ -177,12 +203,13 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1610 passed (1604 pre-existing + 6 bgpool)
+cargo test --workspace          # 1626 passed (1610 pre-existing + 16 scheduler)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
 cargo test -p vcs               # backends, parsers, live-git round trips
 cargo test -p bgpool            # lane submission and event-channel tests
+cargo test -p scheduler         # work bookkeeping, progress, cancellation, host wiring
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

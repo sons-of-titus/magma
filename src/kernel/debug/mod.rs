@@ -7,7 +7,7 @@
 pub mod dap_client;
 mod event;
 
-pub use event::Event;
+pub use event::{Event, EventSink};
 
 pub use debug_model::{Breakpoint, DebugSession, FrameId, MemoryRegion, SessionId, StackFrame, Thread, Variable};
 pub use debug_model::{session, types};

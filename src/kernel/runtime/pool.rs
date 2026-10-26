@@ -34,6 +34,12 @@ impl semantic::lsp::EventSink for BackgroundHandle {
     }
 }
 
+impl crate::kernel::debug::EventSink for BackgroundHandle {
+    fn send(&self, event: crate::kernel::debug::Event) {
+        self.send_event(BackgroundEvent::Dap(event));
+    }
+}
+
 impl BackgroundHandle {
     pub fn new(runtime: Arc<Runtime>, sender: mpsc::UnboundedSender<BackgroundEvent>) -> Self {
         Self { pool: bgpool::Pool::new(runtime, sender) }

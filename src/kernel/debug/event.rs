@@ -1,13 +1,20 @@
-//! The debug subsystem's background-event vocabulary.
+//! The debug subsystem's background-event vocabulary and delivery seam.
 //!
-//! `DapHandle`'s reader thread and `debug::spawn_session` send these.  The
-//! central `runtime::BackgroundEvent` wraps them as `BackgroundEvent::Dap(_)`
-//! so the foreground keeps one ordered channel.
+//! `DapHandle`'s reader thread and `debug::spawn_session` report through
+//! [`EventSink`]; the kernel adapts those events to `BackgroundEvent::Dap(_)`
+//! so the foreground keeps one ordered channel.  The client never names the
+//! kernel's background-event enum.
 
 use std::sync::Arc;
 
 use super::SessionId;
 use super::dap_client::DapHandle;
+
+/// Destination for events produced by a live debug adapter or its startup
+/// path.
+pub trait EventSink {
+    fn send(&self, event: Event);
+}
 
 /// An event produced by a DAP adapter connection or its startup thread.
 #[derive(Debug, Clone)]

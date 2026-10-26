@@ -694,6 +694,31 @@ decouple `DebugManager` from the client handle (e.g. an application-owned
 session object keyed by session id) so the handle can move without the
 manager.
 
+## Rendering performance audit (Phase 7)
+
+Baseline (`cargo bench --bench frame_pipeline`, release, this machine):
+- `render 80x40 @ 1k lines`: p50 81.8µs, p99 134.0µs (n=300)
+- `render 80x40 @ 100k lines`: p50 79.0µs, p99 112.1µs (n=300)
+- Invalidation observe+clear @ 10k lines: ~0.1µs.
+- Frame cost is flat in document size, as required.
+
+Hot-path findings:
+- `build_visible_rows` allocates one `Vec<VisibleRow>` plus one `String` per
+  visible row (fold rows synthesize text). At most `visible_lines` rows
+  (≤ ~40 for an 80×40 pane), so bounded and O(visible), not O(document).
+- Row text materialization (`buf.slice`) is required because buffer storage is
+  a rope; avoiding it would need a borrowed slice API that does not exist
+  without rope-chunk iteration in the layout path.
+- Theme/face resolution and gutter providers run once per visible row; already
+  limited to visible rows. No repeated full-document work observed.
+- No optimization was applied: the frame is already flat and fast, and the
+  remaining allocations are inherent to rope text extraction and fold
+  rendering. Introducing caching or reuse would add invalidation complexity
+  without a measured benefit.
+
+Remaining architectural dependencies are unchanged: text painting, highlights,
+debug/cursor/completion rendering still read live `Editor` state.
+
 ## Verification
 
 The extraction must keep these green:

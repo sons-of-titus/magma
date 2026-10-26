@@ -8,11 +8,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use crate::kernel::render::decorations::render_overlays;
 use crate::kernel::render::frame::{
     bool_option, compute_scroll_state, frame_panes, gutter_cols, horizontal_extent, int_option,
     pane_scroll_top, prepare_frame, sync_viewport_scroll,
 };
 use crate::kernel::render::host::{FrameHost, PaneMetrics, RenderHost, ViewportHost};
+use crate::kernel::state::Overlay;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view_tree::Pane;
 use crate::kernel::state::id::{BufferId, WindowId};
@@ -228,4 +230,22 @@ fn frame_panes_skips_unfocused_tab_panes() {
     let panes = frame_panes(&host);
     assert_eq!(panes.len(), 1, "unfocused tab pane is skipped");
     assert_eq!(panes[0].0.id, WindowId(1));
+}
+
+#[test]
+fn render_overlays_paints_without_editor() {
+    let host = StubHost::with_text("");
+    let overlays = vec![Overlay {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 2,
+        height: 1,
+        buffer_id: None,
+        z_order: 0,
+    }];
+    let mut surface = Surface::new(4, 2);
+    render_overlays(&host, &overlays, (1, 2, 3), (4, 5, 6), &mut surface);
+    // overlay background seeded
+    assert_eq!(surface.cell(0, 0).unwrap().style.bg, (1, 2, 3));
 }

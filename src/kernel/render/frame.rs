@@ -366,5 +366,11 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
     }
 
     // ── Overlays (z-ordered, above all pane content) ─────────────────────
-    render_overlays(editor, surface);
+    render_overlays(
+        editor,
+        &editor.overlays,
+        editor.theme_color("bg"),
+        editor.theme_color("fg"),
+        surface,
+    );
 }

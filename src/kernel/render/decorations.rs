@@ -96,14 +96,17 @@ pub fn render_decorations(
 }
 
 /// Render overlays drawn above buffer content in z_order.
-pub fn render_overlays(editor: &Editor, surface: &mut Surface) {
-    if editor.overlays.is_empty() { return; }
+pub fn render_overlays(
+    host: &dyn RenderHost,
+    overlays: &[crate::kernel::state::Overlay],
+    overlay_bg: (u8, u8, u8),
+    overlay_fg: (u8, u8, u8),
+    surface: &mut Surface,
+) {
+    if overlays.is_empty() { return; }
 
-    let mut sorted: Vec<&crate::kernel::state::Overlay> = editor.overlays.iter().collect();
+    let mut sorted: Vec<&crate::kernel::state::Overlay> = overlays.iter().collect();
     sorted.sort_by_key(|o| o.z_order);
-
-    let overlay_bg = editor.theme_color("bg");
-    let overlay_fg = editor.theme_color("fg");
 
     for ov in sorted {
         let bg_style = Style {
@@ -122,7 +125,7 @@ pub fn render_overlays(editor: &Editor, surface: &mut Surface) {
         }
 
         if let Some(buf_id) = ov.buffer_id
-            && let Some(arc) = editor.buffers.get(buf_id) {
+            && let Some(arc) = host.buffer(buf_id) {
                 let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 // Only the rows the overlay can show are extracted.
                 let max_rows = ov.height as usize;

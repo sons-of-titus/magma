@@ -330,6 +330,25 @@ pub fn prepare_frame(host: &dyn FrameHost, surface: &mut Surface) {
     });
 }
 
+/// Panes that will be painted this frame, in paint order, with their
+/// surface-absolute area.  Tab-stacked siblings render only when focused.
+/// Computed purely from a [`FrameHost`] so the dispatch selection can be
+/// tested without an `Editor`.
+pub fn frame_panes(host: &dyn FrameHost) -> Vec<(crate::kernel::render::view_tree::Pane, Rect)> {
+    let focused = host.focused_window();
+    let mut out = Vec::new();
+    for pane in host.panes() {
+        if pane.layout == crate::kernel::render::view_tree::LayoutConstraint::Tab
+            && focused != Some(pane.id)
+        {
+            continue;
+        }
+        let area = Rect::new(pane.x, pane.y, pane.width, pane.height);
+        out.push((pane.clone(), area));
+    }
+    out
+}
+
 /// Populate `surface` from editor state by traversing the ViewTree.
 ///
 /// The surface contains editor pane content only — tab bar, status bar, and
@@ -339,16 +358,8 @@ pub fn render_frame(editor: &Editor, surface: &mut Surface) {
     prepare_frame(host, surface);
 
     // ── Render each pane through its view ────────────────────────────────
-    let focused = host.focused_window();
-    for pane in host.panes() {
+    for (pane, area) in frame_panes(host) {
         let Some(buf_id) = pane.buffer_id else { continue };
-        // Stacked tabs occupy the same area — only the visible one renders.
-        if pane.layout == crate::kernel::render::view_tree::LayoutConstraint::Tab
-            && focused != Some(pane.id) {
-            continue;
-        }
-
-        let area = Rect::new(pane.x, pane.y, pane.width, pane.height);
         let ctx = RenderCtx { editor, area };
 
         EditorView { buf_id, pane_id: pane.id }.render(surface, &ctx);

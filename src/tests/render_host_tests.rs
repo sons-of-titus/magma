@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::kernel::render::frame::{
-    bool_option, compute_scroll_state, gutter_cols, horizontal_extent, int_option, pane_scroll_top,
-    prepare_frame, sync_viewport_scroll,
+    bool_option, compute_scroll_state, frame_panes, gutter_cols, horizontal_extent, int_option,
+    pane_scroll_top, prepare_frame, sync_viewport_scroll,
 };
 use crate::kernel::render::host::{FrameHost, PaneMetrics, RenderHost, ViewportHost};
 use crate::kernel::render::surface::Surface;
@@ -202,4 +202,30 @@ fn sync_viewport_scroll_runs_without_editor_when_host_has_no_panes() {
     let mut host = StubHost::with_text("");
     // No panes: nothing to sync, must not panic.
     sync_viewport_scroll(&mut host);
+}
+
+#[test]
+fn frame_panes_skips_unfocused_tab_panes() {
+    use crate::kernel::render::view_tree::LayoutConstraint;
+    let mut host = StubHost::with_text("");
+    let mut p1 = Pane::new(WindowId(1));
+    p1.buffer_id = Some(0);
+    p1.x = 0;
+    p1.y = 0;
+    p1.width = 10;
+    p1.height = 5;
+    let mut p2 = Pane::new(WindowId(2));
+    p2.buffer_id = Some(1);
+    p2.x = 0;
+    p2.y = 0;
+    p2.width = 10;
+    p2.height = 5;
+    p2.layout = LayoutConstraint::Tab;
+    host.panes.push(p1);
+    host.panes.push(p2);
+    host.focused = Some(WindowId(1));
+
+    let panes = frame_panes(&host);
+    assert_eq!(panes.len(), 1, "unfocused tab pane is skipped");
+    assert_eq!(panes[0].0.id, WindowId(1));
 }

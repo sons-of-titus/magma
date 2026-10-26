@@ -13,6 +13,56 @@ use crate::kernel::render::decorations::{prefix_margin_width, render_decorations
 use crate::kernel::render::highlight_pass::apply_highlights;
 use crate::kernel::render::gutter::{GutterCtx, GutterRegistry};
 
+/// One visible row extracted from a buffer for painting.  Plain data, no
+/// `Editor` dependency, so row construction can be tested in isolation.
+#[derive(Debug, Clone)]
+pub struct VisibleRow {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+    pub fold: bool,
+}
+
+/// Build the visible rows for a viewport, including fold collapsing.
+/// Pure buffer/fold logic; takes no `Editor`.
+pub fn build_visible_rows(
+    buf: &crate::kernel::text_engine::Buffer,
+    folds: &[(usize, usize)],
+    scroll_top: usize,
+    visible_lines: usize,
+    total_lines: usize,
+) -> Vec<VisibleRow> {
+    use std::collections::HashMap;
+    let fold_map: HashMap<usize, usize> = folds.iter().map(|(s, e)| (*s, *e)).collect();
+    let mut rows = Vec::new();
+    let mut abs_line = scroll_top;
+    while abs_line < total_lines && rows.len() < visible_lines {
+        let line_start = buf.line_start_offset(abs_line).unwrap_or(buf.len());
+        let line_end = buf.line_start_offset(abs_line + 1).unwrap_or(buf.len());
+        let is_fold_start = fold_map.contains_key(&line_start);
+        if is_fold_start {
+            let fold_end = fold_map[&line_start];
+            let folded = buf.position_of(fold_end).line.saturating_sub(abs_line).max(1);
+            rows.push(VisibleRow {
+                start: line_start,
+                end: line_end,
+                text: format!("--- {} lines folded ---", folded),
+                fold: true,
+            });
+            abs_line += folded;
+        } else {
+            rows.push(VisibleRow {
+                start: line_start,
+                end: line_end,
+                text: buf.slice(line_start, line_end),
+                fold: false,
+            });
+            abs_line += 1;
+        }
+    }
+    rows
+}
+
 pub struct EditorView {
     pub buf_id: usize,
     pub pane_id: WindowId,
@@ -111,45 +161,11 @@ impl View for EditorView {
         // ── Pass 1: gutter + text (fold-aware) ───────────────────────────────
         let empty_folds = Vec::new();
         let folds = view.map(|v| &v.folds).unwrap_or(&empty_folds);
-        let fold_map: HashMap<usize, usize> =
-            folds.iter().map(|(s, e)| (*s, *e)).collect();
 
         // Visible rows extracted once: (line_start, line_end_incl_newline, text).
         // No whole-document copy is made to render a viewport (§9.1).
-        struct Row {
-            start: usize,
-            end: usize,
-            text: String,
-            fold: bool,
-        }
-        let mut rows: Vec<Row> = Vec::new();
-        {
-            let mut abs_line = scroll_top;
-            while abs_line < total_lines && rows.len() < visible_lines {
-                let line_start = buf.line_start_offset(abs_line).unwrap_or(buf.len());
-                let line_end = buf.line_start_offset(abs_line + 1).unwrap_or(buf.len());
-                let is_fold_start = fold_map.contains_key(&line_start);
-                if is_fold_start {
-                    let fold_end = fold_map[&line_start];
-                    let folded = buf.position_of(fold_end).line.saturating_sub(abs_line).max(1);
-                    rows.push(Row {
-                        start: line_start,
-                        end: line_end,
-                        text: format!("--- {} lines folded ---", folded),
-                        fold: true,
-                    });
-                    abs_line += folded;
-                } else {
-                    rows.push(Row {
-                        start: line_start,
-                        end: line_end,
-                        text: buf.slice(line_start, line_end),
-                        fold: false,
-                    });
-                    abs_line += 1;
-                }
-            }
-        }
+        // Row construction is pure buffer/fold logic, independent of Editor.
+        let rows: Vec<VisibleRow> = build_visible_rows(&*buf, folds, scroll_top, visible_lines, total_lines);
 
         let mut display_row = 0usize;
         let mut abs_line = scroll_top;

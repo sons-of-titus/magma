@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::kernel::render::decorations::render_overlays;
+use crate::kernel::render::editor_view::{build_visible_rows, VisibleRow};
 use crate::kernel::render::frame::{
     bool_option, compute_scroll_state, frame_panes, gutter_cols, horizontal_extent, int_option,
     pane_scroll_top, prepare_frame, sync_viewport_scroll,
@@ -248,4 +249,14 @@ fn render_overlays_paints_without_editor() {
     render_overlays(&host, &overlays, (1, 2, 3), (4, 5, 6), &mut surface);
     // overlay background seeded
     assert_eq!(surface.cell(0, 0).unwrap().style.bg, (1, 2, 3));
+}
+
+#[test]
+fn build_visible_rows_extracts_lines_without_editor() {
+    let buf = Buffer::from_string(BufferId(0), "stub", "a\nb\nc");
+    let rows = build_visible_rows(&buf, &[], 0, 2, buf.line_count());
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].text, "a\n");
+    assert!(!rows[0].fold);
+    let _ = VisibleRow { start: 0, end: 0, text: String::new(), fold: false };
 }

@@ -1,0 +1,8 @@
+[package]
+name = "view_tree"
+version = "0.1.0"
+edition = "2024"
+description = "Pane layout tree for Magma: splits, tabs, floats, focus and sizing"
+
+[dependencies]
+id = { path = "../id" }

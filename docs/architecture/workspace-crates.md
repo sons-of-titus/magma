@@ -35,6 +35,7 @@ without call-site changes:
 | `kernel::task::{diag_parse::…, QuickfixEntry}` | `pub use tool_diag::{ToolDiag, parse_tool_output, QuickfixEntry};` split across `src/kernel/task/diag_parse.rs` and `src/kernel/task/mod.rs` |
 | `kernel::debug::{types, session, …}` | `pub use debug_model::{session, types};` in `src/kernel/debug/mod.rs` |
 | `kernel::state::{font, FontConfig, ContextFont}` | `pub use font;` + `pub use font::{ContextFont, FontConfig};` in `src/kernel/state/mod.rs` |
+| `kernel::render::view_tree::…` | `pub use view_tree;` in `src/kernel/render/mod.rs` |
 
 Benchmarks (`benches/`) and integration tests (`src/tests/`) import through
 these paths and must keep compiling unchanged.
@@ -46,7 +47,7 @@ these paths and must keep compiling unchanged.
 
    vcs   bgpool   scheduler   snippet   icons   fs   session   index
    project ──▶ run_config   crash_recovery ──▶ fs   tool_diag ──▶ semantic
-   debug_model   font   logging
+   debug_model   font   view_tree ──▶ id   logging
    util   event   keymap   extension   net   clipboard
 
      ┌─────────────────────────────────────────────────────────────┐
@@ -378,6 +379,23 @@ config.
 `kernel::state::font::default_font_candidates()` and
 `kernel::state::FontConfig` keep resolving.
 
+### `crates/view_tree`
+
+The pane layout model: `ViewTree`, `Pane`, `SplitDirection`, and
+`LayoutConstraint` (split, tab, float).  It owns the pane list, the id
+allocator, focus, the terminal dimensions, the current split axis, and the
+`redistribute` pass that turns weights into geometry — tab panes stack at
+full size, split panes tile along one axis with the last pane absorbing
+rounding, and the status line keeps one row.
+
+The crate is pure layout state: no rendering, no input routing, and no
+buffer ownership — a pane only stores a `buffer_id`.
+
+`src/kernel/render/mod.rs` re-exports the module, so
+`kernel::render::view_tree::{ViewTree, Pane, …}` still resolves for the
+renderer, the mouse layer, and the existing layout tests.
+
+## Remaining blockers
 ## Remaining blockers
 
 ### The background-event hub
@@ -414,7 +432,7 @@ The extraction must keep these green:
 
 ```bash
 cargo check --workspace --all-targets
-cargo test --workspace          # 1714 passed (1610 pre-existing + 104 new crate tests)
+cargo test --workspace          # 1723 passed (1610 pre-existing + 113 new crate tests)
 cargo test -p text              # buffer/text-engine unit tests
 cargo test -p semantic          # provider/engine unit tests
 cargo test -p vt                # terminal screen/ANSI parser tests
@@ -432,6 +450,7 @@ cargo test -p crash_recovery    # snapshot round trips, pruning, recovery markin
 cargo test -p tool_diag         # rustc/panic/generic parsing, quickfix conversion
 cargo test -p debug_model       # session lifecycle, console cap, sequence numbers
 cargo test -p font              # defaults, bundled bootstrap, candidate ordering
+cargo test -p view_tree         # geometry, splits, tabs, focus, reorder
 ```
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work

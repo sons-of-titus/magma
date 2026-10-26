@@ -19,6 +19,7 @@ members = [
     "crates/tool_diag",
     "crates/debug_model",
     "crates/font",
+    "crates/view_tree",
     "crates/util",
     "crates/event",
     "crates/keymap",
@@ -54,6 +55,7 @@ crash_recovery = { path = "crates/crash_recovery" }
 tool_diag = { path = "crates/tool_diag" }
 debug_model = { path = "crates/debug_model" }
 font = { path = "crates/font" }
+view_tree = { path = "crates/view_tree" }
 util = { path = "crates/util" }
 event = { path = "crates/event" }
 keymap = { path = "crates/keymap" }

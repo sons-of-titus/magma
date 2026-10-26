@@ -84,6 +84,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 | `crates/tool_diag` | Build/test output parser: rustc spans, panic locations, and generic `path:line[:col]` findings, plus the quickfix entry type; no editor state |
 | `crates/debug_model` | DAP model: breakpoints, stack frames, variables, threads, and the per-session state machine; no adapter I/O |
 | `crates/font` | Font configuration: `FontConfig`, per-context overrides, the bundled JetBrains Mono faces, and default font resolution; no rasterization |
+| `crates/view_tree` | Pane layout tree: splits, tabs, floats, weights, geometry redistribution, focus, and scroll markers; no rendering |
 | `crates/util` | Shared primitives: `IdPool` ID allocator, child-process-group hygiene (`proctree`) |
 | `crates/event` | `EventBus` — sync queue with Before/Transform/After hook chains; `events`/`keys` name constants |
 | `crates/keymap` | Layer-based `KeymapManager` — push/pop named layers per mode |

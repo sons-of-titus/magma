@@ -2,8 +2,15 @@
 //!
 //! Absorbs the layout logic previously in kernel/window/mod.rs.
 //! WindowTree → ViewTree; Window → Pane.
+//!
+//! Pure geometry and focus state: panes, splits, tabs, floats, and scroll
+//! markers.  Rendering, input routing, and buffer ownership stay in the
+//! editor.
 
-use crate::kernel::state::id::WindowId;
+#[cfg(test)]
+mod tests;
+
+use id::WindowId;
 
 /// Direction of a split.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

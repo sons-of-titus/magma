@@ -4,7 +4,7 @@
 pub mod surface;
 pub mod frame;
 pub mod view;
-pub mod view_tree;
+pub use view_tree;
 pub mod editor_view;
 pub mod gutter;
 pub mod gutter_providers;

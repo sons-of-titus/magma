@@ -3552,10 +3552,12 @@ name = "semantic"
 version = "0.1.0"
 dependencies = [
  "libloading",
+ "logging",
  "ropey",
  "serde_json",
  "streaming-iterator",
  "text",
+ "tokio",
  "tree-sitter",
  "tree-sitter-language",
 ]

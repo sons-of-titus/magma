@@ -6,9 +6,11 @@ description = "Language-intelligence core for Magma: providers, symbols, project
 
 [dependencies]
 text = { path = "../text" }
+logging = { path = "../logging" }
 libloading = "0.8"
 ropey = "1.6"
 serde_json = "1"
 streaming-iterator = "0.1"
+tokio = { version = "1", features = ["sync"] }
 tree-sitter = "0.24"
 tree-sitter-language = "0.1"

@@ -28,6 +28,12 @@ impl std::ops::Deref for BackgroundHandle {
     }
 }
 
+impl semantic::lsp::EventSink for BackgroundHandle {
+    fn send(&self, event: semantic::lsp::Event) {
+        self.send_event(BackgroundEvent::Lsp(event));
+    }
+}
+
 impl BackgroundHandle {
     pub fn new(runtime: Arc<Runtime>, sender: mpsc::UnboundedSender<BackgroundEvent>) -> Self {
         Self { pool: bgpool::Pool::new(runtime, sender) }

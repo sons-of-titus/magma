@@ -238,10 +238,9 @@ export component Picker inherits Rectangle {
 
     width: max(root.min-w, value.preferred-width + 40px);
     height: Theme.control-height - 2px;
-    property <bool> open: false;
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: open ? Theme.accent : Theme.border;
+    border-color: Theme.border;
     background: touch.pressed ? Theme.fill-muted : (touch.has-hover ? Theme.fill : Theme.surface);
 
     value := Text {
@@ -256,7 +255,7 @@ export component Picker inherits Rectangle {
 
     Text {
         x: parent.width - 18px;
-        text: root.open ? "▴" : "▾";
+        text: "▾";
         color: Theme.text-muted;
         font-size: 10px;
         vertical-alignment: center;
@@ -265,25 +264,34 @@ export component Picker inherits Rectangle {
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.open = !root.open; }
+        clicked => { list-view.show(); }
     }
 
-    if root.open : PopupList {
+    // A real popup window: always above sibling content, and the
+    // close-on-click-outside policy dismisses it like a native menu.
+    list-view := PopupWindow {
+        x: 0;
         y: root.height + 4px;
         width: max(root.width, 180px);
-        choices: root.choices;
-        current: root.current-value;
-        selected(v) => {
-            root.open = false;
-            if v != root.current-value {
-                root.current-value = v;
-                root.changed(v);
+        height: min(root.choices.length * 24px + 16px, 236px);
+        close-policy: close-on-click-outside;
+
+        PopupList {
+            width: 100%;
+            height: 100%;
+            choices: root.choices;
+            current: root.current-value;
+            selected(v) => {
+                list-view.close();
+                if v != root.current-value {
+                    root.current-value = v;
+                    root.changed(v);
+                }
             }
+            dismiss => { list-view.close(); }
         }
-        dismiss => { root.open = false; }
     }
 }
-
 // ── Numeric stepper ──────────────────────────────────────────────────────────
 
 export component NumberField inherits Rectangle {

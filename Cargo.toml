@@ -34,6 +34,7 @@ members = [
     "crates/gui",
     "crates/slint-shell",
     "crates/scripting",
+    "crates/kernel",
 ]
 resolver = "3"
 
@@ -74,6 +75,7 @@ keymap = { path = "crates/keymap" }
 extension = { path = "crates/extension" }
 net = { path = "crates/net" }
 clipboard = { path = "crates/clipboard" }
+kernel = { path = "crates/kernel" }
 agent = { path = "crates/agent" }
 anyhow = "1.0"
 thiserror = "1.0"
@@ -144,3 +146,5 @@ harness = false
 [features]
 default = ["janet"]
 janet = []
+
+

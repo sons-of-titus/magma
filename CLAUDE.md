@@ -65,6 +65,7 @@ Janet userland: keybindings · major modes · colon-mode verbs ·
 
 | Path | Responsibility |
 |------|----------------|
+| `crates/kernel` | Rust kernel: state (`Editor`), command registry, rendering, runtime, scripting trait, boot — re-exports all leaf crates as modules |
 | `crates/logging` | Leveled `error!`/`warn!`/`info!`/`debug!`/`trace!` macros, gated on `MAGMA_LOG`; imported crate-wide in `src/lib.rs` |
 | `crates/id` | Typed `u64` identifiers (`BufferId`, `WindowId`, `MarkId`, …) shared by every subsystem |
 | `crates/text` | Text engine: rope, `Document`, `Buffer`, `BufferView`, transactions, undo, marks, folds, and the buffer diagnostic model |

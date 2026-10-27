@@ -809,3 +809,20 @@ cargo test -p pty               # real PTY children: input, resize, kill, tab na
 
 `cargo fmt --check` fails on `benches/` at `a8ffde6`; that predates this work
 and is not caused by the extraction.
+
+## Kernel extraction candidates (post-move)
+
+After moving the kernel to `crates/kernel`, the following remain inside it and
+are candidates for further extraction. See the move plan for full blockers.
+
+Tier 1 (ready now, pure / no Editor): `completion` word-set builder;
+`state/options` + `state/mode` enums.
+
+Tier 2 (single seam): `semantic/edit_apply` + `ts_schedule` (BufferHost/WorkHost);
+`debug` `DapHandle` (session-id decoupling); `task` (retained by decision).
+
+Tier 3 (Editor-coupled, needs capability interfaces): `render`, `command`,
+`scripting`, `runtime`, `storage`, `input`, `server`, `boot`, `state`.
+
+Recommended next: `completion` crate, then `options`/`mode`, then capability
+seams for `render`.

@@ -36,6 +36,9 @@ export component RailButton inherits Rectangle {
 
 export component ToolRail inherits Rectangle {
     in property <int> active: 0;
+    /// The Debug tool window exists only while a debug session does —
+    /// starting one reveals the rail entry and focuses it.
+    in property <bool> debug-active: false;
     callback selected(int);
 
     width: Theme.rail-width;
@@ -59,7 +62,7 @@ export component ToolRail inherits Rectangle {
             active: root.active == 1;
             clicked => { root.selected(1); }
         }
-        RailButton {
+        if root.debug-active : RailButton {
             glyph: "\u{EAAF}";
             name: "Debugger";
             active: root.active == 2;

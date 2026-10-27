@@ -1,147 +1,398 @@
 import { Theme } from "../theme.slint";
 import { ScrollView } from "std-widgets.slint";
+import { ToolWindowHeader, Field } from "controls.slint";
 import { ToolbarIcon } from "button.slint";
+import { SectionHeader, EmptyState, StateLine } from "tool-window.slint";
+import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "debug-rows.slint";
+import { ExecButton, FrameRow, VarRow, WatchRow, BreakpointRow } from "debug-rows.slint";
 
 export component DebuggerPanel inherits Rectangle {
-    in property <bool> active: false;
-    in property <[string]> frames;
-    in property <string> console;
+    in property <string> phase;            // none | starting | running | paused
+    in property <string> status-text;
+    in property <string> adapter;
+    in property <bool> can-resume: false;
+    in property <bool> can-pause: false;
+    in property <bool> can-step: false;
+    in property <bool> can-stop: false;
+    in property <bool> can-restart: false;
+    in property <[DebugFrameRow]> frames;
+    in property <[DebugVarRow]> variables;
+    in property <[DebugWatchRow]> watches;
+    in property <[DebugBpRow]> breakpoints;
+    in property <[ConsoleRow]> console;
+    in property <int> console-total: 0;
+    in-out property <bool> show-watches: true;
+    in-out property <bool> show-breakpoints: true;
+    in-out property <bool> show-console: true;
+    in-out property <string> watch-draft;
+
     callback command(string);
+    callback select-frame(int);
+    callback toggle-expand(int);
+    callback watch-add();
+    callback watch-remove(string);
+    callback bp-toggle(string, int, bool);
+    callback bp-remove(string, int);
+    callback bp-open(string, int);
+
+    property <string> hint;
 
     background: Theme.surface;
 
     VerticalLayout {
+        // ── Header ───────────────────────────────────────────────────────
+        ToolWindowHeader {
+            title: "Debugger";
+            glyph: "\u{EAAF}";
+            status-text: root.status-text == "" ? (root.phase == "none" ? "no session" : "") : root.status-text;
+            status-tint: root.phase == "paused" ? Theme.warning
+                : root.phase == "running" ? Theme.success
+                : root.phase == "starting" ? Theme.warning
+                : Theme.text-faint;
+        }
+
+        // ── Execution toolbar + live state line ──────────────────────────
         Rectangle {
-            height: 30px;
+            height: 46px;
+            background: Theme.chrome;
 
-            Text {
-                x: 10px;
-                text: "Debugger";
-                color: Theme.text-muted;
-                font-size: Theme.font-small;
-                font-weight: 600;
-                vertical-alignment: center;
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                spacing: 2px;
+                alignment: start;
+
+                ExecButton {
+                    glyph: "\u{F0450}";
+                    label: "Restart";
+                    shortcut: "\u{21BB}";
+                    enabled: root.can-restart;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-restart"); }
+                }
+                ExecButton {
+                    glyph: "\u{F04DB}";
+                    label: "Stop";
+                    enabled: root.can-stop;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-stop"); }
+                }
+
+                Rectangle { width: 8px; }
+
+                // The primary action mirrors the lifecycle: Resume while
+                // paused, Pause while running.
+                if root.phase == "paused" : ExecButton {
+                    glyph: "\u{F040B}";
+                    label: "Resume";
+                    shortcut: "F9";
+                    primary: true;
+                    enabled: root.can-resume;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-continue"); }
+                }
+                if root.phase != "paused" : ExecButton {
+                    glyph: "\u{F03E4}";
+                    label: "Pause";
+                    enabled: root.can-pause;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-pause"); }
+                }
+
+                Rectangle { width: 8px; }
+
+                ExecButton {
+                    glyph: "\u{F0397}";
+                    label: "Step Over";
+                    shortcut: "F8";
+                    enabled: root.can-step;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-step-over"); }
+                }
+                ExecButton {
+                    glyph: "\u{F0395}";
+                    label: "Step Into";
+                    shortcut: "F7";
+                    enabled: root.can-step;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-step-in"); }
+                }
+                ExecButton {
+                    glyph: "\u{F0396}";
+                    label: "Step Out";
+                    shortcut: "\u{21E7}F8";
+                    enabled: root.can-step;
+                    hint <=> root.hint;
+                    clicked => { root.command("dbg-step-out"); }
+                }
             }
 
-            ToolbarIcon {
-                glyph: "▶";
-                tint: Theme.success;
-                x: 70px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-continue"); }
-            }
-            ToolbarIcon {
-                glyph: "II";
-                x: 96px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-pause"); }
-            }
-            ToolbarIcon {
-                glyph: "■";
-                tint: Theme.danger;
-                x: 122px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-stop"); }
-            }
-            ToolbarIcon {
-                glyph: "→";
-                x: 150px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-step-over"); }
-            }
-            ToolbarIcon {
-                glyph: "↘";
-                x: 176px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-step-in"); }
-            }
-            ToolbarIcon {
-                glyph: "↗";
-                x: 202px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-step-out"); }
-            }
-            ToolbarIcon {
-                glyph: "⟳";
-                x: 228px;
-                y: 3px;
-                enabled: root.active;
-                clicked => { root.command("dbg-restart"); }
-            }
-
-            Rectangle {
-                y: parent.height - 1px;
-                height: 1px;
-                background: Theme.border;
+            StateLine {
+                y: 24px;
+                width: 100%;
+                phase-text: root.phase == "starting" ? "Starting — waiting for the adapter"
+                    : root.phase == "running" ? "Running"
+                    : root.phase == "paused" ? "Paused — inspecting " + root.adapter
+                    : "No debugging session";
+                hint: root.hint;
+                paused: root.phase == "paused";
+                running: root.phase == "running";
+                busy-starting: root.phase == "starting";
             }
         }
 
-        if !root.active : Text {
-            width: 100%;
-            height: 80px;
-            text: "No active debug session. Start one from the Run menu.";
-            color: Theme.text-faint;
-            font-size: Theme.font-small;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            wrap: word-wrap;
+        // ── No session ───────────────────────────────────────────────────
+        if root.phase == "none" : EmptyState {
+            glyph: "\u{EAAF}";
+            title: "No debugging session";
+            detail: "Start one from the toolbar bug icon, or run a debug configuration.";
+            action-label: "Start Debug";
+            action => { root.command("debug-config"); }
         }
 
-        if root.active : HorizontalLayout {
-            padding-left: 10px;
-            padding-top: 6px;
-            Text {
-                text: "CALL STACK";
-                color: Theme.text-faint;
-                font-size: 10px;
-                font-weight: 600;
-                vertical-alignment: center;
-            }
-        }
+        // ── Active session ───────────────────────────────────────────────
+        if root.phase != "none" : Rectangle {
+            vertical-stretch: 1;
 
-        if root.active : ScrollView {
             VerticalLayout {
-                padding-left: 10px;
-                padding-right: 10px;
-                for frame in root.frames : Text {
-                    height: 20px;
-                    text: frame;
-                    color: Theme.text-secondary;
-                    font-size: Theme.font-small;
-                    vertical-alignment: center;
-                    overflow: elide;
+                // ── Call stack ───────────────────────────────────────────
+                SectionHeader {
+                    label: "CALL STACK";
+                    count: root.frames.length;
+                    expanded: true;
+                    toggled => { }
                 }
-                if root.frames.length == 0 : Text {
-                    text: "Running…";
-                    color: Theme.text-faint;
-                    font-size: Theme.font-small;
+                Rectangle {
+                    height: root.frames.length == 0 ? 26px : min(root.frames.length * 24px, 168px);
+                    if root.frames.length == 0 : Text {
+                        x: 22px;
+                        text: root.phase == "paused" ? "No stack — the debuggee has not reported its threads."
+                            : root.phase == "starting" ? "Waiting for the adapter…"
+                            : "Running — pause to inspect the call stack.";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if root.frames.length > 0 : ScrollView {
+                        width: 100%;
+                        height: 100%;
+                        VerticalLayout {
+                            spacing: 0px;
+                            for frame in root.frames : FrameRow {
+                                frame: frame;
+                                selected(id) => { root.select-frame(id); }
+                            }
+                        }
+                    }
                 }
-            }
-        }
 
-        if root.active && root.console != "" : HorizontalLayout {
-            padding-left: 10px;
-            padding-top: 6px;
-            Text {
-                text: "CONSOLE";
-                color: Theme.text-faint;
-                font-size: 10px;
-                font-weight: 600;
-            }
-        }
+                Rectangle { height: 1px; background: Theme.border; }
 
-        if root.active && root.console != "" : ScrollView {
-            Text {
-                text: root.console;
-                color: Theme.text-muted;
-                font-size: 11px;
-                wrap: no-wrap;
+                // ── Variables ────────────────────────────────────────────
+                SectionHeader {
+                    label: "VARIABLES";
+                    expanded: true;
+                    toggled => { }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    if root.variables.length == 0 : Text {
+                        x: 22px;
+                        width: parent.width - 32px;
+                        text: root.phase == "paused" ? "No variables reported for this frame."
+                            : root.phase == "starting" ? "Waiting for the first stop…"
+                            : "Pause execution to inspect variables.";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if root.variables.length > 0 : ScrollView {
+                        width: 100%;
+                        height: 100%;
+                        VerticalLayout {
+                            spacing: 0px;
+                            for entry in root.variables : VarRow {
+                                entry: entry;
+                                toggled(r) => { root.toggle-expand(r); }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // ── Watches ──────────────────────────────────────────────
+                SectionHeader {
+                    label: "WATCHES";
+                    count: root.watches.length;
+                    expanded: root.show-watches;
+                    actions: ["\u{F0415}"];
+                    toggled => { root.show-watches = !root.show-watches; }
+                    action(i, g) => { root.watch-add(); }
+                }
+                if root.show-watches : Rectangle {
+                    height: 76px;
+
+                    VerticalLayout {
+                        spacing: 0px;
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            if root.watches.length == 0 : Text {
+                                x: 22px;
+                                text: "No watches. Add an expression to track it at every stop.";
+                                color: Theme.text-faint;
+                                font-size: 10px;
+                                vertical-alignment: center;
+                            }
+                            if root.watches.length > 0 : ScrollView {
+                                width: 100%;
+                                height: 100%;
+                                VerticalLayout {
+                                    spacing: 0px;
+                                    for watch in root.watches : WatchRow {
+                                        watch: watch;
+                                        removed(expr) => { root.watch-remove(expr); }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            height: 30px;
+                            Rectangle {
+                                x: 4px;
+                                y: 2px;
+                                width: parent.width - 8px;
+                                Field {
+                                    width: parent.width;
+                                    placeholder: "Add watch expression";
+                                    font-size: 10px;
+                                    text <=> root.watch-draft;
+                                    accepted => { root.watch-add(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if root.show-watches : Rectangle { height: 1px; background: Theme.border; }
+
+                // ── Breakpoints ──────────────────────────────────────────
+                SectionHeader {
+                    label: "BREAKPOINTS";
+                    count: root.breakpoints.length;
+                    expanded: root.show-breakpoints;
+                    toggled => { root.show-breakpoints = !root.show-breakpoints; }
+                }
+                if root.show-breakpoints : Rectangle {
+                    height: root.breakpoints.length == 0 ? 26px : min(root.breakpoints.length * 22px + 6px, 140px);
+                    if root.breakpoints.length == 0 : Text {
+                        x: 22px;
+                        text: "No breakpoints. Click a gutter margin or press \u{2318}F8.";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if root.breakpoints.length > 0 : ScrollView {
+                        width: 100%;
+                        height: 100%;
+                        VerticalLayout {
+                            spacing: 0px;
+                            for bp in root.breakpoints : BreakpointRow {
+                                bp: bp;
+                                toggled(f, l, on) => { root.bp-toggle(f, l, on); }
+                                removed(f, l) => { root.bp-remove(f, l); }
+                                opened(f, l) => { root.bp-open(f, l); }
+                            }
+                        }
+                    }
+                }
+
+                if root.show-breakpoints : Rectangle { height: 1px; background: Theme.border; }
+
+                // ── Console ──────────────────────────────────────────────
+                SectionHeader {
+                    label: "CONSOLE";
+                    count: root.console-total;
+                    expanded: root.show-console;
+                    toggled => { root.show-console = !root.show-console; }
+                }
+                if root.show-console : Rectangle {
+                    height: 170px;
+                    if root.console.length == 0 : Text {
+                        x: 22px;
+                        text: root.phase == "starting" ? "Waiting for adapter output…"
+                            : "No output yet.";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if root.console.length > 0 : Rectangle {
+                        scroll := ScrollView {
+                        width: 100%;
+                        height: 100%;
+                        property <bool> follow: true;
+
+                        function reveal-tail() {
+                            self.content-y = self.content-height - log.preferred-height;
+                        }
+
+                        log := VerticalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            padding-top: 4px;
+                            padding-bottom: 6px;
+                            spacing: 0px;
+                            for line in root.console : Text {
+                                text: line.text;
+                                color: line.kind == "error" ? Theme.danger
+                                    : line.kind == "result" ? Theme.success
+                                    : Theme.text-secondary;
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                wrap: no-wrap;
+                            }
+                            if root.console-total > 200 : Text {
+                                text: "… earlier output trimmed (showing last 200 of " + root.console-total + " lines)";
+                                color: Theme.text-faint;
+                                font-size: 9px;
+                            }
+                        }
+
+                        // Follow the tail while the user sits near the bottom;
+                        // scrolling up pauses the chase, "↓ latest" resumes it.
+                        changed content-y => {
+                            self.follow = self.content-y >= Math.min(0px, self.content-height - log.preferred-height) + 24px;
+                        }
+                        changed content-height => {
+                            if (self.follow) { self.reveal-tail(); }
+                        }
+                    }
+
+                    if !scroll.follow : Rectangle {
+                        x: (parent.width - 74px) / 2;
+                        y: parent.height - 26px;
+                        width: 74px;
+                        height: 20px;
+                        border-radius: Theme.radius-pill;
+                        background: Theme.fill-strong;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        Text {
+                            text: "↓ latest";
+                            color: Theme.text-primary;
+                            font-size: 9px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { scroll.follow = true; scroll.reveal-tail(); }
+                        }
+                    }
+                    }
+                }
             }
         }
     }

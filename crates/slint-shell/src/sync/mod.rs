@@ -7,6 +7,7 @@
 mod agent;
 mod overlays;
 mod render;
+mod tool_windows;
 
 use std::time::Duration;
 
@@ -33,8 +34,21 @@ const STATUS_TTL: Duration = Duration::from_secs(6);
 pub(crate) fn editor_grid(app: &AppWindow, cell_w: u32, cell_h: u32) -> (u32, u32) {
     let mut w = app.get_editor_view_width() as f32;
     let mut h = app.get_editor_view_height() as f32;
-    if w < 1.0 || h < 1.0 {
-        let (lw, lh) = logical_size(app);
+    // Before the first real layout pass the view reports its minimum size.
+    // Deriving the viewport scroll from that postage stamp sticks once the
+    // pane reaches its real size — the cursor-follow rules only guarantee
+    // the cursor stays inside, never that the view re-centers — so treat
+    // unbelievable sizes the same as "no size yet".
+    if w < 200.0 || h < 100.0 {
+        let (mut lw, mut lh) = logical_size(app);
+        // A not-yet-mapped window reports a stub size; sizing the surface
+        // from it would freeze the viewport scroll at a postage stamp.
+        // The window's preferred size is the honest guess until the real
+        // layout lands.
+        if lw < 300.0 || lh < 200.0 {
+            lw = 1280.0;
+            lh = 800.0;
+        }
         w = (lw - 304.0).max(80.0);
         h = (lh - 132.0).max(40.0);
     }
@@ -56,12 +70,29 @@ pub(crate) use render::sync_pane_images;
 
 pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let Some(app) = weak.upgrade() else { return };
+    if !state.window_ready {
+        // Window geometry is noisy before the first real layout (stubs of
+        // 0, 480, then the true size within three frames).  Rendering from a
+        // stub would derive a viewport scroll that never unwinds, so wait
+        // until the size stops changing.
+        let (lw, _) = logical_size(&app);
+        if lw < 200.0 || (lw - state.last_logical_width).abs() >= 1.0 {
+            state.last_logical_width = lw;
+            return;
+        }
+        state.window_ready = true;
+    }
 
     // `:vc` asks for the Version Control tool window; reveal it before the
     // chrome is synced so it appears in the same frame.
     if state.editor.vc.request_open {
         state.editor.vc.request_open = false;
         state.rail = 1;
+    }
+    // The Debug tool window exists only while a session does: when the last
+    // session ends, put the rail back on the project tree.
+    if state.rail == 2 && state.editor.debug.active_session().is_none() {
+        state.rail = 0;
     }
 
     // Commands and chrome actions queue editor events (buffer-created drives
@@ -170,6 +201,8 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
 
     app.set_active_rail(state.rail);
     app.set_sidebar_open(state.sidebar_open);
+    let rail = state.rail.clamp(0, 2) as usize;
+    app.set_sidebar_width(state.sidebar_widths[rail]);
 
     let crumbs: Vec<slint::SharedString> = projection::breadcrumb_segments(ed)
         .into_iter()
@@ -295,19 +328,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         projection::output_rows(ed),
     )));
     app.set_git_history(ModelRc::new(VecModel::from(state.git_history.clone())));
-    agent::sync(&app, state);
-
-    let ed = &mut state.editor;
-    app.set_changes(ModelRc::new(VecModel::from(projection::changes(ed))));
-    let (debug_active, debug_frames, debug_console) = projection::debug_state(ed);
-    app.set_debug_active(debug_active);
-    app.set_debug_frames(ModelRc::new(VecModel::from(
-        debug_frames
-            .into_iter()
-            .map(Into::into)
-            .collect::<Vec<slint::SharedString>>(),
-    )));
-    app.set_debug_console(debug_console.as_str().into());
+    app.set_status_mode(projection::status_mode(ed).as_str().into());
     app.set_recents(ModelRc::new(VecModel::from(
         projection::recent_projects(ed)
             .into_iter()
@@ -315,6 +336,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             .collect::<Vec<slint::SharedString>>(),
     )));
     let now_welcome = ed.project_manager.project.root.is_none();
+    drop(ed);
     if now_welcome != state.welcome_visible {
         state.welcome_visible = now_welcome;
         if now_welcome {
@@ -333,7 +355,10 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         }
     }
     app.set_show_welcome(now_welcome);
-    app.set_status_mode(projection::status_mode(ed).as_str().into());
+
+    agent::sync(&app, state);
+    tool_windows::sync_commit(&app, &mut state.editor, &state.message);
+    tool_windows::sync_debug(&app, state);
 
     app.set_menu_visible(state.menu_visible);
     app.set_menu_x(state.menu_x);
@@ -348,6 +373,8 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     state.rendered_revision = revision_of(&state.editor);
 }
 
+/// Commit tool window: repository identity, grouped changes, busy and error
+/// surfaces — all read from the live VC state, never from UI-local mirrors.
 fn sync_theme(app: &AppWindow, state: &mut AppState) {
     let name = state
         .editor

@@ -168,24 +168,81 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_discard_clicked(move |path| {
+            let mut s = state.borrow_mut();
+            let mut args = HashMap::new();
+            args.insert("path".to_string(), ArgValue::Path(path.to_string()));
+            match execute_command(&mut s.editor, "vc-discard-file", &args) {
+                Ok(()) => s.message.clear(),
+                Err(e) => s.message = e,
+            }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_resolve_clicked(move |path, ours| {
+            let mut s = state.borrow_mut();
+            let command = if ours {
+                "vc-take-ours"
+            } else {
+                "vc-take-theirs"
+            };
+            let mut args = HashMap::new();
+            args.insert("path".to_string(), ArgValue::Path(path.to_string()));
+            match execute_command(&mut s.editor, command, &args) {
+                Ok(()) => s.message.clear(),
+                Err(e) => s.message = e,
+            }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_branch_changed(move |branch| {
+            let mut s = state.borrow_mut();
+            let mut args = HashMap::new();
+            args.insert("branch".to_string(), ArgValue::String(branch.to_string()));
+            match execute_command(&mut s.editor, "vc-checkout-branch", &args) {
+                Ok(()) => s.message.clear(),
+                Err(e) => s.message = e,
+            }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_commit(move || {
-            let message = weak
-                .upgrade()
-                .map(|a| a.get_commit_message().to_string())
-                .unwrap_or_default();
+            let Some(app) = weak.upgrade() else { return };
+            let message = app.get_commit_message().to_string();
+            let amend = app.get_commit_amend();
             if message.trim().is_empty() {
                 return;
             }
             let mut s = state.borrow_mut();
+            // A commit already in flight swallows this one — the button is
+            // disabled, but the Enter key path lands here too.
+            if s.editor.vc.pending_ops > 0 {
+                return;
+            }
             let mut args = HashMap::new();
-            args.insert("message".to_string(), ArgValue::String(message));
-            match execute_command(&mut s.editor, "vc-commit-message", &args) {
+            args.insert("message".to_string(), ArgValue::String(message.clone()));
+            let command = if amend {
+                "vc-amend-message"
+            } else {
+                "vc-commit-message"
+            };
+            match execute_command(&mut s.editor, command, &args) {
                 Ok(()) => {
                     s.message.clear();
-                    if let Some(app) = weak.upgrade() {
-                        app.set_commit_message("".into());
-                    }
+                    app.set_commit_message("".into());
+                    app.set_commit_amend(false);
                 }
+                // The message stays: a rejected commit is re-edited, retyped
+                // messages are how mistakes happen.
                 Err(e) => s.message = e,
             }
             refresh(&weak, &mut s);

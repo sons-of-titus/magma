@@ -55,6 +55,19 @@ struct AppState {
     tree_root: Option<PathBuf>,
     rail: i32,
     sidebar_open: bool,
+    /// Per-tool dock widths (project, commit, debug); the drag handle edits
+    /// the active one.
+    sidebar_widths: [f32; 3],
+    /// DAP variablesReferences the user opened in the variables tree.
+    debug_expanded: HashSet<i64>,
+    /// The scope reference those expansions belong to; a new stop resets.
+    debug_scope_seen: Option<i64>,
+    /// Slot table from the last debug sync: UI row ids → DAP ids.
+    debug_ref_slots: Vec<i64>,
+    /// Renders wait for the window's real size once; the pre-map stub sizes
+    /// would otherwise derive a viewport scroll that never unwinds.
+    window_ready: bool,
+    last_logical_width: f32,
     theme_name: String,
     app_font_name: String,
     app_font_size: f32,
@@ -155,6 +168,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_root: None,
         rail: 0,
         sidebar_open: true,
+        sidebar_widths: [240.0, 300.0, 420.0],
+        debug_expanded: HashSet::new(),
+        debug_scope_seen: None,
+        debug_ref_slots: Vec::new(),
+        window_ready: false,
+        last_logical_width: 0.0,
         theme_name: String::new(),
         app_font_name: String::new(),
         app_font_size: 12.0,

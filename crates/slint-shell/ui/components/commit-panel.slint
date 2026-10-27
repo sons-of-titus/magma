@@ -1,153 +1,504 @@
 import { Theme } from "../theme.slint";
 import { ScrollView } from "std-widgets.slint";
-import { Button } from "button.slint";
+import { ToolWindowHeader, Picker, Field } from "controls.slint";
+import { ToolbarIcon } from "button.slint";
+import { SectionHeader, EmptyState } from "tool-window.slint";
 
+// One change in the working tree or index.  `kind` is the backend's own
+// classification — the panel groups on it and never invents states.
 export struct ChangeRow {
     path: string,
+    name: string,
+    dir: string,
     code: string,
+    kind: string,    // staged | unstaged | untracked | conflict
     staged: bool,
 }
 
+// Status badge: a letter chip whose shape+tint matches the change kind, so
+// state never rides on color alone.  Wrap it in a centering VerticalLayout
+// when used inside a row.
+component StatusBadge inherits Rectangle {
+    in property <string> code;
+    in property <string> kind;
+
+    width: 14px;
+    height: 14px;
+    border-radius: kind == "conflict" ? 7px : 3px;
+    border-width: kind == "untracked" ? 1px : 0px;
+    border-color: Theme.warning;
+    background: kind == "conflict" ? Theme.danger
+        : kind == "untracked" ? transparent
+        : kind == "staged" ? Theme.success
+        : Theme.warning.transparentize(0.55);
+
+    Text {
+        text: root.code;
+        color: root.kind == "untracked" ? Theme.warning : white;
+        font-size: 9px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component ChangeRowView inherits Rectangle {
+    in property <ChangeRow> change;
+    callback clicked();
+    callback staged(string, bool);
+    callback discarded(string);
+    callback resolved(string, bool);
+
+    height: 22px;
+    background: touch.has-hover ? Theme.fill-muted : transparent;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 4px;
+        spacing: 6px;
+        alignment: start;
+
+        VerticalLayout { alignment: center; StatusBadge { code: change.code; kind: change.kind; } }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 0px;
+
+            Text {
+                text: change.name;
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                overflow: elide;
+                horizontal-stretch: 3;
+            }
+        }
+
+        if change.dir != "" : Text {
+            horizontal-stretch: 2;
+            text: change.dir;
+            color: Theme.text-faint;
+            font-size: 9px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if change.dir == "" : Rectangle { horizontal-stretch: 1; }
+
+        // Row actions appear on hover only — the list stays scannable.
+        if change.kind == "conflict" : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: resolve-text.preferred-width + 12px;
+                height: 16px;
+                border-radius: Theme.radius;
+                background: resolve-touch.has-hover ? Theme.danger : Theme.danger.transparentize(0.85);
+                resolve-text := Text {
+                    text: "Resolve";
+                    color: Theme.danger;
+                    font-size: 9px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                resolve-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.resolved(change.path, true); }
+                }
+            }
+        }
+
+        if change.kind != "conflict" : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: Theme.radius;
+                background: stage-touch.has-hover ? Theme.fill : transparent;
+                Text {
+                    text: change.staged ? "\u{F03E0}" : "\u{F022E}";   // arrow-down / plus
+                    color: stage-touch.has-hover ? (change.staged ? Theme.warning : Theme.success) : Theme.text-faint;
+                    font-family: "Symbols Nerd Font";
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                stage-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.staged(change.path, change.staged); }
+                }
+            }
+        }
+
+        // Discard only ever shows for worktree rows; it rewrites the file.
+        if change.kind == "unstaged" || change.kind == "untracked" : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: Theme.radius;
+                background: discard-touch.has-hover ? Theme.fill : transparent;
+                Text {
+                    text: "\u{F0375}";
+                    color: discard-touch.has-hover ? Theme.danger : Theme.text-faint;
+                    font-family: "Symbols Nerd Font";
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                discard-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.discarded(change.path); }
+                }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
 export component CommitPanel inherits Rectangle {
-    in property <string> branch;
-    in property <[ChangeRow]> changes;
+    in property <bool> has-repo: false;
+    in property <string> repo-label: "";
+    in property <string> branch: "";
+    in property <[string]> branches;
+    in property <bool> has-staging: true;
+    in property <[ChangeRow]> staged;
+    in property <[ChangeRow]> unstaged;
+    in property <[ChangeRow]> untracked;
+    in property <[ChangeRow]> conflicts;
+    in property <bool> busy: false;
+    in property <string> error-banner: "";
     in-out property <string> message;
+    in-out property <bool> amend: false;
+
     callback change-clicked(string);
     callback stage-clicked(string, bool);
+    callback discard-clicked(string);
+    callback resolve-clicked(string, bool);
     callback commit();
+    callback branch-changed(string);
+    callback command(string);
+
+    // What the primary button commits, driven by backend semantics: a
+    // staging backend commits the index; otherwise the tracked worktree
+    // changes (untracked files still need an explicit add).
+    property <int> included-count: has-staging ? staged.length : staged.length + unstaged.length;
 
     background: Theme.surface;
 
     VerticalLayout {
-        Rectangle {
-            height: 30px;
-
-            Text {
-                x: 10px;
-                text: "Commit";
-                color: Theme.text-muted;
-                font-size: Theme.font-small;
-                font-weight: 600;
-                vertical-alignment: center;
+        // ── Header: repo + branch ────────────────────────────────────────
+        if root.has-repo : HorizontalLayout {
+            ToolWindowHeader {
+                horizontal-stretch: 1;
+                title: "Commit";
+                glyph: "\u{F062C}";
+                status-text: root.repo-label;
             }
-            Text {
-                x: 66px;
-                text: root.branch != "" ? "◆ " + root.branch : "";
-                color: Theme.accent;
-                font-size: Theme.font-small;
-                vertical-alignment: center;
+            Picker {
+                y: (parent.height - self.height) / 2;
+                width: 110px;
+                choices: root.branches;
+                current-value: root.branch;
+                changed(v) => { root.branch-changed(v); }
             }
+        }
+        if !root.has-repo : ToolWindowHeader {
+            title: "Commit";
+            glyph: "\u{F062C}";
+            status-text: "no repository";
+        }
 
+        // ── No repository ────────────────────────────────────────────────
+        if !root.has-repo : EmptyState {
+            glyph: "\u{F02E2}";
+            title: "No repository detected";
+            detail: "Open a folder managed by git, hg, svn, or jj to review and commit changes.";
+        }
+
+        if root.has-repo : VerticalLayout {
+            // ── Toolbar ──────────────────────────────────────────────────
             Rectangle {
-                y: parent.height - 1px;
-                height: 1px;
-                background: Theme.border;
-            }
-        }
-
-        ScrollView {
-            VerticalLayout {
-                for change in root.changes : Rectangle {
-                    height: 22px;
-                    background: touch.has-hover ? Theme.fill-muted : transparent;
-
-                    Text {
-                        x: 10px;
-                        width: 14px;
-                        text: change.code;
-                        color: change.staged ? Theme.success : Theme.warning;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                    }
-                    Text {
-                        x: 28px;
-                        width: parent.width - 52px;
-                        text: change.path;
-                        color: change.staged ? Theme.text-muted : Theme.text-secondary;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-
-                    touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.change-clicked(change.path); }
-                    }
-
-                    Rectangle {
-                        x: parent.width - 24px;
-                        y: 3px;
-                        width: 18px;
-                        height: 16px;
-                        border-radius: Theme.radius;
-                        background: stage-touch.has-hover ? Theme.fill : transparent;
-
-                        Text {
-                            text: change.staged ? "↑" : "↓";
-                            color: change.staged ? Theme.success : Theme.text-faint;
-                            font-size: Theme.font-small;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-
-                        stage-touch := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.stage-clicked(change.path, change.staged); }
-                        }
-                    }
-                }
-
-                if root.changes.length == 0 : Text {
-                    text: "Working tree clean";
-                    color: Theme.text-faint;
-                    font-size: Theme.font-small;
-                    horizontal-alignment: center;
-                }
-            }
-        }
-
-        Rectangle {
-            height: 1px;
-            background: Theme.border;
-        }
-
-        Rectangle {
-            height: 34px;
-
-            Rectangle {
-                x: 8px;
-                y: 6px;
-                width: root.width - 16px;
-                height: 22px;
-                border-radius: Theme.radius;
-                border-width: 1px;
-                border-color: Theme.border;
+                height: 30px;
                 background: Theme.chrome;
 
-                TextInput {
-                    x: 6px;
-                    width: parent.width - 12px;
-                    text <=> root.message;
-                    color: Theme.text-primary;
-                    font-size: Theme.font-small;
-                    single-line: true;
-                    accepted => { root.commit(); }
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-right: 4px;
+                    spacing: 2px;
+                    alignment: start;
+
+                    ToolbarIcon {
+                        glyph: "\u{F0450}";
+                        symbol: true;
+                        enabled: !root.busy;
+                        clicked => { root.command("vc-refresh"); }
+                    }
+                    if root.has-staging : ToolbarIcon {
+                        glyph: "\u{F0134}";
+                        symbol: true;
+                        enabled: !root.busy && (root.unstaged.length + root.untracked.length) > 0;
+                        clicked => { root.command("vc-stage-all"); }
+                    }
+                    if root.has-staging : ToolbarIcon {
+                        glyph: "\u{F0135}";
+                        symbol: true;
+                        enabled: !root.busy && root.staged.length > 0;
+                        clicked => { root.command("vc-unstage-all"); }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    ToolbarIcon {
+                        glyph: "\u{F0449}";
+                        symbol: true;
+                        enabled: !root.busy;
+                        clicked => { root.command("vc-fetch"); }
+                    }
+                    ToolbarIcon {
+                        glyph: "\u{F0448}";
+                        symbol: true;
+                        enabled: !root.busy;
+                        clicked => { root.command("vc-push"); }
+                    }
+                }
+
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.border;
                 }
             }
-        }
 
-        Rectangle {
-            height: 38px;
+            // ── Error banner ─────────────────────────────────────────────
+            if root.error-banner != "" : Rectangle {
+                height: err-text.preferred-height + 14px;
+                background: Theme.danger.transparentize(0.9);
 
-            Button {
-                label: "Commit staged";
-                primary: true;
-                enabled: root.message != "";
-                x: 8px;
-                y: 4px;
-                width: root.width - 16px;
-                clicked => { root.commit(); }
+                HorizontalLayout {
+                    padding: 6px;
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+
+                    Text {
+                        width: 12px;
+                        text: "!";
+                        color: Theme.danger;
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: top;
+                    }
+                    err-text := Text {
+                        horizontal-stretch: 1;
+                        text: root.error-banner;
+                        color: Theme.danger;
+                        font-size: 10px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // ── Changes ──────────────────────────────────────────────────
+            Rectangle {
+                vertical-stretch: 1;
+
+                if root.total-changes == 0 : EmptyState {
+                    width: 100%;
+                    height: 100%;
+                    title: root.busy ? "Refreshing repository status…" : "Working tree clean";
+                    detail: root.busy ? "" : "Nothing to commit. Edits to tracked files show up here as you make them.";
+                }
+
+                if root.total-changes > 0 : ScrollView {
+                    width: 100%;
+                    height: 100%;
+                    VerticalLayout {
+                        spacing: 0px;
+
+                        // Merge conflicts first — they block everything else.
+                        if root.conflicts.length > 0 : SectionHeader {
+                            label: "CONFLICTS";
+                            count: root.conflicts.length;
+                            accent: true;
+                            toggled => { }
+                        }
+                        for change in root.conflicts : ChangeRowView {
+                            change: change;
+                            clicked => { root.change-clicked(change.path); }
+                            staged(p, s) => { root.stage-clicked(p, s); }
+                            discarded(p) => { root.discard-clicked(p); }
+                            resolved(p, ours) => { root.resolve-clicked(p, ours); }
+                        }
+
+                        if root.has-staging && root.staged.length > 0 : SectionHeader {
+                            label: "STAGED";
+                            count: root.staged.length;
+                            actions: ["\u{F0135}"];
+                            toggled => { }
+                            action(i, g) => { root.command("vc-unstage-all"); }
+                        }
+                        for change in root.staged : ChangeRowView {
+                            change: change;
+                            clicked => { root.change-clicked(change.path); }
+                            staged(p, s) => { root.stage-clicked(p, s); }
+                            discarded(p) => { root.discard-clicked(p); }
+                            resolved(p, ours) => { root.resolve-clicked(p, ours); }
+                        }
+
+                        if root.unstaged.length > 0 : SectionHeader {
+                            label: root.has-staging ? "CHANGES" : "CHANGES";
+                            count: root.unstaged.length;
+                            actions: root.has-staging ? ["\u{F0134}"] : [];
+                            toggled => { }
+                            action(i, g) => { root.command("vc-stage-all"); }
+                        }
+                        for change in root.unstaged : ChangeRowView {
+                            change: change;
+                            clicked => { root.change-clicked(change.path); }
+                            staged(p, s) => { root.stage-clicked(p, s); }
+                            discarded(p) => { root.discard-clicked(p); }
+                            resolved(p, ours) => { root.resolve-clicked(p, ours); }
+                        }
+
+                        if root.untracked.length > 0 : SectionHeader {
+                            label: "UNTRACKED";
+                            count: root.untracked.length;
+                            actions: root.has-staging ? ["\u{F0134}"] : [];
+                            toggled => { }
+                            action(i, g) => { root.command("vc-stage-all"); }
+                        }
+                        for change in root.untracked : ChangeRowView {
+                            change: change;
+                            clicked => { root.change-clicked(change.path); }
+                            staged(p, s) => { root.stage-clicked(p, s); }
+                            discarded(p) => { root.discard-clicked(p); }
+                            resolved(p, ours) => { root.resolve-clicked(p, ours); }
+                        }
+                    }
+                }
+            }
+
+            // ── Composer ─────────────────────────────────────────────────
+            Rectangle {
+                background: Theme.chrome;
+
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.border;
+                }
+
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 6px;
+
+                    Rectangle {
+                        height: 64px;
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: msg-input.has-focus ? Theme.accent : Theme.border;
+                        background: Theme.surface;
+
+                        msg-input := TextInput {
+                            x: 8px;
+                            y: 6px;
+                            width: parent.width - 16px;
+                            height: parent.height - 12px;
+                            text <=> root.message;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                        }
+
+                        if root.message == "" && !msg-input.has-focus : Text {
+                            x: 8px;
+                            y: 6px;
+                            text: "Commit message";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            vertical-alignment: top;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        if root.has-staging : Rectangle {
+                            width: amend-text.preferred-width + 26px;
+                            height: 20px;
+                            y: (parent.height - self.height) / 2;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                spacing: 6px;
+                                alignment: start;
+                                Rectangle {
+                                    y: 4px;
+                                    width: 12px;
+                                    height: 12px;
+                                    border-radius: 2px;
+                                    border-width: 1px;
+                                    border-color: root.amend ? Theme.accent : Theme.border;
+                                    background: root.amend ? Theme.accent : Theme.surface;
+                                    Text {
+                                        text: "✓";
+                                        color: white;
+                                        font-size: 9px;
+                                        font-weight: 700;
+                                        visible: root.amend;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                amend-text := Text {
+                                    text: "Amend";
+                                    color: Theme.text-secondary;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            amend-hit := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.amend = !root.amend; }
+                            }
+                        }
+
+                        Rectangle { horizontal-stretch: 1; }
+
+                        Rectangle {
+                            width: commit-text.preferred-width + 28px;
+                            height: 26px;
+                            border-radius: Theme.radius;
+                            background: !root.commit-enabled ? Theme.fill-muted
+                                : commit-touch.has-hover ? Theme.accent.darker(0.12) : Theme.accent;
+                            commit-text := Text {
+                                text: root.busy ? "Working…" : (root.amend ? "Amend Commit" : "Commit");
+                                color: !root.commit-enabled ? Theme.text-faint : white;
+                                font-size: Theme.font-small;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            commit-touch := TouchArea {
+                                enabled: root.commit-enabled;
+                                mouse-cursor: root.commit-enabled ? pointer : default;
+                                clicked => { root.commit(); }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+
+    property <int> total-changes: staged.length + unstaged.length + untracked.length + conflicts.length;
+
+    // The commit action exists only when the backend's inclusion set is
+    // non-empty and a message is present — never enabled on faith.  (A
+    // whitespace-only message is re-checked, and refused, Rust-side.)
+    property <bool> commit-enabled: !busy && message != "" && included-count > 0;
 }

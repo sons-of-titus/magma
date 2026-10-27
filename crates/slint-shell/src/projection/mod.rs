@@ -4,11 +4,13 @@
 //! the shell's `refresh` a straight assignment pass.
 
 mod agent;
+mod debug_view;
 mod settings;
 
 pub use agent::{
     active_session_id, agent_entries, agent_running, agent_session_chips, agent_turns_left,
 };
+pub use debug_view::snapshot as debug_snapshot;
 pub use settings::settings_rows;
 
 use std::collections::HashSet;
@@ -314,53 +316,50 @@ pub fn changes(ed: &Editor) -> Vec<ChangeRow> {
     };
     let mut rows = Vec::new();
     for file in &status.staged {
-        rows.push(ChangeRow {
-            path: file.path.clone().into(),
-            code: file.code.to_string().into(),
-            staged: true,
-        });
+        rows.push(change_row(file, true, "staged"));
     }
     for file in &status.unstaged {
-        rows.push(ChangeRow {
-            path: file.path.clone().into(),
-            code: file.code.to_string().into(),
-            staged: false,
-        });
+        rows.push(change_row(file, false, "unstaged"));
     }
     for path in &status.untracked {
         rows.push(ChangeRow {
             path: path.clone().into(),
+            name: short_name(path).into(),
+            dir: dir_of(path).into(),
             code: "?".into(),
+            kind: "untracked".into(),
             staged: false,
         });
     }
     for path in &status.conflicts {
         rows.push(ChangeRow {
             path: path.clone().into(),
+            name: short_name(path).into(),
+            dir: dir_of(path).into(),
             code: "!".into(),
+            kind: "conflict".into(),
             staged: false,
         });
     }
     rows
 }
 
-pub fn debug_state(ed: &Editor) -> (bool, Vec<String>, String) {
-    let Some(session) = ed.debug.active_session() else {
-        return (false, Vec::new(), String::new());
-    };
-    let frames = session
-        .frames
-        .iter()
-        .map(|frame| {
-            let location = frame.source.as_deref().map(short_name).unwrap_or_default();
-            if location.is_empty() {
-                frame.name.clone()
-            } else {
-                format!("{}  {}:{}", frame.name, location, frame.line)
-            }
-        })
-        .collect();
-    (true, frames, session.console.join("\n"))
+fn change_row(file: &kernel::vc::FileStatus, staged: bool, kind: &str) -> ChangeRow {
+    ChangeRow {
+        path: file.path.clone().into(),
+        name: short_name(&file.path).into(),
+        dir: dir_of(&file.path).into(),
+        code: file.code.to_string().into(),
+        kind: kind.into(),
+        staged,
+    }
+}
+
+fn dir_of(path: &str) -> String {
+    match path.rfind('/') {
+        Some(i) => path[..i].to_string(),
+        None => String::new(),
+    }
 }
 
 pub fn recent_projects(ed: &Editor) -> Vec<String> {

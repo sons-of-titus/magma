@@ -1,0 +1,196 @@
+import { Theme } from "../theme.slint";
+import { SectionLabel, StatusDot } from "controls.slint";
+
+// Shared tool-window furniture for the docked panels (Debug, Commit):
+// collapsible section headers, counts, and designed empty states.  Everything
+// styles from `Theme` only.
+
+// Collapsible section header: chevron, label, count, trailing hover actions.
+// `actions` are glyphs rendered right-aligned; `action(i, glyph)` reports the
+// index and text of the clicked one.
+export component SectionHeader inherits Rectangle {
+    in property <string> label;
+    in property <int> count: -1;
+    in property <bool> expanded: true;
+    in property <[string]> actions;
+    in property <bool> accent: false;
+    callback toggled();
+    callback action(int, string);
+
+    height: 26px;
+    background: header-touch.has-hover ? Theme.fill-muted : transparent;
+
+    header-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 6px;
+        spacing: 6px;
+        alignment: start;
+
+        Text {
+            width: 12px;
+            text: root.expanded ? "▾" : "▸";
+            color: Theme.text-faint;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.label;
+            color: root.accent ? Theme.accent : Theme.text-muted;
+            font-size: 10px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+
+        if root.count >= 0 : Rectangle {
+            y: (parent.height - 14px) / 2;
+            width: count-text.preferred-width + 10px;
+            height: 14px;
+            border-radius: 7px;
+            background: Theme.fill-muted;
+            count-text := Text {
+                text: root.count;
+                color: Theme.text-muted;
+                font-size: 9px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        for action[i] in root.actions : Rectangle {
+            y: (parent.height - 18px) / 2;
+            width: 18px;
+            height: 18px;
+            border-radius: Theme.radius;
+            background: act-touch.has-hover ? Theme.fill : transparent;
+            Text {
+                text: action;
+                color: act-touch.has-hover ? Theme.text-primary : Theme.text-faint;
+                font-family: "Symbols Nerd Font";
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            act-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.action(i, action); }
+            }
+        }
+    }
+}
+
+// A section body wrapper: keeps one definition of the collapsed behavior and
+// the separator under the header.
+export component SectionBody inherits Rectangle {
+    clip: true;
+}
+
+// Designed empty state: glyph, one-line explanation, optional next action.
+export component EmptyState inherits Rectangle {
+    in property <string> glyph: "";
+    in property <string> title;
+    in property <string> detail: "";
+    in property <string> action-label: "";
+    callback action();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+        padding-left: 24px;
+        padding-right: 24px;
+
+        if root.glyph != "" : Text {
+            text: root.glyph;
+            color: Theme.text-faint;
+            font-family: "Symbols Nerd Font";
+            font-size: 24px;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.title;
+            color: Theme.text-secondary;
+            font-size: Theme.font-ui;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        if root.detail != "" : Text {
+            text: root.detail;
+            color: Theme.text-faint;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        if root.action-label != "" : HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: action-text.preferred-width + 28px;
+                height: 24px;
+                border-radius: Theme.radius;
+            background: action-touch.has-hover ? Theme.fill : Theme.fill-muted;
+            border-width: 1px;
+            border-color: Theme.border;
+            action-text := Text {
+                text: root.action-label;
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            action-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.action(); }
+            }
+            }
+        }
+    }
+}
+
+// Status line under the execution toolbar: what the debugger is doing right
+// now, plus the hovered toolbar hint when one is active.
+export component StateLine inherits Rectangle {
+    in property <string> phase-text;
+    in property <string> hint;
+    in property <bool> paused;
+    in property <bool> running;
+    in property <bool> busy-starting;
+    height: 22px;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: start;
+
+        StatusDot {
+            y: (parent.height - 8px) / 2;
+            tint: root.busy-starting ? Theme.warning
+                : root.paused ? Theme.warning
+                : root.running ? Theme.success
+                : Theme.text-faint;
+        }
+
+        Text {
+            text: root.hint != "" ? root.hint : root.phase-text;
+            color: root.hint != "" ? Theme.text-secondary : Theme.text-muted;
+            font-size: 10px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+}

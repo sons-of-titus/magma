@@ -1,0 +1,365 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Field } from "controls.slint";
+// Row components for the Debug tool window — the row data models and the
+// execution-control button, call-stack frames, variables-tree entries,
+// watches, and breakpoints that render them.
+
+// One call-stack frame.  `is-selected` follows the session's inspected
+// frame; `is-top` marks the actual execution point.
+export struct DebugFrameRow {
+    name: string,
+    location: string,
+    line-no: int,
+    frame-id: int,
+    is-top: bool,
+    is-selected: bool,
+    has-location: bool,
+}
+
+// One row of the flattened variables tree.  Depth 0 is the scope group;
+// `var-ref` is the DAP variablesReference used to expand children.
+export struct DebugVarRow {
+    depth: int,
+    name: string,
+    value: string,
+    type-name: string,
+    var-ref: int,
+    has-children: bool,
+    is-open: bool,
+    is-scope: bool,
+    count: int,
+}
+
+export struct DebugWatchRow {
+    expr: string,
+    result: string,
+    state: string,   // ok | error | pending
+}
+
+export struct DebugBpRow {
+    file: string,
+    file-label: string,
+    line-no: int,
+    enabled: bool,
+    verified: bool,
+    condition: string,
+}
+
+export struct ConsoleRow {
+    text: string,
+    kind: string,    // out | result | error
+}
+
+export component ExecButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    in property <string> shortcut: "";
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    in-out property <string> hint;
+    callback clicked();
+
+    width: 26px;
+    height: 24px;
+    border-radius: Theme.radius;
+    border-width: root.primary && root.enabled ? 1px : 0px;
+    border-color: Theme.success;
+    background: !root.enabled ? transparent
+        : root.primary ? (touch.has-hover ? Theme.success.transparentize(0.75) : Theme.success.transparentize(0.85))
+        : touch.has-hover ? Theme.fill : transparent;
+
+    Text {
+        text: root.glyph;
+        color: !root.enabled ? Theme.text-faint
+            : root.primary ? Theme.success
+            : touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+        font-family: "Symbols Nerd Font";
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        // Hover describes the action where the eye already is — the state
+        // line under the toolbar shows "Step Over · F8".
+        changed has-hover => {
+            root.hint = self.has-hover
+                ? root.label + (root.shortcut == "" ? "" : "  \u{2009}\u{b7}\u{2009}  " + root.shortcut)
+                : "";
+        }
+    }
+}
+
+export component FrameRow inherits Rectangle {
+    in property <DebugFrameRow> frame;
+    callback selected(int);
+
+    height: 24px;
+    background: frame.is-selected ? Theme.selection : (touch.has-hover ? Theme.fill-muted : transparent);
+
+    Rectangle {
+        x: 0;
+        width: 2px;
+        height: 100%;
+        background: frame.is-selected ? Theme.accent : transparent;
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+        alignment: start;
+
+        Text {
+            width: 12px;
+            text: frame.is-top ? "\u{25B8}" : "";
+            color: Theme.warning;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: frame.name;
+            color: frame.is-selected ? Theme.text-primary : Theme.text-secondary;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 2;
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        if frame.has-location : Text {
+            text: frame.location + ":" + frame.line-no;
+            color: frame.is-selected ? Theme.text-muted : Theme.text-faint;
+            font-size: 10px;
+            font-family: Theme.font-mono;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if !frame.has-location : Text {
+            text: "no source";
+            color: Theme.text-faint;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.selected(frame.frame-id); }
+    }
+}
+
+export component VarRow inherits Rectangle {
+    in property <DebugVarRow> entry;
+    callback toggled(int);
+
+    height: 22px;
+    background: touch.has-hover ? Theme.fill-muted : transparent;
+
+    HorizontalLayout {
+        padding-left: entry.depth * 12px + 6px;
+        padding-right: 8px;
+        spacing: 6px;
+        alignment: start;
+
+        // Disclosure for anything with children; clicking it (or the whole
+        // row) expands.
+        Text {
+            width: 12px;
+            text: entry.has-children ? (entry.is-open ? "▾" : "▸") : "";
+            color: Theme.text-faint;
+            font-size: 10px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: entry.name;
+            color: entry.is-scope ? Theme.text-muted : Theme.text-primary;
+            font-size: entry.is-scope ? 10px : Theme.font-small;
+            font-weight: entry.is-scope ? 700 : 400;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 2;
+        }
+
+        if entry.is-scope && entry.count > 0 : Text {
+            text: "(" + entry.count + ")";
+            color: Theme.text-faint;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        if !entry.is-scope : Text {
+            text: entry.value == "" ? "…" : entry.value;
+            color: entry.value == "" ? Theme.text-faint : Theme.text-secondary;
+            font-family: Theme.font-mono;
+            font-size: 10px;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 2;
+        }
+
+        if !entry.is-scope && entry.type-name != "" : Text {
+            text: entry.type-name;
+            color: Theme.text-faint;
+            font-size: 9px;
+            vertical-alignment: center;
+            overflow: elide;
+            width: 90px;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: entry.has-children ? pointer : default;
+        clicked => {
+            if (entry.has-children) { root.toggled(entry.var-ref); }
+        }
+    }
+}
+
+export component WatchRow inherits Rectangle {
+    in property <DebugWatchRow> watch;
+    callback removed(string);
+
+    height: 22px;
+    background: touch.has-hover ? Theme.fill-muted : transparent;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 4px;
+        spacing: 6px;
+        alignment: start;
+
+        Text {
+            text: watch.expr;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+            font-size: 10px;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 2;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: watch.state == "pending" ? "evaluating…" : watch.result;
+            color: watch.state == "error" ? Theme.danger
+                : watch.state == "pending" ? Theme.text-faint
+                : Theme.success;
+            font-family: Theme.font-mono;
+            font-size: 10px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Rectangle {
+            width: 18px;
+            height: 18px;
+            border-radius: Theme.radius;
+            background: remove-touch.has-hover ? Theme.fill : transparent;
+            Text {
+                text: "×";
+                color: remove-touch.has-hover ? Theme.danger : Theme.text-faint;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            remove-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.removed(watch.expr); }
+            }
+        }
+    }
+
+    touch := TouchArea { }
+}
+
+export component BreakpointRow inherits Rectangle {
+    in property <DebugBpRow> bp;
+    callback toggled(string, int, bool);
+    callback removed(string, int);
+    callback opened(string, int);
+
+    height: 22px;
+    background: touch.has-hover ? Theme.fill-muted : transparent;
+
+    // Enable checkbox — the exact switch the gutter respects.
+    Rectangle {
+        x: 8px;
+        y: (parent.height - 12px) / 2;
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        border-width: 1px;
+        border-color: bp.enabled ? Theme.danger : Theme.border;
+        background: bp.enabled ? Theme.danger : transparent;
+        Text {
+            text: bp.verified ? "" : "?";
+            color: white;
+            font-size: 9px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        check-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.toggled(bp.file, bp.line-no, !bp.enabled); }
+        }
+    }
+
+    Text {
+        x: 28px;
+        width: parent.width - 76px;
+        text: bp.file-label + ":" + bp.line-no;
+        color: bp.enabled ? Theme.text-secondary : Theme.text-faint;
+        font-family: Theme.font-mono;
+        font-size: 10px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    if bp.condition != "" : Text {
+        x: parent.width - 46px;
+        width: 38px;
+        text: bp.condition;
+        color: Theme.warning;
+        font-size: 9px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Rectangle {
+        x: parent.width - 22px;
+        y: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: Theme.radius;
+        background: remove-touch.has-hover ? Theme.fill : transparent;
+        Text {
+            text: "\u{F0375}";
+            color: remove-touch.has-hover ? Theme.danger : Theme.text-faint;
+            font-family: "Symbols Nerd Font";
+            font-size: 11px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        remove-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.removed(bp.file, bp.line-no); }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.opened(bp.file, bp.line-no); }
+    }
+}

@@ -9,6 +9,7 @@ import { Breadcrumb } from "components/breadcrumb.slint";
 import { ProjectTree, TreeItem } from "components/project-tree.slint";
 import { CommitPanel, ChangeRow } from "components/commit-panel.slint";
 import { DebuggerPanel } from "components/debugger-panel.slint";
+import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
 import { StatusBar } from "components/status-bar.slint";
 import { EditorView } from "components/editor-view.slint";
 import { BottomBar, BottomDock, FindRow, GitHistoryRow } from "components/bottom-dock.slint";
@@ -49,15 +50,43 @@ export component AppWindow inherits Window {
     // ── Left dock ────────────────────────────────────────────────────────
     in property <int> active-rail: 0;
     in property <bool> sidebar-open: true;
+    in property <length> sidebar-width: 300px;
     in property <[TreeItem]> tree;
     in property <string> tree-title: "Project";
     in property <string> tree-empty;
     in property <string> selected-path;
-    in property <[ChangeRow]> changes;
+
+    // ── Commit tool window ───────────────────────────────────────────────
+    in property <bool> vc-has-repo: false;
+    in property <string> vc-repo-label: "";
+    in property <string> vc-branch;
+    in property <[string]> vc-branches;
+    in property <bool> vc-has-staging: true;
+    in property <[ChangeRow]> staged-changes;
+    in property <[ChangeRow]> unstaged-changes;
+    in property <[ChangeRow]> untracked-changes;
+    in property <[ChangeRow]> conflict-changes;
+    in property <bool> vc-busy: false;
+    in property <string> vc-error: "";
     in-out property <string> commit-message;
-    in property <bool> debug-active;
-    in property <[string]> debug-frames;
-    in property <string> debug-console;
+    in-out property <bool> commit-amend: false;
+
+    // ── Debug tool window ────────────────────────────────────────────────
+    in property <string> debug-phase: "none";
+    in property <string> debug-status;
+    in property <string> debug-adapter;
+    in property <bool> debug-can-resume: false;
+    in property <bool> debug-can-pause: false;
+    in property <bool> debug-can-step: false;
+    in property <bool> debug-can-stop: false;
+    in property <bool> debug-can-restart: false;
+    in property <[DebugFrameRow]> debug-frames;
+    in property <[DebugVarRow]> debug-vars;
+    in property <[DebugWatchRow]> debug-watches;
+    in property <[DebugBpRow]> debug-breakpoints;
+    in property <[ConsoleRow]> debug-console;
+    in property <int> debug-console-total: 0;
+    in-out property <string> debug-watch-draft;
 
     // ── Bottom dock ──────────────────────────────────────────────────────
     in property <int> bottom-tool: -1;
@@ -169,8 +198,12 @@ export component AppWindow inherits Window {
     callback rail-selected(int);
     callback sidebar-refresh();
     callback sidebar-collapse();
+    callback sidebar-resized(length);
     callback change-clicked(string);
     callback stage-clicked(string, bool);
+    callback discard-clicked(string);
+    callback resolve-clicked(string, bool);
+    callback branch-changed(string);
     callback commit();
     callback toggle-bottom(int);
     callback close-bottom();
@@ -180,6 +213,13 @@ export component AppWindow inherits Window {
     callback terminal-scroll(length);
     callback find-open(string, int);
     callback debug-cmd(string);
+    callback debug-frame-selected(int);
+    callback debug-toggle-expand(int);
+    callback debug-watch-add();
+    callback debug-watch-remove(string);
+    callback debug-bp-toggle(string, int, bool);
+    callback debug-bp-remove(string, int);
+    callback debug-bp-open(string, int);
     callback agent-toggle();
     callback agent-submit();
     callback agent-stop();
@@ -214,12 +254,9 @@ export component AppWindow inherits Window {
             title: "View";
             MenuItem { title: "Project"; activated => { root.command("rail:0"); } }
             MenuItem { title: "Commit"; activated => { root.command("rail:1"); } }
-            MenuItem { title: "Debugger"; activated => { root.command("rail:2"); } }
             MenuSeparator {}
             MenuItem { title: "Toggle Theme"; activated => { root.command("toggle-theme"); } }
             MenuItem { title: "Settings…"; activated => { root.command("dialog:settings"); } }
-            MenuSeparator {}
-            MenuItem { title: "Refresh Version Control"; activated => { root.command("vc-refresh"); } }
         }
         Menu {
             title: "Navigate";
@@ -228,6 +265,14 @@ export component AppWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: "Go to File…"; activated => { root.command("dialog:goto-file"); } }
             MenuItem { title: "Go to Symbol…"; activated => { root.command("dialog:goto-symbol"); } }
+        }
+        Menu {
+            title: "Run";
+            MenuItem { title: "Run"; activated => { root.command("run-config"); } }
+            MenuItem { title: "Debug"; activated => { root.command("debug-config"); } }
+            MenuItem { title: "Stop"; activated => { root.command("stop-config"); } }
+            MenuSeparator {}
+            MenuItem { title: "Refresh Version Control"; activated => { root.command("vc-refresh"); } }
         }
     }
 
@@ -273,11 +318,12 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             ToolRail {
                 active: root.active-rail;
+                debug-active: root.debug-phase != "none";
                 selected(i) => { root.rail-selected(i); }
             }
 
             if root.active-rail == 0 && root.sidebar-open : ProjectTree {
-                width: Theme.sidebar-width;
+                width: root.sidebar-width;
                 title: root.tree-title;
                 rows: root.tree;
                 selected-path: root.selected-path;
@@ -288,21 +334,65 @@ export component AppWindow inherits Window {
             }
 
             if root.active-rail == 1 && root.sidebar-open : CommitPanel {
-                width: Theme.sidebar-width;
-                branch: root.status-branch;
-                changes: root.changes;
+                width: root.sidebar-width;
+                has-repo: root.vc-has-repo;
+                repo-label: root.vc-repo-label;
+                branch: root.vc-branch;
+                branches: root.vc-branches;
+                has-staging: root.vc-has-staging;
+                staged: root.staged-changes;
+                unstaged: root.unstaged-changes;
+                untracked: root.untracked-changes;
+                conflicts: root.conflict-changes;
+                busy: root.vc-busy;
+                error-banner: root.vc-error;
                 message <=> root.commit-message;
+                amend <=> root.commit-amend;
                 change-clicked(path) => { root.change-clicked(path); }
                 stage-clicked(path, staged) => { root.stage-clicked(path, staged); }
+                discard-clicked(path) => { root.discard-clicked(path); }
+                resolve-clicked(path, ours) => { root.resolve-clicked(path, ours); }
+                branch-changed(b) => { root.branch-changed(b); }
                 commit => { root.commit(); }
+                command(cmd) => { root.command(cmd); }
             }
 
             if root.active-rail == 2 && root.sidebar-open : DebuggerPanel {
-                width: 440px;
-                active: root.debug-active;
+                width: root.sidebar-width;
+                phase: root.debug-phase;
+                status-text: root.debug-status;
+                adapter: root.debug-adapter;
+                can-resume: root.debug-can-resume;
+                can-pause: root.debug-can-pause;
+                can-step: root.debug-can-step;
+                can-stop: root.debug-can-stop;
+                can-restart: root.debug-can-restart;
                 frames: root.debug-frames;
+                variables: root.debug-vars;
+                watches: root.debug-watches;
+                breakpoints: root.debug-breakpoints;
                 console: root.debug-console;
+                console-total: root.debug-console-total;
+                watch-draft <=> root.debug-watch-draft;
                 command(cmd) => { root.debug-cmd(cmd); }
+                select-frame(id) => { root.debug-frame-selected(id); }
+                toggle-expand(r) => { root.debug-toggle-expand(r); }
+                watch-add() => { root.debug-watch-add(); }
+                watch-remove(expr) => { root.debug-watch-remove(expr); }
+                bp-toggle(f, l, on) => { root.debug-bp-toggle(f, l, on); }
+                bp-remove(f, l) => { root.debug-bp-remove(f, l); }
+                bp-open(f, l) => { root.debug-bp-open(f, l); }
+            }
+
+            // Drag handle: resize the left dock between the rail and editor.
+            if root.sidebar-open : Rectangle {
+                width: 5px;
+                TouchArea {
+                    mouse-cursor: ew-resize;
+                    moved => {
+                        root.sidebar-resized(self.pressed-x - self.mouse-x);
+                    }
+                }
             }
 
             editor-pane := EditorView {

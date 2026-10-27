@@ -37,6 +37,8 @@ export component ToolbarIcon inherits Rectangle {
     in property <string> glyph;
     in property <color> tint: Theme.text-muted;
     in property <bool> enabled: true;
+    /// Glyph comes from the bundled Symbols Nerd Font rather than the UI font.
+    in property <bool> symbol: false;
     callback clicked();
 
     width: 24px;
@@ -44,7 +46,15 @@ export component ToolbarIcon inherits Rectangle {
     border-radius: Theme.radius;
     background: enabled && touch.has-hover ? Theme.fill : transparent;
 
-    Text {
+    if root.symbol : Text {
+        text: root.glyph;
+        color: root.enabled ? root.tint : Theme.text-faint;
+        font-family: "Symbols Nerd Font";
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if !root.symbol : Text {
         text: root.glyph;
         color: root.enabled ? root.tint : Theme.text-faint;
         font-size: Theme.font-ui;

@@ -48,9 +48,17 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     OptionSpec {
         name: "gui-theme",
         kind: OptionKind::Enum,
-        choices: &["intellij-dark", "intellij-light", "mocha", "latte"],
+        choices: &[
+            "intellij-dark",
+            "intellij-light",
+            "mocha",
+            "latte",
+            "monokai",
+            "ayu-dark",
+            "ayu-light",
+        ],
         default: "intellij-dark",
-        description: "Chrome palette: IntelliJ dark/light, or Catppuccin mocha/latte",
+        description: "Chrome palette: IntelliJ dark/light, Catppuccin mocha/latte, Monokai, or Ayu dark/light",
         category: OptionCategory::Appearance,
     },
     OptionSpec {

@@ -7,6 +7,8 @@
 
 mod actions;
 mod input;
+mod new_palettes;
+mod palettes;
 mod pane;
 mod projection;
 mod sync;

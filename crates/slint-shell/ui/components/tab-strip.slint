@@ -1,0 +1,97 @@
+import { Theme } from "../theme.slint";
+
+export struct TabItem {
+    title: string,
+    active: bool,
+    modified: bool,
+}
+
+component Tab inherits Rectangle {
+    in property <TabItem> item;
+    callback selected();
+    callback closed();
+
+    height: Theme.tab-height;
+    width: Math.max(96px, label.preferred-width + 52px + (item.modified ? 10px : 0px));
+    background: item.active
+        ? Theme.tab-active
+        : (touch.has-hover ? Theme.tab-hover : transparent);
+    border-top-left-radius: Theme.radius;
+    border-top-right-radius: Theme.radius;
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.selected(); }
+    }
+
+    // Modified marker: a blue dot before the title, matching the egui tab.
+    if item.modified : Rectangle {
+        x: 10px;
+        y: (root.height - 6px) / 2;
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.blue;
+    }
+
+    label := Text {
+        x: item.modified ? 22px : 10px;
+        width: Math.max(0px, root.width - (item.modified ? 22px : 10px) - 30px);
+        text: root.item.title;
+        color: root.item.active ? Theme.text : (touch.has-hover ? Theme.text : Theme.subtext0);
+        font-size: Theme.font-ui;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    // Close affordance appears on the active tab or under the pointer.
+    if item.active || touch.has-hover : Rectangle {
+        x: root.width - 22px;
+        y: (root.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        background: close-touch.has-hover ? Theme.red : transparent;
+
+        Text {
+            text: "×";
+            color: close-touch.has-hover ? Theme.text : Theme.subtext0;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        close-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.closed(); }
+        }
+    }
+
+}
+
+export component TabStrip inherits Rectangle {
+    in property <[TabItem]> tabs;
+    callback selected(int);
+    callback closed(int);
+
+    height: Theme.tab-height;
+    background: Theme.crust;
+
+    // Strip baseline: the active tab sits above this hairline.
+    Rectangle {
+        y: root.height - 1px;
+        height: 1px;
+        background: Theme.surface0;
+    }
+
+    HorizontalLayout {
+        spacing: 0px;
+        alignment: start;
+
+        for tab[i] in root.tabs : Tab {
+            item: tab;
+            selected => { root.selected(i); }
+            closed => { root.closed(i); }
+        }
+    }
+}

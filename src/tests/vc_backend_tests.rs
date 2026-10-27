@@ -161,7 +161,7 @@ fn vc_open_diff_is_one_tab_and_hands_other_tabs_back() {
     );
 
     // The pair reads as one tab, labelled `{file}:HEAD->TREE`.
-    let tabs = crate::kernel::render::gui_tabs::TabBar::collect_tabs(&ed);
+    let tabs = crate::kernel::render::tabs::collect_tabs(&ed);
     assert_eq!(tabs.len(), 1, "the diff is a single tab");
     assert_eq!(tabs[0].label, "work.txt:HEAD->TREE");
 

@@ -1,0 +1,89 @@
+import { Theme } from "../theme.slint";
+
+export component StatusPill inherits Rectangle {
+    in property <string> label;
+    in property <color> tint: Theme.subtext0;
+    in property <bool> show: true;
+    callback clicked();
+
+    visible: show;
+    width: label-text.preferred-width + 14px;
+    height: 20px;
+    border-radius: Theme.radius-pill;
+    background: touch.has-hover ? Theme.surface0 : transparent;
+
+    label-text := Text {
+        text: root.label;
+        color: root.tint;
+        font-size: Theme.font-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component StatusBar inherits Rectangle {
+    in property <string> file;
+    in property <bool> modified: false;
+    in property <string> message;
+    in property <bool> message-error: false;
+    in property <string> branch;
+    in property <string> position;
+    in property <string> mode;
+    in property <string> encoding: "UTF-8";
+    callback file-clicked();
+    callback branch-clicked();
+    callback position-clicked();
+
+    height: Theme.status-height;
+    background: Theme.mantle;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 2px;
+        alignment: start;
+
+        StatusPill {
+            label: root.modified ? root.file + " •" : root.file;
+            tint: root.modified ? Theme.text : Theme.subtext0;
+            clicked => { root.file-clicked(); }
+        }
+
+        StatusPill {
+            label: root.message;
+            tint: root.message-error ? Theme.red : Theme.warning;
+            show: root.message != "";
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        StatusPill {
+            label: "◆ " + root.branch;
+            tint: Theme.blue;
+            show: root.branch != "";
+            clicked => { root.branch-clicked(); }
+        }
+
+        StatusPill {
+            label: root.mode;
+            tint: Theme.overlay0;
+            show: root.mode != "";
+        }
+
+        StatusPill {
+            label: root.encoding;
+            tint: Theme.overlay0;
+        }
+
+        StatusPill {
+            label: root.position;
+            tint: Theme.subtext0;
+            clicked => { root.position-clicked(); }
+        }
+    }
+}

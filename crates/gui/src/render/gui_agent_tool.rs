@@ -4,7 +4,7 @@
 //! `ToolAction`s applied at the shell boundary.
 
 use eframe::egui::{self, FontFamily, FontId, RichText, ScrollArea};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 use super::tool_window::{ToolAction, ToolWindow};
 
@@ -31,16 +31,16 @@ impl ToolWindow for AgentToolWindow {
         // Latest session is the active conversation.
         let active = editor.agent.list().pop().cloned();
 
-        let configured = crate::kernel::agent::llm::LlmConfig::is_configured(&editor.options);
+        let configured = magma::kernel::agent::llm::LlmConfig::is_configured(&editor.options);
         ui.horizontal(|ui| {
             let status = match &active {
                 None => "no session — ask below".to_string(),
                 Some(s) => format!("session {} · {}", s.id, s.status.as_str()),
             };
             let color = match active.as_ref().map(|s| &s.status) {
-                Some(crate::kernel::agent::AgentStatus::Running) => theme.blue,
-                Some(crate::kernel::agent::AgentStatus::Failed) => theme.red,
-                Some(crate::kernel::agent::AgentStatus::Completed) => theme.green,
+                Some(magma::kernel::agent::AgentStatus::Running) => theme.blue,
+                Some(magma::kernel::agent::AgentStatus::Failed) => theme.red,
+                Some(magma::kernel::agent::AgentStatus::Completed) => theme.green,
                 None => theme.overlay0,
             };
             ui.label(RichText::new(status).font(prop(12.0)).color(color).strong());
@@ -62,11 +62,11 @@ impl ToolWindow for AgentToolWindow {
                     ui.add_space(4.0);
                     for entry in &session.transcript {
                         match entry {
-                            crate::kernel::agent::TranscriptEntry::Thought(text) => {
+                            magma::kernel::agent::TranscriptEntry::Thought(text) => {
                                 ui.label(RichText::new(text)
                                     .font(prop(12.0)).color(theme.text));
                             }
-                            crate::kernel::agent::TranscriptEntry::Action { command, description } => {
+                            magma::kernel::agent::TranscriptEntry::Action { command, description } => {
                                 let label = if command.is_empty() {
                                     description.clone()
                                 } else {
@@ -75,7 +75,7 @@ impl ToolWindow for AgentToolWindow {
                                 ui.label(RichText::new(format!("{} {label}", icons::CARET_RIGHT))
                                     .font(mono(11.5)).color(theme.blue));
                             }
-                            crate::kernel::agent::TranscriptEntry::StepOutput(text) => {
+                            magma::kernel::agent::TranscriptEntry::StepOutput(text) => {
                                 ui.label(RichText::new(text)
                                     .font(mono(11.0)).color(theme.subtext1));
                             }
@@ -99,7 +99,7 @@ impl ToolWindow for AgentToolWindow {
 
         // ── Input + controls ─────────────────────────────────────────────
         let running = active.as_ref()
-            .map(|s| s.status == crate::kernel::agent::AgentStatus::Running)
+            .map(|s| s.status == magma::kernel::agent::AgentStatus::Running)
             .unwrap_or(false);
         ui.horizontal(|ui| {
             // A bounded width — an infinite desired width would let the

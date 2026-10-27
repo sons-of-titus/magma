@@ -6,8 +6,8 @@
 //! other dialog.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
-use crate::kernel::state::options::{self, OptionCategory, OptionKind, OPTION_SPECS};
-use crate::kernel::state::Editor;
+use magma::kernel::state::options::{self, OptionCategory, OptionKind, OPTION_SPECS};
+use magma::kernel::state::Editor;
 use super::gui_dialog::DialogAction;
 use super::gui_theme::{GuiTheme, icons};
 

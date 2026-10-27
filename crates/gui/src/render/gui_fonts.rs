@@ -10,8 +10,7 @@ use eframe::egui;
 /// the GPU glyph atlas rasterizes the first entry there and must not see
 /// a symbols-only font.
 pub const ICON_FONT_ALIAS: &str = "magma-icons";
-pub const ICON_FONT: &[u8] =
-    include_bytes!("../../../assets/fonts/SymbolsNerdFont-Regular.ttf");
+pub const ICON_FONT: &[u8] = include_bytes!("../../../../assets/fonts/SymbolsNerdFont-Regular.ttf");
 
 /// Alias the preferred system UI sans is registered under.
 pub const UI_FONT_ALIAS: &str = "magma-ui";
@@ -48,7 +47,9 @@ fn system_ui_font() -> Option<&'static Vec<u8>> {
     CACHE
         .get_or_init(|| {
             for path in ui_font_candidates() {
-                let Ok(bytes) = std::fs::read(&path) else { continue };
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
                 if bytes.len() < 1000 {
                     continue;
                 }
@@ -66,12 +67,13 @@ fn system_ui_font() -> Option<&'static Vec<u8>> {
 /// egui font definitions: egui defaults + user-loaded fonts + a system UI
 /// sans for `Proportional` + the bundled icon font.  The GUI and the
 /// glyph-coverage tests must agree on this.
-pub fn font_definitions(font_config: &crate::kernel::state::FontConfig) -> egui::FontDefinitions {
+pub fn font_definitions(font_config: &magma::kernel::state::FontConfig) -> egui::FontDefinitions {
     let mut font_defs = egui::FontDefinitions::default();
     for (alias, bytes) in &font_config.loaded_fonts {
-        font_defs
-            .font_data
-            .insert(alias.clone(), Arc::new(egui::FontData::from_owned(bytes.clone())));
+        font_defs.font_data.insert(
+            alias.clone(),
+            Arc::new(egui::FontData::from_owned(bytes.clone())),
+        );
     }
     if !font_defs.font_data.contains_key(ICON_FONT_ALIAS) {
         font_defs.font_data.insert(
@@ -88,7 +90,10 @@ pub fn font_definitions(font_config: &crate::kernel::state::FontConfig) -> egui:
                 Arc::new(egui::FontData::from_owned(bytes.clone())),
             );
         }
-        let prop = font_defs.families.entry(egui::FontFamily::Proportional).or_default();
+        let prop = font_defs
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default();
         if !prop.iter().any(|name| name == UI_FONT_ALIAS) {
             prop.insert(0, UI_FONT_ALIAS.to_string());
         }
@@ -119,6 +124,6 @@ pub fn font_definitions(font_config: &crate::kernel::state::FontConfig) -> egui:
 }
 
 /// Apply `FontConfig` to egui: registers loaded font bytes and rebuilds families.
-pub fn apply_fonts_to_egui(ctx: &egui::Context, font_config: &crate::kernel::state::FontConfig) {
+pub fn apply_fonts_to_egui(ctx: &egui::Context, font_config: &magma::kernel::state::FontConfig) {
     ctx.set_fonts(font_definitions(font_config));
 }

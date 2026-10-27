@@ -1,7 +1,15 @@
 # GUI Architecture — Chrome vs Editor Pane
 
-The GUI is a native IDE shell (egui) wrapped around a `Surface`-based editor
-core. The split is deliberate:
+The GUI is a native IDE shell wrapped around a `Surface`-based editor core.
+It lives in `crates/gui` (package `magma-gui`) and depends on the `magma`
+kernel; the kernel no longer has a `gui` feature and pulls in no
+egui/eframe/winit dependency. The pane contract is
+`render_frame_with(&Editor, &mut Surface, CursorPaint)`: the kernel turns
+editor semantics into a character grid, the frontend decides how to paint it.
+`crates/slint-shell` (package `magma-slint`) is the declarative successor —
+it consumes the same `Surface` and dispatches the same key strings.
+
+The split is deliberate:
 
 - **The editor pane** — buffer text, gutter, cursor, folds, syntax colours —
   renders through the character-cell `Surface`, painted either by the wgpu
@@ -10,12 +18,13 @@ core. The split is deliberate:
   tool windows, dialogs — is native egui chrome. It never touches the
   `Surface`.
 
-All GUI code is `#[cfg(feature = "gui")]`. Without the feature the binary
-still builds for headless use (`--server`); interactive use requires it.
+The kernel binary is headless (`--server`, `--connect`). Interactive use is
+the `magma-gui` binary (egui) or the `magma-slint` migration target; both call
+`magma::kernel::boot::bootstrap`, so startup is identical across frontends.
 
 ## Frame composition
 
-`GuiApp::editor_shell()` (in `gui_editor_window.rs`) assembles the shell via
+`GuiApp::editor_shell()` (in `crates/gui/src/render/gui_editor_window.rs`) assembles the shell via
 `gui_dock::show_panels`. Panels are declared outside-in, so the first panel on
 a side is the outermost (top panels stack downward in declaration order, bottom
 panels upward):
@@ -44,7 +53,7 @@ The Debugger docks in the left dock (`DockPosition::Left`), selected by
 
 | Module | Responsibility |
 |--------|----------------|
-| `gui.rs` | `GuiApp` — shell composition and the frame pipeline |
+| `crates/gui/src/render/gui.rs` | `GuiApp` — shell composition and the frame pipeline |
 | `gui_shell.rs` | Welcome flow, project watching, folder picker, key pre-dispatch, theme/GPU sync, action application |
 | `gui_input.rs` | egui events → Magma key strings + raw mouse events |
 | `gui_editor_pane.rs` | Central pane: Surface build, GPU/CPU paint, scrollbar, mouse dispatch |

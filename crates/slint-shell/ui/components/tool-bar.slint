@@ -1,0 +1,72 @@
+import { Theme } from "../theme.slint";
+
+export component ToolButton inherits Rectangle {
+    in property <string> glyph;
+    in property <color> tint: Theme.subtext0;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: 26px;
+    height: 26px;
+    border-radius: 3px;
+    background: enabled && touch.has-hover ? Theme.surface1 : transparent;
+
+    Text {
+        text: root.glyph;
+        color: root.enabled ? root.tint : Theme.overlay0;
+        font-size: Theme.font-icon;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ToolBar inherits Rectangle {
+    callback run();
+    callback debug();
+    callback stop();
+    callback build();
+    callback test();
+    callback settings();
+
+    HorizontalLayout {
+        spacing: 2px;
+        alignment: end;
+
+        ToolButton {
+            glyph: "▶";
+            tint: Theme.green;
+            clicked => { root.run(); }
+        }
+        ToolButton {
+            glyph: "▷";
+            tint: Theme.subtext0;
+            clicked => { root.debug(); }
+        }
+        ToolButton {
+            glyph: "■";
+            tint: Theme.red;
+            clicked => { root.stop(); }
+        }
+        ToolButton {
+            glyph: "⚒";
+            tint: Theme.subtext0;
+            clicked => { root.build(); }
+        }
+        ToolButton {
+            glyph: "✓";
+            tint: Theme.subtext0;
+            clicked => { root.test(); }
+        }
+        ToolButton {
+            glyph: "⚙";
+            tint: Theme.subtext0;
+            clicked => { root.settings(); }
+        }
+    }
+}

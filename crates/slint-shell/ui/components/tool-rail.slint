@@ -1,0 +1,90 @@
+import { Theme } from "../theme.slint";
+
+export component RailButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> name;
+    in property <bool> active: false;
+    callback clicked();
+
+    width: Theme.rail-width;
+    height: 32px;
+    background: active ? Theme.surface0 : (touch.has-hover ? Theme.surface1 : transparent);
+
+    // Active tool reads as a 2px accent bar at the window edge.
+    Rectangle {
+        x: 0;
+        y: 6px;
+        width: 2px;
+        height: root.height - 12px;
+        background: root.active ? Theme.blue : transparent;
+    }
+
+    Text {
+        text: root.glyph;
+        color: root.active ? Theme.text : Theme.overlay0;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ToolRail inherits Rectangle {
+    in property <int> active: 0;
+    callback selected(int);
+
+    width: Theme.rail-width;
+    background: Theme.crust;
+    border-width: 0;
+
+    VerticalLayout {
+        padding-top: 8px;
+        spacing: 4px;
+        alignment: start;
+
+        RailButton {
+            glyph: "P";
+            name: "Project";
+            active: root.active == 0;
+            clicked => { root.selected(0); }
+        }
+        RailButton {
+            glyph: "C";
+            name: "Commit";
+            active: root.active == 1;
+            clicked => { root.selected(1); }
+        }
+        RailButton {
+            glyph: "D";
+            name: "Debugger";
+            active: root.active == 2;
+            clicked => { root.selected(2); }
+        }
+    }
+}
+
+export component RightRail inherits Rectangle {
+    in property <bool> open: false;
+    callback toggled();
+
+    width: Theme.rail-width;
+    background: Theme.crust;
+
+    VerticalLayout {
+        padding-top: 8px;
+        spacing: 4px;
+        alignment: start;
+
+        RailButton {
+            glyph: "A";
+            name: "Agent";
+            active: root.open;
+            clicked => { root.toggled(); }
+        }
+    }
+}

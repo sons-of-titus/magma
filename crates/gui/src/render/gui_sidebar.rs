@@ -7,8 +7,8 @@
 //! Returns `SidebarAction`s for the shell to apply.
 
 use eframe::egui::{self, FontFamily, FontId, Pos2, CornerRadius, RichText, Sense, Vec2};
-use crate::kernel::icons::IconPack;
-use crate::kernel::state::Editor;
+use magma::kernel::icons::IconPack;
+use magma::kernel::state::Editor;
 use super::gui_sidebar_state::{PendingOp, SidebarAction, SidebarState};
 use super::gui_theme::GuiTheme;
 use super::gui_icons;
@@ -140,8 +140,8 @@ impl ProjectTree {
                     let glyph = kind.map_or_else(
                         || FALLBACK_FILE.to_string(),
                         |k| match k {
-                            crate::kernel::icons::IconKind::Glyph { glyph, .. } => glyph.to_string(),
-                            crate::kernel::icons::IconKind::Svg { .. } => String::new(),
+                            magma::kernel::icons::IconKind::Glyph { glyph, .. } => glyph.to_string(),
+                            magma::kernel::icons::IconKind::Svg { .. } => String::new(),
                         });
                     f.layout_no_wrap(glyph, font_id.clone(), theme.text).size().x
                 });

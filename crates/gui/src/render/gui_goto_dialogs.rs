@@ -5,7 +5,7 @@
 //! click activates it, Escape closes (handled by the shell's key gate).
 
 use eframe::egui::{self, Color32, FontFamily, FontId, RichText};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_dialog::DialogAction;
 use super::gui_fuzzy::fuzzy_rank;
 use super::gui_theme::GuiTheme;

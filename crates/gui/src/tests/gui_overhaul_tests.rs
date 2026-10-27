@@ -4,15 +4,14 @@
 //! search, pickers, breadcrumbs, and the theme system.  egui-rendering paths
 //! are exercised manually (no headless egui in CI).
 
-#![cfg(feature = "gui")]
 
-use crate::kernel::render::gui_breadcrumb::{relative_to_project, segments, symbol_at};
-use crate::kernel::render::gui_dialog::DialogAction;
-use crate::kernel::render::gui_settings_dialog::sorted_options;
-use crate::kernel::render::gui_goto_dialogs::{collect_entries, PickerEntry, PickerSource};
-use crate::kernel::render::gui_search_dialog::SearchDialog;
-use crate::kernel::render::gui_theme::GuiTheme;
-use crate::kernel::semantic::provider::{Symbol, SymbolKind};
+use crate::render::gui_breadcrumb::{relative_to_project, segments, symbol_at};
+use crate::render::gui_dialog::DialogAction;
+use crate::render::gui_settings_dialog::sorted_options;
+use crate::render::gui_goto_dialogs::{collect_entries, PickerEntry, PickerSource};
+use crate::render::gui_search_dialog::SearchDialog;
+use crate::render::gui_theme::GuiTheme;
+use magma::kernel::semantic::provider::{Symbol, SymbolKind};
 use crate::tests::helpers::{buf_text, cursor, make_editor, make_editor_with_buffer};
 
 // ── DialogAction::SetOption ───────────────────────────────────────────────────
@@ -156,7 +155,7 @@ fn search_smart_case() {
 
 #[test]
 fn smart_case_predicate() {
-    use crate::kernel::command::builtin::search_query::SearchQuery;
+    use magma::kernel::command::builtin::search_query::SearchQuery;
     match SearchQuery::compile("abc", false).unwrap() {
         SearchQuery::Regex(_) => {}           // lowercase ⇒ insensitive ⇒ regex path
         SearchQuery::Literal(_) => panic!("lowercase queries must compile case-insensitive"),
@@ -238,7 +237,7 @@ fn picker_lists_janet_defined_commands() {
 
 #[test]
 fn list_detailed_flags_required_args() {
-    use crate::kernel::command::args::{ArgSpec, ArgType};
+    use magma::kernel::command::args::{ArgSpec, ArgType};
     let mut ed = make_editor();
     ed.commands.register_fn(
         "gui-test-needs-arg", "desc",
@@ -302,13 +301,13 @@ fn theme_applies_editor_colors() {
 
 #[test]
 fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
-    use crate::kernel::render::gui_theme::icons;
-    use crate::kernel::state::FontConfig;
+    use crate::render::gui_theme::icons;
+    use magma::kernel::state::FontConfig;
     use eframe::egui::epaint::text::{FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
         TextOptions { max_texture_side: 4096, ..Default::default() },
-        crate::kernel::render::gui_fonts::font_definitions(&FontConfig::default()),
+        crate::render::gui_fonts::font_definitions(&FontConfig::default()),
     );
     let all = [
         ("TERMINAL",  icons::TERMINAL),
@@ -365,13 +364,13 @@ fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
 
 #[test]
 fn every_sidebar_glyph_is_covered_by_bundled_fonts() {
-    use crate::kernel::render::gui_sidebar::{FALLBACK_FILE, ARROW_CLOSED, ARROW_OPEN};
-    use crate::kernel::state::FontConfig;
+    use crate::render::gui_sidebar::{FALLBACK_FILE, ARROW_CLOSED, ARROW_OPEN};
+    use magma::kernel::state::FontConfig;
     use eframe::egui::epaint::text::{FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
         TextOptions { max_texture_side: 4096, ..Default::default() },
-        crate::kernel::render::gui_fonts::font_definitions(&FontConfig::default()),
+        crate::render::gui_fonts::font_definitions(&FontConfig::default()),
     );
     let glyphs = [
         ("ARROW_OPEN", ARROW_OPEN),
@@ -394,7 +393,7 @@ fn every_sidebar_glyph_is_covered_by_bundled_fonts() {
 
 #[test]
 fn sidebar_tree_roots_at_the_project_not_the_filesystem() {
-    use crate::kernel::render::gui_sidebar_tree;
+    use crate::render::gui_sidebar_tree;
 
     let files = vec![
         "src/main.rs".to_string(),
@@ -418,7 +417,7 @@ fn sidebar_tree_roots_at_the_project_not_the_filesystem() {
 
 #[test]
 fn sidebar_state_resets_when_the_project_changes() {
-    use crate::kernel::render::gui_sidebar_state::{PendingOp, SidebarState};
+    use crate::render::gui_sidebar_state::{PendingOp, SidebarState};
 
     let mut state = SidebarState::default();
     state.reset_for("/old/project".to_string());
@@ -437,8 +436,8 @@ fn sidebar_state_resets_when_the_project_changes() {
 
 #[test]
 fn close_editor_session_ends_the_project_and_its_terminals() {
-    use crate::kernel::render::gui_shell::close_editor_session;
-    use crate::kernel::runtime::BackgroundEvent;
+    use crate::render::gui_shell::close_editor_session;
+    use magma::kernel::runtime::BackgroundEvent;
 
     let mut ed = crate::tests::helpers::make_editor();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -446,7 +445,7 @@ fn close_editor_session_ends_the_project_and_its_terminals() {
         .spawn("sh", &[], &std::env::temp_dir(), tx)
         .expect("spawn terminal");
 
-    crate::kernel::project::open_root(&mut ed, "/tmp/some-project");
+    magma::kernel::project::open_root(&mut ed, "/tmp/some-project");
     assert!(ed.project_manager.project.root.is_some());
     assert_eq!(ed.io.terminals.sessions.len(), 1);
 
@@ -461,7 +460,7 @@ fn close_editor_session_ends_the_project_and_its_terminals() {
 
 #[test]
 fn ctrl_space_translates_to_a_keymap_key() {
-    use crate::kernel::render::gui_input;
+    use crate::render::gui_input;
     use eframe::egui::{Event, Key, Modifiers};
 
     let ev = Event::Key {
@@ -477,7 +476,7 @@ fn ctrl_space_translates_to_a_keymap_key() {
 
 #[test]
 fn arrow_chords_carry_a_modifier_prefix() {
-    use crate::kernel::render::gui_input;
+    use crate::render::gui_input;
     use eframe::egui::{Event, Key, Modifiers};
 
     let key = |key: Key, modifiers: Modifiers| Event::Key {

@@ -21,13 +21,13 @@ fn ime_preedit_and_commit_reach_the_collect_surface() {
     let mut wheel = 0.0;
     let mut wheel_x = 0.0;
     let (_keys, _mice, ime) =
-        crate::kernel::render::gui_input::collect(&ctx, 16.0, &mut wheel, &mut wheel_x);
+        crate::render::gui_input::collect(&ctx, 16.0, &mut wheel, &mut wheel_x);
     assert_eq!(ime, vec![
-        crate::kernel::render::gui_input::ImeInput::Preedit {
+        crate::render::gui_input::ImeInput::Preedit {
             text: "こん".to_string(),
             cursor_char: Some(0),
         },
-        crate::kernel::render::gui_input::ImeInput::Commit("こんにちは".to_string()),
+        crate::render::gui_input::ImeInput::Commit("こんにちは".to_string()),
     ]);
 }
 
@@ -50,9 +50,9 @@ fn empty_preedit_clears_the_composition() {
     let mut wheel = 0.0;
     let mut wheel_x = 0.0;
     let (_keys, _mice, ime) =
-        crate::kernel::render::gui_input::collect(&ctx, 16.0, &mut wheel, &mut wheel_x);
+        crate::render::gui_input::collect(&ctx, 16.0, &mut wheel, &mut wheel_x);
     assert_eq!(ime.len(), 2);
-    assert_eq!(ime[1].clone(), crate::kernel::render::gui_input::ImeInput::Preedit {
+    assert_eq!(ime[1].clone(), crate::render::gui_input::ImeInput::Preedit {
         text: String::new(),
         cursor_char: None,
     }, "the empty preedit must arrive so the shell clears its overlay");
@@ -61,7 +61,7 @@ fn empty_preedit_clears_the_composition() {
 #[test]
 fn ime_commit_inserts_into_the_buffer_like_text_input() {
     let mut ed = helpers::make_editor();
-    ed.editor_mode = crate::kernel::state::EditorMode::new("insert", true);
-    crate::kernel::input::dispatch_key(&mut ed, "こんにちは");
+    ed.editor_mode = magma::kernel::state::EditorMode::new("insert", true);
+    magma::kernel::input::dispatch_key(&mut ed, "こんにちは");
     assert_eq!(helpers::buf_text(&ed), "こんにちは");
 }

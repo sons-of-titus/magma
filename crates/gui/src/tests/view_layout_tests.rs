@@ -1,8 +1,8 @@
 //! Layout behavior — split axis, pane resize, last-tab close.
 
-use crate::kernel::state::id::WindowId;
-use crate::kernel::render::view_tree::ViewTree;
-use crate::kernel::render::gui_tabs::TabAction;
+use magma::kernel::state::id::WindowId;
+use crate::render::view_tree::ViewTree;
+use crate::render::gui_tabs::TabAction;
 use crate::tests::helpers::{self, make_editor};
 
 #[test]
@@ -69,7 +69,7 @@ fn open_tab_adds_full_size_focused_pane() {
     assert_ne!(first, second);
     assert_eq!(tree.focused_window(), Some(second), "the new tab takes focus");
     let pane = tree.pane(second).unwrap();
-    assert_eq!(pane.layout, crate::kernel::render::view_tree::LayoutConstraint::Tab);
+    assert_eq!(pane.layout, crate::render::view_tree::LayoutConstraint::Tab);
     assert_eq!(pane.width, tree.pane(first).unwrap().width,
         "tab panes stack at full editor size");
     assert_eq!(pane.x, 0);
@@ -111,8 +111,8 @@ fn open_file_lands_in_a_new_tab_and_focuses_it() {
     let panes_before = ed.view_tree.panes().len();
     let mut args = std::collections::HashMap::new();
     args.insert("path".to_string(),
-        crate::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
-    crate::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
+        magma::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
+    magma::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
 
     assert_eq!(ed.view_tree.panes().len(), panes_before + 1,
         "opening a file adds a tab");
@@ -135,8 +135,8 @@ fn opening_a_file_fills_a_bufferless_pane_instead_of_stacking() {
 
     let mut args = std::collections::HashMap::new();
     args.insert("path".to_string(),
-        crate::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
-    crate::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
+        magma::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
+    magma::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
 
     assert_eq!(ed.view_tree.panes().len(), panes_before,
         "an empty editor pane is filled, not stacked over");
@@ -157,8 +157,8 @@ fn open_file_replaces_untouched_scratch_instead_of_stacking() {
     let panes_before = ed.view_tree.panes().len();
     let mut args = std::collections::HashMap::new();
     args.insert("path".to_string(),
-        crate::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
-    crate::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
+        magma::kernel::command::args::ArgValue::Path(path.to_string_lossy().into_owned()));
+    magma::kernel::command::execute_command(&mut ed, "open-file", &args).unwrap();
 
     assert_eq!(ed.view_tree.panes().len(), panes_before,
         "an empty untouched scratch is replaced, not stacked over");

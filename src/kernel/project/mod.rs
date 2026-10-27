@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use crate::kernel::run_config::RunConfigManager;
 
 pub use project::{Event, detect, gitignore, toolchain};
+pub mod tree;
 
 // ── Supporting types ──────────────────────────────────────────────────────────
 

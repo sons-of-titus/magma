@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 
 use crate::kernel::command::{self, builtin};
-use crate::kernel::render::gui_dialog::DialogAction;
 use crate::kernel::runtime::BackgroundHandle;
 use crate::kernel::state::Editor;
 use crate::kernel::storage::disk::DiskFileSystem;
@@ -49,18 +48,6 @@ fn terminal_start_via_command_spawns_docked_session_not_buffer() {
 
     command::execute_command(&mut ed, "terminal-start", &HashMap::new())
         .expect("terminal-start failed");
-
-    assert_docked_session(&mut ed, buffers_before, focused_before);
-}
-
-#[test]
-fn terminal_start_via_dialog_action_spawns_docked_session_not_buffer() {
-    let mut ed = editor_with_background();
-    let buffers_before = ed.buffers.len();
-    let focused_before = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w));
-
-    // Exactly what the palette's ExecuteCommand action runs.
-    DialogAction::ExecuteCommand("terminal-start".into()).apply(&mut ed);
 
     assert_docked_session(&mut ed, buffers_before, focused_before);
 }

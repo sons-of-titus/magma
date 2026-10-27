@@ -1,0 +1,130 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Button } from "button.slint";
+
+export struct ChangeRow {
+    path: string,
+    code: string,
+    staged: bool,
+}
+
+export component CommitPanel inherits Rectangle {
+    in property <string> branch;
+    in property <[ChangeRow]> changes;
+    in-out property <string> message;
+    callback change-clicked(string, bool);
+    callback commit();
+
+    background: Theme.base;
+
+    VerticalLayout {
+        Rectangle {
+            height: 30px;
+
+            Text {
+                x: 10px;
+                text: "Commit";
+                color: Theme.subtext0;
+                font-size: Theme.font-small;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Text {
+                x: 66px;
+                text: root.branch != "" ? "◆ " + root.branch : "";
+                color: Theme.blue;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border;
+            }
+        }
+
+        ScrollView {
+            VerticalLayout {
+                for change in root.changes : Rectangle {
+                    height: 22px;
+                    background: touch.has-hover ? Theme.surface0 : transparent;
+
+                    Text {
+                        x: 10px;
+                        width: 14px;
+                        text: change.code;
+                        color: change.staged ? Theme.green : Theme.warning;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        x: 28px;
+                        width: parent.width - 36px;
+                        text: change.path;
+                        color: change.staged ? Theme.subtext0 : Theme.subtext1;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.change-clicked(change.path, change.staged); }
+                    }
+                }
+
+                if root.changes.length == 0 : Text {
+                    text: "Working tree clean";
+                    color: Theme.overlay0;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        Rectangle {
+            height: 34px;
+
+            Rectangle {
+                x: 8px;
+                y: 6px;
+                width: root.width - 16px;
+                height: 22px;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.crust;
+
+                TextInput {
+                    x: 6px;
+                    width: parent.width - 12px;
+                    text <=> root.message;
+                    color: Theme.text;
+                    font-size: Theme.font-small;
+                    single-line: true;
+                    accepted => { root.commit(); }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 38px;
+
+            Button {
+                label: "Commit staged";
+                primary: true;
+                enabled: root.message != "";
+                x: 8px;
+                y: 4px;
+                width: root.width - 16px;
+                clicked => { root.commit(); }
+            }
+        }
+    }
+}

@@ -6,8 +6,9 @@
 //! reveal that directory.
 
 use eframe::egui::{self, FontFamily, FontId, Sense};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
+pub use magma::kernel::project::tree::{relative_to_project, segments};
 
 const BAR_H:     f32 = 22.0;
 const FONT_SIZE: f32 = 12.0;
@@ -16,25 +17,6 @@ const FONT_SIZE: f32 = 12.0;
 pub enum BreadcrumbAction {
     /// Expand the sidebar so `rel_dir` (project-relative, "/"-joined) is visible.
     RevealInSidebar { rel_dir: String },
-}
-
-/// Split a path into display segments: `src/kernel/mod.rs` → `["src", "kernel", "mod.rs"]`.
-pub fn segments(path: &str) -> Vec<String> {
-    path.split('/')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
-}
-
-/// Strip `root` off the front of `path`, returning a project-relative path.
-pub fn relative_to_project(root: Option<&std::path::Path>, path: &str) -> String {
-    if let Some(root) = root {
-        let root_str = root.to_string_lossy().trim_end_matches('/').to_string();
-        if let Some(stripped) = path.strip_prefix(&root_str) {
-            return stripped.trim_start_matches('/').to_string();
-        }
-    }
-    path.to_string()
 }
 
 /// Innermost indexed symbol whose definition line is at or before `cursor_line`.

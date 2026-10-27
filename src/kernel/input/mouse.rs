@@ -230,7 +230,7 @@ fn dispatch_text_click(
 
 /// Bounds of the word run around `offset` (alphanumeric + underscore).
 /// Works in char space so multi-byte text can never slice mid-character.
-pub(crate) fn word_range_at(buf: &crate::kernel::text_engine::Buffer, offset: usize) -> Option<(usize, usize)> {
+pub fn word_range_at(buf: &crate::kernel::text_engine::Buffer, offset: usize) -> Option<(usize, usize)> {
     let offset = offset.min(buf.len());
     let line = buf.position_of(offset).line;
     let start = buf.line_start_offset(line)?;
@@ -266,7 +266,7 @@ fn line_range_at(buf: &crate::kernel::text_engine::Buffer, offset: usize) -> Opt
 }
 
 /// Convert screen coordinates to a buffer byte offset.
-pub(crate) fn resolve_click_to_offset(
+pub fn resolve_click_to_offset(
     ed: &Editor,
     buf_id: usize,
     pane: &Pane,

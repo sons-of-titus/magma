@@ -1,0 +1,123 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Button, ToolbarIcon } from "button.slint";
+
+export struct AgentLine {
+    text: string,
+    role: string,
+}
+
+export component AgentDock inherits Rectangle {
+    in property <[AgentLine]> lines;
+    in-out property <string> prompt;
+    in property <bool> running: false;
+    callback submit();
+    callback stop();
+
+    width: 340px;
+    background: Theme.mantle;
+
+    VerticalLayout {
+        Rectangle {
+            height: 30px;
+
+            Text {
+                x: 10px;
+                text: "Agent";
+                color: Theme.subtext0;
+                font-size: Theme.font-small;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            if root.running : Rectangle {
+                x: 58px;
+                y: (parent.height - 6px) / 2;
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.green;
+            }
+
+            ToolbarIcon {
+                glyph: "■";
+                tint: Theme.red;
+                enabled: root.running;
+                x: root.width - 30px;
+                y: 3px;
+                clicked => { root.stop(); }
+            }
+
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border;
+            }
+        }
+
+        ScrollView {
+            VerticalLayout {
+                padding: 8px;
+                spacing: 6px;
+
+                if root.lines.length == 0 : Text {
+                    text: "Ask about the project, or give the agent a task.";
+                    color: Theme.overlay0;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+
+                for line in root.lines : Text {
+                    text: line.text;
+                    color: line.role == "user" ? Theme.blue
+                        : (line.role == "error" ? Theme.red
+                        : (line.role == "action" ? Theme.warning : Theme.subtext1));
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        Rectangle {
+            height: 34px;
+            background: Theme.base;
+
+            Rectangle {
+                x: 8px;
+                y: 6px;
+                width: root.width - 76px;
+                height: 22px;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.crust;
+
+                input := TextInput {
+                    x: 6px;
+                    width: parent.width - 12px;
+                    text <=> root.prompt;
+                    color: Theme.text;
+                    font-size: Theme.font-small;
+                    single-line: true;
+                    accepted => { root.submit(); }
+                }
+            }
+
+            Button {
+                label: "Send";
+                primary: true;
+                x: root.width - 62px;
+                y: 4px;
+                height: 24px;
+                width: 54px;
+                enabled: !root.running;
+                clicked => { root.submit(); }
+            }
+        }
+    }
+}

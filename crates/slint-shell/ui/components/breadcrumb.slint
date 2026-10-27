@@ -1,0 +1,31 @@
+import { Theme } from "../theme.slint";
+
+export component Breadcrumb inherits Rectangle {
+    in property <[string]> segments;
+
+    height: Theme.breadcrumb-height;
+    background: Theme.base;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+        alignment: start;
+
+        for seg[i] in root.segments : HorizontalLayout {
+            spacing: 4px;
+            if i > 0 : Text {
+                text: "›";
+                color: Theme.overlay0;
+                font-size: Theme.font-ui;
+                vertical-alignment: center;
+            }
+            Text {
+                text: seg;
+                color: i == root.segments.length - 1 ? Theme.subtext1 : Theme.overlay0;
+                font-size: Theme.font-ui;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

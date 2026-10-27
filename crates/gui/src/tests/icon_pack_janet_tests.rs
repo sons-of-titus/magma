@@ -1,13 +1,12 @@
 //! Icon pack Janet API — default pack installation, overrides, and
 //! VS Code pack loading through the `icons/` C functions.
 
-#![cfg(all(feature = "janet", feature = "gui"))]
 
-use crate::kernel::icons::{self, IconKind};
-use crate::kernel::scripting;
+use magma::kernel::icons::{self, IconKind};
+use scripting;
 use crate::tests::icon_pack_tests::glyph_pack;
 
-fn lookup_glyph(ed: &crate::kernel::state::Editor, name: &str) -> char {
+fn lookup_glyph(ed: &magma::kernel::state::Editor, name: &str) -> char {
     match ed.icons.lookup(name) {
         Some(IconKind::Glyph { glyph, .. }) => *glyph,
         other => panic!("expected glyph for {name}, got {other:?}"),
@@ -47,7 +46,7 @@ fn every_default_pack_glyph_is_covered_by_the_bundled_icon_font() {
     janet_test!(ed, {
         let mut fonts = Fonts::new(
             TextOptions { max_texture_side: 4096, ..Default::default() },
-            crate::kernel::render::gui_fonts::font_definitions(&ed.font_config),
+            crate::render::gui_fonts::font_definitions(&ed.font_config),
         );
         let names = ["main.rs", "lib.janet", "app.py", "Cargo.toml", "README.md",
                      "data.json", "conf.yaml", "conf.yml", "run.sh", "Cargo.lock",

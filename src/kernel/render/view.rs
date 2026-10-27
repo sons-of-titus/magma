@@ -14,7 +14,12 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Rect { x, y, width, height }
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 }
 
@@ -23,6 +28,21 @@ pub struct RenderCtx<'a> {
     pub editor: &'a Editor,
     /// Surface-absolute area this view occupies.
     pub area: Rect,
+    /// Whether the pane stamps cursor overlays or the frontend paints them.
+    pub cursor: CursorPaint,
+}
+
+/// Cursor painting policy for one frame.
+///
+/// The kernel owns editor semantics, not presentation: a frontend that draws
+/// its own caret asks for `Skip` so the grid never double-draws, while the
+/// headless renderer keeps stamping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorPaint {
+    /// Stamp the caret (and the completion popup) into the character grid.
+    Stamp { visible: bool },
+    /// Leave cursor overlays out of the grid.
+    Skip,
 }
 
 /// What kind of content a view produces.

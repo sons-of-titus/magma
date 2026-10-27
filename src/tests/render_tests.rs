@@ -330,7 +330,8 @@ mod render_damage {
 #[test]
 fn cursor_respects_blink_flag() {
     use crate::kernel::command::builtin;
-    use crate::kernel::render::frame::render_frame;
+    use crate::kernel::render::frame::render_frame_with;
+    use crate::kernel::render::CursorPaint;
     use crate::kernel::state::Editor;
     use crate::kernel::storage::disk::DiskFileSystem;
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -341,8 +342,7 @@ fn cursor_respects_blink_flag() {
     }
     let mut surface = Surface::new(20, 4);
 
-    ed.cursor_visible = true;
-    render_frame(&ed, &mut surface);
+    render_frame_with(&ed, &mut surface, CursorPaint::Stamp { visible: true });
     let with_cursor: String = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
         .filter_map(|(x, y)| surface.cell(x, y).map(|c| (x, y, c.ch)))
         .find(|(_, _, ch)| *ch == '█' || *ch == '▔' || *ch == '▏')
@@ -350,8 +350,7 @@ fn cursor_respects_blink_flag() {
         .unwrap_or_default();
     assert!(!with_cursor.is_empty(), "cursor drawn when visible");
 
-    ed.cursor_visible = false;
-    render_frame(&ed, &mut surface);
+    render_frame_with(&ed, &mut surface, CursorPaint::Stamp { visible: false });
     let without: Vec<char> = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
         .filter_map(|(x, y)| surface.cell(x, y).map(|c| c.ch))
         .collect();

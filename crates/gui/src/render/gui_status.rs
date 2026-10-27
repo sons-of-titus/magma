@@ -6,7 +6,7 @@
 //! as a JetBrains-style pill: quiet text that highlights on hover.
 
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, RichText, Sense, Vec2};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 
 const FONT_SIZE: f32 = 12.0;
@@ -168,8 +168,8 @@ impl MessageWidget {
         let Some(msg) = &editor.status_message else { return };
         if msg.at.elapsed() > Self::LINGER { return; }
         let color = match msg.kind {
-            crate::kernel::state::MessageKind::Info => theme.green,
-            crate::kernel::state::MessageKind::Error => theme.red,
+            magma::kernel::state::MessageKind::Info => theme.green,
+            magma::kernel::state::MessageKind::Error => theme.red,
         };
         ui.label(
             RichText::new(msg.text.clone())

@@ -296,7 +296,7 @@ fn bind_hunk_keys(editor: &mut Editor, key: usize) {
 // ── Closing ──────────────────────────────────────────────────────────────────
 
 /// Close the diff view: hand the concealed layout back and drop both panes.
-pub(crate) fn close_diff(editor: &mut Editor) {
+pub fn close_diff(editor: &mut Editor) {
     let Some(view) = editor.vc.diff_view.take() else { return };
     // Restore every concealed pane before dropping the diff buffers, so no
     // pane is left pointing at one of them.

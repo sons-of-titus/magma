@@ -5,7 +5,7 @@
 //! → jump loop finally closes.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_find_tool::quickfix_rows;
 use super::gui_theme::{GuiTheme, icons};
 use super::tool_window::{ToolAction, ToolWindow};
@@ -66,6 +66,6 @@ impl ToolWindow for OutputToolWindow {
             .color(theme.overlay0)
             .strong(),
         );
-        quickfix_rows(ui, editor, theme, crate::kernel::task::QuickfixList::Problems)
+        quickfix_rows(ui, editor, theme, magma::kernel::task::QuickfixList::Problems)
     }
 }

@@ -7,7 +7,7 @@
 use crate::kernel::state::Editor;
 use crate::kernel::render::host::{FrameHost, RenderHost, ViewportHost};
 use crate::kernel::render::surface::{Style, Surface};
-use crate::kernel::render::view::{Rect, RenderCtx, View};
+use crate::kernel::render::view::{CursorPaint, Rect, RenderCtx, View};
 use crate::kernel::render::view_tree::Pane;
 use crate::kernel::render::editor_view::EditorView;
 use super::decorations::render_overlays;
@@ -354,13 +354,21 @@ pub fn frame_panes(host: &dyn FrameHost) -> Vec<(crate::kernel::render::view_tre
 /// The surface contains editor pane content only — tab bar, status bar, and
 /// dialogs are native GUI widgets rendered around it.
 pub fn render_frame(editor: &Editor, surface: &mut Surface) {
+    render_frame_with(editor, surface, CursorPaint::Stamp { visible: true });
+}
+
+/// Render with an explicit cursor policy.
+///
+/// `render_frame` is the headless default (stamp the caret); frontends that
+/// paint their own caret pass [`CursorPaint::Skip`].
+pub fn render_frame_with(editor: &Editor, surface: &mut Surface, cursor: CursorPaint) {
     let host: &dyn FrameHost = editor;
     prepare_frame(host, surface);
 
     // ── Render each pane through its view ────────────────────────────────
     for (pane, area) in frame_panes(host) {
         let Some(buf_id) = pane.buffer_id else { continue };
-        let ctx = RenderCtx { editor, area };
+        let ctx = RenderCtx { editor, area, cursor };
 
         EditorView { buf_id, pane_id: pane.id }.render(surface, &ctx);
     }

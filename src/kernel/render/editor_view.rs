@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::kernel::state::Editor;
 use crate::kernel::state::id::WindowId;
 use crate::kernel::render::surface::{Style, Surface};
-use crate::kernel::render::view::{View, ViewKind, RenderCtx};
+use crate::kernel::render::view::{CursorPaint, View, ViewKind, RenderCtx};
 use crate::kernel::render::frame::{
     int_option, pane_scroll_left, pane_scroll_top_synced, scroll_state_for_buffer,
 };
@@ -311,9 +311,10 @@ impl View for EditorView {
             scroll_left);
 
         // ── Cursor + multi-cursor + completion popup (focused pane only) ──
-        // With `cursor_overlay` the GUI paints a native cursor rect on top;
-        // stamping the full-cell glyph would double-draw.
-        if is_focused && editor.cursor_visible && !editor.cursor_overlay {
+        // A frontend that paints its own caret passes `CursorPaint::Skip` so
+        // the grid never double-draws.
+        let stamps = matches!(ctx.cursor, CursorPaint::Stamp { .. });
+        if is_focused && matches!(ctx.cursor, CursorPaint::Stamp { visible: true }) {
             if let Some(vis_row) = cursor_vis_row
                 && vis_row < visible_lines
                 && cursor_col >= scroll_left
@@ -352,7 +353,7 @@ impl View for EditorView {
                 }
             }
 
-            if !editor.cursor_overlay {
+            if stamps {
                 render_insert_completion_popup(editor, surface, row_offset, visible_lines);
             }
         }

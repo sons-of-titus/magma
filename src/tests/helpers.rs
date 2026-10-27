@@ -44,10 +44,6 @@ pub fn cursor(ed: &Editor) -> usize {
     ed.views.get(&key).unwrap().cursor_offset()
 }
 
-#[cfg(feature = "janet")]
-pub fn acquire_janet_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::kernel::scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-}
 
 /// A minimal DAP adapter that answers `initialize` and appends every request
 /// command it receives to a log file — the observability the ordering tests

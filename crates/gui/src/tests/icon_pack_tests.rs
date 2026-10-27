@@ -1,9 +1,8 @@
 //! Icon pack state — lookup order, VS Code manifest loading, and the
 //! `icon-pack` option follower.  No Janet VM involved.
 
-#![cfg(feature = "gui")]
 
-use crate::kernel::icons::{self, IconKind, IconPack};
+use magma::kernel::icons::{self, IconKind, IconPack};
 use crate::tests::helpers::make_editor;
 
 pub(crate) fn glyph_pack() -> IconPack {

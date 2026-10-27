@@ -1,0 +1,59 @@
+import { Theme } from "../theme.slint";
+import { MenuItem } from "menu-bar.slint";
+
+component MenuRow inherits Rectangle {
+    in property <MenuItem> item;
+    callback activated();
+
+    height: 26px;
+    border-radius: Theme.radius;
+    background: touch.has-hover ? Theme.surface0 : transparent;
+
+    Text {
+        x: 9px;
+        text: root.item.label;
+        color: Theme.subtext1;
+        font-size: Theme.font-ui;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+export component MenuPopup inherits Rectangle {
+    in property <[MenuItem]> items;
+    callback activated(string);
+
+    width: 200px;
+    height: content.preferred-height + 8px;
+    background: Theme.mantle;
+    border-width: 1px;
+    border-color: Theme.border;
+    border-radius: Theme.radius-pill;
+    drop-shadow-blur: 14px;
+    drop-shadow-color: #00000066;
+    drop-shadow-offset-y: 4px;
+
+    content := VerticalLayout {
+        padding: 4px;
+        spacing: 1px;
+
+        for item in root.items : Rectangle {
+            height: item.separator ? 9px : 26px;
+
+            if item.separator : Rectangle {
+                y: 4px;
+                height: 1px;
+                background: Theme.border;
+            }
+
+            if !item.separator : MenuRow {
+                item: item;
+                activated => { root.activated(item.command); }
+            }
+        }
+    }
+}

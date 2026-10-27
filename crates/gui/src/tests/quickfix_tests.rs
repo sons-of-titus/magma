@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
-use crate::kernel::command::{self, builtin, args::ArgValue};
-use crate::kernel::runtime::{process_background_event, BackgroundEvent};
-use crate::kernel::render::gui_dialog::DialogAction;
-use crate::kernel::state::Editor;
-use crate::kernel::storage::disk::DiskFileSystem;
-use crate::kernel::task::QuickfixEntry;
+use magma::kernel::command::{self, builtin, args::ArgValue};
+use magma::kernel::runtime::{process_background_event, BackgroundEvent};
+use crate::render::gui_dialog::DialogAction;
+use magma::kernel::state::Editor;
+use magma::kernel::storage::disk::DiskFileSystem;
+use magma::kernel::task::QuickfixEntry;
 
 fn editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -21,11 +21,11 @@ fn grep_results_land_in_the_search_list() {
     ed.search.generation += 1;
     let generation = ed.search.generation;
     process_background_event(&mut ed, BackgroundEvent::Project(
-        crate::kernel::project::Event::GrepDone { generation }));
+        magma::kernel::project::Event::GrepDone { generation }));
     process_background_event(&mut ed, BackgroundEvent::Project(
-        crate::kernel::project::Event::GrepResultsBatch { generation, entries: Vec::new() }));
+        magma::kernel::project::Event::GrepResultsBatch { generation, entries: Vec::new() }));
     process_background_event(&mut ed, BackgroundEvent::Project(
-        crate::kernel::project::Event::GrepResultsBatch {
+        magma::kernel::project::Event::GrepResultsBatch {
             generation,
             entries: vec![
                 QuickfixEntry {
@@ -99,7 +99,7 @@ fn stale_search_generations_are_dropped() {
     ..Default::default() };
     // A result from generation 3 lands after the search moved to 5: gone.
     process_background_event(&mut ed, BackgroundEvent::Project(
-        crate::kernel::project::Event::GrepResultsBatch {
+        magma::kernel::project::Event::GrepResultsBatch {
             generation: 3,
             entries: vec![entry],
         }));
@@ -112,7 +112,7 @@ fn stale_search_generations_are_dropped() {
         message: "fresh".into(),
     ..Default::default() };
     process_background_event(&mut ed, BackgroundEvent::Project(
-        crate::kernel::project::Event::GrepResultsBatch {
+        magma::kernel::project::Event::GrepResultsBatch {
             generation: 5,
             entries: vec![fresh],
         }));
@@ -123,7 +123,7 @@ fn stale_search_generations_are_dropped() {
 #[test]
 fn build_problems_and_find_results_are_separate() {
     let mut ed = editor();
-    crate::kernel::task::apply_tool_diagnostics(&mut ed, "cargo build",
+    magma::kernel::task::apply_tool_diagnostics(&mut ed, "cargo build",
         "error[E0308]: mismatched types\n --> src/main.rs:1:1\n",
         std::path::Path::new("/repo"));
     assert_eq!(ed.quickfix_list.len(), 1);
@@ -131,7 +131,7 @@ fn build_problems_and_find_results_are_separate() {
     ed.search.generation += 1;
     let generation = ed.search.generation;
     process_background_event(&mut ed, BackgroundEvent::Project(
-        crate::kernel::project::Event::GrepResultsBatch {
+        magma::kernel::project::Event::GrepResultsBatch {
             generation,
             entries: vec![QuickfixEntry {
                 filename: "a.rs".into(), line: 3, col: 1, message: "hit".into(),
@@ -155,13 +155,13 @@ fn quickfix_focus_selects_the_navigated_list() {
     ]);
 
     // No relevant panel focused → build problems (conventional quickfix).
-    assert_eq!(ed.quickfix_focus, crate::kernel::task::QuickfixList::Problems);
-    assert!(crate::kernel::task::quickfix_next(&mut ed).is_err(),
+    assert_eq!(ed.quickfix_focus, magma::kernel::task::QuickfixList::Problems);
+    assert!(magma::kernel::task::quickfix_next(&mut ed).is_err(),
         "one problem, nothing to advance to");
 
     // Focused Find panel → search results; the problems cursor stays put.
-    ed.quickfix_focus = crate::kernel::task::QuickfixList::Search;
-    crate::kernel::task::quickfix_next(&mut ed).unwrap();
+    ed.quickfix_focus = magma::kernel::task::QuickfixList::Search;
+    magma::kernel::task::quickfix_next(&mut ed).unwrap();
     assert_eq!(ed.search.index, 1);
     assert_eq!(ed.quickfix_index, 0, "the problems cursor must not move");
 }
@@ -179,8 +179,8 @@ fn find_result_jump_leaves_build_diagnostics_untouched() {
         QuickfixEntry { filename: path_str.clone(), line: 1, col: 1, message: "h1".into(), ..Default::default() },
         QuickfixEntry { filename: path_str.clone(), line: 2, col: 1, message: "h2".into(), ..Default::default() },
     ]);
-    ed.quickfix_focus = crate::kernel::task::QuickfixList::Search;
-    crate::kernel::task::quickfix_next(&mut ed).unwrap();
+    ed.quickfix_focus = magma::kernel::task::QuickfixList::Search;
+    magma::kernel::task::quickfix_next(&mut ed).unwrap();
 
     let key = ed.buffers.iter()
         .find(|(_, arc)| arc.lock().unwrap().path.as_deref() == Some(path_str.as_str()))

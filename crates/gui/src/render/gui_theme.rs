@@ -9,7 +9,7 @@
 //! workspace like any other option.
 
 use eframe::egui::{self, Color32};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::surface::Style;
 
 /// Shared icon glyphs — one consistent set across chrome widgets.

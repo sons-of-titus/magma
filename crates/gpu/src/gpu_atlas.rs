@@ -176,7 +176,6 @@ impl GpuGlyphAtlas {
     /// Rasterize `font_bytes` into `atlas_pixels` using `ab_glyph`.
     ///
     /// Sets `dirty = true` so the GPU texture is re-uploaded next frame.
-    #[cfg(feature = "gui")]
     pub fn rasterize(&mut self, font_bytes: &[u8], font_size: f32) {
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
         self.atlas_pixels = crate::gpu_rasterizer::rasterize_font_atlas(
@@ -189,7 +188,6 @@ impl GpuGlyphAtlas {
     /// font so HiDPI displays sample denser texels instead of stretching
     /// the 1× atlas.  Quads and UVs stay in point coordinates, so nothing
     /// else changes when the scale factor moves.
-    #[cfg(feature = "gui")]
     pub fn rasterize_at_ppx(&mut self, font_bytes: &[u8], font_size: f32, ppx: f32) {
         self.rasterize(font_bytes, font_size * ppx.max(1.0));
     }

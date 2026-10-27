@@ -1,0 +1,33 @@
+[package]
+name = "magma-gui"
+version = "0.1.0"
+edition = "2024"
+description = "Magma's graphical frontend — egui shell and the wgpu editor pane"
+
+[lib]
+name = "magma_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "magma"
+path = "src/main.rs"
+
+[dependencies]
+magma = { path = "../.." }
+scripting = { path = "../scripting", optional = true }
+logging = { path = "../logging" }
+tokio = { version = "1", features = ["full"] }
+eframe = { version = "0.36.2", features = ["wgpu"] }
+bytemuck = "1"
+ab_glyph = "0.2"
+rfd = "0.15"
+resvg = "0.45"
+serde_json = "1"
+
+[features]
+default = ["janet"]
+janet = ["dep:scripting", "scripting/janet"]
+
+[dev-dependencies]
+paste = "1.0"
+scripting = { path = "../scripting" }

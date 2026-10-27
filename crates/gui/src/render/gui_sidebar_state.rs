@@ -47,7 +47,7 @@ pub struct SidebarState {
     /// Built FileNode tree cached by project files-epoch — the sidebar
     /// must not re-walk the flat list every frame (rework.md §7).  Shared
     /// via Rc so frames borrow it without pinning the state.
-    pub tree_cache: Option<(u64, std::rc::Rc<Vec<crate::kernel::render::gui_sidebar::FileNode>>)>,
+    pub tree_cache: Option<(u64, std::rc::Rc<Vec<crate::render::gui_sidebar::FileNode>>)>,
 
 }
 

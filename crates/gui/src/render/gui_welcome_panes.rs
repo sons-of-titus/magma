@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Align, Align2, Color32, FontId, Pos2, RichText, Sense, Stroke, Vec2};
 
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 use super::gui_welcome::{WelcomeAction, outline_button, sans, section_header};
 

@@ -7,7 +7,7 @@
 //! current viewport.  Clicking (or dragging) the minimap jumps to that line.
 
 use eframe::egui::{self, Color32, Pos2, Rect, CornerRadius, Sense, Vec2};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::GuiTheme;
 
 pub const STRIP_W:    f32 = 90.0;
@@ -40,7 +40,7 @@ pub fn line_bar_px(chars: usize) -> f32 {
 
 /// Sampled-line cache type lives in `state::minimap` so the kernel holds it
 /// without the gui feature.
-use crate::kernel::state::minimap::MinimapCache;
+use magma::kernel::state::minimap::MinimapCache;
 
 pub struct Minimap;
 

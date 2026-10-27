@@ -728,29 +728,53 @@ algorithm with no `Editor` dependency; depends only on `crates/text`
 …)` cache wrapper as a thin shim over `Editor.row_layouts`. Compatibility
 path `kernel::render::row_layout::*` is preserved via re-export.
 
-## GUI frontend extraction audit (Phase 9)
+## GUI frontend extraction
 
-Audit findings:
-- The GUI frontend comprises 37 feature-gated modules under
-  `src/kernel/render/gui*.rs` (~7,900 lines) plus `run_gui` in `src/main.rs`.
-  They read and mutate live `Editor` state throughout (command execution,
-  rendering, input, dialogs, theme, fonts, gutters).
-- Reverse dependencies: `src/main.rs` (binary) calls `GuiApp::new_with_bg`
-  under `cfg(feature = "gui")`; ~10 test files reference
-  `crate::kernel::render::gui*` paths.
-- Dependency direction problem: the GUI modules depend on the kernel, but the
-  kernel's `gui` feature and `main.rs` binary depend on those modules. Moving
-  them to a new crate creates a cycle unless the binary moves with them.
-- Full extraction would require moving all 37 modules, migrating ~10 test
-  files to new import paths, and relocating the binary to `crates/gui`.
+The frontend is now a workspace crate, not a kernel feature.
 
-Decision: deferred. A partial extraction (moving only `GuiApp`/`run_gui`)
-would leave the bulk of GUI presentation in the kernel and amount to a
-re-export, which is explicitly not a successful extraction. Prerequisite:
-(1) relocate the binary entry point to `crates/gui`; (2) migrate GUI
-  helper modules and their tests; (3) redefine the `gui` feature so the
-  kernel no longer owns GUI presentation. Until then, the GUI frontend
-  remains kernel-owned behind the `gui` feature.
+- `crates/gui` (package `magma-gui`, binary `magma`) owns the egui shell:
+  the 37 `gui*` modules, `tool_window*`, font registration, input translation,
+  dialogs, and the wgpu/egui pane paint callback. It depends on `magma`.
+- `crates/slint-shell` (package `magma-slint`) is the declarative successor.
+  It renders the same `Surface` into a Slint `Image`, forwards Slint key
+  events through `translate_key` into the kernel's key-string grammar, and
+  projects tabs, files, and status into Slint models. `src/kernel/render/tabs.rs`
+  owns the tab projection so both frontends (and kernel tests) share it.
+- `crates/gpu` is now a pure CPU atlas: glyph UVs, instance builders, and the
+  `ab_glyph` rasterizer. The egui paint callback moved to `crates/gui`;
+  no wgpu or egui types remain in `gpu`.
+
+Kernel changes that made the boundary real:
+
+- `feature = "gui"` and the `eframe`/`bytemuck`/`rfd`/`resvg` optional deps are
+  gone; `render/mod.rs` no longer declares frontend modules.
+- `Editor.cursor_overlay` and `Editor.cursor_visible` are gone. Frontends pass
+  `CursorPaint::{Stamp, Skip}` to `render_frame_with`; `render_frame` keeps the
+  headless `Stamp` default, so tests and benchmarks are unchanged.
+  `cursor_shape` stays: it is a Janet API (`editor/set-cursor-shape`), not
+  presentation state.
+- `src/kernel/workspace/` owns file watching, debounced re-index, project
+  close, and session/crash-snapshot persistence. Both frontends drive the same
+  `WorkspaceRuntime`; the egui `ShellRuntime` only keeps the welcome flow and
+  folder picker.
+- `src/kernel/boot.rs` owns startup (commands, history, marks, recents,
+  background pool, crash recovery, Janet init, last-project reopen) so the
+  headless server and both frontends cannot drift.
+- `io.terminals.pty_waker` remains the only frontend-facing wake hook; it is a
+  plain callback channel with no toolkit type.
+
+Remaining GUI-side work (tracked, not done):
+
+- The Slint shell currently covers the menu row, tabs, project file list,
+  status bar, editor pane, key dispatch, open-project, and background-event
+  drain. Dialogs, tool windows (terminal/find/output/debug/agent/commit),
+  minimap, hover cards, and IME composition are still egui-only. The egui
+  frontend stays until those reach parity, then `crates/gui` is deleted.
+- IME in the Slint pane needs the invisible native `TextInput` overlay the
+  plan calls for; a `FocusScope` alone does not expose composition.
+- The Slint pane uploads the grid as an RGBA image. Importing a
+  renderer-owned wgpu texture (`set_rendering_notifier`, `unstable-wgpu-30`)
+  is the performance follow-up.
 
 ## Verification
 

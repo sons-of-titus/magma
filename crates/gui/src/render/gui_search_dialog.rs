@@ -6,7 +6,7 @@
 //! editor directly.
 
 use eframe::egui::{self, Color32, FontFamily, FontId, RichText};
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_dialog::DialogAction;
 
 // ── SearchDialog ─────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ impl SearchDialog {
     pub fn search(&mut self, editor: &Editor) {
         self.results.clear();
         if self.query.is_empty() { return; }
-        let Ok(query) = crate::kernel::command::builtin::search_query::SearchQuery::compile(
+        let Ok(query) = magma::kernel::command::builtin::search_query::SearchQuery::compile(
             &self.query, self.regex) else { return };
         'outer: for (buf_id, arc) in editor.buffers.iter() {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
@@ -50,9 +50,9 @@ impl SearchDialog {
             let text = buf.slice(0, buf.len());
             for (line_idx, line) in text.lines().enumerate() {
                 let hit = match &query {
-                    crate::kernel::command::builtin::search_query::SearchQuery::Literal(n)
+                    magma::kernel::command::builtin::search_query::SearchQuery::Literal(n)
                         => line.contains(n.as_str()),
-                    crate::kernel::command::builtin::search_query::SearchQuery::Regex(re)
+                    magma::kernel::command::builtin::search_query::SearchQuery::Regex(re)
                         => re.is_match(line),
                 };
                 if hit {

@@ -6,9 +6,9 @@
 //! tab is hovered or active.  Tabs can be drag-reordered.
 
 use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, CornerRadius, Sense, Vec2};
-use crate::kernel::icons::IconKind;
-use crate::kernel::state::id::WindowId;
-use crate::kernel::state::Editor;
+use magma::kernel::icons::IconKind;
+use magma::kernel::state::id::WindowId;
+use magma::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 use super::gui_icons;
 
@@ -37,22 +37,9 @@ impl TabAction {
         match self {
             TabAction::Focus(id) => editor.view_tree.focus(id),
             TabAction::Close(id) => {
-                // A pane belonging to the side-by-side diff closes the whole
-                // pair, so the layout it borrowed is always handed back.
-                if let Some(view) = &editor.vc.diff_view
-                    && (view.left == id || view.right == id) {
-                        crate::kernel::command::builtin::vc_diff::close_diff(editor);
-                        return;
-                }
-                let was_last = editor.view_tree.panes().len() <= 1;
-                editor.view_tree.close(id);
-                // A pane is never re-opened with a fresh scratch buffer:
-                // closing the last tab leaves an empty editor area (the
-                // buffer itself stays alive, as for any other tab close).
-                if was_last
-                    && let Some(win) = editor.view_tree.focused_window_mut() {
-                        win.buffer_id = None;
-                    }
+                // Shared with the Slint frontend: diff pairs close together,
+                // and the last tab leaves an empty editor area.
+                magma::kernel::render::tabs::close_tab(editor, id);
             }
             TabAction::Reorder { from, to } => editor.view_tree.reorder(from, to),
         }
@@ -63,38 +50,16 @@ pub struct TabBar;
 
 impl TabBar {
     pub(crate) fn collect_tabs(editor: &Editor) -> Vec<TabItem> {
-        let diff = editor.vc.diff_view.as_ref();
-        editor.view_tree.panes().iter().filter_map(|pane| {
-            let buf_id = pane.buffer_id?;
-            // The two diff halves read as one tab: the right half is skipped
-            // and the left carries the pair's `{file}:HEAD->TREE` label.
-            if let Some(view) = diff && pane.id == view.right {
-                return None;
-            }
-            if let Some(view) = diff && pane.id == view.left {
-                let short = view.path.rsplit('/').next().unwrap_or(&view.path);
-                return Some(TabItem {
-                    label: format!("{short}:HEAD->TREE"),
-                    window_id: pane.id,
-                    modified: false,
-                    closable: true,
-                    icon: None,
-                });
-            }
-            let (label, modified) = editor.buffers.get(buf_id)
-                .map(|arc| {
-                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                    (buf.name.clone(), buf.modified())
-                })
-                .unwrap_or_else(|| ("?".to_string(), false));
-            let short = label.rsplit('/').next().unwrap_or(&label).to_string();
-            // Special buffers (*scratch*, *grep*) carry no file icon.
-            let icon = (!short.starts_with('*'))
-                .then(|| editor.icons.lookup(&short))
-                .flatten()
-                .cloned();
-            Some(TabItem { label: short, window_id: pane.id, modified, closable: true, icon })
-        }).collect()
+        crate::render::tabs::collect_tabs(editor)
+            .into_iter()
+            .map(|t| TabItem {
+                label: t.label,
+                window_id: t.window_id,
+                modified: t.modified,
+                closable: t.closable,
+                icon: t.icon,
+            })
+            .collect()
     }
 
     fn top_rounding() -> CornerRadius {

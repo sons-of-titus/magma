@@ -16,7 +16,7 @@ mod file;
 pub mod vcs;
 pub(crate) mod vc_ops;
 pub(crate) mod vc_actions;
-pub(crate) mod vc_diff;
+pub mod vc_diff;
 pub(crate) mod vc_hunks;
 mod completion;
 mod misc;

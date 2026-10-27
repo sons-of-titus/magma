@@ -11,7 +11,7 @@
 
 use eframe::egui::{self, Align2, FontFamily, FontId, Pos2, RichText, Sense, Stroke, Vec2};
 
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 use super::gui_welcome_panes;
 

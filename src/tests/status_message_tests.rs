@@ -1,9 +1,16 @@
 //! Status message surface — the editor always answers.
 
-use crate::kernel::command::builtin;
-use crate::kernel::render::gui_dialog::DialogAction;
+use std::collections::HashMap;
+
+use crate::kernel::command::{self, builtin};
 use crate::kernel::state::{Editor, MessageKind};
 use crate::kernel::storage::disk::DiskFileSystem;
+
+fn report(ed: &mut Editor, result: Result<(), String>) {
+    if let Err(e) = result {
+        ed.show_message(MessageKind::Error, e);
+    }
+}
 
 fn editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -14,8 +21,9 @@ fn editor() -> Editor {
 #[test]
 fn failed_dialog_command_sets_error_message() {
     let mut ed = editor();
-    DialogAction::ExecuteCommand("no-such-command".into()).apply(&mut ed);
-    let msg = ed.status_message.expect("a failed dialog action must answer");
+    let result = command::execute_command(&mut ed, "no-such-command", &HashMap::new());
+    report(&mut ed, result);
+    let msg = ed.status_message.expect("a failed command must answer");
     assert_eq!(msg.kind, MessageKind::Error);
     assert!(!msg.text.is_empty());
 }
@@ -23,7 +31,11 @@ fn failed_dialog_command_sets_error_message() {
 #[test]
 fn failed_dialog_open_file_reports_missing_path() {
     let mut ed = editor();
-    DialogAction::OpenFile("/nonexistent/magma-missing-file.rs".into()).apply(&mut ed);
+    let mut args = HashMap::new();
+    args.insert("path".to_string(), crate::kernel::command::args::ArgValue::Path(
+        "/nonexistent/magma-missing-file.rs".into()));
+    let result = command::execute_command(&mut ed, "open-file", &args);
+    report(&mut ed, result);
     let msg = ed.status_message.expect("open-file failure must answer");
     assert_eq!(msg.kind, MessageKind::Error);
     assert!(msg.text.contains("nonexistent"), "got: {}", msg.text);
@@ -32,7 +44,8 @@ fn failed_dialog_open_file_reports_missing_path() {
 #[test]
 fn successful_dialog_action_leaves_message_clear() {
     let mut ed = editor();
-    DialogAction::ExecuteCommand("save-all".into()).apply(&mut ed);
+    let result = command::execute_command(&mut ed, "save-all", &HashMap::new());
+    report(&mut ed, result);
     assert!(ed.status_message.is_none(), "success is silent; no news is good news");
 }
 

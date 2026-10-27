@@ -1,5 +1,4 @@
-//! Rendering — the `Surface` character-grid pipeline that the GUI editor pane
-//! paints from.
+//! Rendering — the `Surface` character-grid pipeline the frontend paints from.
 
 pub use surface;
 pub mod frame;
@@ -11,88 +10,10 @@ pub mod editor_view;
 pub mod gutter;
 pub mod gutter_providers;
 pub(crate) mod highlight_pass;
-pub use row_layout;
 pub use gpu::gpu_atlas;
+pub use row_layout;
 pub mod decorations;
-#[cfg(feature = "gui")]
-pub use gpu::gpu_paint_callback;
-#[cfg(feature = "gui")]
-pub mod gui;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_editor_window;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_fonts;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_icons;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_render;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_input;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_editor_pane;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_layout;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_tabs;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_sidebar;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_sidebar_state;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_sidebar_tree;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_shell;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_status;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_breadcrumb;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_minimap;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_dialog;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_search_dialog;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_settings_dialog;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_goto_dialogs;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_command_line;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_run_config_dialog;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_run_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_fuzzy;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_theme;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_welcome;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_welcome_panes;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_find_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_output_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_debug_tool;
-#[cfg(feature = "gui")]
-mod gui_agent_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_terminal_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod tool_window;
-#[cfg(feature = "gui")]
-pub(crate) mod tool_window_view;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_dock;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_menu;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_commit_tool;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_commit_sections;
-#[cfg(feature = "gui")]
-pub(crate) mod gui_commit_actions;
+pub mod tabs;
 
-pub use view_tree::{ViewTree, Pane, LayoutConstraint, SplitDirection};
+pub use view::{CursorPaint, RenderCtx};
+pub use view_tree::{LayoutConstraint, Pane, SplitDirection, ViewTree};

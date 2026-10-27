@@ -1,0 +1,61 @@
+import { Theme } from "../theme.slint";
+
+export struct MenuItem {
+    label: string,
+    command: string,
+    separator: bool,
+}
+
+component MenuButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> open: false;
+    callback clicked();
+
+    height: 24px;
+    width: label-text.preferred-width + 20px;
+    border-radius: Theme.radius;
+    background: touch.has-hover || open ? Theme.surface1 : transparent;
+
+    label-text := Text {
+        text: root.label;
+        color: root.open ? Theme.text : Theme.subtext1;
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component MenuBar inherits Rectangle {
+    callback menu-opened(string, length);
+
+    HorizontalLayout {
+        spacing: 2px;
+        alignment: start;
+
+        MenuButton {
+            label: "File";
+            clicked => { root.menu-opened("File", self.absolute-position.x); }
+        }
+        MenuButton {
+            label: "Edit";
+            clicked => { root.menu-opened("Edit", self.absolute-position.x); }
+        }
+        MenuButton {
+            label: "View";
+            clicked => { root.menu-opened("View", self.absolute-position.x); }
+        }
+        MenuButton {
+            label: "Navigate";
+            clicked => { root.menu-opened("Navigate", self.absolute-position.x); }
+        }
+        MenuButton {
+            label: "Run";
+            clicked => { root.menu-opened("Run", self.absolute-position.x); }
+        }
+    }
+}

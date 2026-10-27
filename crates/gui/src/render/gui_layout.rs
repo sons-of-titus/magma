@@ -1,7 +1,6 @@
 //! GUI layout state — panel visibility and sizing.
 
 /// Which tool occupies the left dock (JetBrains: Project / Commit / Debug).
-#[cfg(feature = "gui")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeftTool {
     Project,
@@ -9,7 +8,6 @@ pub enum LeftTool {
     Debug,
 }
 
-#[cfg(feature = "gui")]
 pub struct GuiLayout {
     /// Active left tool window.
     pub left_tool: LeftTool,
@@ -24,7 +22,6 @@ pub struct GuiLayout {
     pub right_width: f32,
 }
 
-#[cfg(feature = "gui")]
 impl Default for GuiLayout {
     fn default() -> Self {
         Self {

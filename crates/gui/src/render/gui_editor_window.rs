@@ -12,9 +12,9 @@ use std::collections::HashMap;
 
 use eframe::egui::{self, FontFamily, FontId};
 
-use crate::kernel::command::execute_command;
-use crate::kernel::input;
-use crate::kernel::state::{Editor, MessageKind};
+use magma::kernel::command::execute_command;
+use magma::kernel::input;
+use magma::kernel::state::{Editor, MessageKind};
 
 use super::gui_breadcrumb::BreadcrumbAction;
 use super::gui_commit_actions;
@@ -193,6 +193,7 @@ impl GuiApp {
             atlas_pixels:  atlas_pixels_upload,
             theme:         &self.theme,
             preedit:       self.preedit.clone(),
+            cursor_visible: self.blink_visible,
         };
         egui::containers::CentralPanel::no_frame()
             .frame(egui::Frame::NONE.fill(self.theme.base))
@@ -286,7 +287,6 @@ impl GuiApp {
             // A frozen caret stays solid — there is no deadline to honour.
             self.blink_visible = true;
         }
-        self.editor.cursor_visible = self.blink_visible;
 
         // A pending atlas upload must not wake the welcome surface: nothing
         // there consumes it, and the editor pane needs the flag to still be
@@ -330,15 +330,8 @@ fn apply_status_action(ed: &mut Editor, layout: &mut super::gui_layout::GuiLayou
     }
 }
 
-/// Persist history + marks on editor shutdown; the project session joins
-/// them when a project is open.  A clean exit also discards this run's
-/// crash-recovery snapshots — nothing unsaved remains (R-16).
+/// Persist history + marks on editor shutdown; the workspace module owns
+/// the project session and crash-snapshot cleanup.
 fn persist_session(ed: &Editor) {
-    crate::kernel::state::persist::save_session(ed);
-    crate::kernel::session::save_if_project(ed);
-    if let Some(dir) = ed.io.crash_dir.clone() {
-        std::thread::spawn(move || {
-            crate::kernel::storage::crash_recovery::clear_session(&dir);
-        });
-    }
+    magma::kernel::workspace::persist_session(ed);
 }

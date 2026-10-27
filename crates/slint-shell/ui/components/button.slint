@@ -1,0 +1,60 @@
+import { Theme } from "../theme.slint";
+
+export component Button inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 26px;
+    width: label-text.preferred-width + 24px;
+    border-radius: Theme.radius;
+    border-width: primary ? 0px : 1px;
+    border-color: Theme.border;
+    background: !enabled
+        ? Theme.surface0
+        : primary
+            ? (touch.pressed ? Theme.blue.darker(0.18)
+                : (touch.has-hover ? Theme.blue.darker(0.08) : Theme.blue))
+            : (touch.has-hover ? Theme.surface1 : Theme.surface0);
+
+    label-text := Text {
+        text: root.label;
+        color: !root.enabled ? Theme.overlay0 : (root.primary ? white : Theme.text);
+        font-size: Theme.font-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ToolbarIcon inherits Rectangle {
+    in property <string> glyph;
+    in property <color> tint: Theme.subtext0;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    background: enabled && touch.has-hover ? Theme.surface1 : transparent;
+
+    Text {
+        text: root.glyph;
+        color: root.enabled ? root.tint : Theme.overlay0;
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

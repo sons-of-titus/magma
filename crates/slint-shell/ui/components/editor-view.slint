@@ -1,0 +1,125 @@
+import { Theme } from "../theme.slint";
+
+export component EditorView inherits Rectangle {
+    in property <image> pane;
+    in property <length> pane-width: 800px;
+    in property <length> pane-height: 600px;
+    in property <string> pane-message;
+    in property <image> minimap;
+    in property <bool> minimap-visible: false;
+    in property <length> cursor-x: 0px;
+    in property <length> cursor-y: 0px;
+
+    callback key(string, bool, bool, bool, bool);
+    callback mouse-pressed-left(length, length, bool, bool, bool, bool);
+    callback mouse-pressed-right(length, length);
+    callback mouse-pressed-middle(length, length);
+    callback mouse-moved(length, length);
+    callback mouse-hover(length, length);
+    callback mouse-released();
+    callback ime-committed(string);
+    callback mouse-scrolled(length, length, length, length, bool, bool, bool, bool);
+
+    background: Theme.base;
+    clip: true;
+
+    init => { ime.focus(); }
+
+    Image {
+        source: root.pane;
+        width: root.pane-width;
+        height: root.pane-height;
+    }
+
+    if root.minimap-visible : Image {
+        x: root.pane-width - 90px;
+        y: 0;
+        width: 90px;
+        height: root.pane-height;
+        source: root.minimap;
+    }
+
+    if root.pane-message != "" : Text {
+        text: root.pane-message;
+        color: Theme.overlay0;
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: text;
+
+        moved => {
+            if (self.pressed) {
+                root.mouse-moved(self.mouse-x, self.mouse-y);
+            }
+        }
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                if (event.button == PointerEventButton.left) {
+                    root.mouse-pressed-left(self.mouse-x, self.mouse-y,
+                        event.modifiers.control, event.modifiers.shift,
+                        event.modifiers.alt, event.modifiers.meta);
+                } else if (event.button == PointerEventButton.right) {
+                    root.mouse-pressed-right(self.mouse-x, self.mouse-y);
+                } else if (event.button == PointerEventButton.middle) {
+                    root.mouse-pressed-middle(self.mouse-x, self.mouse-y);
+                }
+            }
+            if (event.kind == PointerEventKind.up) {
+                root.mouse-released();
+            }
+            if (event.kind == PointerEventKind.move) {
+                root.mouse-hover(self.mouse-x, self.mouse-y);
+            }
+        }
+
+        scroll-event(event) => {
+            root.mouse-scrolled(self.mouse-x, self.mouse-y,
+                event.delta-x, event.delta-y,
+                event.modifiers.control, event.modifiers.shift,
+                event.modifiers.alt, event.modifiers.meta);
+            accept
+        }
+
+        clicked => { ime.focus(); }
+    }
+
+    scope := FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(event) => {
+            root.key(event.text, event.modifiers.control, event.modifiers.shift,
+                     event.modifiers.alt, event.modifiers.meta);
+            accept
+        }
+    }
+
+    // Invisible IME capture surface. Receives composition commits and
+    // forwards them; normal key handling stays on the FocusScope above.
+    ime := TextInput {
+        x: root.cursor-x;
+        y: root.cursor-y;
+        width: 2px;
+        height: 20px;
+        opacity: 0.01;
+
+        edited => {
+            if (self.text != "") {
+                root.ime-committed(self.text);
+                self.text = "";
+            }
+        }
+
+        key-pressed(event) => {
+            root.key(event.text, event.modifiers.control, event.modifiers.shift,
+                     event.modifiers.alt, event.modifiers.meta);
+            accept
+        }
+    }
+}

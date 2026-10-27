@@ -7,7 +7,7 @@
 //! paths live in `tool_window_view`.
 
 use eframe::egui;
-use crate::kernel::state::Editor;
+use magma::kernel::state::Editor;
 use super::gui_theme::GuiTheme;
 
 // ── ToolWindow trait ──────────────────────────────────────────────────────────

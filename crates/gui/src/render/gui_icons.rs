@@ -6,7 +6,7 @@ use std::path::Path;
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Vec2};
 
-use crate::kernel::icons::IconKind;
+use magma::kernel::icons::IconKind;
 
 /// Square box an icon is drawn in; callers advance x by this much.
 pub const SLOT: f32 = 16.0;

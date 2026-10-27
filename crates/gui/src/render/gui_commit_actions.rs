@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::kernel::command::{execute_command, args::ArgValue};
-use crate::kernel::state::{Editor, MessageKind};
+use magma::kernel::command::{execute_command, args::ArgValue};
+use magma::kernel::state::{Editor, MessageKind};
 
 use super::gui_commit_tool::CommitAction;
 use super::gui_dialog::DialogAction;

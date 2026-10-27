@@ -14,11 +14,11 @@ component MenuButton inherits Rectangle {
     height: 24px;
     width: label-text.preferred-width + 20px;
     border-radius: Theme.radius;
-    background: touch.has-hover || open ? Theme.surface1 : transparent;
+    background: touch.has-hover || open ? Theme.fill : transparent;
 
     label-text := Text {
         text: root.label;
-        color: root.open ? Theme.text : Theme.subtext1;
+        color: root.open ? Theme.text-primary : Theme.text-secondary;
         font-size: Theme.font-ui;
         horizontal-alignment: center;
         vertical-alignment: center;

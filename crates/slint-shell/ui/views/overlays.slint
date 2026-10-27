@@ -1,0 +1,89 @@
+import { Theme } from "../theme.slint";
+
+export component HoverCard inherits Rectangle {
+    in property <length> hover-x: 0px;
+    in property <length> hover-y: 0px;
+    in property <[string]> hover-lines;
+
+    x: root.hover-x;
+    y: root.hover-y;
+    width: 260px;
+    height: (root.hover-lines.length * 18px + 10px);
+    background: Theme.chrome;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.fill;
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        for line in root.hover-lines : Text {
+            text: line;
+            color: Theme.text-secondary;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component CompletionPopup inherits Rectangle {
+    in property <length> completion-x: 0px;
+    in property <length> completion-y: 0px;
+    in property <[string]> completion-items;
+    in property <int> completion-selected: 0;
+
+    x: root.completion-x;
+    y: root.completion-y;
+    width: 220px;
+    height: (root.completion-items.length * 18px + 8px).min(200px);
+    background: Theme.chrome;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.fill;
+
+    VerticalLayout {
+        padding: 4px;
+        for item[i] in root.completion-items : Rectangle {
+            height: 18px;
+            background: i == root.completion-selected ? Theme.fill : transparent;
+            Text {
+                x: 8px;
+                text: item;
+                color: i == root.completion-selected ? Theme.text-primary : Theme.text-secondary;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component QuickfixMenu inherits Rectangle {
+    in property <length> quickfix-x: 0px;
+    in property <length> quickfix-y: 0px;
+    in property <[string]> quickfix-items;
+    in property <int> quickfix-selected: 0;
+
+    x: root.quickfix-x;
+    y: root.quickfix-y;
+    width: 260px;
+    height: (root.quickfix-items.length * 18px + 10px).min(240px);
+    background: Theme.chrome;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.accent;
+
+    VerticalLayout {
+        padding: 5px;
+        for item[i] in root.quickfix-items : Rectangle {
+            height: 18px;
+            background: i == root.quickfix-selected ? Theme.fill : transparent;
+            Text {
+                x: 8px;
+                text: item;
+                color: i == root.quickfix-selected ? Theme.text-primary : Theme.text-secondary;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

@@ -7,12 +7,12 @@ component MenuRow inherits Rectangle {
 
     height: 26px;
     border-radius: Theme.radius;
-    background: touch.has-hover ? Theme.surface0 : transparent;
+    background: touch.has-hover ? Theme.fill-muted : transparent;
 
     Text {
         x: 9px;
         text: root.item.label;
-        color: Theme.subtext1;
+        color: Theme.text-secondary;
         font-size: Theme.font-ui;
         vertical-alignment: center;
     }
@@ -29,7 +29,7 @@ export component MenuPopup inherits Rectangle {
 
     width: 200px;
     height: content.preferred-height + 8px;
-    background: Theme.mantle;
+    background: Theme.surface-panel;
     border-width: 1px;
     border-color: Theme.border;
     border-radius: Theme.radius-pill;

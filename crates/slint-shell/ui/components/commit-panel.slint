@@ -12,10 +12,11 @@ export component CommitPanel inherits Rectangle {
     in property <string> branch;
     in property <[ChangeRow]> changes;
     in-out property <string> message;
-    callback change-clicked(string, bool);
+    callback change-clicked(string);
+    callback stage-clicked(string, bool);
     callback commit();
 
-    background: Theme.base;
+    background: Theme.surface;
 
     VerticalLayout {
         Rectangle {
@@ -24,7 +25,7 @@ export component CommitPanel inherits Rectangle {
             Text {
                 x: 10px;
                 text: "Commit";
-                color: Theme.subtext0;
+                color: Theme.text-muted;
                 font-size: Theme.font-small;
                 font-weight: 600;
                 vertical-alignment: center;
@@ -32,7 +33,7 @@ export component CommitPanel inherits Rectangle {
             Text {
                 x: 66px;
                 text: root.branch != "" ? "◆ " + root.branch : "";
-                color: Theme.blue;
+                color: Theme.accent;
                 font-size: Theme.font-small;
                 vertical-alignment: center;
             }
@@ -48,21 +49,21 @@ export component CommitPanel inherits Rectangle {
             VerticalLayout {
                 for change in root.changes : Rectangle {
                     height: 22px;
-                    background: touch.has-hover ? Theme.surface0 : transparent;
+                    background: touch.has-hover ? Theme.fill-muted : transparent;
 
                     Text {
                         x: 10px;
                         width: 14px;
                         text: change.code;
-                        color: change.staged ? Theme.green : Theme.warning;
+                        color: change.staged ? Theme.success : Theme.warning;
                         font-size: Theme.font-small;
                         vertical-alignment: center;
                     }
                     Text {
                         x: 28px;
-                        width: parent.width - 36px;
+                        width: parent.width - 52px;
                         text: change.path;
-                        color: change.staged ? Theme.subtext0 : Theme.subtext1;
+                        color: change.staged ? Theme.text-muted : Theme.text-secondary;
                         font-size: Theme.font-small;
                         vertical-alignment: center;
                         overflow: elide;
@@ -70,13 +71,35 @@ export component CommitPanel inherits Rectangle {
 
                     touch := TouchArea {
                         mouse-cursor: pointer;
-                        clicked => { root.change-clicked(change.path, change.staged); }
+                        clicked => { root.change-clicked(change.path); }
+                    }
+
+                    Rectangle {
+                        x: parent.width - 24px;
+                        y: 3px;
+                        width: 18px;
+                        height: 16px;
+                        border-radius: Theme.radius;
+                        background: stage-touch.has-hover ? Theme.fill : transparent;
+
+                        Text {
+                            text: change.staged ? "↑" : "↓";
+                            color: change.staged ? Theme.success : Theme.text-faint;
+                            font-size: Theme.font-small;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        stage-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.stage-clicked(change.path, change.staged); }
+                        }
                     }
                 }
 
                 if root.changes.length == 0 : Text {
                     text: "Working tree clean";
-                    color: Theme.overlay0;
+                    color: Theme.text-faint;
                     font-size: Theme.font-small;
                     horizontal-alignment: center;
                 }
@@ -99,13 +122,13 @@ export component CommitPanel inherits Rectangle {
                 border-radius: Theme.radius;
                 border-width: 1px;
                 border-color: Theme.border;
-                background: Theme.crust;
+                background: Theme.chrome;
 
                 TextInput {
                     x: 6px;
                     width: parent.width - 12px;
                     text <=> root.message;
-                    color: Theme.text;
+                    color: Theme.text-primary;
                     font-size: Theme.font-small;
                     single-line: true;
                     accepted => { root.commit(); }

@@ -8,8 +8,8 @@ fn main() {
     // compositing a 1× frame up to 2×.
     #[cfg(target_os = "macos")]
     {
-        let plist = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR"))
-            .join("Info.plist");
+        let plist =
+            std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("Info.plist");
         std::fs::write(
             &plist,
             r#"<?xml version="1.0" encoding="UTF-8"?>

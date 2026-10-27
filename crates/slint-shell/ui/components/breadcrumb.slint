@@ -4,7 +4,7 @@ export component Breadcrumb inherits Rectangle {
     in property <[string]> segments;
 
     height: Theme.breadcrumb-height;
-    background: Theme.base;
+    background: Theme.surface;
 
     HorizontalLayout {
         padding-left: 8px;
@@ -16,13 +16,13 @@ export component Breadcrumb inherits Rectangle {
             spacing: 4px;
             if i > 0 : Text {
                 text: "›";
-                color: Theme.overlay0;
+                color: Theme.text-faint;
                 font-size: Theme.font-ui;
                 vertical-alignment: center;
             }
             Text {
                 text: seg;
-                color: i == root.segments.length - 1 ? Theme.subtext1 : Theme.overlay0;
+                color: i == root.segments.length - 1 ? Theme.text-secondary : Theme.text-faint;
                 font-size: Theme.font-ui;
                 vertical-alignment: center;
             }

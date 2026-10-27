@@ -6,7 +6,7 @@ export component Welcome inherits Rectangle {
     callback open-folder();
     callback open-recent(string);
 
-    background: Theme.base;
+    background: Theme.surface;
 
     VerticalLayout {
         padding: 32px;
@@ -14,20 +14,20 @@ export component Welcome inherits Rectangle {
 
         Text {
             text: "Magma";
-            color: Theme.text;
+            color: Theme.text-primary;
             font-size: 40px;
             font-weight: 700;
         }
 
         Text {
             text: "A programmable text editor — Rust kernel, Janet userland.";
-            color: Theme.subtext0;
+            color: Theme.text-muted;
             font-size: Theme.font-ui;
         }
 
         Text {
             text: "Open a folder to start editing, or pick a recent project.";
-            color: Theme.overlay0;
+            color: Theme.text-faint;
             font-size: Theme.font-small;
         }
 
@@ -44,26 +44,26 @@ export component Welcome inherits Rectangle {
 
         Text {
             text: "RECENT PROJECTS";
-            color: Theme.overlay0;
+            color: Theme.text-faint;
             font-size: 10px;
             font-weight: 600;
         }
 
         if root.recents.length == 0 : Text {
             text: "No recent projects yet.";
-            color: Theme.overlay0;
+            color: Theme.text-faint;
             font-size: Theme.font-small;
         }
 
         for recent in root.recents : Rectangle {
             height: 24px;
             border-radius: Theme.radius;
-            background: recent-touch.has-hover ? Theme.surface0 : transparent;
+            background: recent-touch.has-hover ? Theme.fill-muted : transparent;
 
             Text {
                 x: 6px;
                 text: recent;
-                color: Theme.subtext1;
+                color: Theme.text-secondary;
                 font-size: Theme.font-small;
                 vertical-alignment: center;
                 overflow: elide;
@@ -80,7 +80,7 @@ export component Welcome inherits Rectangle {
 
         Text {
             text: "ctrl-shift-o  go to symbol    ctrl-shift-f  find    ctrl-q  quit";
-            color: Theme.overlay0;
+            color: Theme.text-faint;
             font-size: 10px;
         }
     }

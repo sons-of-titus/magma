@@ -2,19 +2,20 @@ import { Theme } from "../theme.slint";
 
 export component ToolButton inherits Rectangle {
     in property <string> glyph;
-    in property <color> tint: Theme.subtext0;
+    in property <color> tint: Theme.text-muted;
     in property <bool> enabled: true;
     callback clicked();
 
     width: 26px;
     height: 26px;
-    border-radius: 3px;
-    background: enabled && touch.has-hover ? Theme.surface1 : transparent;
+    border-radius: Theme.radius;
+    background: enabled && touch.has-hover ? Theme.fill : transparent;
 
     Text {
         text: root.glyph;
-        color: root.enabled ? root.tint : Theme.overlay0;
-        font-size: Theme.font-icon;
+        color: root.enabled ? root.tint : Theme.text-faint;
+        font-family: "Symbols Nerd Font";
+        font-size: 14px;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -39,33 +40,33 @@ export component ToolBar inherits Rectangle {
         alignment: end;
 
         ToolButton {
-            glyph: "▶";
-            tint: Theme.green;
+            glyph: "\u{F040D}";
+            tint: Theme.success;
             clicked => { root.run(); }
         }
         ToolButton {
-            glyph: "▷";
-            tint: Theme.subtext0;
+            glyph: "\u{EAAF}";
+            tint: Theme.text-muted;
             clicked => { root.debug(); }
         }
         ToolButton {
-            glyph: "■";
-            tint: Theme.red;
+            glyph: "\u{EBA5}";
+            tint: Theme.danger;
             clicked => { root.stop(); }
         }
         ToolButton {
-            glyph: "⚒";
-            tint: Theme.subtext0;
+            glyph: "\u{F08EA}";
+            tint: Theme.text-muted;
             clicked => { root.build(); }
         }
         ToolButton {
-            glyph: "✓";
-            tint: Theme.subtext0;
+            glyph: "\u{F0096}";
+            tint: Theme.text-muted;
             clicked => { root.test(); }
         }
         ToolButton {
-            glyph: "⚙";
-            tint: Theme.subtext0;
+            glyph: "\u{F0493}";
+            tint: Theme.text-muted;
             clicked => { root.settings(); }
         }
     }

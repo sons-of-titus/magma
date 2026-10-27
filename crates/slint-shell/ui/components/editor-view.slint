@@ -5,6 +5,9 @@ export component EditorView inherits Rectangle {
     in property <string> pane-message;
     in property <image> minimap;
     in property <bool> minimap-visible: false;
+    in property <image> gutter;
+    in property <bool> gutter-visible: false;
+    in property <length> gutter-width: 0px;
     in property <length> cursor-x: 0px;
     in property <length> cursor-y: 0px;
 
@@ -21,7 +24,7 @@ export component EditorView inherits Rectangle {
     callback ime-committed(string);
     callback mouse-scrolled(length, length, length, length, bool, bool, bool, bool);
 
-    background: Theme.base;
+    background: Theme.surface;
     clip: true;
 
     init => { ime.focus(); }
@@ -30,6 +33,16 @@ export component EditorView inherits Rectangle {
         source: root.pane;
         width: 100%;
         height: 100%;
+        image-fit: fill;
+        image-rendering: smooth;
+    }
+
+    if root.gutter-visible : Image {
+        x: 0;
+        y: 0;
+        width: root.gutter-width;
+        height: 100%;
+        source: root.gutter;
         image-fit: fill;
         image-rendering: smooth;
     }
@@ -45,7 +58,7 @@ export component EditorView inherits Rectangle {
 
     if root.pane-message != "" : Text {
         text: root.pane-message;
-        color: Theme.overlay0;
+        color: Theme.text-faint;
         font-size: Theme.font-ui;
         horizontal-alignment: center;
         vertical-alignment: center;

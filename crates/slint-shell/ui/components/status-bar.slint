@@ -2,7 +2,7 @@ import { Theme } from "../theme.slint";
 
 export component StatusPill inherits Rectangle {
     in property <string> label;
-    in property <color> tint: Theme.subtext0;
+    in property <color> tint: Theme.text-muted;
     in property <bool> show: true;
     callback clicked();
 
@@ -10,7 +10,7 @@ export component StatusPill inherits Rectangle {
     width: label-text.preferred-width + 14px;
     height: 20px;
     border-radius: Theme.radius-pill;
-    background: touch.has-hover ? Theme.surface0 : transparent;
+    background: touch.has-hover ? Theme.fill-muted : transparent;
 
     label-text := Text {
         text: root.label;
@@ -40,7 +40,7 @@ export component StatusBar inherits Rectangle {
     callback position-clicked();
 
     height: Theme.status-height;
-    background: Theme.mantle;
+    background: Theme.surface-panel;
 
     HorizontalLayout {
         padding-left: 6px;
@@ -50,13 +50,13 @@ export component StatusBar inherits Rectangle {
 
         StatusPill {
             label: root.modified ? root.file + " •" : root.file;
-            tint: root.modified ? Theme.text : Theme.subtext0;
+            tint: root.modified ? Theme.text-primary : Theme.text-muted;
             clicked => { root.file-clicked(); }
         }
 
         StatusPill {
             label: root.message;
-            tint: root.message-error ? Theme.red : Theme.warning;
+            tint: root.message-error ? Theme.danger : Theme.warning;
             show: root.message != "";
         }
 
@@ -64,25 +64,25 @@ export component StatusBar inherits Rectangle {
 
         StatusPill {
             label: "◆ " + root.branch;
-            tint: Theme.blue;
+            tint: Theme.accent;
             show: root.branch != "";
             clicked => { root.branch-clicked(); }
         }
 
         StatusPill {
             label: root.mode;
-            tint: Theme.overlay0;
+            tint: Theme.text-faint;
             show: root.mode != "";
         }
 
         StatusPill {
             label: root.encoding;
-            tint: Theme.overlay0;
+            tint: Theme.text-faint;
         }
 
         StatusPill {
             label: root.position;
-            tint: Theme.subtext0;
+            tint: Theme.text-muted;
             clicked => { root.position-clicked(); }
         }
     }

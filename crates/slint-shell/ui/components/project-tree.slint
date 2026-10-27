@@ -22,13 +22,13 @@ component TreeRow inherits Rectangle {
     callback activated();
 
     height: Theme.row-height;
-    background: selected ? Theme.selected : (touch.has-hover ? Theme.surface1 : transparent);
+    background: selected ? Theme.selection : (touch.has-hover ? Theme.fill : transparent);
 
     Text {
         x: item.depth * 14px + 8px;
         width: 14px;
         text: item.is-dir ? (item.expanded ? "▾" : "▸") : "";
-        color: Theme.overlay0;
+        color: Theme.text-faint;
         font-size: Theme.font-small;
         vertical-alignment: center;
         horizontal-alignment: center;
@@ -58,7 +58,7 @@ component TreeRow inherits Rectangle {
         x: item.depth * 14px + 42px;
         width: parent.width - (item.depth * 14px + 50px);
         text: item.name;
-        color: item.has-error ? Theme.red : (item.ignored ? Theme.overlay0 : (item.modified ? Theme.blue : (item.is-dir ? Theme.lavender : (selected ? Theme.text : Theme.subtext1))));
+        color: item.has-error ? Theme.danger : (item.ignored ? Theme.text-faint : (item.modified ? Theme.accent : (item.is-dir ? Theme.accent-muted : (selected ? Theme.text-primary : Theme.text-secondary))));
         font-size: Theme.font-ui;
         vertical-alignment: center;
         overflow: elide;
@@ -80,7 +80,7 @@ export component ProjectTree inherits Rectangle {
     callback refresh();
     callback collapse();
 
-    background: Theme.base;
+    background: Theme.surface;
     border-width: 0;
 
     VerticalLayout {
@@ -90,7 +90,7 @@ export component ProjectTree inherits Rectangle {
             Text {
                 x: 10px;
                 text: root.title;
-                color: Theme.subtext0;
+                color: Theme.text-muted;
                 font-size: Theme.font-small;
                 font-weight: 600;
                 vertical-alignment: center;
@@ -100,7 +100,7 @@ export component ProjectTree inherits Rectangle {
                 x: root.width - 44px;
                 width: 16px;
                 text: "↻";
-                color: refresh-touch.has-hover ? Theme.text : Theme.overlay0;
+                color: refresh-touch.has-hover ? Theme.text-primary : Theme.text-faint;
                 font-size: Theme.font-small;
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -115,7 +115,7 @@ export component ProjectTree inherits Rectangle {
                 x: root.width - 24px;
                 width: 16px;
                 text: "−";
-                color: collapse-touch.has-hover ? Theme.text : Theme.overlay0;
+                color: collapse-touch.has-hover ? Theme.text-primary : Theme.text-faint;
                 font-size: Theme.font-small;
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -143,7 +143,7 @@ export component ProjectTree inherits Rectangle {
 
                 if root.rows.length == 0 : Text {
                     text: root.empty-message;
-                    color: Theme.overlay0;
+                    color: Theme.text-faint;
                     font-size: Theme.font-small;
                     horizontal-alignment: center;
                     wrap: word-wrap;

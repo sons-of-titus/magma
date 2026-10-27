@@ -19,11 +19,13 @@ component Tab inherits Rectangle {
     width: Math.max(96px, label.preferred-width + 52px + (item.modified ? 10px : 0px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px));
     background: item.active
         ? Theme.tab-active
-        : (touch.has-hover ? Theme.tab-hover : transparent);
+        : ((touch.has-hover || close-touch.has-hover) ? Theme.tab-hover : transparent);
     border-top-left-radius: Theme.radius;
     border-top-right-radius: Theme.radius;
 
     touch := TouchArea {
+        width: root.width - 22px;
+        height: root.height;
         mouse-cursor: pointer;
         clicked => { root.selected(); }
     }
@@ -34,8 +36,8 @@ component Tab inherits Rectangle {
         y: (root.height - 6px) / 2;
         width: 6px;
         height: 6px;
-        border-radius: 3px;
-        background: Theme.blue;
+        border-radius: Theme.radius;
+        background: Theme.accent;
     }
 
     // Icon: SVG image or Nerd Font glyph, before the title.
@@ -62,24 +64,25 @@ component Tab inherits Rectangle {
         x: (item.modified ? 22px : 10px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px);
         width: Math.max(0px, root.width - ((item.modified ? 22px : 10px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px)) - 30px);
         text: root.item.title;
-        color: root.item.active ? Theme.text : (touch.has-hover ? Theme.text : Theme.subtext0);
+        color: root.item.active ? Theme.text-primary : ((touch.has-hover || close-touch.has-hover) ? Theme.text-primary : Theme.text-muted);
         font-size: Theme.font-ui;
         vertical-alignment: center;
         overflow: elide;
     }
 
     // Close affordance appears on the active tab or under the pointer.
-    if item.active || touch.has-hover : Rectangle {
+    Rectangle {
         x: root.width - 22px;
         y: (root.height - 16px) / 2;
         width: 16px;
         height: 16px;
-        border-radius: 3px;
-        background: close-touch.has-hover ? Theme.red : transparent;
+        border-radius: Theme.radius;
+        opacity: (item.active || touch.has-hover || close-touch.has-hover) ? 1.0 : 0.0;
+        background: close-touch.has-hover ? Theme.danger : transparent;
 
         Text {
             text: "×";
-            color: close-touch.has-hover ? Theme.text : Theme.subtext0;
+            color: close-touch.has-hover ? Theme.text-primary : Theme.text-muted;
             font-size: Theme.font-small;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -87,7 +90,11 @@ component Tab inherits Rectangle {
 
         close-touch := TouchArea {
             mouse-cursor: pointer;
-            clicked => { root.closed(); }
+            clicked => {
+                if item.active || touch.has-hover || close-touch.has-hover {
+                    root.closed();
+                }
+            }
         }
     }
 
@@ -99,13 +106,13 @@ export component TabStrip inherits Rectangle {
     callback closed(int);
 
     height: Theme.tab-height;
-    background: Theme.crust;
+    background: Theme.chrome;
 
     // Strip baseline: the active tab sits above this hairline.
     Rectangle {
         y: root.height - 1px;
         height: 1px;
-        background: Theme.surface0;
+        background: Theme.fill-muted;
     }
 
     HorizontalLayout {

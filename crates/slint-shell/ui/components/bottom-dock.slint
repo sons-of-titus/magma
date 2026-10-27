@@ -9,6 +9,13 @@ export struct FindRow {
     line: int,
 }
 
+export struct GitHistoryRow {
+    hash: string,
+    author: string,
+    date: string,
+    message: string,
+}
+
 component HeaderAction inherits Rectangle {
     in property <string> glyph;
     in property <bool> danger: false;
@@ -17,12 +24,12 @@ component HeaderAction inherits Rectangle {
 
     width: 24px;
     height: 22px;
-    border-radius: 3px;
-    background: touch.has-hover ? (danger ? Theme.red : Theme.surface0) : transparent;
+    border-radius: Theme.radius;
+    background: touch.has-hover ? (danger ? Theme.danger : Theme.fill-muted) : transparent;
 
     Text {
         text: root.glyph;
-        color: touch.has-hover ? Theme.text : Theme.subtext0;
+        color: touch.has-hover ? Theme.text-primary : Theme.text-muted;
         font-size: root.glyph-size;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -42,21 +49,23 @@ component DockButton inherits Rectangle {
 
     width: label-text.preferred-width + 34px;
     height: 22px;
-    border-radius: 3px;
-    background: active ? Theme.surface1 : (touch.has-hover ? Theme.surface0 : transparent);
+    border-radius: Theme.radius;
+    background: active ? Theme.fill : (touch.has-hover ? Theme.fill-muted : transparent);
 
     Text {
         x: 7px;
+        width: 16px;
         text: root.glyph;
-        color: root.active ? Theme.text : Theme.overlay0;
-        font-size: Theme.font-small;
+        color: root.active ? Theme.text-primary : Theme.text-faint;
+        font-family: "Symbols Nerd Font";
+        font-size: 13px;
         vertical-alignment: center;
     }
 
     label-text := Text {
-        x: 21px;
+        x: 26px;
         text: root.label;
-        color: root.active ? Theme.text : Theme.subtext0;
+        color: root.active ? Theme.text-primary : Theme.text-muted;
         font-size: Theme.font-small;
         vertical-alignment: center;
     }
@@ -72,7 +81,7 @@ export component BottomBar inherits Rectangle {
     callback toggle(int);
 
     height: 26px;
-    background: Theme.mantle;
+    background: Theme.surface-panel;
 
     Rectangle {
         y: 0;
@@ -87,22 +96,28 @@ export component BottomBar inherits Rectangle {
         alignment: start;
 
         DockButton {
-            glyph: "T";
+            glyph: "\u{EA85}";
             label: "Terminal";
             active: root.active == 0;
             clicked => { root.toggle(0); }
         }
         DockButton {
-            glyph: "F";
+            glyph: "\u{EA6D}";
             label: "Find";
             active: root.active == 1;
             clicked => { root.toggle(1); }
         }
         DockButton {
-            glyph: "O";
+            glyph: "\u{F0279}";
             label: "Output";
             active: root.active == 2;
             clicked => { root.toggle(2); }
+        }
+        DockButton {
+            glyph: "\u{F062C}";
+            label: "Git";
+            active: root.active == 3;
+            clicked => { root.toggle(3); }
         }
 
         Rectangle { horizontal-stretch: 1; }
@@ -117,11 +132,13 @@ component TerminalTab inherits Rectangle {
 
     height: 26px;
     width: Math.max(104px, label-text.preferred-width + 44px);
-    background: active ? Theme.tab-active : (touch.has-hover ? Theme.tab-hover : transparent);
+    background: active ? Theme.tab-active : ((touch.has-hover || close-touch.has-hover) ? Theme.tab-hover : transparent);
     border-top-left-radius: Theme.radius;
     border-top-right-radius: Theme.radius;
 
     touch := TouchArea {
+        width: root.width - 24px;
+        height: root.height;
         mouse-cursor: pointer;
         clicked => { root.selected(); }
     }
@@ -130,23 +147,24 @@ component TerminalTab inherits Rectangle {
         x: 10px;
         width: Math.max(0px, root.width - 38px);
         text: root.label;
-        color: root.active ? Theme.text : (touch.has-hover ? Theme.text : Theme.subtext0);
+        color: root.active ? Theme.text-primary : ((touch.has-hover || close-touch.has-hover) ? Theme.text-primary : Theme.text-muted);
         font-size: Theme.font-ui;
         vertical-alignment: center;
         overflow: elide;
     }
 
-    if root.active || touch.has-hover : Rectangle {
+    Rectangle {
         x: root.width - 24px;
         y: (root.height - 16px) / 2;
         width: 16px;
         height: 16px;
-        border-radius: 3px;
-        background: close-touch.has-hover ? Theme.red : transparent;
+        border-radius: Theme.radius;
+        opacity: (root.active || touch.has-hover || close-touch.has-hover) ? 1.0 : 0.0;
+        background: close-touch.has-hover ? Theme.danger : transparent;
 
         Text {
             text: "×";
-            color: close-touch.has-hover ? Theme.text : Theme.subtext0;
+            color: close-touch.has-hover ? Theme.text-primary : Theme.text-muted;
             font-size: Theme.font-small;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -154,7 +172,11 @@ component TerminalTab inherits Rectangle {
 
         close-touch := TouchArea {
             mouse-cursor: pointer;
-            clicked => { root.closed(); }
+            clicked => {
+                if root.active || touch.has-hover || close-touch.has-hover {
+                    root.closed();
+                }
+            }
         }
     }
 }
@@ -169,7 +191,7 @@ export component TerminalView inherits Rectangle {
     callback terminal-close(int);
     callback terminal-scroll(length);
 
-    background: Theme.base;
+    background: Theme.surface;
 
     property <length> tabs-h: sessions.length > 0 ? 26px : 0px;
     property <length> body-h: Math.floor((root.height - self.tabs-h) / 20px) * 20px;
@@ -178,13 +200,13 @@ export component TerminalView inherits Rectangle {
     if sessions.length > 0 : Rectangle {
         y: 0;
         height: 26px;
-        background: Theme.crust;
+        background: Theme.chrome;
         clip: true;
 
         Rectangle {
             y: parent.height - 1px;
             height: 1px;
-            background: Theme.surface0;
+            background: Theme.fill-muted;
         }
 
         HorizontalLayout {
@@ -205,7 +227,7 @@ export component TerminalView inherits Rectangle {
         width: 100%;
         height: 100%;
         text: "No terminal session. Start one to use the shell.";
-        color: Theme.overlay0;
+        color: Theme.text-faint;
         font-size: Theme.font-small;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -245,7 +267,7 @@ export component TerminalView inherits Rectangle {
         height: root.body-h;
         Text {
             text: root.text;
-            color: Theme.subtext1;
+            color: Theme.text-secondary;
             font-size: 11px;
             wrap: no-wrap;
         }
@@ -256,13 +278,13 @@ export component FindView inherits Rectangle {
     in property <[FindRow]> rows;
     callback open(string, int);
 
-    background: Theme.base;
+    background: Theme.surface;
 
     if rows.length == 0 : Text {
         width: 100%;
         height: 100%;
         text: "No results. Run a build or search to fill this list.";
-        color: Theme.overlay0;
+        color: Theme.text-faint;
         font-size: Theme.font-small;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -271,12 +293,12 @@ export component FindView inherits Rectangle {
     ListView {
         for row[i] in root.rows : Rectangle {
             height: 22px;
-            background: touch.has-hover ? Theme.surface0 : transparent;
+            background: touch.has-hover ? Theme.fill-muted : transparent;
 
             Text {
                 x: 8px;
                 text: row.title;
-                color: Theme.subtext1;
+                color: Theme.text-secondary;
                 font-size: Theme.font-small;
                 vertical-alignment: center;
             }
@@ -301,26 +323,148 @@ export component FindView inherits Rectangle {
 export component OutputView inherits Rectangle {
     in property <string> title;
     in property <string> text;
+    in property <[FindRow]> rows;
+    callback open(string, int);
 
-    background: Theme.base;
+    background: Theme.surface;
 
-    if text == "" : Text {
+    if text == "" && rows.length == 0 : Text {
         width: 100%;
         height: 100%;
         text: "No task output yet. Run, build, or test to fill this panel.";
-        color: Theme.overlay0;
+        color: Theme.text-faint;
+        font-size: Theme.font-small;
+        horizontal-alignment: left;
+        vertical-alignment: center;
+    }
+
+    HorizontalLayout {
+        if root.text != "" : ScrollView {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+            Text {
+                text: root.text;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                wrap: no-wrap;
+                horizontal-alignment: left;
+            }
+        }
+
+        if rows.length > 0 : Rectangle {
+            horizontal-stretch: 1;
+            background: Theme.surface-panel;
+
+            VerticalLayout {
+                Rectangle {
+                    height: 18px;
+                    Text {
+                        x: 8px;
+                        text: "PROBLEMS";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                ListView {
+                    for row[i] in root.rows : Rectangle {
+                        height: 20px;
+                        background: touch.has-hover ? Theme.fill-muted : transparent;
+
+                        Text {
+                            x: 8px;
+                            text: "⚠";
+                            color: Theme.danger;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: 28px;
+                            text: row.title;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: 220px;
+                            text: row.detail;
+                            color: Theme.warning;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            width: parent.width - self.x - 8px;
+                        }
+
+                        touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open(row.path, row.line); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component HistoryView inherits Rectangle {
+    in property <[GitHistoryRow]> rows;
+    background: Theme.surface;
+
+    if rows.length == 0 : Text {
+        width: 100%;
+        height: 100%;
+        text: "No history. Open a repository to see commits.";
+        color: Theme.text-faint;
         font-size: Theme.font-small;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 
-    ScrollView {
-        visible: root.text != "";
-        Text {
-            text: root.text;
-            color: Theme.subtext1;
-            font-size: 11px;
-            wrap: no-wrap;
+    ListView {
+        for row[i] in root.rows : Rectangle {
+            height: 24px;
+            background: touch.has-hover ? Theme.fill-muted : transparent;
+
+            Text {
+                x: 8px;
+                width: 70px;
+                text: row.hash;
+                color: Theme.accent;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                x: 82px;
+                width: 150px;
+                text: row.author;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                x: 236px;
+                width: 120px;
+                text: row.date;
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                x: 360px;
+                width: root.width - 368px;
+                text: row.message;
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            touch := TouchArea { mouse-cursor: default; }
         }
     }
 }
@@ -335,6 +479,8 @@ export component BottomDock inherits Rectangle {
     in property <[FindRow]> find-rows;
     in property <string> output-title;
     in property <string> output-text;
+    in property <[FindRow]> output-rows;
+    in property <[GitHistoryRow]> git-history;
 
     callback close();
     callback terminal-new();
@@ -344,17 +490,17 @@ export component BottomDock inherits Rectangle {
     callback find-open(string, int);
 
     height: 200px;
-    background: Theme.mantle;
+    background: Theme.surface-panel;
 
     VerticalLayout {
         Rectangle {
             height: 26px;
-            background: Theme.mantle;
+            background: Theme.surface-panel;
 
             Text {
                 x: 8px;
                 text: root.title;
-                color: Theme.subtext0;
+                color: Theme.text-muted;
                 font-size: Theme.font-small;
                 font-weight: 600;
                 vertical-alignment: center;
@@ -400,6 +546,11 @@ export component BottomDock inherits Rectangle {
         if tool == 2 : OutputView {
             title: root.output-title;
             text: root.output-text;
+            rows: root.output-rows;
+            open(path, line) => { root.find-open(path, line); }
+        }
+        if tool == 3 : HistoryView {
+            rows: root.git-history;
         }
     }
 }

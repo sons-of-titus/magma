@@ -3,14 +3,20 @@
 //! Pure projections: no widget handles, no mutation.  Keeping them here makes
 //! the shell's `refresh` a straight assignment pass.
 
+mod agent;
+mod settings;
+
+pub use agent::{
+    active_session_id, agent_entries, agent_running, agent_session_chips, agent_turns_left,
+};
+pub use settings::settings_rows;
+
 use std::collections::HashSet;
 
-use kernel::project::tree::{
-    relative_to_project, segments, visible_rows, FileNode,
-};
+use kernel::project::tree::{FileNode, relative_to_project, segments, visible_rows};
 use kernel::state::{Editor, MessageKind};
 
-use crate::{AgentLine, ChangeRow, FindRow, MenuItem, TreeItem};
+use crate::{ChangeRow, FindRow, MenuItem, TreeItem};
 
 pub fn focused_key(ed: &Editor) -> Option<usize> {
     ed.view_tree
@@ -32,8 +38,12 @@ pub fn focused_file(ed: &Editor) -> (String, bool) {
 }
 
 pub fn current_path(ed: &Editor) -> String {
-    let Some(key) = focused_key(ed) else { return String::new() };
-    let Some(arc) = ed.buffers.get(key) else { return String::new() };
+    let Some(key) = focused_key(ed) else {
+        return String::new();
+    };
+    let Some(arc) = ed.buffers.get(key) else {
+        return String::new();
+    };
     let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
     let path = buf.path.clone().unwrap_or_else(|| buf.name.clone());
     relative_to_project(ed.project_manager.project.root.as_deref(), &path)
@@ -44,9 +54,13 @@ pub fn breadcrumb_segments(ed: &Editor) -> Vec<String> {
 }
 
 pub fn cursor_position(ed: &Editor) -> String {
-    let Some(key) = focused_key(ed) else { return String::new() };
+    let Some(key) = focused_key(ed) else {
+        return String::new();
+    };
     let offset = ed.view_of_buffer(key).map(|v| v.cursor.offset).unwrap_or(0);
-    let Some(arc) = ed.buffers.get(key) else { return String::new() };
+    let Some(arc) = ed.buffers.get(key) else {
+        return String::new();
+    };
     let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
     let pos = buf.position_of(offset.min(buf.len()));
     format!("Ln {}, Col {}", pos.line + 1, pos.column + 1)
@@ -69,7 +83,6 @@ pub fn status_message(ed: &Editor, fallback: &str, ttl: std::time::Duration) -> 
     (fallback.to_string(), false)
 }
 
-
 pub fn pane_message(ed: &Editor) -> String {
     if focused_key(ed).is_none() {
         "No buffer open. Use File › Open Folder…".to_string()
@@ -85,20 +98,34 @@ pub fn tree_rows(ed: &Editor, nodes: &[FileNode], expanded: &HashSet<String>) ->
     for (key, arc) in &ed.buffers {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         if buf.modified() {
-            let rel = relative_to_project(ed.project_manager.project.root.as_deref(), &buf.path.clone().unwrap_or_else(|| buf.name.clone()));
-            if !rel.is_empty() { modified_files.insert(rel); }
+            let rel = relative_to_project(
+                ed.project_manager.project.root.as_deref(),
+                &buf.path.clone().unwrap_or_else(|| buf.name.clone()),
+            );
+            if !rel.is_empty() {
+                modified_files.insert(rel);
+            }
         }
-        let has_err = buf.get_diagnostics().iter().any(|d| d.severity == kernel::text_engine::diagnostic::DiagnosticSeverity::Error);
+        let has_err = buf
+            .get_diagnostics()
+            .iter()
+            .any(|d| d.severity == kernel::text_engine::diagnostic::DiagnosticSeverity::Error);
         if has_err {
-            let rel = relative_to_project(ed.project_manager.project.root.as_deref(), &buf.path.clone().unwrap_or_else(|| buf.name.clone()));
-            if !rel.is_empty() { error_files.insert(rel); }
+            let rel = relative_to_project(
+                ed.project_manager.project.root.as_deref(),
+                &buf.path.clone().unwrap_or_else(|| buf.name.clone()),
+            );
+            if !rel.is_empty() {
+                error_files.insert(rel);
+            }
         }
         let _ = key;
     }
     visible_rows(nodes, expanded)
         .into_iter()
         .map(|row| {
-            let (icon, color, icon_path, icon_image) = icon_for(ed, &row.name, row.is_dir, row.expanded);
+            let (icon, color, icon_path, icon_image) =
+                icon_for(ed, &row.name, row.is_dir, row.expanded);
             TreeItem {
                 name: row.name.into(),
                 path: row.path.clone().into(),
@@ -117,25 +144,30 @@ pub fn tree_rows(ed: &Editor, nodes: &[FileNode], expanded: &HashSet<String>) ->
         .collect()
 }
 
-fn icon_for(ed: &Editor, name: &str, is_dir: bool, expanded: bool) -> (String, slint::Color, String, slint::Image) {
+fn icon_for(
+    ed: &Editor,
+    name: &str,
+    is_dir: bool,
+    expanded: bool,
+) -> (String, slint::Color, String, slint::Image) {
     let (glyph, color, path) = if is_dir {
         match ed.icons.folder_icon(expanded) {
-            Some(kernel::icons::IconKind::Glyph { glyph, color }) => {
-                (*glyph, color.map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b)), None)
-            }
-            Some(kernel::icons::IconKind::Svg { path }) => {
-                ('\0', None, Some(path.clone()))
-            }
+            Some(kernel::icons::IconKind::Glyph { glyph, color }) => (
+                *glyph,
+                color.map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b)),
+                None,
+            ),
+            Some(kernel::icons::IconKind::Svg { path }) => ('\0', None, Some(path.clone())),
             _ => ('\u{F024B}', None, None),
         }
     } else {
         match ed.icons.lookup(name) {
-            Some(kernel::icons::IconKind::Glyph { glyph, color }) => {
-                (*glyph, color.map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b)), None)
-            }
-            Some(kernel::icons::IconKind::Svg { path }) => {
-                ('\0', None, Some(path.clone()))
-            }
+            Some(kernel::icons::IconKind::Glyph { glyph, color }) => (
+                *glyph,
+                color.map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b)),
+                None,
+            ),
+            Some(kernel::icons::IconKind::Svg { path }) => ('\0', None, Some(path.clone())),
             _ => ('\u{EA7B}', None, None),
         }
     };
@@ -144,13 +176,19 @@ fn icon_for(ed: &Editor, name: &str, is_dir: bool, expanded: bool) -> (String, s
     } else {
         slint::Color::from_rgb_u8(166, 173, 200)
     });
-    let icon_path = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let icon_path = path
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let icon_image = if !icon_path.is_empty() {
         slint::Image::load_from_path(std::path::Path::new(&icon_path)).unwrap_or_default()
     } else {
         slint::Image::default()
     };
-    let glyph_str = if icon_path.is_empty() { glyph.to_string() } else { String::new() };
+    let glyph_str = if icon_path.is_empty() {
+        glyph.to_string()
+    } else {
+        String::new()
+    };
     (glyph_str, color, icon_path, icon_image)
 }
 pub fn menu_title(title: &str) -> &'static str {
@@ -220,7 +258,9 @@ pub fn terminal_text(ed: &Editor) -> String {
         .focused
         .or_else(|| manager.sessions.first().map(|s| s.id));
     let Some(id) = id else { return String::new() };
-    let Some(session) = manager.get(id) else { return String::new() };
+    let Some(session) = manager.get(id) else {
+        return String::new();
+    };
     session.screen.tail(60).join("\n")
 }
 
@@ -244,42 +284,19 @@ pub fn output(ed: &Editor) -> (String, String) {
     }
 }
 
-pub fn agent_lines(ed: &Editor) -> Vec<AgentLine> {
-    let Some(session) = ed.agent.sessions.values().max_by_key(|s| s.id) else {
-        return Vec::new();
-    };
-    let mut lines = vec![AgentLine {
-        text: format!("You: {}", session.prompt).into(),
-        role: "user".into(),
-    }];
-    for entry in &session.transcript {
-        let (text, role) = match entry {
-            kernel::agent::TranscriptEntry::Thought(text) => (text.clone(), "agent"),
-            kernel::agent::TranscriptEntry::Action { command, description } => {
-                (format!("⚒ {command} — {description}"), "action")
+pub fn output_rows(ed: &Editor) -> Vec<FindRow> {
+    ed.quickfix_list
+        .iter()
+        .map(|entry| {
+            let short = entry.filename.rsplit('/').next().unwrap_or(&entry.filename);
+            FindRow {
+                title: format!("{}:{}  {}", short, entry.line, entry.message.trim_end()).into(),
+                detail: entry.message.clone().into(),
+                path: entry.filename.clone().into(),
+                line: entry.line as i32,
             }
-            kernel::agent::TranscriptEntry::StepOutput(text) => (text.clone(), "agent"),
-        };
-        lines.push(AgentLine { text: text.into(), role: role.into() });
-    }
-    lines.push(AgentLine {
-        text: format!("[{}]", session.status.as_str()).into(),
-        role: "agent".into(),
-    });
-    if let Some(result) = &session.result {
-        lines.push(AgentLine { text: result.clone().into(), role: "agent".into() });
-    }
-    if let Some(error) = &session.error {
-        lines.push(AgentLine { text: error.clone().into(), role: "error".into() });
-    }
-    lines
-}
-
-pub fn agent_running(ed: &Editor) -> bool {
-    ed.agent
-        .sessions
-        .values()
-        .any(|s| s.status == kernel::agent::AgentStatus::Running)
+        })
+        .collect()
 }
 
 pub fn running_session(ed: &Editor) -> Option<u64> {
@@ -292,7 +309,9 @@ pub fn running_session(ed: &Editor) -> Option<u64> {
 }
 
 pub fn changes(ed: &Editor) -> Vec<ChangeRow> {
-    let Some(status) = &ed.vc.last_status else { return Vec::new() };
+    let Some(status) = &ed.vc.last_status else {
+        return Vec::new();
+    };
     let mut rows = Vec::new();
     for file in &status.staged {
         rows.push(ChangeRow {
@@ -315,6 +334,13 @@ pub fn changes(ed: &Editor) -> Vec<ChangeRow> {
             staged: false,
         });
     }
+    for path in &status.conflicts {
+        rows.push(ChangeRow {
+            path: path.clone().into(),
+            code: "!".into(),
+            staged: false,
+        });
+    }
     rows
 }
 
@@ -326,11 +352,7 @@ pub fn debug_state(ed: &Editor) -> (bool, Vec<String>, String) {
         .frames
         .iter()
         .map(|frame| {
-            let location = frame
-                .source
-                .as_deref()
-                .map(short_name)
-                .unwrap_or_default();
+            let location = frame.source.as_deref().map(short_name).unwrap_or_default();
             if location.is_empty() {
                 frame.name.clone()
             } else {
@@ -351,8 +373,12 @@ pub fn recent_projects(ed: &Editor) -> Vec<String> {
 }
 
 pub fn status_mode(ed: &Editor) -> String {
-    let Some(key) = focused_key(ed) else { return String::new() };
-    let Some(arc) = ed.buffers.get(key) else { return String::new() };
+    let Some(key) = focused_key(ed) else {
+        return String::new();
+    };
+    let Some(arc) = ed.buffers.get(key) else {
+        return String::new();
+    };
     arc.lock()
         .unwrap_or_else(|e| e.into_inner())
         .major_mode

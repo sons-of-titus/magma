@@ -8,7 +8,7 @@ export component RailButton inherits Rectangle {
 
     width: Theme.rail-width;
     height: 32px;
-    background: active ? Theme.surface0 : (touch.has-hover ? Theme.surface1 : transparent);
+    background: active ? Theme.fill-muted : (touch.has-hover ? Theme.fill : transparent);
 
     // Active tool reads as a 2px accent bar at the window edge.
     Rectangle {
@@ -16,14 +16,14 @@ export component RailButton inherits Rectangle {
         y: 6px;
         width: 2px;
         height: root.height - 12px;
-        background: root.active ? Theme.blue : transparent;
+        background: root.active ? Theme.accent : transparent;
     }
 
     Text {
         text: root.glyph;
-        color: root.active ? Theme.text : Theme.overlay0;
-        font-size: 12px;
-        font-weight: 600;
+        color: root.active ? Theme.text-primary : Theme.text-faint;
+        font-family: "Symbols Nerd Font";
+        font-size: 15px;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -39,7 +39,7 @@ export component ToolRail inherits Rectangle {
     callback selected(int);
 
     width: Theme.rail-width;
-    background: Theme.crust;
+    background: Theme.chrome;
     border-width: 0;
 
     VerticalLayout {
@@ -48,19 +48,19 @@ export component ToolRail inherits Rectangle {
         alignment: start;
 
         RailButton {
-            glyph: "P";
+            glyph: "\u{F024B}";
             name: "Project";
             active: root.active == 0;
             clicked => { root.selected(0); }
         }
         RailButton {
-            glyph: "C";
+            glyph: "\u{F062C}";
             name: "Commit";
             active: root.active == 1;
             clicked => { root.selected(1); }
         }
         RailButton {
-            glyph: "D";
+            glyph: "\u{EAAF}";
             name: "Debugger";
             active: root.active == 2;
             clicked => { root.selected(2); }
@@ -73,7 +73,7 @@ export component RightRail inherits Rectangle {
     callback toggled();
 
     width: Theme.rail-width;
-    background: Theme.crust;
+    background: Theme.chrome;
 
     VerticalLayout {
         padding-top: 8px;
@@ -81,7 +81,7 @@ export component RightRail inherits Rectangle {
         alignment: start;
 
         RailButton {
-            glyph: "A";
+            glyph: "\u{EC20}";
             name: "Agent";
             active: root.open;
             clicked => { root.toggled(); }

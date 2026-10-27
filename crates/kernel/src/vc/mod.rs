@@ -35,6 +35,9 @@ pub struct VcState {
     pub last_status: Option<VcStatus>,
     /// When true the next commit amends instead of creating a new commit.
     pub amend_pending: bool,
+    /// Mutating repository operations dispatched but not yet applied.  The
+    /// Commit window shows a busy state while this is non-zero.
+    pub pending_ops: u32,
     /// The side-by-side editor diff, while one is open.
     pub diff_view: Option<DiffView>,
     /// Branch names for the Commit window's branch widget.
@@ -73,6 +76,7 @@ impl VcState {
             repo_root: None,
             last_status: None,
             amend_pending: false,
+            pending_ops: 0,
             diff_view: None,
             branches: Vec::new(),
             stashes: Vec::new(),

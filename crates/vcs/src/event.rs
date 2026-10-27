@@ -26,9 +26,14 @@ pub enum Event {
     /// A branch list for the Commit window's branch widget finished.
     BranchesReady { branches: Vec<String> },
     /// A stash list for the Commit window's stash section finished.
-    StashListed { result: Result<Vec<StashEntry>, String> },
+    StashListed {
+        result: Result<Vec<StashEntry>, String>,
+    },
     /// A one-file diff bundle (HEAD + worktree + patch) finished.
-    DiffReady { path: String, result: Result<DiffData, String> },
+    DiffReady {
+        path: String,
+        result: Result<DiffData, String>,
+    },
 }
 
 #[cfg(test)]
@@ -51,7 +56,11 @@ mod tests {
             }),
         };
         match event {
-            Event::StatusFetched { backend_idx, root, result } => {
+            Event::StatusFetched {
+                backend_idx,
+                root,
+                result,
+            } => {
                 assert_eq!(backend_idx, 2);
                 assert_eq!(root, PathBuf::from("/repo"));
                 assert_eq!(result.unwrap().branch, "main");
@@ -68,7 +77,11 @@ mod tests {
             result: Err("e".into()),
         };
         match op {
-            Event::OpDone { scratch, then_refresh, result } => {
+            Event::OpDone {
+                scratch,
+                then_refresh,
+                result,
+            } => {
                 assert_eq!(scratch.as_deref(), Some("commit"));
                 assert!(then_refresh);
                 assert_eq!(result, Err("e".to_string()));
@@ -77,16 +90,24 @@ mod tests {
         }
 
         let stash = Event::StashListed {
-            result: Ok(vec![StashEntry { index: 0, message: "wip".into() }]),
+            result: Ok(vec![StashEntry {
+                index: 0,
+                message: "wip".into(),
+            }]),
         };
         match stash {
-            Event::StashListed { result: Ok(stashes) } => {
+            Event::StashListed {
+                result: Ok(stashes),
+            } => {
                 assert_eq!(stashes[0].message, "wip");
             }
             _ => panic!("wrong variant"),
         }
 
-        let diff = Event::DiffReady { path: "src/lib.rs".into(), result: Ok(DiffData::default()) };
+        let diff = Event::DiffReady {
+            path: "src/lib.rs".into(),
+            result: Ok(DiffData::default()),
+        };
         match diff {
             Event::DiffReady { path, result } => {
                 assert_eq!(path, "src/lib.rs");
@@ -95,7 +116,9 @@ mod tests {
             _ => panic!("wrong variant"),
         }
 
-        let branches_event = Event::BranchesReady { branches: vec!["main".into(), "dev".into()] };
+        let branches_event = Event::BranchesReady {
+            branches: vec!["main".into(), "dev".into()],
+        };
         match branches_event {
             Event::BranchesReady { branches } => {
                 assert_eq!(branches, vec!["main".to_string(), "dev".to_string()]);

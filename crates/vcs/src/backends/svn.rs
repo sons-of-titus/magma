@@ -6,28 +6,40 @@ use std::path::{Path, PathBuf};
 pub struct SvnBackend;
 
 impl VcBackend for SvnBackend {
-    fn name(&self) -> &str { "svn" }
+    fn name(&self) -> &str {
+        "svn"
+    }
 
     fn detect(&self, dir: &Path) -> bool {
         let mut d = dir.to_path_buf();
         loop {
-            if d.join(".svn").is_dir() { return true; }
-            if !d.pop() { return false; }
+            if d.join(".svn").is_dir() {
+                return true;
+            }
+            if !d.pop() {
+                return false;
+            }
         }
     }
 
     fn root(&self, dir: &Path) -> Option<PathBuf> {
         // `svn info --show-item wc-root` (svn >= 1.9)
-        run_cmd(dir, "svn", &["info", "--show-item", "wc-root"]).ok()
+        run_cmd(dir, "svn", &["info", "--show-item", "wc-root"])
+            .ok()
             .map(|s| PathBuf::from(s.trim()))
             .or_else(|| {
                 // Fallback: walk up as long as .svn exists
                 let mut d = dir.to_path_buf();
                 let mut root = None;
                 loop {
-                    if d.join(".svn").is_dir() { root = Some(d.clone()); }
-                    else { break; }
-                    if !d.pop() { break; }
+                    if d.join(".svn").is_dir() {
+                        root = Some(d.clone());
+                    } else {
+                        break;
+                    }
+                    if !d.pop() {
+                        break;
+                    }
                 }
                 root
             })
@@ -36,7 +48,8 @@ impl VcBackend for SvnBackend {
     fn status(&self, root: &Path) -> Result<VcStatus, String> {
         // Extract branch from URL (last path component)
         let info = run_cmd(root, "svn", &["info"]).unwrap_or_default();
-        let branch = info.lines()
+        let branch = info
+            .lines()
             .find(|l| l.starts_with("Relative URL:"))
             .and_then(|l| l.split('/').next_back().map(|s| s.to_string()))
             .unwrap_or_else(|| "trunk".into());
@@ -46,22 +59,38 @@ impl VcBackend for SvnBackend {
         let mut untracked = Vec::new();
 
         for line in raw.lines() {
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             let code = line.chars().next().unwrap_or(' ');
             // svn status: first 8 chars are flags, then filename
             let path = line.get(8..).unwrap_or("").trim().to_string();
-            if path.is_empty() { continue; }
-            if code == '?' { untracked.push(path); }
-            else { unstaged.push(FileStatus { code, path }); }
+            if path.is_empty() {
+                continue;
+            }
+            if code == '?' {
+                untracked.push(path);
+            } else {
+                unstaged.push(FileStatus { code, path });
+            }
         }
 
-        Ok(VcStatus { backend_name: "svn".into(), branch, has_staging: false,
-                      staged: vec![], unstaged, untracked, conflicts: vec![] })
+        Ok(VcStatus {
+            backend_name: "svn".into(),
+            branch,
+            has_staging: false,
+            staged: vec![],
+            unstaged,
+            untracked,
+            conflicts: vec![],
+        })
     }
 
     fn diff(&self, root: &Path, file: Option<&str>) -> Result<String, String> {
         let mut args = vec!["diff"];
-        if let Some(f) = file { args.push(f); }
+        if let Some(f) = file {
+            args.push(f);
+        }
         run_cmd(root, "svn", &args)
     }
 

@@ -9,16 +9,18 @@ use crate::{BranchInfo, FileStatus, StashEntry};
 ///
 /// Unmerged pairs (UU, AA, DD, AU/UA, DU/UD) land in `conflicts` — a
 /// conflicted path is one problem, not a staged row plus an unstaged row.
-pub fn parse_porcelain_z(raw: &str)
-    -> (Vec<FileStatus>, Vec<FileStatus>, Vec<String>, Vec<String>)
-{
+pub fn parse_porcelain_z(
+    raw: &str,
+) -> (Vec<FileStatus>, Vec<FileStatus>, Vec<String>, Vec<String>) {
     let mut staged = Vec::new();
     let mut unstaged = Vec::new();
     let mut untracked = Vec::new();
     let mut conflicts = Vec::new();
     let mut fields = raw.split('\0');
     while let Some(rec) = fields.next() {
-        if rec.len() < 3 { continue; }
+        if rec.len() < 3 {
+            continue;
+        }
         let mut chars = rec.chars();
         let x = chars.next().unwrap_or(' ');
         let y = chars.next().unwrap_or(' ');
@@ -28,11 +30,19 @@ pub fn parse_porcelain_z(raw: &str)
         }
         match (x, y) {
             ('?', '?') => untracked.push(path),
-            ('U', 'U') | ('A', 'A') | ('D', 'D')
-            | ('A', 'U') | ('U', 'A') | ('D', 'U') | ('U', 'D') => conflicts.push(path),
+            ('U', 'U')
+            | ('A', 'A')
+            | ('D', 'D')
+            | ('A', 'U')
+            | ('U', 'A')
+            | ('D', 'U')
+            | ('U', 'D') => conflicts.push(path),
             _ => {
                 if x != ' ' && x != '?' {
-                    staged.push(FileStatus { code: x, path: path.clone() });
+                    staged.push(FileStatus {
+                        code: x,
+                        path: path.clone(),
+                    });
                 }
                 if y != ' ' && y != '?' {
                     unstaged.push(FileStatus { code: y, path });
@@ -83,7 +93,8 @@ pub fn split_hunks(diff: &str) -> Vec<String> {
             hunks.last_mut().unwrap().push(line);
         }
     }
-    hunks.into_iter()
+    hunks
+        .into_iter()
         // The trailing newline is load-bearing: a patch whose final line
         // lacks one is "corrupt" to `git apply`.
         .map(|body| format!("{header}{}\n", body.join("\n")))

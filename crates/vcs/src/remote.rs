@@ -14,6 +14,10 @@ use crate::{VcBackend, VcStatus, backends};
 pub enum VcRemoteOp {
     Stage(String),
     Unstage(String),
+    /// Stage every change in the worktree (`git add -A` semantics).
+    StageAll,
+    /// Unstage everything (`git reset` semantics).
+    UnstageAll,
     Diff(Option<String>),
     Log,
     Push,
@@ -56,6 +60,32 @@ pub enum VcRemoteOp {
     Pull,
 }
 
+impl VcRemoteOp {
+    /// Operations that rewrite repository or worktree state.  The Commit
+    /// tool window keeps its actions busy while any of these is in flight;
+    /// read-only ops (diff, log, list) never block the UI.
+    pub fn is_mutating(&self) -> bool {
+        matches!(
+            self,
+            VcRemoteOp::Stage(_)
+                | VcRemoteOp::Unstage(_)
+                | VcRemoteOp::StageAll
+                | VcRemoteOp::UnstageAll
+                | VcRemoteOp::StagePatch(_)
+                | VcRemoteOp::DiscardPatch(_)
+                | VcRemoteOp::DiscardFile(_)
+                | VcRemoteOp::Commit(_)
+                | VcRemoteOp::Amend(_)
+                | VcRemoteOp::Checkout { .. }
+                | VcRemoteOp::StashPush(_)
+                | VcRemoteOp::StashApply { .. }
+                | VcRemoteOp::StashDrop(_)
+                | VcRemoteOp::ResolveOurs(_)
+                | VcRemoteOp::ResolveTheirs(_)
+        )
+    }
+}
+
 /// Run `op` against the named backend at `root`.  Backends are stateless
 /// CLI wrappers, so a fresh detection by name is equivalent to the
 /// foreground's registry entry.
@@ -67,6 +97,8 @@ pub fn run_op(root: &Path, backend_name: &str, op: &VcRemoteOp) -> Result<String
     match op {
         VcRemoteOp::Stage(path) => backend.stage(root, path).map(|_| String::new()),
         VcRemoteOp::Unstage(path) => backend.unstage(root, path).map(|_| String::new()),
+        VcRemoteOp::StageAll => backend.stage_all(root).map(|_| String::new()),
+        VcRemoteOp::UnstageAll => backend.unstage_all(root).map(|_| String::new()),
         VcRemoteOp::Diff(file) => backend.diff(root, file.as_deref()),
         VcRemoteOp::Log => backend.log(root, 30),
         VcRemoteOp::Push => backend.push(root),

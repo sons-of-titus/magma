@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 pub struct GitBackend;
 
 impl VcBackend for GitBackend {
-    fn name(&self) -> &str { "git" }
+    fn name(&self) -> &str {
+        "git"
+    }
 
     fn detect(&self, dir: &Path) -> bool {
         std::process::Command::new("git")
@@ -21,30 +23,52 @@ impl VcBackend for GitBackend {
     }
 
     fn root(&self, dir: &Path) -> Option<PathBuf> {
-        run_cmd(dir, "git", &["rev-parse", "--show-toplevel"]).ok()
+        run_cmd(dir, "git", &["rev-parse", "--show-toplevel"])
+            .ok()
             .map(|s| PathBuf::from(s.trim()))
     }
 
     fn status(&self, root: &Path) -> Result<VcStatus, String> {
         let branch = run_cmd(root, "git", &["rev-parse", "--abbrev-ref", "HEAD"])
             .unwrap_or_else(|_| "HEAD".into())
-            .trim().to_string();
+            .trim()
+            .to_string();
 
         let raw = run_cmd(root, "git", &["status", "--porcelain", "-z"])?;
         let (staged, unstaged, untracked, conflicts) = parse_porcelain_z(&raw);
 
-        Ok(VcStatus { backend_name: "git".into(), branch, has_staging: true, staged, unstaged, untracked, conflicts })
+        Ok(VcStatus {
+            backend_name: "git".into(),
+            branch,
+            has_staging: true,
+            staged,
+            unstaged,
+            untracked,
+            conflicts,
+        })
     }
 
     fn diff(&self, root: &Path, file: Option<&str>) -> Result<String, String> {
         let mut args = vec!["diff", "HEAD"];
-        if let Some(f) = file { args.extend_from_slice(&["--", f]); }
+        if let Some(f) = file {
+            args.extend_from_slice(&["--", f]);
+        }
         run_cmd(root, "git", &args)
     }
 
     fn log(&self, root: &Path, limit: usize) -> Result<String, String> {
         let n = limit.to_string();
-        run_cmd(root, "git", &["log", "--oneline", "--graph", "--decorate", &format!("-{n}")])
+        run_cmd(
+            root,
+            "git",
+            &[
+                "log",
+                "--oneline",
+                "--graph",
+                "--decorate",
+                &format!("-{n}"),
+            ],
+        )
     }
 
     fn stage(&self, root: &Path, file: &str) -> Result<(), String> {
@@ -53,6 +77,14 @@ impl VcBackend for GitBackend {
 
     fn unstage(&self, root: &Path, file: &str) -> Result<(), String> {
         run_cmd(root, "git", &["restore", "--staged", "--", file]).map(|_| ())
+    }
+
+    fn stage_all(&self, root: &Path) -> Result<(), String> {
+        run_cmd(root, "git", &["add", "-A"]).map(|_| ())
+    }
+
+    fn unstage_all(&self, root: &Path) -> Result<(), String> {
+        run_cmd(root, "git", &["reset", "--quiet"]).map(|_| ())
     }
 
     fn commit(&self, root: &Path, message: &str) -> Result<(), String> {
@@ -82,11 +114,23 @@ impl VcBackend for GitBackend {
 
     fn stage_patch(&self, root: &Path, patch: &str) -> Result<(), String> {
         // Zero-context patches (`-U0` hunks) need --unidiff-zero.
-        run_cmd_stdin(root, "git", &["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn"], patch).map(|_| ())
+        run_cmd_stdin(
+            root,
+            "git",
+            &["apply", "--cached", "--unidiff-zero", "--whitespace=nowarn"],
+            patch,
+        )
+        .map(|_| ())
     }
 
     fn discard_patch(&self, root: &Path, patch: &str) -> Result<(), String> {
-        run_cmd_stdin(root, "git", &["apply", "-R", "--unidiff-zero", "--whitespace=nowarn"], patch).map(|_| ())
+        run_cmd_stdin(
+            root,
+            "git",
+            &["apply", "-R", "--unidiff-zero", "--whitespace=nowarn"],
+            patch,
+        )
+        .map(|_| ())
     }
 
     fn hunk_diff(&self, root: &Path, file: &str) -> Result<String, String> {

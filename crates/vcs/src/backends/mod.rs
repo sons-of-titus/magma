@@ -16,4 +16,3 @@ pub use jj::JjBackend;
 pub use parsers::{parse_branch_lines, parse_porcelain_z, parse_stash_lines, split_hunks};
 pub use shell_template::ShellTemplateBackend;
 pub use svn::SvnBackend;
-

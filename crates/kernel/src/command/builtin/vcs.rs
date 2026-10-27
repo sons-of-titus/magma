@@ -219,15 +219,26 @@ pub(crate) fn vc_merge_tool(editor: &mut Editor, path: Option<String>) -> Comman
     Ok(())
 }
 
+/// The repository directory the Commit tool window targets: the opened
+/// project when there is one, else the focused buffer's directory.  The
+/// Commit window is a project-level surface — a pathless scratch buffer must
+/// not silently retarget it at the process cwd.
 pub(crate) fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
-    let buf_id = get_current_buffer_id(editor);
     editor
-        .buffers
-        .get(buf_id)
-        .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
-        .as_deref()
-        .and_then(|p| std::path::Path::new(p).parent())
-        .map(|p| p.to_path_buf())
+        .project_manager
+        .project
+        .root
+        .clone()
+        .or_else(|| {
+            let buf_id = get_current_buffer_id(editor);
+            editor
+                .buffers
+                .get(buf_id)
+                .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).parent())
+                .map(|p| p.to_path_buf())
+        })
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 
@@ -314,6 +325,9 @@ pub(crate) fn vc_spawn_op(
         (Some(b), Some(r)) => (b, r),
         _ => return Err("No active VC backend".to_string()),
     };
+    if op.is_mutating() {
+        editor.vc.pending_ops += 1;
+    }
     let Some(bg) = editor.background.clone() else {
         // No background pool (tests, embedded): synchronous.
         let result = crate::vc::run_op(&root, &backend, &op);
@@ -335,13 +349,16 @@ pub(crate) fn vc_spawn_op(
     Ok(())
 }
 
-/// Apply a finished operation: scratch output, follow-up refresh.
+/// Apply a finished operation: scratch output, follow-up refresh.  Every
+/// dispatched op lands here exactly once, successful or not, so this is also
+/// where the panel's busy counter is released.
 pub(crate) fn apply_vc_op(
     editor: &mut Editor,
     scratch: Option<&str>,
     then_refresh: bool,
     result: Result<String, String>,
 ) -> CommandResult {
+    editor.vc.pending_ops = editor.vc.pending_ops.saturating_sub(1);
     match result {
         Ok(output) => {
             if let Some(name) = scratch {

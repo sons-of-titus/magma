@@ -33,6 +33,20 @@ pub(super) fn register(editor: &mut Editor) {
     );
 
     cmds.register_fn(
+        "vc-stage-all",
+        "Stage every change in the worktree (Commit window)",
+        vec![],
+        |editor, _args| vc_spawn_op(editor, crate::vc::VcRemoteOp::StageAll, None, true),
+    );
+
+    cmds.register_fn(
+        "vc-unstage-all",
+        "Unstage everything (Commit window)",
+        vec![],
+        |editor, _args| vc_spawn_op(editor, crate::vc::VcRemoteOp::UnstageAll, None, true),
+    );
+
+    cmds.register_fn(
         "vc-discard-file",
         "Discard worktree changes to the given path",
         vec![ArgSpec::new("path", ArgType::Path)],

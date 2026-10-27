@@ -12,15 +12,15 @@ pub struct ShellTemplateBackend {
     /// Filename or directory name whose presence (walking ancestors) signals
     /// this VCS. E.g. `".fslckout"` for Fossil.
     pub detect_marker: String,
-    pub root_cmd:    Option<String>,
-    pub status_cmd:  Option<String>,
-    pub diff_cmd:    Option<String>,
-    pub log_cmd:     Option<String>,
-    pub stage_cmd:   Option<String>,
+    pub root_cmd: Option<String>,
+    pub status_cmd: Option<String>,
+    pub diff_cmd: Option<String>,
+    pub log_cmd: Option<String>,
+    pub stage_cmd: Option<String>,
     pub unstage_cmd: Option<String>,
-    pub commit_cmd:  Option<String>,
-    pub push_cmd:    Option<String>,
-    pub blame_cmd:   Option<String>,
+    pub commit_cmd: Option<String>,
+    pub push_cmd: Option<String>,
+    pub blame_cmd: Option<String>,
     pub has_staging: bool,
 }
 
@@ -41,7 +41,14 @@ fn shell_quote(s: &str) -> String {
 }
 
 impl ShellTemplateBackend {
-    fn render(&self, tmpl: &str, dir: &Path, file: Option<&str>, msg: Option<&str>, limit: Option<usize>) -> String {
+    fn render(
+        &self,
+        tmpl: &str,
+        dir: &Path,
+        file: Option<&str>,
+        msg: Option<&str>,
+        limit: Option<usize>,
+    ) -> String {
         // Values are single-quoted into the shell line: a filename or
         // commit message containing shell metacharacters must never become
         // executable syntax.  Template authors keep their own quoting.
@@ -53,7 +60,14 @@ impl ShellTemplateBackend {
         s
     }
 
-    fn run_tmpl(&self, tmpl: &str, dir: &Path, file: Option<&str>, msg: Option<&str>, limit: Option<usize>) -> Result<String, String> {
+    fn run_tmpl(
+        &self,
+        tmpl: &str,
+        dir: &Path,
+        file: Option<&str>,
+        msg: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<String, String> {
         let cmd = self.render(tmpl, dir, file, msg, limit);
         let out = std::process::Command::new("sh")
             .args(["-c", &cmd])
@@ -62,87 +76,126 @@ impl ShellTemplateBackend {
             .map_err(|e| format!("sh: {e}"))?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-        if out.status.success() || stderr.is_empty() { Ok(stdout) } else { Err(stderr) }
+        if out.status.success() || stderr.is_empty() {
+            Ok(stdout)
+        } else {
+            Err(stderr)
+        }
     }
 }
 
 impl VcBackend for ShellTemplateBackend {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn detect(&self, dir: &Path) -> bool {
         let marker = &self.detect_marker;
         let mut d = dir.to_path_buf();
         loop {
-            if d.join(marker).exists() { return true; }
-            if !d.pop() { return false; }
+            if d.join(marker).exists() {
+                return true;
+            }
+            if !d.pop() {
+                return false;
+            }
         }
     }
 
     fn root(&self, dir: &Path) -> Option<PathBuf> {
         let tmpl = self.root_cmd.as_deref()?;
-        self.run_tmpl(tmpl, dir, None, None, None).ok()
+        self.run_tmpl(tmpl, dir, None, None, None)
+            .ok()
             .map(|s| PathBuf::from(s.trim()))
     }
 
     fn status(&self, root: &Path) -> Result<VcStatus, String> {
-        let raw = self.status_cmd.as_ref()
+        let raw = self
+            .status_cmd
+            .as_ref()
             .ok_or_else(|| format!("{}: no status-cmd", self.name))?;
         let out = self.run_tmpl(raw, root, None, None, None)?;
         // Default parse: "X path" lines
         let mut unstaged = Vec::new();
         let mut untracked = Vec::new();
         for line in out.lines() {
-            if line.len() < 3 { continue; }
+            if line.len() < 3 {
+                continue;
+            }
             let code = line.chars().next().unwrap_or(' ');
             let path = line[2..].trim().to_string();
-            if code == '?' { untracked.push(path); } else { unstaged.push(FileStatus { code, path }); }
+            if code == '?' {
+                untracked.push(path);
+            } else {
+                unstaged.push(FileStatus { code, path });
+            }
         }
         Ok(VcStatus {
             backend_name: self.name.clone(),
             branch: String::new(),
             has_staging: self.has_staging,
-            staged: vec![], unstaged, untracked, conflicts: vec![],
+            staged: vec![],
+            unstaged,
+            untracked,
+            conflicts: vec![],
         })
     }
 
     fn diff(&self, root: &Path, file: Option<&str>) -> Result<String, String> {
-        let tmpl = self.diff_cmd.as_deref()
+        let tmpl = self
+            .diff_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: no diff-cmd", self.name))?;
         self.run_tmpl(tmpl, root, file, None, None)
     }
 
     fn log(&self, root: &Path, limit: usize) -> Result<String, String> {
-        let tmpl = self.log_cmd.as_deref()
+        let tmpl = self
+            .log_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: no log-cmd", self.name))?;
         self.run_tmpl(tmpl, root, None, None, Some(limit))
     }
 
     fn stage(&self, root: &Path, file: &str) -> Result<(), String> {
-        let tmpl = self.stage_cmd.as_deref()
+        let tmpl = self
+            .stage_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: staging not supported", self.name))?;
-        self.run_tmpl(tmpl, root, Some(file), None, None).map(|_| ())
+        self.run_tmpl(tmpl, root, Some(file), None, None)
+            .map(|_| ())
     }
 
     fn unstage(&self, root: &Path, file: &str) -> Result<(), String> {
-        let tmpl = self.unstage_cmd.as_deref()
+        let tmpl = self
+            .unstage_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: unstaging not supported", self.name))?;
-        self.run_tmpl(tmpl, root, Some(file), None, None).map(|_| ())
+        self.run_tmpl(tmpl, root, Some(file), None, None)
+            .map(|_| ())
     }
 
     fn commit(&self, root: &Path, message: &str) -> Result<(), String> {
-        let tmpl = self.commit_cmd.as_deref()
+        let tmpl = self
+            .commit_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: no commit-cmd", self.name))?;
-        self.run_tmpl(tmpl, root, None, Some(message), None).map(|_| ())
+        self.run_tmpl(tmpl, root, None, Some(message), None)
+            .map(|_| ())
     }
 
     fn push(&self, root: &Path) -> Result<String, String> {
-        let tmpl = self.push_cmd.as_deref()
+        let tmpl = self
+            .push_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: no push-cmd", self.name))?;
         self.run_tmpl(tmpl, root, None, None, None)
     }
 
     fn blame(&self, root: &Path, file: &str) -> Result<String, String> {
-        let tmpl = self.blame_cmd.as_deref()
+        let tmpl = self
+            .blame_cmd
+            .as_deref()
             .ok_or_else(|| format!("{}: no blame-cmd", self.name))?;
         self.run_tmpl(tmpl, root, Some(file), None, None)
     }

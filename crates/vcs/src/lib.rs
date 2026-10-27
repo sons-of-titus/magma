@@ -83,6 +83,16 @@ pub trait VcBackend: Send + Sync {
     /// Unstage a file. Returns `Err` when staging is not supported.
     fn unstage(&self, root: &Path, file: &str) -> Result<(), String>;
 
+    /// Stage every change in the worktree, including untracked files.
+    fn stage_all(&self, _root: &Path) -> Result<(), String> {
+        Err(format!("{}: stage-all not supported", self.name()))
+    }
+
+    /// Unstage everything, keeping the worktree.
+    fn unstage_all(&self, _root: &Path) -> Result<(), String> {
+        Err(format!("{}: unstage-all not supported", self.name()))
+    }
+
     fn commit(&self, root: &Path, message: &str) -> Result<(), String>;
     fn push(&self, root: &Path) -> Result<String, String>;
     fn blame(&self, root: &Path, file: &str) -> Result<String, String>;

@@ -10,7 +10,7 @@ use crate::IndexRecord;
 #[derive(Debug, Clone)]
 pub enum Event {
     /// A project's file list finished indexing.
-    ProjectIndexed { project_name: String, files: Vec<String> },
+    ProjectIndexed { project_name: String, files: Vec<String>, ignored_files: Vec<String> },
     /// One file's symbol extraction finished and is ready to merge.
     RecordArrived(IndexRecord),
 }

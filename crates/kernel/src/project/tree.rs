@@ -11,6 +11,7 @@ pub struct FileNode {
     pub name:     String,
     pub path:     String,
     pub is_dir:   bool,
+    pub ignored:  bool,
     pub children: Vec<FileNode>,
 }
 
@@ -21,6 +22,7 @@ pub struct TreeRow {
     pub path:     String,
     pub depth:    usize,
     pub is_dir:   bool,
+    pub ignored:  bool,
     pub expanded: bool,
 }
 
@@ -45,6 +47,7 @@ fn insert(nodes: &mut Vec<FileNode>, parts: &[&str], prefix: &str) {
             name: name.to_string(),
             path: node_path,
             is_dir: false,
+            ignored: false,
             children: vec![],
         });
     } else {
@@ -52,6 +55,7 @@ fn insert(nodes: &mut Vec<FileNode>, parts: &[&str], prefix: &str) {
             name: name.to_string(),
             path: node_path.clone(),
             is_dir: true,
+            ignored: false,
             children: vec![],
         };
         insert(&mut dir.children, &parts[1..], &node_path);
@@ -70,7 +74,7 @@ fn sort_nodes(nodes: &mut [FileNode]) {
     }
 }
 
-pub fn build(files: &[String]) -> Vec<FileNode> {
+pub fn build(files: &[String], ignored: &HashSet<String>) -> Vec<FileNode> {
     let mut roots: Vec<FileNode> = Vec::new();
     for path in files {
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
@@ -79,6 +83,16 @@ pub fn build(files: &[String]) -> Vec<FileNode> {
         }
         insert(&mut roots, &parts, "");
     }
+    // Mark ignored nodes.
+    fn mark(nodes: &mut [FileNode], ignored: &HashSet<String>) {
+        for n in nodes.iter_mut() {
+            if ignored.contains(&n.path) {
+                n.ignored = true;
+            }
+            mark(&mut n.children, ignored);
+        }
+    }
+    mark(&mut roots, ignored);
     sort_nodes(&mut roots);
     roots
 }
@@ -102,6 +116,7 @@ pub fn visible_rows(nodes: &[FileNode], expanded: &HashSet<String>) -> Vec<TreeR
                 path: node.path.clone(),
                 depth,
                 is_dir: node.is_dir,
+                ignored: node.ignored,
                 expanded: open,
             });
             if open {

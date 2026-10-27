@@ -10,7 +10,7 @@ pub(crate) enum Bar { Add, Del }
 
 /// One parsed `@@ -a,b +c,d @@` hunk range (1-based; lengths may be 0).
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) struct HunkRange {
+pub struct HunkRange {
     pub old_start: usize,
     pub old_len: usize,
     pub new_start: usize,
@@ -18,7 +18,7 @@ pub(crate) struct HunkRange {
 }
 
 /// Parse `@@ -a,b +c,d @@` headers; omitted lengths mean 1.
-pub(crate) fn parse_hunks(patch: &str) -> Vec<HunkRange> {
+pub fn parse_hunks(patch: &str) -> Vec<HunkRange> {
     patch.lines().filter_map(parse_hunk_header).collect()
 }
 
@@ -40,7 +40,7 @@ fn parse_range(s: &str) -> Option<(usize, usize)> {
 
 /// Does `hunk` cover 0-based `line` on the new side?  A pure deletion has no
 /// new-side lines, so it matches the position where the lines used to be.
-pub(crate) fn hunk_covers(hunk: &HunkRange, line: usize) -> bool {
+pub fn hunk_covers(hunk: &HunkRange, line: usize) -> bool {
     let target = line + 1;
     if hunk.new_len == 0 {
         return target == hunk.new_start;
@@ -49,7 +49,7 @@ pub(crate) fn hunk_covers(hunk: &HunkRange, line: usize) -> bool {
 }
 
 /// 0-based changed line numbers on one side of the patch.
-pub(crate) fn changed_lines(hunks: &[HunkRange], left: bool) -> Vec<usize> {
+pub fn changed_lines(hunks: &[HunkRange], left: bool) -> Vec<usize> {
     let mut out = Vec::new();
     for h in hunks {
         let (start, len) = if left { (h.old_start, h.old_len) } else { (h.new_start, h.new_len) };

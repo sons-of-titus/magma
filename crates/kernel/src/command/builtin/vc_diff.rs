@@ -86,7 +86,7 @@ pub(super) fn register(editor: &mut Editor) {
 
 /// Fetch the HEAD blob, the working-tree content, and the zero-context patch
 /// off the interactive path; `Vc(DiffReady)` opens the two panes.
-pub(crate) fn spawn_diff(editor: &mut Editor, path: String) -> CommandResult {
+pub fn spawn_diff(editor: &mut Editor, path: String) -> CommandResult {
     let (backend, root) = active(editor)?;
     if let Some(bg) = editor.background.clone() {
         let sender = bg.sender.clone();

@@ -151,7 +151,7 @@ fn dispatch_gutter_click(
         line: abs_line.to_string(),
         buf: buf_id.to_string(),
     });
-    ed.events.drain_and_dispatch();
+    crate::script_runtime::dispatch_events(ed);
 }
 
 /// Move cursor to the clicked text position and fire events.
@@ -225,7 +225,7 @@ fn dispatch_text_click(
         col,
         button: format!("{:?}", event.button),
     });
-    ed.events.drain_and_dispatch();
+    crate::script_runtime::dispatch_events(ed);
 }
 
 /// Bounds of the word run around `offset` (alphanumeric + underscore).
@@ -326,7 +326,7 @@ pub fn resolve_click_to_offset(
 
 /// Map a viewport row to its buffer line, mirroring EditorView's fold-aware
 /// row walk.  A click on a fold header row lands on the fold's first line.
-pub(crate) fn visible_row_to_abs_line(
+pub fn visible_row_to_abs_line(
     ed: &Editor,
     buf_id: usize,
     scroll_top: usize,
@@ -422,7 +422,7 @@ fn dispatch_drag(ed: &mut Editor, _surface: &Surface, event: &MouseEvent) {
         buf: buf_id.to_string(),
         start_line, start_col, end_line, end_col,
     });
-    ed.events.drain_and_dispatch();
+    crate::script_runtime::dispatch_events(ed);
 }
 
 // ── Scroll ────────────────────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ fn dispatch_release(ed: &mut Editor) {
 /// pane showing no buffer must never swallow a click or a wheel event meant
 /// for the visible buffer.  Stacked tab panes share an area and only the
 /// focused one is visible and clickable.
-pub(crate) fn hit_test_pane(ed: &Editor, x: u16, y: u16) -> Option<(Pane, usize)> {
+pub fn hit_test_pane(ed: &Editor, x: u16, y: u16) -> Option<(Pane, usize)> {
     let focused = ed.view_tree.focused_window();
     for (i, pane) in ed.view_tree.panes().iter().enumerate().rev() {
         if pane.buffer_id.is_none()

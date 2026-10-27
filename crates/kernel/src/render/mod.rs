@@ -9,7 +9,7 @@ pub use view_tree;
 pub mod editor_view;
 pub mod gutter;
 pub mod gutter_providers;
-pub(crate) mod highlight_pass;
+pub mod highlight_pass;
 pub use gpu::gpu_atlas;
 pub use row_layout;
 pub mod decorations;

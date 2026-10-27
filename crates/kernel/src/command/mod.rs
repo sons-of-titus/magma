@@ -11,7 +11,7 @@ pub type CommandResult = Result<(), String>;
 pub(crate) type CommandFn =
     dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync;
 
-pub(crate) struct CommandEntry {
+pub struct CommandEntry {
     pub(crate) description: String,
     pub(crate) args: Vec<ArgSpec>,
     pub(crate) handler: Arc<CommandFn>,
@@ -219,7 +219,7 @@ fn is_change_command(name: &str) -> bool {
 
 // Make commands field accessible from execute_command
 impl CommandRegistry {
-    pub(crate) fn get_entry(&self, name: &str) -> Option<&CommandEntry> {
+    pub fn get_entry(&self, name: &str) -> Option<&CommandEntry> {
         self.commands.get(name)
     }
 }

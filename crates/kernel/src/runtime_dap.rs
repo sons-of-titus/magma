@@ -57,7 +57,7 @@ fn evaluate_watches(ed: &mut Editor, session_id: u64, frame_id: u64) {
     }
 }
 
-pub(crate) fn apply_dap_command_result(
+pub fn apply_dap_command_result(
     ed: &mut Editor,
     session_id: u64,
     command: &str,

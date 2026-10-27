@@ -10,7 +10,7 @@
 //!   `ProjectManager`  — active project + registry + run configurations
 //!   `ProjectMember` / `Workspace` — monorepo grouping
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::run_config::RunConfigManager;
@@ -71,6 +71,7 @@ pub struct Project {
     pub name: Option<String>,
     pub workspace: Option<Workspace>,
     pub files: Vec<String>,
+    pub ignored_files: HashSet<String>,
     /// Bumped whenever the file list is rebuilt — render caches key on it.
     pub files_epoch: u64,
     pub file_index_dirty: bool,
@@ -270,11 +271,12 @@ pub fn index_change_marks_dirty(root: &std::path::Path, path: &str, kind: &str, 
 /// Recursively list files under `dir`, skipping VCS/build/dependency dirs.
 /// Paths are stored **relative to `root`** — the project's canonical file
 /// identity everywhere (sidebar tree, quick-open, project graph).
-fn walk_dir(dir: &std::path::Path, root: &std::path::Path) -> std::io::Result<Vec<String>> {
+fn walk_dir(dir: &std::path::Path, root: &std::path::Path) -> std::io::Result<(Vec<String>, HashSet<String>)> {
     let mut files = Vec::new();
+    let mut ignored = HashSet::new();
     let mut stack = gitignore::IgnoreStack::default();
-    walk_inner(dir, root, &mut stack, &mut files, 0)?;
-    Ok(files)
+    walk_inner(dir, root, &mut stack, &mut files, &mut ignored, 0)?;
+    Ok((files, ignored))
 }
 
 /// Recursion depth cap: a pathological tree (or a bug in the symlink
@@ -286,6 +288,7 @@ fn walk_inner(
     root: &std::path::Path,
     stack: &mut gitignore::IgnoreStack,
     files: &mut Vec<String>,
+    ignored: &mut HashSet<String>,
     depth: usize,
 ) -> std::io::Result<()> {
     if depth > MAX_WALK_DEPTH {
@@ -298,25 +301,32 @@ fn walk_inner(
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            // file_type() does not follow symlinks: a repo-planted link
-            // can neither loop the walk nor pull outside trees in.
             let ft = entry.file_type()?;
             if ft.is_symlink() {
                 continue;
             }
             let is_dir = ft.is_dir();
-            if stack.ignored(&path, is_dir) {
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            // Hardcoded ignored dirs (dot, node_modules, target): skip entirely.
+            if is_dir && index_ignored_dir(&name) {
                 continue;
             }
-            if is_dir {
-                let name = path.file_name().map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                if index_ignored_dir(&name) {
-                    continue;
+            let gitignored = stack.ignored(&path, is_dir);
+            let rel = path.strip_prefix(root).ok().and_then(|p| p.to_str()).map(|s| s.to_string());
+            if gitignored {
+                if let Some(r) = &rel {
+                    ignored.insert(r.clone());
                 }
-                walk_inner(&path, root, stack, files, depth + 1)?;
-            } else if let Some(rel) = path.strip_prefix(root).ok().and_then(|p| p.to_str()) {
-                files.push(rel.to_string());
+            }
+            if is_dir {
+                if gitignored {
+                    // Marked ignored; don't descend to avoid flooding.
+                } else {
+                    walk_inner(&path, root, stack, files, ignored, depth + 1)?;
+                }
+            } else if let Some(r) = rel {
+                files.push(r);
             }
         }
         Ok(())
@@ -337,18 +347,19 @@ pub fn spawn_file_index(ed: &mut crate::state::Editor) -> bool {
     let sender = bg.sender.clone();
     ed.project_manager.project.file_index_dirty = false;
     bg.spawn_blocking(move || {
-        let files = walk_dir(&root, &root).unwrap_or_default();
+        let (files, ignored) = walk_dir(&root, &root).unwrap_or_default();
+        let ignored: Vec<String> = ignored.into_iter().collect();
         let _ = sender.send(crate::runtime::BackgroundEvent::Index(
             crate::index::Event::ProjectIndexed {
                 project_name: name,
                 files,
+                ignored_files: ignored,
             }));
     });
     true
 }
 
 /// Test entry point: the index walk over `root`.
-#[cfg(test)]
 pub fn walk_files_for_test(root: &std::path::Path) -> Vec<String> {
-    walk_dir(root, root).unwrap_or_default()
+    walk_dir(root, root).map(|(files, _)| files).unwrap_or_default()
 }

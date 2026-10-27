@@ -13,11 +13,15 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             ed.io.terminals.apply_output(terminal_id, &data);
         }
         BackgroundEvent::TerminalExited { terminal_id, exit_code } => {
-            if exit_code != 0 {
-                ed.show_message(crate::state::MessageKind::Error,
-                    format!("terminal exited with code {exit_code}"));
+            // A session that is already gone was closed by the user; only a
+            // session that was still tracked exited on its own.
+            if ed.io.terminals.get(terminal_id).is_some() {
+                if exit_code != 0 {
+                    ed.show_message(crate::state::MessageKind::Error,
+                        format!("terminal exited with code {exit_code}"));
+                }
+                ed.io.terminals.close(terminal_id);
             }
-            ed.io.terminals.close(terminal_id);
             if ed.io.terminals.focused.is_none() && ed.editor_mode.name == "terminal" {
                 crate::terminal::set_focused(ed, None);
             }

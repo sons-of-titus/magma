@@ -204,7 +204,7 @@ impl TerminalManager {
 /// U+FFFD.  Returns the decoded text; an incomplete trailing sequence
 /// stays in `pending` for the next chunk, genuinely invalid bytes are
 /// dropped (as U+FFFD at their position).
-pub(crate) fn decode_chunk(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
+pub fn decode_chunk(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
     pending.extend_from_slice(chunk);
     let mut out = String::new();
     loop {

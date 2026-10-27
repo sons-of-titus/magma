@@ -45,6 +45,18 @@ impl RunConfigManager {
         }
     }
 
+    pub fn launch_config_helper(
+        &mut self,
+        cfg: RunConfig,
+        scheduler: &mut TaskScheduler,
+        bg: &BackgroundHandle,
+        root: &std::path::Path,
+    ) -> Result<u64, String> {
+        self.upsert(cfg);
+        let name = self.configs.last().unwrap().name.clone();
+        self.launch(&name, scheduler, bg, root)
+    }
+
     pub fn remove(&mut self, name: &str) {
         self.configs.retain(|c| c.name != name);
         if self.active.as_deref() == Some(name) {

@@ -17,7 +17,7 @@ pub mod vcs;
 pub(crate) mod vc_ops;
 pub(crate) mod vc_actions;
 pub mod vc_diff;
-pub(crate) mod vc_hunks;
+pub mod vc_hunks;
 mod completion;
 mod misc;
 mod project_cmds;

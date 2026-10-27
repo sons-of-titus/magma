@@ -17,14 +17,16 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
 fn handle_index_event(ed: &mut Editor, event: crate::index::Event) {
     use crate::index::Event;
     match event {
-        Event::ProjectIndexed { project_name, files } => {
+        Event::ProjectIndexed { project_name, files, ignored_files } => {
             if let Some(proj) = ed.project_manager.projects.get_mut(&project_name) {
                 proj.files = files.clone();
+                proj.ignored_files = ignored_files.iter().cloned().collect();
                 proj.files_epoch += 1;
                 proj.file_index_dirty = false;
             }
             if ed.project_manager.current_project.as_deref() == Some(&project_name) {
                 ed.project_manager.project.files = files.clone();
+                ed.project_manager.project.ignored_files = ignored_files.iter().cloned().collect();
                 ed.project_manager.project.files_epoch += 1;
                 ed.project_manager.project.file_index_dirty = false;
                 ed.project_manager.sync_to_project_graph(&mut ed.semantic.project_graph);

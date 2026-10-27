@@ -42,14 +42,20 @@ impl crate::debug::EventSink for BackgroundHandle {
 
 impl BackgroundHandle {
     pub fn new(runtime: Arc<Runtime>, sender: mpsc::UnboundedSender<BackgroundEvent>) -> Self {
-        Self { pool: bgpool::Pool::new(runtime, sender) }
+        Self {
+            pool: bgpool::Pool::new(runtime, sender),
+        }
     }
 
     pub fn read_file(&self, path: String, request_id: u64) {
         let sender = self.sender.clone();
         self.spawn_blocking(move || {
             let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
-            let _ = sender.send(BackgroundEvent::FileReadResult { path, content, request_id });
+            let _ = sender.send(BackgroundEvent::FileReadResult {
+                path,
+                content,
+                request_id,
+            });
         });
     }
 
@@ -63,7 +69,11 @@ impl BackgroundHandle {
                 std::fs::write(&path, &content).map_err(|e| e.to_string())?;
                 Ok(())
             })();
-            let _ = sender.send(BackgroundEvent::FileWriteResult { path, result, request_id });
+            let _ = sender.send(BackgroundEvent::FileWriteResult {
+                path,
+                result,
+                request_id,
+            });
         });
     }
 }

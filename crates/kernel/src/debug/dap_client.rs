@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::types::SessionId;
 
@@ -29,7 +29,9 @@ pub struct DapHandle {
 
 impl std::fmt::Debug for DapHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DapHandle").field("session_id", &self.session_id).finish()
+        f.debug_struct("DapHandle")
+            .field("session_id", &self.session_id)
+            .finish()
     }
 }
 
@@ -55,9 +57,13 @@ impl DapHandle {
             .spawn()
             .map_err(|e| format!("Failed to spawn debug adapter '{adapter}': {e}"))?;
 
-        let stdin = child.stdin.take()
+        let stdin = child
+            .stdin
+            .take()
             .ok_or_else(|| "adapter stdin unavailable".to_string())?;
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| "adapter stdout unavailable".to_string())?;
 
         let (outbound, outbound_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
@@ -87,13 +93,16 @@ impl DapHandle {
         };
 
         // The awaited handshake.
-        handle.request("initialize", json!({
-            "clientID": "magma",
-            "adapterID": "magma",
-            "linesStartAt1": true,
-            "columnsStartAt1": true,
-            "pathFormat": "path",
-        }));
+        handle.request(
+            "initialize",
+            json!({
+                "clientID": "magma",
+                "adapterID": "magma",
+                "linesStartAt1": true,
+                "columnsStartAt1": true,
+                "pathFormat": "path",
+            }),
+        );
         match init_rx.recv_timeout(INIT_TIMEOUT) {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
@@ -146,14 +155,18 @@ impl DapHandle {
 
     pub fn kill(&self) {
         if let Ok(mut guard) = self.child.lock()
-            && let Some(mut child) = guard.take() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
+            && let Some(mut child) = guard.take()
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
-fn writer_loop(mut stdin: std::process::ChildStdin, rx: tokio::sync::mpsc::UnboundedReceiver<Value>) {
+fn writer_loop(
+    mut stdin: std::process::ChildStdin,
+    rx: tokio::sync::mpsc::UnboundedReceiver<Value>,
+) {
     use std::io::Write;
     let mut rx = rx;
     while let Some(msg) = rx.blocking_recv() {
@@ -191,20 +204,36 @@ fn dispatch_dap_message<S: super::EventSink>(
             let event_name = v.get("event").and_then(Value::as_str).unwrap_or("");
             match event_name {
                 "stopped" => {
-                    let reason = v.pointer("/body/reason").and_then(Value::as_str)
-                        .unwrap_or("unknown").to_string();
-                    let thread_id = v.pointer("/body/threadId").and_then(Value::as_u64).unwrap_or(0);
+                    let reason = v
+                        .pointer("/body/reason")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let thread_id = v
+                        .pointer("/body/threadId")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0);
                     sink.send(super::Event::Stopped {
-                        session_id, reason, thread_id,
+                        session_id,
+                        reason,
+                        thread_id,
                     });
                 }
                 "output" => {
-                    let category = v.pointer("/body/category").and_then(Value::as_str)
-                        .unwrap_or("console").to_string();
-                    let output = v.pointer("/body/output").and_then(Value::as_str)
-                        .unwrap_or("").to_string();
+                    let category = v
+                        .pointer("/body/category")
+                        .and_then(Value::as_str)
+                        .unwrap_or("console")
+                        .to_string();
+                    let output = v
+                        .pointer("/body/output")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
                     sink.send(super::Event::Output {
-                        session_id, category, output,
+                        session_id,
+                        category,
+                        output,
                     });
                 }
                 "breakpoint" => {
@@ -228,15 +257,25 @@ fn dispatch_dap_message<S: super::EventSink>(
             let command = v.get("command").and_then(Value::as_str).unwrap_or("");
             if command == "initialize" {
                 let failed = !v.get("success").and_then(Value::as_bool).unwrap_or(false);
-                let error = v.pointer("/message").and_then(Value::as_str).unwrap_or("adapter error");
+                let error = v
+                    .pointer("/message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("adapter error");
                 if let Ok(tx) = core.init_signal.lock() {
-                    let _ = tx.send(if failed { Err(error.to_string()) } else { Ok(()) });
+                    let _ = tx.send(if failed {
+                        Err(error.to_string())
+                    } else {
+                        Ok(())
+                    });
                 }
                 return;
             }
             if command == "evaluate" && v.get("success").and_then(Value::as_bool).unwrap_or(false) {
-                let result = v.pointer("/body/result").and_then(Value::as_str)
-                    .unwrap_or("").to_string();
+                let result = v
+                    .pointer("/body/result")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 sink.send(super::Event::Response {
                     session_id,
                     event_type: "evaluate".to_string(),
@@ -244,8 +283,8 @@ fn dispatch_dap_message<S: super::EventSink>(
                 });
                 return;
             }
-            let body = serde_json::to_string(v.get("body").unwrap_or(&Value::Null))
-                .unwrap_or_default();
+            let body =
+                serde_json::to_string(v.get("body").unwrap_or(&Value::Null)).unwrap_or_default();
             sink.send(super::Event::CommandResult {
                 session_id,
                 command: command.to_string(),
@@ -263,7 +302,7 @@ mod tests {
     use std::sync::atomic::AtomicI64;
     use std::sync::{Arc, Mutex};
 
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     use super::*;
     use crate::debug::{Event, EventSink};
@@ -325,7 +364,10 @@ mod tests {
         );
 
         assert_eq!(init_rx.recv().unwrap(), Ok(()));
-        assert!(sink.events().is_empty(), "the handshake response is not a user event");
+        assert!(
+            sink.events().is_empty(),
+            "the handshake response is not a user event"
+        );
     }
 
     #[test]
@@ -363,7 +405,11 @@ mod tests {
         );
 
         match &sink.events()[0] {
-            Event::Stopped { session_id, reason, thread_id } => {
+            Event::Stopped {
+                session_id,
+                reason,
+                thread_id,
+            } => {
                 assert_eq!(*session_id, 4);
                 assert_eq!(reason, "breakpoint");
                 assert_eq!(*thread_id, 2);
@@ -385,7 +431,11 @@ mod tests {
         );
 
         match &sink.events()[0] {
-            Event::Output { session_id, category, output } => {
+            Event::Output {
+                session_id,
+                category,
+                output,
+            } => {
                 assert_eq!(*session_id, 4);
                 assert_eq!(category, "console");
                 assert_eq!(output, "hi\n");
@@ -425,7 +475,11 @@ mod tests {
         );
 
         match &sink.events()[0] {
-            Event::Response { session_id, event_type, data } => {
+            Event::Response {
+                session_id,
+                event_type,
+                data,
+            } => {
                 assert_eq!(*session_id, 4);
                 assert_eq!(event_type, "evaluate");
                 assert_eq!(data, "42");
@@ -450,7 +504,12 @@ mod tests {
         );
 
         match &sink.events()[0] {
-            Event::CommandResult { session_id, command, success, body } => {
+            Event::CommandResult {
+                session_id,
+                command,
+                success,
+                body,
+            } => {
                 assert_eq!(*session_id, 4);
                 assert_eq!(command, "stackTrace");
                 assert!(!success);
@@ -474,9 +533,12 @@ mod tests {
 
     #[test]
     fn start_reports_a_missing_binary() {
-        let err = DapHandle::start("magma-no-such-dap-binary-9f1c", 1, None, Collect::new())
-            .unwrap_err();
+        let err =
+            DapHandle::start("magma-no-such-dap-binary-9f1c", 1, None, Collect::new()).unwrap_err();
 
-        assert!(err.contains("Failed to spawn debug adapter"), "unexpected error: {err}");
+        assert!(
+            err.contains("Failed to spawn debug adapter"),
+            "unexpected error: {err}"
+        );
     }
 }

@@ -15,6 +15,7 @@ pub mod view;
 pub mod buffer;
 mod breakpoint_anchors;
 pub use buffer::Buffer;
+pub use buffer::ImageData;
 mod fold;
 
 // Phase-1 primitives (docs/core-redesign.md): the transaction core below

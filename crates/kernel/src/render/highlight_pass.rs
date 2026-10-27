@@ -6,9 +6,9 @@
 //! re-segments the row.
 
 use crate::render::row_layout::RowLayout;
-use crate::text_engine::BufferView;
-use crate::state::Editor;
 use crate::render::surface::{Style, Surface};
+use crate::state::Editor;
+use crate::text_engine::BufferView;
 
 /// Restyle `w` cells starting at column `col` with `style`, stamping the
 /// grapheme's lead char on the first cell (already there from the text
@@ -16,11 +16,21 @@ use crate::render::surface::{Style, Surface};
 /// `scroll_left` is the pane's first visible column: cells left of it stay
 /// off-screen, and everything else shifts left by it.
 #[allow(clippy::too_many_arguments)]
-fn paint_cells(surface: &mut Surface, content_x: u16, surf_row: u16, col: usize, w: usize,
-               lead: char, style: Style, scroll_left: usize) {
+fn paint_cells(
+    surface: &mut Surface,
+    content_x: u16,
+    surf_row: u16,
+    col: usize,
+    w: usize,
+    lead: char,
+    style: Style,
+    scroll_left: usize,
+) {
     for k in 0..w {
         let cell_col = col + k;
-        if cell_col < scroll_left { continue; }
+        if cell_col < scroll_left {
+            continue;
+        }
         let sx = content_x + (cell_col - scroll_left) as u16;
         if sx < surface.width {
             let ch = if k == 0 { lead } else { ' ' };
@@ -54,24 +64,29 @@ pub fn apply_highlights(
     // Borrowed, in layer order.  No per-frame clones: syntax layers can hold
     // thousands of ranges, and this runs every repaint.
     let mut all_highlights: Vec<(usize, usize, &str)> = Vec::new();
-    for (s, e, f) in highlights { all_highlights.push((*s, *e, f)); }
+    for (s, e, f) in highlights {
+        all_highlights.push((*s, *e, f));
+    }
     for layer_name in &layer_order {
         if let Some(layer) = highlight_layers.get(*layer_name) {
-            for (s, e, f) in layer { all_highlights.push((*s, *e, f)); }
+            for (s, e, f) in layer {
+                all_highlights.push((*s, *e, f));
+            }
         }
     }
     for (layer_name, layer) in highlight_layers {
         if !layer_order.contains(&layer_name.as_str()) {
-            for (s, e, f) in layer { all_highlights.push((*s, *e, f)); }
+            for (s, e, f) in layer {
+                all_highlights.push((*s, *e, f));
+            }
         }
     }
 
     if !all_highlights.is_empty() {
-        let row_ranges: Vec<(usize, usize)> =
-            rows.iter().map(|(s, e, _)| (*s, *e)).collect();
+        let row_ranges: Vec<(usize, usize)> = rows.iter().map(|(s, e, _)| (*s, *e)).collect();
 
         let visible_byte_start = row_ranges.first().map(|(s, _)| *s).unwrap_or(0);
-        let visible_byte_end   = row_ranges.last().map(|(_, e)| *e).unwrap_or(0);
+        let visible_byte_end = row_ranges.last().map(|(_, e)| *e).unwrap_or(0);
         let fallback_style = Style {
             fg: editor.theme_color("highlight-fg"),
             bg: editor.theme_color("highlight-bg"),
@@ -79,23 +94,44 @@ pub fn apply_highlights(
         };
 
         for &(hl_start, hl_end, face_name) in &all_highlights {
-            if hl_end <= visible_byte_start || hl_start >= visible_byte_end { continue; }
-            let style = editor.resolve_face_style(face_name).unwrap_or(fallback_style);
+            if hl_end <= visible_byte_start || hl_start >= visible_byte_end {
+                continue;
+            }
+            let style = editor
+                .resolve_face_style(face_name)
+                .unwrap_or(fallback_style);
 
             for (vis_row, (line_start, line_end)) in row_ranges.iter().enumerate() {
-                if hl_end <= *line_start { break; }
-                if hl_start >= *line_end { continue; }
+                if hl_end <= *line_start {
+                    break;
+                }
+                if hl_start >= *line_end {
+                    continue;
+                }
                 let surf_row = row_offset + vis_row as u16;
-                let Some(layout) = layouts.get(vis_row) else { continue };
+                let Some(layout) = layouts.get(vis_row) else {
+                    continue;
+                };
                 for i in 0..layout.widths.len() {
                     let byte = *line_start + layout.offsets[i] as usize;
                     // Offsets are non-monotonic in bidi rows — never break
                     // on a byte bound, skip instead.
-                    if byte >= hl_end { continue; }
-                    if byte < hl_start { continue; }
-                    paint_cells(surface, content_x, surf_row,
-                        layout.cols[i] as usize, layout.widths[i] as usize,
-                        layout.leads[i], style, scroll_left);
+                    if byte >= hl_end {
+                        continue;
+                    }
+                    if byte < hl_start {
+                        continue;
+                    }
+                    paint_cells(
+                        surface,
+                        content_x,
+                        surf_row,
+                        layout.cols[i] as usize,
+                        layout.widths[i] as usize,
+                        layout.leads[i],
+                        style,
+                        scroll_left,
+                    );
                 }
             }
         }
@@ -107,20 +143,37 @@ pub fn apply_highlights(
     if let Some((sel_start, sel_end)) = sel {
         let sel_fg = editor.theme_color("selection-fg");
         let sel_bg = editor.theme_color("selection-bg");
-        let sel_style = Style { fg: sel_fg, bg: sel_bg, ..Default::default() };
+        let sel_style = Style {
+            fg: sel_fg,
+            bg: sel_bg,
+            ..Default::default()
+        };
         for (vis_row, (line_start, line_end, _text)) in rows.iter().enumerate() {
             let surf_row = row_offset + vis_row as u16;
-            let Some(layout) = layouts.get(vis_row) else { continue };
+            let Some(layout) = layouts.get(vis_row) else {
+                continue;
+            };
             for i in 0..layout.widths.len() {
                 let byte = *line_start + layout.offsets[i] as usize;
-                if byte >= *line_end { continue; }
+                if byte >= *line_end {
+                    continue;
+                }
                 if byte >= sel_start && byte < sel_end {
-                    paint_cells(surface, content_x, surf_row,
-                        layout.cols[i] as usize, layout.widths[i] as usize,
-                        layout.leads[i], sel_style, scroll_left);
+                    paint_cells(
+                        surface,
+                        content_x,
+                        surf_row,
+                        layout.cols[i] as usize,
+                        layout.widths[i] as usize,
+                        layout.leads[i],
+                        sel_style,
+                        scroll_left,
+                    );
                 }
             }
-            if *line_end > sel_end { break; }
+            if *line_end > sel_end {
+                break;
+            }
         }
     }
 }

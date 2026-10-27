@@ -1,8 +1,8 @@
 //! DAP background-event handlers — session lifecycle, stop events, console
 //! output, and command-result application.
 
-use crate::state::Editor;
 use crate::event::keys;
+use crate::state::Editor;
 
 use super::super::BackgroundEvent;
 
@@ -27,17 +27,30 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
                     let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
                     for file in files {
                         crate::script_runtime::send_dap_command(
-                            ed, session_id, "setBreakpoints",
-                            &ed.debug.set_breakpoints_args(&file));
+                            ed,
+                            session_id,
+                            "setBreakpoints",
+                            &ed.debug.set_breakpoints_args(&file),
+                        );
                     }
                     crate::script_runtime::send_dap_command(
-                        ed, session_id, "configurationDone", "{}");
-                    ed.events.emit_typed(keys::events::DEBUG_SESSION_STARTED,
+                        ed,
+                        session_id,
+                        "configurationDone",
+                        "{}",
+                    );
+                    ed.events.emit_typed(
+                        keys::events::DEBUG_SESSION_STARTED,
                         crate::event::payload::DebugSessionStartedPayload {
                             session_id: session_id.to_string(),
-                            adapter: ed.debug.sessions.get(&session_id)
-                                .map(|s| s.adapter.clone()).unwrap_or_default(),
-                        });
+                            adapter: ed
+                                .debug
+                                .sessions
+                                .get(&session_id)
+                                .map(|s| s.adapter.clone())
+                                .unwrap_or_default(),
+                        },
+                    );
                 }
                 Err(e) => {
                     ed.debug.sessions.remove(&session_id);
@@ -45,7 +58,11 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
                 }
             }
         }
-        Event::Stopped { session_id, reason, thread_id } => {
+        Event::Stopped {
+            session_id,
+            reason,
+            thread_id,
+        } => {
             let watch_count = ed.debug.watches.len();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.note_stopped(watch_count);
@@ -53,25 +70,38 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
             }
             // A stopped debuggee with no stack is a facade — fetch it.
             crate::script_runtime::send_dap_command(
-                ed, session_id, "stackTrace", &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
+                ed,
+                session_id,
+                "stackTrace",
+                &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
             );
             // The thread list changes across stops; refresh it for the pane.
             crate::script_runtime::send_dap_command(ed, session_id, "threads", "{}");
-            ed.events.emit_typed(keys::events::DEBUG_STOPPED, crate::event::payload::DebugStoppedPayload {
-                session_id: session_id.to_string(),
-                reason,
-                thread_id: thread_id.to_string(),
-            });
+            ed.events.emit_typed(
+                keys::events::DEBUG_STOPPED,
+                crate::event::payload::DebugStoppedPayload {
+                    session_id: session_id.to_string(),
+                    reason,
+                    thread_id: thread_id.to_string(),
+                },
+            );
         }
-        Event::Output { session_id, category, output } => {
+        Event::Output {
+            session_id,
+            category,
+            output,
+        } => {
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.push_console(&output);
             }
-            ed.events.emit_typed(keys::events::DEBUG_OUTPUT, crate::event::payload::DebugOutputPayload {
-                session_id: session_id.to_string(),
-                category,
-                output,
-            });
+            ed.events.emit_typed(
+                keys::events::DEBUG_OUTPUT,
+                crate::event::payload::DebugOutputPayload {
+                    session_id: session_id.to_string(),
+                    category,
+                    output,
+                },
+            );
         }
         Event::Terminated { session_id } => {
             ed.debug.connections.remove(&session_id);
@@ -79,17 +109,27 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
             if ed.debug.active_session == Some(session_id) {
                 ed.debug.active_session = None;
             }
-            ed.events.emit_typed(keys::events::DEBUG_SESSION_ENDED, crate::event::payload::DebugSessionEndedPayload {
-                session_id: session_id.to_string(),
-            });
+            ed.events.emit_typed(
+                keys::events::DEBUG_SESSION_ENDED,
+                crate::event::payload::DebugSessionEndedPayload {
+                    session_id: session_id.to_string(),
+                },
+            );
         }
-        Event::Response { session_id, event_type, data } => {
+        Event::Response {
+            session_id,
+            event_type,
+            data,
+        } => {
             if event_type == "evaluate" {
                 crate::runtime_dap::apply_dap_response(ed, session_id, &data);
-                ed.events.emit_typed(keys::events::DEBUG_EVALUATE_RESULT, crate::event::payload::DebugEvaluateResultPayload {
-                    session_id: session_id.to_string(),
-                    result: data,
-                });
+                ed.events.emit_typed(
+                    keys::events::DEBUG_EVALUATE_RESULT,
+                    crate::event::payload::DebugEvaluateResultPayload {
+                        session_id: session_id.to_string(),
+                        result: data,
+                    },
+                );
             } else {
                 let mut payload = std::collections::HashMap::new();
                 payload.insert("session-id".into(), session_id.to_string());
@@ -98,7 +138,12 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
                 ed.events.emit("debug-dap-event", payload);
             }
         }
-        Event::CommandResult { session_id, command, success, body } => {
+        Event::CommandResult {
+            session_id,
+            command,
+            success,
+            body,
+        } => {
             if !success {
                 crate::runtime_dap::note_request_error(ed, session_id, &command, &body);
             }

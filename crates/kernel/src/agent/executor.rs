@@ -4,12 +4,12 @@
 //! means every agent action goes through the command registry and can be
 //! intercepted, logged, or rejected by the security model.
 
-use std::collections::HashMap;
-use crate::command::{execute_command, args::ArgValue};
-use crate::state::Editor;
+use super::types::{ExecutionResult, Executor, Plan};
+use crate::command::{args::ArgValue, execute_command};
 use crate::event::keys;
 use crate::event::payload::AgentActionPayload;
-use super::types::{ExecutionResult, Executor, Plan};
+use crate::state::Editor;
+use std::collections::HashMap;
 
 /// Dispatches PlanSteps through the command registry with no special privileges.
 ///
@@ -26,15 +26,20 @@ impl Executor for SafeExecutor {
         let mut outputs: Vec<String> = Vec::new();
 
         for step in &plan.steps {
-            let args: HashMap<String, ArgValue> = step.args.iter()
+            let args: HashMap<String, ArgValue> = step
+                .args
+                .iter()
                 .map(|(k, v)| (k.clone(), ArgValue::String(v.clone())))
                 .collect();
 
-            ed.events.emit_typed(keys::events::AGENT_ACTION, AgentActionPayload {
-                session_id: String::new(),
-                command: step.command.clone(),
-                description: step.description.clone(),
-            });
+            ed.events.emit_typed(
+                keys::events::AGENT_ACTION,
+                AgentActionPayload {
+                    session_id: String::new(),
+                    command: step.command.clone(),
+                    description: step.description.clone(),
+                },
+            );
 
             match execute_command(ed, &step.command, &args) {
                 Ok(()) => {

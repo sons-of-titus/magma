@@ -26,9 +26,12 @@ impl SearchQuery {
         if !regex_mode && !ci {
             return Ok(SearchQuery::Literal(pattern.to_string()));
         }
-        let body = if regex_mode { pattern.to_string() } else { regex::escape(pattern) };
-        let re = Regex::new(&format!("(?i){body}"))
-            .map_err(|e| format!("invalid pattern: {e}"))?;
+        let body = if regex_mode {
+            pattern.to_string()
+        } else {
+            regex::escape(pattern)
+        };
+        let re = Regex::new(&format!("(?i){body}")).map_err(|e| format!("invalid pattern: {e}"))?;
         Ok(SearchQuery::Regex(re))
     }
 
@@ -42,9 +45,9 @@ impl SearchQuery {
         from: usize,
     ) -> Option<(usize, usize)> {
         match self {
-            SearchQuery::Literal(needle) => {
-                buf.find_sub_from(from, needle).map(|at| (at, at + needle.len()))
-            }
+            SearchQuery::Literal(needle) => buf
+                .find_sub_from(from, needle)
+                .map(|at| (at, at + needle.len())),
             SearchQuery::Regex(re) => {
                 let text = buf.slice(0, buf.len());
                 re.find_at(&text, from).map(|m| (m.start(), m.end()))
@@ -97,7 +100,9 @@ pub fn replace_all(
     regex_mode: bool,
 ) -> Result<usize, String> {
     let query = SearchQuery::compile(pattern, regex_mode)?;
-    let buf_id = ed.view_tree.focused_window()
+    let buf_id = ed
+        .view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .ok_or("no focused buffer")?;
     let Some(view) = ed.view_of_buffer_mut(buf_id) else {
@@ -114,7 +119,10 @@ pub fn replace_all(
     // against the original matched text before any mutation.
     let texts: Vec<String> = {
         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-        spans.iter().map(|(s, e)| query.expand(&buf.slice(*s, *e), replacement)).collect()
+        spans
+            .iter()
+            .map(|(s, e)| query.expand(&buf.slice(*s, *e), replacement))
+            .collect()
     };
     view.open_undo_session();
     for ((start, end), text) in spans.iter().zip(texts).rev() {
@@ -134,7 +142,9 @@ pub fn replace_next(
     regex_mode: bool,
 ) -> Result<bool, String> {
     let query = SearchQuery::compile(pattern, regex_mode)?;
-    let buf_id = ed.view_tree.focused_window()
+    let buf_id = ed
+        .view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .ok_or("no focused buffer")?;
     let Some(view) = ed.view_of_buffer_mut(buf_id) else {
@@ -143,7 +153,8 @@ pub fn replace_next(
     let cursor = view.cursor_offset();
     let found = {
         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-        query.find_from(&buf, cursor)
+        query
+            .find_from(&buf, cursor)
             .or_else(|| query.find_from(&buf, 0).filter(|(s, _)| *s < cursor))
     };
     let Some((start, end)) = found else {
@@ -183,7 +194,11 @@ mod tests {
         let q = SearchQuery::compile("a.c*", false).unwrap();
         let b = buf("a.c* abc*");
         let matches = q.find_all(&b, 0, 100);
-        assert_eq!(matches, vec![(0, 4)], "the literal dots and star match verbatim");
+        assert_eq!(
+            matches,
+            vec![(0, 4)],
+            "the literal dots and star match verbatim"
+        );
     }
 
     #[test]

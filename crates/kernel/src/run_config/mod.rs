@@ -16,8 +16,8 @@ use crate::runtime::BackgroundHandle;
 use crate::state::{Editor, MessageKind};
 use crate::task::TaskScheduler;
 
-pub use run_config::{RunConfig, defaults_for};
 use run_config::resolve_cwd;
+pub use run_config::{RunConfig, defaults_for};
 
 #[derive(Debug, Clone, Default)]
 pub struct RunConfigManager {
@@ -71,7 +71,9 @@ impl RunConfigManager {
     /// Read `<root>/.magma/run-configs.json` into the store; false when the
     /// file is missing or unreadable.
     pub fn load(&mut self, root: &Path) -> bool {
-        let Ok(text) = std::fs::read_to_string(Self::config_file(root)) else { return false };
+        let Ok(text) = std::fs::read_to_string(Self::config_file(root)) else {
+            return false;
+        };
         #[derive(Deserialize)]
         struct File {
             #[serde(default)]
@@ -79,7 +81,9 @@ impl RunConfigManager {
             #[serde(default)]
             active: Option<String>,
         }
-        let Ok(file) = serde_json::from_str::<File>(&text) else { return false };
+        let Ok(file) = serde_json::from_str::<File>(&text) else {
+            return false;
+        };
         self.configs = file.configs;
         self.active = file.active.filter(|a| self.named(a).is_some());
         !self.configs.is_empty()
@@ -98,7 +102,8 @@ impl RunConfigManager {
         let text = serde_json::to_string_pretty(&File {
             configs: &self.configs,
             active: &self.active,
-        }).map_err(|e| e.to_string())?;
+        })
+        .map_err(|e| e.to_string())?;
         std::fs::write(&path, text + "\n").map_err(|e| format!("write {}: {e}", path.display()))
     }
 
@@ -122,7 +127,8 @@ impl RunConfigManager {
         bg: &BackgroundHandle,
         root: &Path,
     ) -> Result<u64, String> {
-        let cfg = self.named(name)
+        let cfg = self
+            .named(name)
             .ok_or_else(|| format!("no run configuration named '{name}'"))?
             .clone();
         if let Some(dep_name) = cfg.build_before_run.clone() {
@@ -130,9 +136,13 @@ impl RunConfigManager {
                 return Err("another run is still waiting for its build".to_string());
             }
             if dep_name == cfg.name {
-                return Err(format!("run configuration '{}' cannot build itself", cfg.name));
+                return Err(format!(
+                    "run configuration '{}' cannot build itself",
+                    cfg.name
+                ));
             }
-            let dep = self.named(&dep_name)
+            let dep = self
+                .named(&dep_name)
                 .ok_or_else(|| format!("build-first config '{dep_name}' not found"))?
                 .clone();
             let dep_id = Self::launch_task(&dep, scheduler, bg, root)?;
@@ -152,7 +162,8 @@ impl RunConfigManager {
         bg: &BackgroundHandle,
         root: &Path,
     ) -> Result<u64, String> {
-        let cfg = self.named(name)
+        let cfg = self
+            .named(name)
             .ok_or_else(|| format!("no run configuration named '{name}'"))?
             .clone();
         Self::launch_task(&cfg, scheduler, bg, root)
@@ -170,8 +181,15 @@ impl RunConfigManager {
             return Err(format!("run configuration '{}' has no command", cfg.name));
         }
         let cwd = resolve_cwd(cfg, root);
-        let id = scheduler.define(cfg.name.clone(), cfg.command.clone(), cfg.env.clone(), vec![]);
-        let task = scheduler.tasks.get_mut(&id)
+        let id = scheduler.define(
+            cfg.name.clone(),
+            cfg.command.clone(),
+            cfg.env.clone(),
+            vec![],
+        );
+        let task = scheduler
+            .tasks
+            .get_mut(&id)
             .ok_or_else(|| format!("task {id} not found"))?;
         task.args = cfg.args.clone();
         task.cwd = Some(cwd);
@@ -180,7 +198,8 @@ impl RunConfigManager {
 
     /// Stop the running task for a config.
     pub fn stop(&mut self, name: &str, scheduler: &mut TaskScheduler) -> Result<(), String> {
-        let id = scheduler.task_by_name(name)
+        let id = scheduler
+            .task_by_name(name)
             .ok_or_else(|| format!("no run configuration named '{name}'"))?;
         self.pending = None;
         scheduler.cancel(id);
@@ -203,9 +222,10 @@ pub fn upsert_config(
         return Err(format!("run configuration '{}' needs a command", cfg.name));
     }
     if let Some(original) = original
-        && original != cfg.name {
-            ed.project_manager.run_configs.remove(&original);
-        }
+        && original != cfg.name
+    {
+        ed.project_manager.run_configs.remove(&original);
+    }
     let name = cfg.name.clone();
     ed.project_manager.run_configs.upsert(cfg);
     ed.project_manager.run_configs.active = Some(name.clone());
@@ -216,7 +236,11 @@ fn save_active(ed: &mut Editor) -> Result<String, String> {
     let Some(root) = ed.project_manager.project.root.clone() else {
         return Err("no project open".to_string());
     };
-    let name = ed.project_manager.run_configs.active.clone()
+    let name = ed
+        .project_manager
+        .run_configs
+        .active
+        .clone()
         .unwrap_or_default();
     ed.project_manager.run_configs.save(&root)?;
     Ok(name)
@@ -225,19 +249,31 @@ fn save_active(ed: &mut Editor) -> Result<String, String> {
 /// Task run-completion continuation: when the finished task was a build step,
 /// launch the config waiting on it (only on success).
 pub fn continue_pending(ed: &mut Editor, task_id: u64, exit_code: i32) {
-    let Some((dep_id, name)) = ed.project_manager.run_configs.pending.clone() else { return };
+    let Some((dep_id, name)) = ed.project_manager.run_configs.pending.clone() else {
+        return;
+    };
     if dep_id != task_id {
         return;
     }
     ed.project_manager.run_configs.pending = None;
     if exit_code != 0 {
-        ed.show_message(MessageKind::Error,
-            format!("'{name}' not started: build exited with {exit_code}"));
+        ed.show_message(
+            MessageKind::Error,
+            format!("'{name}' not started: build exited with {exit_code}"),
+        );
         return;
     }
-    let Some(bg) = ed.background.clone() else { return };
-    let Some(root) = ed.project_manager.project.root.clone() else { return };
-    match ed.project_manager.run_configs.launch_direct(&name, &mut ed.task_scheduler, &bg, &root) {
+    let Some(bg) = ed.background.clone() else {
+        return;
+    };
+    let Some(root) = ed.project_manager.project.root.clone() else {
+        return;
+    };
+    match ed
+        .project_manager
+        .run_configs
+        .launch_direct(&name, &mut ed.task_scheduler, &bg, &root)
+    {
         Ok(id) => announce_launch(ed, id),
         Err(e) => ed.show_message(MessageKind::Error, e),
     }
@@ -247,12 +283,18 @@ pub fn continue_pending(ed: &mut Editor, task_id: u64, exit_code: i32) {
 /// announced name is the launched task's — with `build_before_run` that is
 /// the build step, not the config the user asked for.
 pub fn announce_launch(ed: &mut Editor, id: u64) {
-    let name = ed.task_scheduler.tasks.get(&id)
+    let name = ed
+        .task_scheduler
+        .tasks
+        .get(&id)
         .map(|t| t.name.clone())
         .unwrap_or_default();
     ed.scheduler.register_task(id, &name);
-    ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
-        id: id.to_string(),
-        name,
-    });
+    ed.events.emit_typed(
+        keys::events::TASK_STARTED,
+        TaskStartedPayload {
+            id: id.to_string(),
+            name,
+        },
+    );
 }

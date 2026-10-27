@@ -8,20 +8,25 @@ use super::helpers::*;
 /// rename-path so the result of a sidebar operation is on screen.
 fn open_path(editor: &mut Editor, path: &str) -> Result<(), String> {
     let mut args = std::collections::HashMap::new();
-    args.insert("path".to_string(),
-        crate::command::args::ArgValue::Path(path.to_string()));
+    args.insert(
+        "path".to_string(),
+        crate::command::args::ArgValue::Path(path.to_string()),
+    );
     crate::command::execute_command(editor, "open-file", &args)
 }
 
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("open-file-at-cursor", "Open the file path under the cursor",
+    cmds.register_fn(
+        "open-file-at-cursor",
+        "Open the file path under the cursor",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             let path = {
-                let view = editor.view_of_buffer(buf_id)
+                let view = editor
+                    .view_of_buffer(buf_id)
                     .ok_or_else(|| "No buffer".to_string())?;
                 let line_num = current_line(view);
                 let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
@@ -35,7 +40,9 @@ pub(super) fn register(editor: &mut Editor) {
                 return Err("No text on current line".to_string());
             }
 
-            let content = editor.fs.read(&path)
+            let content = editor
+                .fs
+                .read(&path)
                 .map_err(|e| format!("Can't open '{}': {}", path, e))?;
             let name = std::path::Path::new(&path)
                 .file_name()
@@ -52,10 +59,17 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("create-file", "Create an empty file (and its parent dirs) and open it",
-        vec![crate::command::args::ArgSpec::new("path", crate::command::args::ArgType::Path)],
+    cmds.register_fn(
+        "create-file",
+        "Create an empty file (and its parent dirs) and open it",
+        vec![crate::command::args::ArgSpec::new(
+            "path",
+            crate::command::args::ArgType::Path,
+        )],
         |editor, args| {
-            let path = args.get("path").and_then(|a| a.as_string())
+            let path = args
+                .get("path")
+                .and_then(|a| a.as_string())
                 .ok_or_else(|| "Path required".to_string())?;
             if std::path::Path::new(path).exists() {
                 return Err(format!("Already exists: {path}"));
@@ -64,27 +78,31 @@ pub(super) fn register(editor: &mut Editor) {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("Cannot create {}: {e}", parent.display()))?;
             }
-            std::fs::write(path, "")
-                .map_err(|e| format!("Cannot create {path}: {e}"))?;
+            std::fs::write(path, "").map_err(|e| format!("Cannot create {path}: {e}"))?;
             open_path(editor, path)
         },
     );
 
-    cmds.register_fn("rename-path", "Rename a file; open buffers follow",
+    cmds.register_fn(
+        "rename-path",
+        "Rename a file; open buffers follow",
         vec![
             crate::command::args::ArgSpec::new("from", crate::command::args::ArgType::Path),
             crate::command::args::ArgSpec::new("to", crate::command::args::ArgType::Path),
         ],
         |editor, args| {
-            let from = args.get("from").and_then(|a| a.as_string())
+            let from = args
+                .get("from")
+                .and_then(|a| a.as_string())
                 .ok_or_else(|| "from required".to_string())?;
-            let to = args.get("to").and_then(|a| a.as_string())
+            let to = args
+                .get("to")
+                .and_then(|a| a.as_string())
                 .ok_or_else(|| "to required".to_string())?;
             if std::path::Path::new(to).exists() {
                 return Err(format!("Already exists: {to}"));
             }
-            std::fs::rename(from, to)
-                .map_err(|e| format!("Cannot rename {from}: {e}"))?;
+            std::fs::rename(from, to).map_err(|e| format!("Cannot rename {from}: {e}"))?;
             // Open buffers follow the rename so they keep saving to disk.
             for (_, arc) in editor.buffers.iter() {
                 let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
@@ -96,22 +114,36 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("delete-path", "Delete a file (or empty directory) permanently",
-        vec![crate::command::args::ArgSpec::new("path", crate::command::args::ArgType::Path)],
+    cmds.register_fn(
+        "delete-path",
+        "Delete a file (or empty directory) permanently",
+        vec![crate::command::args::ArgSpec::new(
+            "path",
+            crate::command::args::ArgType::Path,
+        )],
         |editor, args| {
-            let path = args.get("path").and_then(|a| a.as_string())
+            let path = args
+                .get("path")
+                .and_then(|a| a.as_string())
                 .ok_or_else(|| "Path required".to_string())?;
             let p = std::path::Path::new(path);
             if p.is_dir() {
                 std::fs::remove_dir(p)
                     .map_err(|_| format!("Refusing to delete non-empty directory: {path}"))?;
             } else {
-                std::fs::remove_file(p)
-                    .map_err(|e| format!("Cannot delete {path}: {e}"))?;
+                std::fs::remove_file(p).map_err(|e| format!("Cannot delete {path}: {e}"))?;
             }
             // Close any buffer that pointed at the deleted file.
-            let doomed: Vec<usize> = editor.buffers.iter()
-                .filter(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path))
+            let doomed: Vec<usize> = editor
+                .buffers
+                .iter()
+                .filter(|(_, arc)| {
+                    arc.lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .path
+                        .as_deref()
+                        == Some(path)
+                })
                 .map(|(k, _)| k)
                 .collect();
             for key in doomed {

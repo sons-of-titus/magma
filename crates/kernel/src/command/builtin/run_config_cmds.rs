@@ -5,50 +5,72 @@ use crate::state::Editor;
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("run-config",
+    cmds.register_fn(
+        "run-config",
         "Launch a run configuration (default: the active one)",
         vec![crate::command::args::ArgSpec::optional(
-            "name", crate::command::args::ArgType::String,
+            "name",
+            crate::command::args::ArgType::String,
             crate::command::args::ArgValue::String(String::new()),
         )],
         |editor, args| {
             let name = match args.get("name").and_then(|a| a.as_string()) {
                 Some(n) if !n.is_empty() => n.to_string(),
-                _ => editor.project_manager.run_configs.active.clone()
+                _ => editor
+                    .project_manager
+                    .run_configs
+                    .active
+                    .clone()
                     .ok_or_else(|| "no run configuration selected".to_string())?,
             };
             let Some(bg) = editor.background.clone() else {
                 return Err("run-config: no background runtime".to_string());
             };
-            let id = editor.project_manager.launch_config(&name, &mut editor.task_scheduler, &bg)?;
+            let id =
+                editor
+                    .project_manager
+                    .launch_config(&name, &mut editor.task_scheduler, &bg)?;
             crate::run_config::announce_launch(editor, id);
             Ok(())
         },
     );
 
-    cmds.register_fn("stop-config",
+    cmds.register_fn(
+        "stop-config",
         "Stop the running task of a run configuration (default: the active one)",
         vec![crate::command::args::ArgSpec::optional(
-            "name", crate::command::args::ArgType::String,
+            "name",
+            crate::command::args::ArgType::String,
             crate::command::args::ArgValue::String(String::new()),
         )],
         |editor, args| {
             let name = match args.get("name").and_then(|a| a.as_string()) {
                 Some(n) if !n.is_empty() => n.to_string(),
-                _ => editor.project_manager.run_configs.active.clone()
+                _ => editor
+                    .project_manager
+                    .run_configs
+                    .active
+                    .clone()
                     .ok_or_else(|| "no run configuration selected".to_string())?,
             };
-            editor.project_manager.run_configs.stop(&name, &mut editor.task_scheduler)
+            editor
+                .project_manager
+                .run_configs
+                .stop(&name, &mut editor.task_scheduler)
         },
     );
 
-    cmds.register_fn("select-config",
+    cmds.register_fn(
+        "select-config",
         "Make a run configuration the active one and persist the choice",
         vec![crate::command::args::ArgSpec::new(
-            "name", crate::command::args::ArgType::String,
+            "name",
+            crate::command::args::ArgType::String,
         )],
         |editor, args| {
-            let name = args.get("name").and_then(|a| a.as_string())
+            let name = args
+                .get("name")
+                .and_then(|a| a.as_string())
                 .ok_or_else(|| "name required".to_string())?;
             if editor.project_manager.run_configs.named(name).is_none() {
                 return Err(format!("no run configuration named '{name}'"));

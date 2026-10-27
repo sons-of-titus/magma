@@ -11,7 +11,11 @@ use super::TaskId;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// One streamed output line from a running task.
-    OutputLine { id: TaskId, stream: String, line: String },
+    OutputLine {
+        id: TaskId,
+        stream: String,
+        line: String,
+    },
     /// A task finished; carries the captured output and timing.
     RunCompleted {
         id: TaskId,

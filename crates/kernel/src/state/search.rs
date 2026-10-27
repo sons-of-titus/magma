@@ -1,4 +1,4 @@
-use crate::task::{QuickfixEntry, QUICKFIX_MAX_RESULTS};
+use crate::task::{QUICKFIX_MAX_RESULTS, QuickfixEntry};
 
 /// Search state shared by the find dialog, the repeat-search commands, and
 /// the async grep pipeline.  First slice of the R-24 Editor consolidation:

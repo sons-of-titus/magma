@@ -1,8 +1,8 @@
 //! Workspace persistence — save and restore editor state to/from disk.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 use crate::state::Editor;
 
@@ -59,10 +59,10 @@ impl WorkspaceManager {
             if buf.ephemeral {
                 continue;
             }
-            let content = buf.path.as_ref().map_or_else(
-                || Some(buf.slice(0, buf.len())),
-                |_| None,
-            );
+            let content = buf
+                .path
+                .as_ref()
+                .map_or_else(|| Some(buf.slice(0, buf.len())), |_| None);
             buffers.push(PersistedBuffer {
                 name: buf.name.clone(),
                 path: buf.path.clone(),
@@ -93,7 +93,8 @@ impl WorkspaceManager {
                 if let Ok(content) = std::fs::read_to_string(file_path) {
                     let key = editor.create_buffer_from_str(&pb.name, &content);
                     if let Some(arc) = editor.buffers.get(key) {
-                        arc.lock().unwrap_or_else(|e| e.into_inner()).path = Some(file_path.clone());
+                        arc.lock().unwrap_or_else(|e| e.into_inner()).path =
+                            Some(file_path.clone());
                     }
                     count += 1;
                 }
@@ -156,7 +157,13 @@ impl WorkspaceManager {
     fn session_filename(name: &str) -> String {
         let safe: String = name
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         format!("{safe}.json")
     }

@@ -4,8 +4,8 @@
 //! `LlmContextProvider`    — wraps `EditorContextProvider`; formats context
 //!                            as a prompt string for an LLM backend.
 
-use crate::state::Editor;
 use super::types::{AgentContext, ContextProvider};
+use crate::state::Editor;
 
 /// Gathers a snapshot of the current editor state as an `AgentContext`.
 pub struct EditorContextProvider;
@@ -31,16 +31,21 @@ impl ContextProvider for EditorContextProvider {
             .map(|v| (v.cursor.line, v.cursor.column))
             .unwrap_or((0, 0));
 
-        let diagnostics: Vec<String> = path.as_ref()
+        let diagnostics: Vec<String> = path
+            .as_ref()
             .map(|p| {
-                ed.semantic.diagnostics_for_path(p)
+                ed.semantic
+                    .diagnostics_for_path(p)
                     .into_iter()
                     .map(|d| format!("[{}] {}", d.severity.as_str(), d.message))
                     .collect()
             })
             .unwrap_or_default();
 
-        let symbols: Vec<String> = ed.semantic.symbol_index.all_symbols()
+        let symbols: Vec<String> = ed
+            .semantic
+            .symbol_index
+            .all_symbols()
             .into_iter()
             .take(50)
             .map(|s| s.name)

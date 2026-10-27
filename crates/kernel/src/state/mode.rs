@@ -27,16 +27,23 @@ pub struct EditorMode {
 
 impl EditorMode {
     pub fn new(name: impl Into<String>, accepts_text: bool) -> Self {
-        Self { name: name.into(), accepts_text }
+        Self {
+            name: name.into(),
+            accepts_text,
+        }
     }
 
     /// True when the mode name equals `name` (case-sensitive).
-    pub fn is_named(&self, name: &str) -> bool { self.name == name }
+    pub fn is_named(&self, name: &str) -> bool {
+        self.name == name
+    }
 }
 
 impl Default for EditorMode {
     /// The one shipped editing mode: text input always on.
-    fn default() -> Self { Self::new("editor", true) }
+    fn default() -> Self {
+        Self::new("editor", true)
+    }
 }
 
 /// A generic visual selection.
@@ -49,9 +56,28 @@ pub struct Selection {
 }
 
 impl Selection {
-    pub fn char(anchor: usize)  -> Self { Self { anchor, kind: "char".into()  } }
-    pub fn line(anchor: usize)  -> Self { Self { anchor, kind: "line".into()  } }
-    pub fn block(anchor: usize) -> Self { Self { anchor, kind: "block".into() } }
-    pub fn is_line(&self)  -> bool { self.kind == "line"  }
-    pub fn is_block(&self) -> bool { self.kind == "block" }
+    pub fn char(anchor: usize) -> Self {
+        Self {
+            anchor,
+            kind: "char".into(),
+        }
+    }
+    pub fn line(anchor: usize) -> Self {
+        Self {
+            anchor,
+            kind: "line".into(),
+        }
+    }
+    pub fn block(anchor: usize) -> Self {
+        Self {
+            anchor,
+            kind: "block".into(),
+        }
+    }
+    pub fn is_line(&self) -> bool {
+        self.kind == "line"
+    }
+    pub fn is_block(&self) -> bool {
+        self.kind == "block"
+    }
 }

@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::command::args::ArgValue;
 use crate::command::CommandResult;
+use crate::command::args::ArgValue;
 use crate::state::Editor;
 
 pub trait ScriptRuntime: Send + Sync {

@@ -1,9 +1,9 @@
 //! Process and terminal background-event handlers — PTY output, process
 //! lifecycle, and stored-task readiness.
 
-use crate::state::Editor;
 use crate::event::keys;
 use crate::event::payload::*;
+use crate::state::Editor;
 
 use super::super::BackgroundEvent;
 
@@ -12,13 +12,18 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::TerminalOutput { terminal_id, data } => {
             ed.io.terminals.apply_output(terminal_id, &data);
         }
-        BackgroundEvent::TerminalExited { terminal_id, exit_code } => {
+        BackgroundEvent::TerminalExited {
+            terminal_id,
+            exit_code,
+        } => {
             // A session that is already gone was closed by the user; only a
             // session that was still tracked exited on its own.
             if ed.io.terminals.get(terminal_id).is_some() {
                 if exit_code != 0 {
-                    ed.show_message(crate::state::MessageKind::Error,
-                        format!("terminal exited with code {exit_code}"));
+                    ed.show_message(
+                        crate::state::MessageKind::Error,
+                        format!("terminal exited with code {exit_code}"),
+                    );
                 }
                 ed.io.terminals.close(terminal_id);
             }
@@ -27,11 +32,14 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             }
         }
         BackgroundEvent::ProcessOutput { id, line, stream } => {
-            ed.events.emit_typed(keys::events::PROCESS_OUTPUT, ProcessOutputPayload {
-                id: id.to_string(),
-                line,
-                stream,
-            });
+            ed.events.emit_typed(
+                keys::events::PROCESS_OUTPUT,
+                ProcessOutputPayload {
+                    id: id.to_string(),
+                    line,
+                    stream,
+                },
+            );
         }
         BackgroundEvent::ProcessExited { id, exit_code, cmd } => {
             // Finished processes leave the list — it tracks live processes,
@@ -40,13 +48,17 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             if exit_code == 0 {
                 ed.scheduler.complete_process(id);
             } else {
-                ed.scheduler.fail_process(id, format!("exit code {exit_code}"));
+                ed.scheduler
+                    .fail_process(id, format!("exit code {exit_code}"));
             }
-            ed.events.emit_typed(keys::events::PROCESS_EXIT, ProcessExitPayload {
-                id: id.to_string(),
-                exit_code: exit_code.to_string(),
-                cmd,
-            });
+            ed.events.emit_typed(
+                keys::events::PROCESS_EXIT,
+                ProcessExitPayload {
+                    id: id.to_string(),
+                    exit_code: exit_code.to_string(),
+                    cmd,
+                },
+            );
         }
         BackgroundEvent::TaskReady { id } => {
             let mut rt = ed.runtime.take();

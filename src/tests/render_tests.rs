@@ -342,22 +342,18 @@ fn cursor_respects_blink_flag() {
     }
     let mut surface = Surface::new(20, 4);
 
+    let cursor_color = ed.theme_color("cursor");
     render_frame_with(&ed, &mut surface, CursorPaint::Stamp { visible: true });
-    let with_cursor: String = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
-        .filter_map(|(x, y)| surface.cell(x, y).map(|c| (x, y, c.ch)))
-        .find(|(_, _, ch)| *ch == '█' || *ch == '▔' || *ch == '▏')
-        .map(|(_, _, ch)| ch.to_string())
-        .unwrap_or_default();
-    assert!(!with_cursor.is_empty(), "cursor drawn when visible");
+    let with_cursor = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
+        .filter_map(|(x, y)| surface.cell(x, y).map(|c| (x, y, c)))
+        .any(|(_, _, c)| c.style.fg == cursor_color || c.style.bg == cursor_color);
+    assert!(with_cursor, "cursor drawn when visible");
 
     render_frame_with(&ed, &mut surface, CursorPaint::Stamp { visible: false });
-    let without: Vec<char> = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
-        .filter_map(|(x, y)| surface.cell(x, y).map(|c| c.ch))
-        .collect();
-    assert!(
-        !without.iter().any(|ch| *ch == '█' || *ch == '▔' || *ch == '▏'),
-        "no cursor glyphs while blink phase is off"
-    );
+    let without = (0..4u16).flat_map(|y| (0..20u16).map(move |x| (x, y)))
+        .filter_map(|(x, y)| surface.cell(x, y))
+        .any(|c| c.style.fg == cursor_color || c.style.bg == cursor_color);
+    assert!(!without, "no cursor styling while blink phase is off");
 }
 
 // ── Highlight/selection cell columns (tabs and wide glyphs) ──────────

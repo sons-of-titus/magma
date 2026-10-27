@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if !server_mode {
         eprintln!(
-            "Magma's interactive frontend lives in the `magma-gui` crate: run `cargo run -p magma-gui`, \
+            "Magma's interactive frontend lives in the `magma-slint` crate: run `cargo run -p magma-slint`, \
              or pass --server for headless mode."
         );
         return Ok(());

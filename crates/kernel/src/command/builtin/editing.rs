@@ -2,22 +2,23 @@
 
 use crate::command::CommandResult;
 use crate::command::args::{ArgSpec, ArgType};
+use crate::event::keys;
+use crate::event::payload::*;
 use crate::state::Editor;
 use crate::state::mode::EditorMode;
-use crate::event::payload::*;
-use crate::event::keys;
 
 use super::helpers::*;
 
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("insert-char", "Insert a character at cursor",
-        vec![
-            ArgSpec::new("char", ArgType::String),
-        ],
+    cmds.register_fn(
+        "insert-char",
+        "Insert a character at cursor",
+        vec![ArgSpec::new("char", ArgType::String)],
         |editor, args| {
-            let ch = args.get("char")
+            let ch = args
+                .get("char")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "char required".to_string())?;
             let buf_id = get_current_buffer_id(editor);
@@ -29,13 +30,19 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("delete-char", "Delete character at cursor",
+    cmds.register_fn(
+        "delete-char",
+        "Delete character at cursor",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
+                let ch = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .char_at(pos);
                 if let Some(ch) = ch {
                     view.delete(pos, pos + ch.len_utf8());
                 }
@@ -44,7 +51,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("newline", "Insert a newline at cursor",
+    cmds.register_fn(
+        "newline",
+        "Insert a newline at cursor",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -56,7 +65,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("backspace", "Delete character before cursor",
+    cmds.register_fn(
+        "backspace",
+        "Delete character before cursor",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -67,7 +78,8 @@ pub(super) fn register(editor: &mut Editor) {
                         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                         // Rope scan: the start of the char before the cursor,
                         // no document-prefix copy.
-                        buf.rfind_char_before(pos, |_| true).unwrap_or(pos.saturating_sub(1))
+                        buf.rfind_char_before(pos, |_| true)
+                            .unwrap_or(pos.saturating_sub(1))
                     };
                     view.delete(start, pos);
                 }
@@ -76,18 +88,17 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("undo", "Undo the last change",
-        vec![],
-        |editor, _args| {
-            let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                view.undo();
-            }
-            Ok(())
-        },
-    );
+    cmds.register_fn("undo", "Undo the last change", vec![], |editor, _args| {
+        let buf_id = get_current_buffer_id(editor);
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            view.undo();
+        }
+        Ok(())
+    });
 
-    cmds.register_fn("redo", "Redo the last undone change",
+    cmds.register_fn(
+        "redo",
+        "Redo the last undone change",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -98,21 +109,31 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("replace-char", "Replace character under cursor (r)",
-        vec![
-            ArgSpec::new("char", ArgType::String),
-        ],
+    cmds.register_fn(
+        "replace-char",
+        "Replace character under cursor (r)",
+        vec![ArgSpec::new("char", ArgType::String)],
         |editor, args| {
-            let ch = args.get("char").and_then(|a| a.as_string())
+            let ch = args
+                .get("char")
+                .and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "char required".to_string())?;
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let old_ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
+                let old_ch = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .char_at(pos);
                 if let Some(old) = old_ch {
                     let end = pos + old.len_utf8();
-                    let replacement: String = if ch == '\n' { "\n".to_string() } else { ch.to_string() };
+                    let replacement: String = if ch == '\n' {
+                        "\n".to_string()
+                    } else {
+                        ch.to_string()
+                    };
                     view.delete(pos, end);
                     view.insert(pos, &replacement);
                 }
@@ -122,7 +143,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("join-lines", "Join current line with next line (J)",
+    cmds.register_fn(
+        "join-lines",
+        "Join current line with next line (J)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -141,21 +164,28 @@ pub(super) fn register(editor: &mut Editor) {
                     }
                 };
                 if let (Some(eol), Some(next_start)) = (eol, next_start)
-                    && line + 1 < line_count {
-                        view.delete(eol, next_start);
-                        view.insert(eol, " ");
-                        view.set_cursor(eol);
-                    }
+                    && line + 1 < line_count
+                {
+                    view.delete(eol, next_start);
+                    view.insert(eol, " ");
+                    view.set_cursor(eol);
+                }
             }
             emit_cursor_moved(editor);
             Ok(())
         },
     );
 
-    cmds.register_fn("change-to-eol", "Delete to end of line and enter insert mode (C)",
+    cmds.register_fn(
+        "change-to-eol",
+        "Delete to end of line and enter insert mode (C)",
         vec![],
         |editor, _args| {
-            crate::command::execute_command(editor, "delete-to-eol", &std::collections::HashMap::new())?;
+            crate::command::execute_command(
+                editor,
+                "delete-to-eol",
+                &std::collections::HashMap::new(),
+            )?;
             editor.keymaps.pop_layer("editor");
             editor.editor_mode = EditorMode::new("insert", true);
             editor.keymaps.push_layer("insert");
@@ -164,7 +194,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("yank-to-eol", "Yank from cursor to end of line (Y)",
+    cmds.register_fn(
+        "yank-to-eol",
+        "Yank from cursor to end of line (Y)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -178,7 +210,11 @@ pub(super) fn register(editor: &mut Editor) {
                 };
                 let pos = view.cursor.offset;
                 if pos < line_end {
-                    let yanked = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).slice(pos, line_end);
+                    let yanked = view
+                        .buffer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .slice(pos, line_end);
                     editor.editing.yanked_text = Some(yanked.to_string());
                 }
             }
@@ -187,13 +223,17 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("delete-word-back", "Delete word back in insert mode (ctrl-w)",
+    cmds.register_fn(
+        "delete-word-back",
+        "Delete word back in insert mode (ctrl-w)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                if pos == 0 { return Ok(()); }
+                if pos == 0 {
+                    return Ok(());
+                }
                 let word_start = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // Rope scans: skip the trailing non-word run, then the
@@ -203,11 +243,10 @@ pub(super) fn register(editor: &mut Editor) {
                             // Nothing but non-word chars: one char goes.
                             buf.rfind_char_before(pos, |_| true).unwrap_or(pos)
                         }
-                        Some(last_word) => {
-                            buf.rfind_char_before(last_word, |c| !is_word_char(c))
-                                .map(|i| i + 1)
-                                .unwrap_or(0)
-                        }
+                        Some(last_word) => buf
+                            .rfind_char_before(last_word, |c| !is_word_char(c))
+                            .map(|i| i + 1)
+                            .unwrap_or(0),
                     }
                 };
                 if word_start < pos {
@@ -218,27 +257,46 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("increment-number", "Increment number under cursor (ctrl-a)",
+    cmds.register_fn(
+        "increment-number",
+        "Increment number under cursor (ctrl-a)",
         vec![],
-        |editor, _args| { adjust_number(editor, 1) },
+        |editor, _args| adjust_number(editor, 1),
     );
 
-    cmds.register_fn("decrement-number", "Decrement number under cursor (ctrl-x)",
+    cmds.register_fn(
+        "decrement-number",
+        "Decrement number under cursor (ctrl-x)",
         vec![],
-        |editor, _args| { adjust_number(editor, -1) },
+        |editor, _args| adjust_number(editor, -1),
     );
 
-    cmds.register_fn("toggle-case", "Toggle case of character under cursor (g~)",
+    cmds.register_fn(
+        "toggle-case",
+        "Toggle case of character under cursor (g~)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
+                let ch = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .char_at(pos);
                 if let Some(ch) = ch {
-                    let toggled: String = ch.to_uppercase().collect::<String>()
-                        .chars().next()
-                        .map(|c| if c == ch { ch.to_lowercase().collect() } else { c.to_string() })
+                    let toggled: String = ch
+                        .to_uppercase()
+                        .collect::<String>()
+                        .chars()
+                        .next()
+                        .map(|c| {
+                            if c == ch {
+                                ch.to_lowercase().collect()
+                            } else {
+                                c.to_string()
+                            }
+                        })
                         .unwrap_or_else(|| ch.to_string());
                     let end = pos + ch.len_utf8();
                     view.delete(pos, end);
@@ -250,13 +308,19 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("lowercase-region", "Lowercase a region (gu)",
+    cmds.register_fn(
+        "lowercase-region",
+        "Lowercase a region (gu)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
+                let ch = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .char_at(pos);
                 if let Some(ch) = ch {
                     let lower = ch.to_lowercase().to_string();
                     let end = pos + ch.len_utf8();
@@ -269,13 +333,19 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("uppercase-region", "Uppercase a region (gU)",
+    cmds.register_fn(
+        "uppercase-region",
+        "Uppercase a region (gU)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor.offset;
-                let ch = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).char_at(pos);
+                let ch = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .char_at(pos);
                 if let Some(ch) = ch {
                     let upper = ch.to_uppercase().to_string();
                     let end = pos + ch.len_utf8();
@@ -288,12 +358,13 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("eval", "Evaluate a Janet expression",
-        vec![
-            ArgSpec::new("expr", ArgType::String),
-        ],
+    cmds.register_fn(
+        "eval",
+        "Evaluate a Janet expression",
+        vec![ArgSpec::new("expr", ArgType::String)],
         |editor, args| {
-            let expr = args.get("expr")
+            let expr = args
+                .get("expr")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "Expression required".to_string())?;
             let mut rt = editor.runtime.take();
@@ -305,11 +376,16 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("eval-region", "Evaluate the visual selection as a Janet expression",
+    cmds.register_fn(
+        "eval-region",
+        "Evaluate the visual selection as a Janet expression",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor.offset).unwrap_or(0);
+            let cursor = editor
+                .view_of_buffer(buf_id)
+                .map(|v| v.cursor.offset)
+                .unwrap_or(0);
             match editor.selection_range(cursor) {
                 None => return Err("No selection active".to_string()),
                 Some((start, end)) => {
@@ -325,17 +401,19 @@ pub(super) fn register(editor: &mut Editor) {
                         None => (String::new(), "Scripting runtime not available".to_string()),
                     };
                     editor.runtime = rt;
-                    editor.events.emit_typed(keys::events::EVAL_RESULT, EvalResultPayload {
-                        value,
-                        error,
-                    });
+                    editor.events.emit_typed(
+                        keys::events::EVAL_RESULT,
+                        EvalResultPayload { value, error },
+                    );
                 }
             }
             Ok(())
         },
     );
 
-    cmds.register_fn("eval-buffer", "Evaluate the entire focused buffer as Janet",
+    cmds.register_fn(
+        "eval-buffer",
+        "Evaluate the entire focused buffer as Janet",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -351,14 +429,13 @@ pub(super) fn register(editor: &mut Editor) {
                 None => (String::new(), "Scripting runtime not available".to_string()),
             };
             editor.runtime = rt;
-            editor.events.emit_typed(keys::events::EVAL_RESULT, EvalResultPayload {
-                value,
-                error,
-            });
+            editor.events.emit_typed(
+                keys::events::EVAL_RESULT,
+                EvalResultPayload { value, error },
+            );
             Ok(())
         },
     );
-
 }
 
 fn adjust_number(editor: &mut Editor, delta: isize) -> CommandResult {
@@ -369,14 +446,20 @@ fn adjust_number(editor: &mut Editor, delta: isize) -> CommandResult {
         // document copy.
         let (num_start, num_text) = {
             let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-            let num_start = b.rfind_char_before(pos, |c| !(c.is_ascii_digit() || c == '-'))
-                .map(|i| i + 1).unwrap_or(0);
-            let num_end = b.find_char_from(num_start, |c| !c.is_ascii_digit())
-                .unwrap_or(b.len()).min(pos.max(num_start));
+            let num_start = b
+                .rfind_char_before(pos, |c| !(c.is_ascii_digit() || c == '-'))
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let num_end = b
+                .find_char_from(num_start, |c| !c.is_ascii_digit())
+                .unwrap_or(b.len())
+                .min(pos.max(num_start));
             (num_start, b.slice(num_start, num_end))
         };
         let num_len = num_text.len();
-        if num_len == 0 { return Ok(()); }
+        if num_len == 0 {
+            return Ok(());
+        }
         let num_str = num_text;
         if let Ok(n) = num_str.parse::<isize>() {
             let new_val = n + delta;

@@ -32,7 +32,10 @@ pub struct Boot {
     pub bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
 }
 
-pub fn bootstrap(options: BootOptions, script_runtime: Option<Box<dyn ScriptRuntime>>) -> std::io::Result<Boot> {
+pub fn bootstrap(
+    options: BootOptions,
+    script_runtime: Option<Box<dyn ScriptRuntime>>,
+) -> std::io::Result<Boot> {
     let mut editor = Editor::new(Box::new(DiskFileSystem::new()));
 
     builtin::register_builtin_commands(&mut editor);
@@ -84,8 +87,7 @@ pub fn bootstrap(options: BootOptions, script_runtime: Option<Box<dyn ScriptRunt
             "path".to_string(),
             crate::command::args::ArgValue::Path(path),
         );
-        if let Err(e) = crate::command::execute_command(&mut editor, "open-project", &args)
-        {
+        if let Err(e) = crate::command::execute_command(&mut editor, "open-project", &args) {
             warn!("Could not reopen last project: {e}");
         }
     }

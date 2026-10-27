@@ -11,5 +11,9 @@ pub trait ContextProvider: Send + Sync {
 
 /// Executes a Plan's steps against the editor.
 pub trait Executor {
-    fn execute(&mut self, plan: &agent::types::Plan, ed: &mut Editor) -> agent::types::ExecutionResult;
+    fn execute(
+        &mut self,
+        plan: &agent::types::Plan,
+        ed: &mut Editor,
+    ) -> agent::types::ExecutionResult;
 }

@@ -9,7 +9,9 @@ mod event;
 
 pub use event::{Event, EventSink};
 
-pub use debug_model::{Breakpoint, DebugSession, FrameId, MemoryRegion, SessionId, StackFrame, Thread, Variable};
+pub use debug_model::{
+    Breakpoint, DebugSession, FrameId, MemoryRegion, SessionId, StackFrame, Thread, Variable,
+};
 pub use debug_model::{session, types};
 
 use std::collections::HashMap;
@@ -64,14 +66,24 @@ impl DebugManager {
         self.breakpoints
             .entry(file.clone())
             .or_default()
-            .push(Breakpoint { id, file, line, verified: false, enabled: true, condition: None });
+            .push(Breakpoint {
+                id,
+                file,
+                line,
+                verified: false,
+                enabled: true,
+                condition: None,
+            });
         id
     }
 
     /// Remove a breakpoint at `(file, line)`.  Returns the removed ids.
     pub fn remove_breakpoint(&mut self, file: &str, line: usize) -> Vec<u64> {
-        let Some(bps) = self.breakpoints.get_mut(file) else { return Vec::new() };
-        let removed: Vec<u64> = bps.iter()
+        let Some(bps) = self.breakpoints.get_mut(file) else {
+            return Vec::new();
+        };
+        let removed: Vec<u64> = bps
+            .iter()
             .filter(|bp| bp.line == line)
             .map(|bp| bp.id)
             .collect();
@@ -93,7 +105,10 @@ impl DebugManager {
 
     /// All breakpoints for the given file.
     pub fn breakpoints_for(&self, file: &str) -> &[Breakpoint] {
-        self.breakpoints.get(file).map(|v| v.as_slice()).unwrap_or(&[])
+        self.breakpoints
+            .get(file)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Every breakpoint in the project, across files, ordered by (file, line).
@@ -110,7 +125,8 @@ impl DebugManager {
 
     /// The currently active session (mutable).
     pub fn active_session_mut(&mut self) -> Option<&mut DebugSession> {
-        self.active_session.and_then(|id| self.sessions.get_mut(&id))
+        self.active_session
+            .and_then(|id| self.sessions.get_mut(&id))
     }
 
     /// Ordered teardown of one session's adapter.
@@ -138,10 +154,13 @@ impl DebugManager {
     /// breakpoints are omitted — DAP `SourceBreakpoint` has no enabled flag,
     /// so a disabled breakpoint simply doesn't reach the adapter.
     pub fn set_breakpoints_args(&self, file: &str) -> String {
-        let bps = self.breakpoints_for(file).iter()
+        let bps = self
+            .breakpoints_for(file)
+            .iter()
             .filter(|bp| bp.enabled)
             .collect::<Vec<_>>();
-        let lines_json: String = bps.iter()
+        let lines_json: String = bps
+            .iter()
             .map(|bp| format!(r#"{{"line":{}}}"#, bp.line))
             .collect::<Vec<_>>()
             .join(",");
@@ -156,12 +175,20 @@ impl DebugManager {
 pub fn sync_breakpoint_lines(ed: &mut crate::state::Editor) {
     let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
     for file in files {
-        let Some(arc) = ed.buffers.iter()
-            .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file.as_str()))
-            .map(|(_, a)| a.clone()) else { continue };
+        let Some(arc) = ed
+            .buffers
+            .iter()
+            .find(|(_, a)| {
+                a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file.as_str())
+            })
+            .map(|(_, a)| a.clone())
+        else {
+            continue;
+        };
         let updates: Vec<(u64, usize)> = {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            buf.bp_anchors.iter()
+            buf.bp_anchors
+                .iter()
                 .filter_map(|(id, _)| buf.breakpoint_line(*id).map(|line| (*id, line)))
                 .collect()
         };
@@ -176,7 +203,12 @@ pub fn sync_breakpoint_lines(ed: &mut crate::state::Editor) {
 }
 
 /// Enable or disable breakpoints at a location and resync the adapter.
-pub fn set_breakpoint_enabled(ed: &mut crate::state::Editor, file: &str, line: usize, enabled: bool) {
+pub fn set_breakpoint_enabled(
+    ed: &mut crate::state::Editor,
+    file: &str,
+    line: usize,
+    enabled: bool,
+) {
     ed.debug.set_enabled(file, line, enabled);
     sync_breakpoint_lines(ed);
     if let Some(sid) = ed.debug.active_session {
@@ -189,15 +221,22 @@ pub fn set_breakpoint_enabled(ed: &mut crate::state::Editor, file: &str, line: u
 /// clicks.  Lives in Rust, not Janet: built-in behavior must not depend on
 /// event handlers registered by init-time scripts.
 pub fn toggle_breakpoint_at(ed: &mut crate::state::Editor, file: &str, line: usize) {
-    let existing = ed.debug.breakpoints_for(file).iter().any(|bp| bp.line == line);
+    let existing = ed
+        .debug
+        .breakpoints_for(file)
+        .iter()
+        .any(|bp| bp.line == line);
     if existing {
         remove_breakpoints_at(ed, file, line);
         return;
     }
     let bp_id = ed.debug.add_breakpoint(file.to_string(), line);
-    if let Some(arc) = ed.buffers.iter()
+    if let Some(arc) = ed
+        .buffers
+        .iter()
         .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file))
-        .map(|(_, a)| a.clone()) {
+        .map(|(_, a)| a.clone())
+    {
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let offset = buf.line_start_offset(line.saturating_sub(1)).unwrap_or(0);
         buf.attach_breakpoint(bp_id, offset);
@@ -220,9 +259,12 @@ pub fn toggle_breakpoint_at(ed: &mut crate::state::Editor, file: &str, line: usi
 /// Remove every breakpoint at a location: manager, buffer anchors, adapter.
 pub fn remove_breakpoints_at(ed: &mut crate::state::Editor, file: &str, line: usize) {
     let removed = ed.debug.remove_breakpoint(file, line);
-    if let Some(arc) = ed.buffers.iter()
+    if let Some(arc) = ed
+        .buffers
+        .iter()
         .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file))
-        .map(|(_, a)| a.clone()) {
+        .map(|(_, a)| a.clone())
+    {
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         for id in removed {
             buf.detach_breakpoint(id);
@@ -251,7 +293,9 @@ pub fn spawn_session(
 ) -> Result<SessionId, String> {
     use crate::runtime::BackgroundEvent;
 
-    let bg = ed.background.clone()
+    let bg = ed
+        .background
+        .clone()
         .ok_or_else(|| "no background runtime".to_string())?;
     // The adapter may arrive as a full path (something resolved outside
     // `$PATH`, e.g. Xcode's `lldb-dap`); the session label is the binary
@@ -265,8 +309,9 @@ pub fn spawn_session(
     std::thread::Builder::new()
         .name(format!("dap-init-{session_id}"))
         .spawn(move || {
-            let result = dap_client::DapHandle::start(
-                &adapter, session_id, launch_config, bg.clone()).map(std::sync::Arc::new);
+            let result =
+                dap_client::DapHandle::start(&adapter, session_id, launch_config, bg.clone())
+                    .map(std::sync::Arc::new);
             bg.send_event(BackgroundEvent::Dap(Event::Started { session_id, result }));
         })
         .map_err(|e| format!("dap-init thread: {e}"))?;

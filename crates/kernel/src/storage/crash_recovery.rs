@@ -24,10 +24,7 @@ pub fn recover_from(ed: &mut crate::state::Editor, crash_root: &Path) -> usize {
     let mut count = 0usize;
     for session in collect_from(crash_root) {
         for snap in &session.snapshots {
-            let label = format!(
-                "*recovered {}*",
-                snap.label.trim_matches('*')
-            );
+            let label = format!("*recovered {}*", snap.label.trim_matches('*'));
             let key = ed.create_buffer_from_str(&label, &snap.content);
             if let Some(arc) = ed.buffers.get(key) {
                 arc.lock().unwrap_or_else(|e| e.into_inner()).read_only = true;
@@ -57,8 +54,13 @@ mod tests {
     use super::*;
 
     fn temp_root(tag: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("magma-crash-kernel-{tag}-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "magma-crash-kernel-{tag}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         root
     }
@@ -68,13 +70,20 @@ mod tests {
         let root = temp_root("recover");
         let dir = root.join("s1");
         write_snapshot(&dir, "notes.txt", None, "half-written note");
-        let mut ed = crate::state::Editor::new(
-            Box::new(crate::storage::disk::DiskFileSystem::new()));
+        let mut ed =
+            crate::state::Editor::new(Box::new(crate::storage::disk::DiskFileSystem::new()));
 
         let first = recover_from(&mut ed, &root);
         assert_eq!(first, 1);
-        let (name, ro, content) = ed.buffers.iter()
-            .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).name.starts_with("*recovered"))
+        let (name, ro, content) = ed
+            .buffers
+            .iter()
+            .find(|(_, a)| {
+                a.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .name
+                    .starts_with("*recovered")
+            })
             .map(|(_, a)| {
                 let b = a.lock().unwrap_or_else(|e| e.into_inner());
                 (b.name.clone(), b.read_only, b.slice(0, b.len()))
@@ -85,8 +94,11 @@ mod tests {
         assert!(name.contains("notes.txt"), "label preserved: {name}");
 
         // A second pass must not re-open the same work.
-        assert_eq!(recover_from(&mut ed, &root), 0,
-            "a recovered session is never recovered twice");
+        assert_eq!(
+            recover_from(&mut ed, &root),
+            0,
+            "a recovered session is never recovered twice"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

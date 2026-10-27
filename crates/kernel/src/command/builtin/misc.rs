@@ -6,16 +6,18 @@
 //! remain as extension substrate, but nothing in the core enters a mode.
 
 use crate::command::args::{ArgSpec, ArgType};
-use crate::state::Editor;
-use crate::event::payload::*;
 use crate::event::keys;
+use crate::event::payload::*;
+use crate::state::Editor;
 
 use super::helpers::*;
 
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("quit", "Exit the editor (refuses when buffers have unsaved changes)",
+    cmds.register_fn(
+        "quit",
+        "Exit the editor (refuses when buffers have unsaved changes)",
         vec![],
         |editor, _args| {
             let dirty = editor.dirty_buffer_names();
@@ -25,18 +27,27 @@ pub(super) fn register(editor: &mut Editor) {
                     dirty.join(", ")
                 ));
             }
-            editor.events.emit_typed(keys::events::BEFORE_QUIT, EmptyPayload);
+            editor
+                .events
+                .emit_typed(keys::events::BEFORE_QUIT, EmptyPayload);
             editor.running = false;
             Ok(())
         },
     );
 
-    cmds.register_fn("force-quit", "Quit without saving",
+    cmds.register_fn(
+        "force-quit",
+        "Quit without saving",
         vec![],
-        |editor, _args| { editor.running = false; Ok(()) },
+        |editor, _args| {
+            editor.running = false;
+            Ok(())
+        },
     );
 
-    cmds.register_fn("editor-escape", "Clear the active selection",
+    cmds.register_fn(
+        "editor-escape",
+        "Clear the active selection",
         vec![],
         |editor, _args| {
             editor.selection = None;
@@ -45,15 +56,22 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("save-and-quit", "Save buffer then quit",
+    cmds.register_fn(
+        "save-and-quit",
+        "Save buffer then quit",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let arc = editor.buffers.get_mut(buf_id)
+            let arc = editor
+                .buffers
+                .get_mut(buf_id)
                 .ok_or_else(|| "No buffer".to_string())?;
             let path = arc.lock().unwrap_or_else(|e| e.into_inner()).path.clone();
             if let Some(ref path) = path {
-                let content = { let b = arc.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
+                let content = {
+                    let b = arc.lock().unwrap_or_else(|e| e.into_inner());
+                    b.slice(0, b.len())
+                };
                 editor.fs.write(path, &content).map_err(|e| e.to_string())?;
                 arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved();
             }
@@ -62,11 +80,13 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("set-major-mode",
+    cmds.register_fn(
+        "set-major-mode",
         "Set the major mode of the focused buffer",
         vec![ArgSpec::new("mode", ArgType::String)],
         |editor, args| {
-            let name = args.get("mode")
+            let name = args
+                .get("mode")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "mode name required".to_string())?;
             let new_mode = crate::text_engine::MajorMode::from_name(name);
@@ -74,21 +94,31 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some(arc) = editor.buffers.get_mut(buf_id) {
                 arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode = new_mode;
             }
-            editor.events.emit_typed(keys::events::MAJOR_MODE_CHANGED, MajorModeChangedPayload {
-                mode: name.to_string(),
-                buffer_id: buf_id.to_string(),
-            });
+            editor.events.emit_typed(
+                keys::events::MAJOR_MODE_CHANGED,
+                MajorModeChangedPayload {
+                    mode: name.to_string(),
+                    buffer_id: buf_id.to_string(),
+                },
+            );
             Ok(())
         },
     );
 
-    cmds.register_fn("major-mode",
+    cmds.register_fn(
+        "major-mode",
         "Return the current buffer's major mode name",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(arc) = editor.buffers.get(buf_id) {
-                info!("{}", arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name());
+                info!(
+                    "{}",
+                    arc.lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .major_mode
+                        .name()
+                );
             }
             Ok(())
         },

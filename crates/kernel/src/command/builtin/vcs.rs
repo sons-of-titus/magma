@@ -14,95 +14,216 @@ use super::helpers::*;
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("shell-command", "Run a shell command and show output in a buffer",
+    cmds.register_fn(
+        "shell-command",
+        "Run a shell command and show output in a buffer",
         vec![ArgSpec::new("command", ArgType::String)],
         |editor, args| {
-            let cmd = args.get("command").and_then(|a| a.as_string())
+            let cmd = args
+                .get("command")
+                .and_then(|a| a.as_string())
                 .ok_or_else(|| "shell-command requires a command string".to_string())?;
             crate::task::run_shell_command(editor, cmd)?;
             Ok(())
         },
     );
 
-    cmds.register_fn("make", "Run make (with optional target) and show output",
-        vec![ArgSpec::optional("target", ArgType::String, ArgValue::String("".to_string()))],
+    cmds.register_fn(
+        "make",
+        "Run make (with optional target) and show output",
+        vec![ArgSpec::optional(
+            "target",
+            ArgType::String,
+            ArgValue::String("".to_string()),
+        )],
         |editor, args| {
-            let target = args.get("target").and_then(|a| a.as_string())
-                .unwrap_or("");
+            let target = args.get("target").and_then(|a| a.as_string()).unwrap_or("");
             crate::task::run_make(editor, target)?;
             Ok(())
         },
     );
 
-    cmds.register_fn("quickfix-next", "Jump to the next quickfix entry (:cnext/:cn)",
+    cmds.register_fn(
+        "quickfix-next",
+        "Jump to the next quickfix entry (:cnext/:cn)",
         vec![],
         |editor, _args| {
-            crate::task::quickfix_next(editor)
-                .map_err(|e| e.to_string())?;
+            crate::task::quickfix_next(editor).map_err(|e| e.to_string())?;
             Ok(())
         },
     );
 
-    cmds.register_fn("quickfix-prev", "Jump to the previous quickfix entry (:cprev/:cp)",
+    cmds.register_fn(
+        "quickfix-prev",
+        "Jump to the previous quickfix entry (:cprev/:cp)",
         vec![],
         |editor, _args| {
-            crate::task::quickfix_prev(editor)
-                .map_err(|e| e.to_string())?;
+            crate::task::quickfix_prev(editor).map_err(|e| e.to_string())?;
             Ok(())
         },
     );
 
-    cmds.register_fn("vc",
+    cmds.register_fn(
+        "vc",
         "Open the Version Control tool window for the current buffer's repository",
         vec![],
-        |editor, _args| vc_open(editor));
+        |editor, _args| vc_open(editor),
+    );
 
-    cmds.register_fn("vc-refresh",
+    cmds.register_fn(
+        "vc-refresh",
         "Refresh Version Control status, branches, and stashes",
         vec![],
-        |editor, _args| vc_refresh(editor));
+        |editor, _args| vc_refresh(editor),
+    );
 
-    cmds.register_fn("vc-log",
+    cmds.register_fn(
+        "vc-log",
         "Show the recent commit log in a read-only buffer",
         vec![],
-        |editor, _args| vc_show(editor, VcShow::Log));
+        |editor, _args| vc_show(editor, VcShow::Log),
+    );
 
-    cmds.register_fn("vc-push",
-        "Push to the remote",
-        vec![],
-        |editor, _args| vc_show(editor, VcShow::Push));
+    cmds.register_fn("vc-push", "Push to the remote", vec![], |editor, _args| {
+        vc_show(editor, VcShow::Push)
+    });
 
-    cmds.register_fn("vc-diff",
+    cmds.register_fn(
+        "vc-diff",
         "Show the working-tree diff in a read-only buffer (optionally one file)",
-        vec![ArgSpec::optional("file", ArgType::String, ArgValue::String(String::new()))],
+        vec![ArgSpec::optional(
+            "file",
+            ArgType::String,
+            ArgValue::String(String::new()),
+        )],
         |editor, args| {
-            let file = args.get("file").and_then(|a| a.as_string())
-                .filter(|s| !s.is_empty()).map(|s| s.to_string());
+            let file = args
+                .get("file")
+                .and_then(|a| a.as_string())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
             vc_show(editor, VcShow::Diff(file))
-        });
+        },
+    );
 
-    cmds.register_fn("vc-blame",
-        "Show blame/annotate for the current file",
+    cmds.register_fn(
+        "vc-blame",
+        "Annotate the current file with per-line blame as editor decorations",
         vec![],
-        |editor, _args| {
-            let path = {
-                let buf_id = get_current_buffer_id(editor);
-                editor.buffers.get(buf_id)
-                    .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
-                    .ok_or_else(|| "current buffer has no file path".to_string())?
-            };
-            vc_show(editor, VcShow::Blame(path))
-        });
+        |editor, _args| vc_blame(editor),
+    );
+
+    cmds.register_fn(
+        "vc-merge-tool",
+        "Launch the configured merge tool to resolve conflicts",
+        vec![ArgSpec::optional(
+            "path",
+            ArgType::Path,
+            ArgValue::String(String::new()),
+        )],
+        |editor, args| {
+            let path = args
+                .get("path")
+                .and_then(|a| a.as_string())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            vc_merge_tool(editor, path)
+        },
+    );
 
     super::vc_ops::register(editor);
 }
 
-enum VcShow { Diff(Option<String>), Log, Push, Blame(String) }
+enum VcShow {
+    Diff(Option<String>),
+    Log,
+    Push,
+    Blame(String),
+}
 
-/// Determine the working directory from the focused buffer's path or cwd.
+/// Annotate the current buffer with per-line blame information rendered as
+/// `LinePrefix` text decorations (F-24).  Toggles: a second invocation
+/// clears the layer.
+pub(crate) fn vc_blame(editor: &mut Editor) -> CommandResult {
+    let buf_id = get_current_buffer_id(editor);
+    let path = editor
+        .buffers
+        .get(buf_id)
+        .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
+        .ok_or_else(|| "current buffer has no file path".to_string())?;
+
+    let dir = vc_working_dir(editor);
+    let (backend_idx, root) = match editor.vc.detect_for(&dir) {
+        Some(v) => v,
+        None => return Err("No version-control repository found".to_string()),
+    };
+    editor.vc.active_backend = Some(backend_idx);
+    editor.vc.active_backend_name = Some(editor.vc.backends[backend_idx].name().to_string());
+    editor.vc.repo_root = Some(root.clone());
+
+    let backend = editor.vc.active_backend_name.clone().unwrap();
+    // Toggle off if already annotated.
+    let already = editor
+        .view_of_buffer(buf_id)
+        .map(|v| v.decor_count_layer("vc-blame") > 0)
+        .unwrap_or(false);
+    if already {
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            view.decor_clear_layer("vc-blame");
+        }
+        editor.frame_dirty = true;
+        return Ok(());
+    }
+
+    let output = crate::vc::run_op(&root, &backend, &crate::vc::VcRemoteOp::Blame(path))?;
+    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+        view.decor_clear_layer("vc-blame");
+    }
+    for (i, line) in output.lines().enumerate() {
+        let annotation = line
+            .split('\t')
+            .next()
+            .unwrap_or(line)
+            .trim_end()
+            .to_string();
+        if annotation.is_empty() {
+            continue;
+        }
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            view.decor_set_prefix("vc-blame", i, annotation, "comment-face".to_string());
+        }
+    }
+    editor.frame_dirty = true;
+    Ok(())
+}
+/// Launch the configured merge tool (git mergetool) to resolve conflicts.
+pub(crate) fn vc_merge_tool(editor: &mut Editor, path: Option<String>) -> CommandResult {
+    let dir = vc_working_dir(editor);
+    let (backend_idx, root) = match editor.vc.detect_for(&dir) {
+        Some(v) => v,
+        None => return Err("No version-control repository found".to_string()),
+    };
+    editor.vc.active_backend = Some(backend_idx);
+    editor.vc.active_backend_name = Some(editor.vc.backends[backend_idx].name().to_string());
+    editor.vc.repo_root = Some(root.clone());
+
+    let output = if let Some(p) = path.as_deref() {
+        crate::vc::run_cmd(&root, "git", &["mergetool", "--", p])
+    } else {
+        crate::vc::run_cmd(&root, "git", &["mergetool"])
+    }?;
+    if !output.trim().is_empty() {
+        editor.show_message(MessageKind::Info, output);
+    }
+    vc_refresh(editor)?;
+    Ok(())
+}
+
 pub(crate) fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
     let buf_id = get_current_buffer_id(editor);
-    editor.buffers.get(buf_id)
+    editor
+        .buffers
+        .get(buf_id)
         .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
         .as_deref()
         .and_then(|p| std::path::Path::new(p).parent())
@@ -114,7 +235,9 @@ pub(crate) fn vc_working_dir(editor: &Editor) -> std::path::PathBuf {
 /// it.  The GUI consumes `vc.request_open` to reveal the tool window.
 fn vc_open(editor: &mut Editor) -> CommandResult {
     let dir = vc_working_dir(editor);
-    let (backend_idx, root) = editor.vc.detect_for(&dir)
+    let (backend_idx, root) = editor
+        .vc
+        .detect_for(&dir)
         .ok_or_else(|| "No version-control repository found".to_string())?;
 
     editor.vc.active_backend = Some(backend_idx);
@@ -145,8 +268,11 @@ pub(crate) fn vc_refresh(editor: &mut Editor) -> CommandResult {
             let result = crate::vc::status_for_root(&root);
             let _ = sender.send(crate::runtime::BackgroundEvent::Vc(
                 crate::vc::Event::StatusFetched {
-                    backend_idx, root, result,
-                }));
+                    backend_idx,
+                    root,
+                    result,
+                },
+            ));
         });
     } else {
         match crate::vc::status_for_root(&root) {
@@ -181,7 +307,10 @@ pub(crate) fn vc_spawn_op(
     scratch: Option<&str>,
     then_refresh: bool,
 ) -> CommandResult {
-    let (backend, root) = match (editor.vc.active_backend_name.clone(), editor.vc.repo_root.clone()) {
+    let (backend, root) = match (
+        editor.vc.active_backend_name.clone(),
+        editor.vc.repo_root.clone(),
+    ) {
         (Some(b), Some(r)) => (b, r),
         _ => return Err("No active VC backend".to_string()),
     };
@@ -200,7 +329,8 @@ pub(crate) fn vc_spawn_op(
                 scratch: scratch_name,
                 then_refresh,
                 result,
-            }));
+            },
+        ));
     });
     Ok(())
 }
@@ -231,7 +361,9 @@ pub(crate) fn apply_vc_op(
 
 /// Write `text` into a named read-only output buffer and display it.
 pub(crate) fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> CommandResult {
-    let key = editor.buffers.iter()
+    let key = editor
+        .buffers
+        .iter()
         .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).name == name)
         .map(|(k, _)| k)
         .unwrap_or_else(|| editor.create_buffer(name));
@@ -239,7 +371,9 @@ pub(crate) fn vc_output_buf(editor: &mut Editor, name: &str, text: &str) -> Comm
         let arc = editor.buffers.get_mut(key).unwrap();
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let len = buf.len();
-        if len > 0 { buf.delete(0, len); }
+        if len > 0 {
+            buf.delete(0, len);
+        }
         buf.insert(0, text);
         buf.read_only = true;
         buf.ephemeral = true;

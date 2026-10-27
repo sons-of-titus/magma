@@ -11,7 +11,9 @@ pub mod mouse;
 fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) {
     if key == "esc" {
         let _ = crate::command::execute_command(
-            ed, "exit-terminal-mode", &std::collections::HashMap::new(),
+            ed,
+            "exit-terminal-mode",
+            &std::collections::HashMap::new(),
         );
         return;
     }
@@ -37,39 +39,41 @@ fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) 
         if byte > 0 || rest.starts_with(' ') {
             let ctrl_bytes = [byte];
             let _ = crate::terminal::send_input(
-                ed, buf_id, std::str::from_utf8(&ctrl_bytes).unwrap_or(""),
+                ed,
+                buf_id,
+                std::str::from_utf8(&ctrl_bytes).unwrap_or(""),
             );
         }
         return;
     }
 
     let seq: &str = match key {
-        "return"    => "\r",
-        "tab"       => "\t",
+        "return" => "\r",
+        "tab" => "\t",
         "backspace" => "\x7f",
-        "delete"    => "\x1b[3~",
-        "up"        => "\x1b[A",
-        "down"      => "\x1b[B",
-        "right"     => "\x1b[C",
-        "left"      => "\x1b[D",
-        "home"      => "\x1b[H",
-        "end"       => "\x1b[F",
-        "page-up"   => "\x1b[5~",
+        "delete" => "\x1b[3~",
+        "up" => "\x1b[A",
+        "down" => "\x1b[B",
+        "right" => "\x1b[C",
+        "left" => "\x1b[D",
+        "home" => "\x1b[H",
+        "end" => "\x1b[F",
+        "page-up" => "\x1b[5~",
         "page-down" => "\x1b[6~",
-        "f1"        => "\x1bOP",
-        "f2"        => "\x1bOQ",
-        "f3"        => "\x1bOR",
-        "f4"        => "\x1bOS",
-        "f5"        => "\x1b[15~",
-        "f6"        => "\x1b[17~",
-        "f7"        => "\x1b[18~",
-        "f8"        => "\x1b[19~",
-        "f9"        => "\x1b[20~",
-        "f10"       => "\x1b[21~",
-        "f11"       => "\x1b[23~",
-        "f12"       => "\x1b[24~",
-        "unknown"   => return,
-        k           => k,
+        "f1" => "\x1bOP",
+        "f2" => "\x1bOQ",
+        "f3" => "\x1bOR",
+        "f4" => "\x1bOS",
+        "f5" => "\x1b[15~",
+        "f6" => "\x1b[17~",
+        "f7" => "\x1b[18~",
+        "f8" => "\x1b[19~",
+        "f9" => "\x1b[20~",
+        "f10" => "\x1b[21~",
+        "f11" => "\x1b[23~",
+        "f12" => "\x1b[24~",
+        "unknown" => return,
+        k => k,
     };
     let _ = crate::terminal::send_input(ed, buf_id, seq);
 }
@@ -95,17 +99,19 @@ pub fn dispatch_key(ed: &mut crate::state::Editor, key: &str) {
     // ── Quick-fix picker keys ───────────────────────────────────────
     if ed.quickfix_menu.is_some() {
         // A menu left over from a buffer switch closes on any key.
-        let stale = ed.quickfix_menu.as_ref().map(|m| m.buf_key)
-            != Some(focused_buffer_id(ed));
+        let stale = ed.quickfix_menu.as_ref().map(|m| m.buf_key) != Some(focused_buffer_id(ed));
         let handled = match key {
             "down" if !stale => {
-                crate::state::overlay::quickfix_menu_next(ed); true
+                crate::state::overlay::quickfix_menu_next(ed);
+                true
             }
             "up" if !stale => {
-                crate::state::overlay::quickfix_menu_prev(ed); true
+                crate::state::overlay::quickfix_menu_prev(ed);
+                true
             }
             "return" | "tab" if !stale => {
-                crate::state::overlay::quickfix_menu_accept(ed); true
+                crate::state::overlay::quickfix_menu_accept(ed);
+                true
             }
             _ => {
                 // Escape, or any typing key: the menu closes and typing
@@ -126,10 +132,10 @@ pub fn dispatch_key(ed: &mut crate::state::Editor, key: &str) {
     if ed.completion.visible {
         let mut consumed = true;
         match key {
-            "up"    => crate::completion::prev(ed),
-            "down"  => crate::completion::next(ed),
+            "up" => crate::completion::prev(ed),
+            "down" => crate::completion::next(ed),
             "tab" | "return" => crate::completion::accept(ed),
-            "esc"   => crate::completion::dismiss(ed),
+            "esc" => crate::completion::dismiss(ed),
             k if is_word_input(k) => {
                 handle_text_input(ed, k);
                 crate::completion::trigger(ed);
@@ -167,7 +173,8 @@ pub fn dispatch_key(ed: &mut crate::state::Editor, key: &str) {
     // ── Keymap lookup → command, else text if accepts_text ─────────
     let buf_id = focused_buffer_id(ed);
     if let Some(cmd) = ed.keymaps.resolve_for_buffer(key, Some(buf_id as u64)) {
-        if let Err(e) = crate::command::execute_command(ed, &cmd, &std::collections::HashMap::new()) {
+        if let Err(e) = crate::command::execute_command(ed, &cmd, &std::collections::HashMap::new())
+        {
             ed.show_message(crate::state::MessageKind::Error, e);
         }
     } else if ed.editor_mode.accepts_text {
@@ -180,25 +187,50 @@ pub fn dispatch_key(ed: &mut crate::state::Editor, key: &str) {
 
 /// Get the focused buffer's slab key, or 0.
 pub fn focused_buffer_id(ed: &crate::state::Editor) -> usize {
-    ed.view_tree.focused_window()
+    ed.view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)
 }
 
 /// Named key strings that must never be inserted verbatim into the buffer.
 pub const NON_INSERTABLE: &[&str] = &[
-    "esc", "backspace", "delete", "tab", "return",
-    "left", "right", "up", "down",
-    "home", "end", "page-up", "page-down",
-    "f1", "f2", "f3", "f4", "f5", "f6",
-    "f7", "f8", "f9", "f10", "f11", "f12",
+    "esc",
+    "backspace",
+    "delete",
+    "tab",
+    "return",
+    "left",
+    "right",
+    "up",
+    "down",
+    "home",
+    "end",
+    "page-up",
+    "page-down",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "f12",
 ];
 
 /// Returns `true` if `s` is a printable string that should be inserted into
 /// the buffer verbatim.
 pub fn is_insertable(s: &str) -> bool {
-    if s.starts_with("ctrl-") || s.starts_with("meta-") { return false; }
-    if s.chars().any(|c| c.is_control()) { return false; }
+    if s.starts_with("ctrl-") || s.starts_with("meta-") {
+        return false;
+    }
+    if s.chars().any(|c| c.is_control()) {
+        return false;
+    }
     !NON_INSERTABLE.contains(&s)
 }
 
@@ -211,7 +243,9 @@ pub fn handle_text_input(ed: &mut crate::state::Editor, key: &str) {
     }
 
     // Buffer text insertion.
-    if let Some(slab) = ed.view_tree.focused_window()
+    if let Some(slab) = ed
+        .view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
     {
         if ed.multi_cursor.active && !ed.multi_cursor.extra_cursors.is_empty() {
@@ -232,7 +266,10 @@ pub fn handle_text_input(ed: &mut crate::state::Editor, key: &str) {
 /// popup filters on.
 fn is_word_input(key: &str) -> bool {
     key.chars().count() == 1
-        && key.chars().next().is_some_and(|c| c.is_alphanumeric() || c == '_')
+        && key
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
 }
 
 /// Apply a text input operation to all cursors (primary + extras).
@@ -259,10 +296,11 @@ fn apply_to_all_cursors(ed: &mut crate::state::Editor, slab: usize, key: &str) {
     }
 
     if let Some(&first) = cursors.first()
-        && let Some(view) = ed.view_of_buffer_mut(slab) {
-            let adjustment = key.len();
-            view.set_cursor(first + adjustment);
-        }
+        && let Some(view) = ed.view_of_buffer_mut(slab)
+    {
+        let adjustment = key.len();
+        view.set_cursor(first + adjustment);
+    }
 }
 
 #[cfg(test)]
@@ -271,13 +309,19 @@ mod tests {
 
     #[test]
     fn letters_insertable() {
-        for c in 'a'..='z' { assert!(is_insertable(&c.to_string())); }
-        for c in 'A'..='Z' { assert!(is_insertable(&c.to_string())); }
+        for c in 'a'..='z' {
+            assert!(is_insertable(&c.to_string()));
+        }
+        for c in 'A'..='Z' {
+            assert!(is_insertable(&c.to_string()));
+        }
     }
 
     #[test]
     fn digits_insertable() {
-        for c in '0'..='9' { assert!(is_insertable(&c.to_string())); }
+        for c in '0'..='9' {
+            assert!(is_insertable(&c.to_string()));
+        }
     }
 
     #[test]
@@ -294,7 +338,9 @@ mod tests {
 
     #[test]
     fn function_keys_not_insertable() {
-        for k in NON_INSERTABLE { assert!(!is_insertable(k), "{k} must not be insertable"); }
+        for k in NON_INSERTABLE {
+            assert!(!is_insertable(k), "{k} must not be insertable");
+        }
     }
 
     #[test]
@@ -306,7 +352,16 @@ mod tests {
 
     #[test]
     fn nav_key_names_not_insertable() {
-        for k in ["left", "right", "up", "down", "home", "end", "page-up", "page-down"] {
+        for k in [
+            "left",
+            "right",
+            "up",
+            "down",
+            "home",
+            "end",
+            "page-up",
+            "page-down",
+        ] {
             assert!(!is_insertable(k), "{k} must not be insertable");
         }
     }

@@ -79,9 +79,7 @@ pub fn close_tab(editor: &mut Editor, id: WindowId) {
     }
     let was_last = editor.view_tree.panes().len() <= 1;
     editor.view_tree.close(id);
-    if was_last
-        && let Some(win) = editor.view_tree.focused_window_mut()
-    {
+    if was_last && let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = None;
     }
 }

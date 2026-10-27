@@ -33,12 +33,15 @@ pub struct LayoutSnapshot {
 /// first), or surface it as a status message when no card is showing —
 /// that is the manual `lsp-hover` path.  Called from the event pump.
 pub fn attach_lsp_hover(ed: &mut crate::state::Editor, buf_key: usize, contents: &str) {
-    let focused = ed.view_tree.focused_window()
+    let focused = ed
+        .view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid));
     if focused == Some(buf_key)
         && let Some(card) = ed.hover.as_mut()
     {
-        let mut lines: Vec<String> = contents.lines()
+        let mut lines: Vec<String> = contents
+            .lines()
             .map(str::trim_end)
             .filter(|l| !l.is_empty())
             .map(str::to_string)
@@ -47,9 +50,14 @@ pub fn attach_lsp_hover(ed: &mut crate::state::Editor, buf_key: usize, contents:
         card.lines = lines;
         return;
     }
-    let first = contents.lines().find(|l| !l.trim().is_empty()).unwrap_or(contents);
-    ed.show_message(crate::state::MessageKind::Info,
-        first.chars().take(160).collect::<String>());
+    let first = contents
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or(contents);
+    ed.show_message(
+        crate::state::MessageKind::Info,
+        first.chars().take(160).collect::<String>(),
+    );
 }
 
 /// One code action from the language server.
@@ -76,34 +84,56 @@ pub fn parse_code_actions(json: &str) -> Vec<CodeAction> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
         return Vec::new();
     };
-    let Some(arr) = v.as_array() else { return Vec::new() };
-    arr.iter().filter_map(|a| {
-        let title = a.get("title")?.as_str()?.to_string();
-        let kind = a.get("kind").and_then(|k| k.as_str()).unwrap_or_default().to_string();
-        let edit_json = a.get("edit").map(|e| e.to_string());
-        Some(CodeAction { title, kind, edit_json })
-    }).collect()
+    let Some(arr) = v.as_array() else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|a| {
+            let title = a.get("title")?.as_str()?.to_string();
+            let kind = a
+                .get("kind")
+                .and_then(|k| k.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let edit_json = a.get("edit").map(|e| e.to_string());
+            Some(CodeAction {
+                title,
+                kind,
+                edit_json,
+            })
+        })
+        .collect()
 }
 
 /// Quickfix-menu operations shared by the input layer and tests.
 pub fn quickfix_menu_next(ed: &mut crate::state::Editor) {
     if let Some(menu) = ed.quickfix_menu.as_mut()
-        && !menu.items.is_empty() {
-            menu.idx = (menu.idx + 1) % menu.items.len();
+        && !menu.items.is_empty()
+    {
+        menu.idx = (menu.idx + 1) % menu.items.len();
     }
 }
 
 pub fn quickfix_menu_prev(ed: &mut crate::state::Editor) {
     if let Some(menu) = ed.quickfix_menu.as_mut()
-        && !menu.items.is_empty() {
-            menu.idx = if menu.idx == 0 { menu.items.len() - 1 } else { menu.idx - 1 };
+        && !menu.items.is_empty()
+    {
+        menu.idx = if menu.idx == 0 {
+            menu.items.len() - 1
+        } else {
+            menu.idx - 1
+        };
     }
 }
 
 /// Apply the selected action's workspace edit and close the menu.
 pub fn quickfix_menu_accept(ed: &mut crate::state::Editor) {
-    let Some(menu) = ed.quickfix_menu.take() else { return };
-    let Some(action) = menu.items.get(menu.idx) else { return };
+    let Some(menu) = ed.quickfix_menu.take() else {
+        return;
+    };
+    let Some(action) = menu.items.get(menu.idx) else {
+        return;
+    };
     match &action.edit_json {
         Some(json) => {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
@@ -112,8 +142,10 @@ pub fn quickfix_menu_accept(ed: &mut crate::state::Editor) {
             }
         }
         None => {
-            ed.show_message(crate::state::MessageKind::Info,
-                format!("'{}' has no edit to apply", action.title));
+            ed.show_message(
+                crate::state::MessageKind::Info,
+                format!("'{}' has no edit to apply", action.title),
+            );
         }
     }
 }

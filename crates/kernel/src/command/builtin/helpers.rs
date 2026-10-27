@@ -1,23 +1,30 @@
 //! Shared helpers used by builtin command submodules.
 
-use crate::state::Editor;
-use crate::event::payload::*;
 use crate::event::keys;
+use crate::event::payload::*;
+use crate::state::Editor;
 use crate::text_engine::BufferView;
 
 pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
-    editor.view_tree.focused_window()
+    editor
+        .view_tree
+        .focused_window()
         .and_then(|wid| editor.view_tree.buffer(wid))
         .unwrap_or(0)
 }
 
 pub(super) fn emit_cursor_moved(editor: &mut Editor) {
     let buf_id = get_current_buffer_id(editor);
-    let cursor = editor.view_of_buffer(buf_id).map(|v| v.cursor.offset.to_string());
-    editor.events.emit_typed(keys::events::CURSOR_MOVED, CursorMovedPayload {
-        buffer_id: buf_id.to_string(),
-        cursor: cursor.unwrap_or_default(),
-    });
+    let cursor = editor
+        .view_of_buffer(buf_id)
+        .map(|v| v.cursor.offset.to_string());
+    editor.events.emit_typed(
+        keys::events::CURSOR_MOVED,
+        CursorMovedPayload {
+            buffer_id: buf_id.to_string(),
+            cursor: cursor.unwrap_or_default(),
+        },
+    );
 }
 
 pub(super) fn current_line(view: &BufferView) -> usize {
@@ -51,7 +58,10 @@ pub(super) fn move_cursor(editor: &mut Editor, delta: isize) {
                 text.chars().last().map(|c| pos - c.len_utf8()).unwrap_or(0)
             } else {
                 let text = buf.slice(pos, buf.len());
-                text.chars().next().map(|c| pos + c.len_utf8()).unwrap_or(buf.len())
+                text.chars()
+                    .next()
+                    .map(|c| pos + c.len_utf8())
+                    .unwrap_or(buf.len())
             }
         };
         view.set_cursor(new_pos);

@@ -25,9 +25,9 @@ pub enum OptionCategory {
 impl OptionCategory {
     pub fn title(self) -> &'static str {
         match self {
-            OptionCategory::Editing    => "Editing",
+            OptionCategory::Editing => "Editing",
             OptionCategory::Appearance => "Appearance",
-            OptionCategory::Behavior   => "Behavior",
+            OptionCategory::Behavior => "Behavior",
         }
     }
 }
@@ -46,53 +46,75 @@ pub struct OptionSpec {
 /// The catalog.  Order is display order.
 pub const OPTION_SPECS: &[OptionSpec] = &[
     OptionSpec {
-        name: "gui-theme", kind: OptionKind::Enum,
+        name: "gui-theme",
+        kind: OptionKind::Enum,
         choices: &["intellij-dark", "intellij-light", "mocha", "latte"],
         default: "intellij-dark",
         description: "Chrome palette: IntelliJ dark/light, or Catppuccin mocha/latte",
         category: OptionCategory::Appearance,
     },
     OptionSpec {
-        name: "breadcrumb-enabled", kind: OptionKind::Bool,
-        choices: &[], default: "true",
+        name: "breadcrumb-enabled",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "true",
         description: "Show the path breadcrumb under the tab bar",
         category: OptionCategory::Appearance,
     },
     OptionSpec {
-        name: "minimap-enabled", kind: OptionKind::Bool,
-        choices: &[], default: "false",
+        name: "minimap-enabled",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "false",
         description: "Show the code minimap instead of the scrollbar",
         category: OptionCategory::Appearance,
     },
     OptionSpec {
-        name: "number", kind: OptionKind::Bool,
-        choices: &[], default: "true",
+        name: "number",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "true",
         description: "Show line numbers in the gutter",
         category: OptionCategory::Editing,
     },
     OptionSpec {
-        name: "scrolloff", kind: OptionKind::Int,
-        choices: &[], default: "3",
+        name: "scrolloff",
+        kind: OptionKind::Int,
+        choices: &[],
+        default: "3",
         description: "Lines of context kept around the cursor while scrolling",
         category: OptionCategory::Editing,
     },
     OptionSpec {
-        name: "mouse-support", kind: OptionKind::Bool,
-        choices: &[], default: "true",
+        name: "mouse-support",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "true",
         description: "Click, drag, and wheel support in the editor pane",
         category: OptionCategory::Editing,
     },
     OptionSpec {
-        name: "auto-save", kind: OptionKind::Bool,
-        choices: &[], default: "false",
+        name: "auto-save",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "false",
         description: "Write modified buffers to disk every 30 seconds (opt-in)",
+        category: OptionCategory::Behavior,
+    },
+    OptionSpec {
+        name: "agent.provider",
+        kind: OptionKind::Enum,
+        choices: &["openai", "deepseek", "kimi", "zai"],
+        default: "openai",
+        description: "LLM provider for the built-in agent",
         category: OptionCategory::Behavior,
     },
 ];
 
 /// The option's current value: user-set, else the registry default.
 pub fn effective(editor: &Editor, spec: &OptionSpec) -> String {
-    editor.options
+    editor
+        .options
         .get(spec.name)
         .cloned()
         .unwrap_or_else(|| spec.default.to_string())
@@ -110,10 +132,18 @@ mod tests {
         names.dedup();
         assert_eq!(names.len(), count, "duplicate option name in the registry");
         for spec in OPTION_SPECS {
-            assert!(!spec.description.is_empty(), "{} needs a description", spec.name);
+            assert!(
+                !spec.description.is_empty(),
+                "{} needs a description",
+                spec.name
+            );
             assert!(!spec.default.is_empty(), "{} needs a default", spec.name);
             if spec.kind == OptionKind::Enum {
-                assert!(spec.choices.contains(&spec.default), "{} default must be a choice", spec.name);
+                assert!(
+                    spec.choices.contains(&spec.default),
+                    "{} default must be a choice",
+                    spec.name
+                );
             }
         }
     }

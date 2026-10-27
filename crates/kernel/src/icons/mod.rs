@@ -6,8 +6,8 @@
 //! `icon-pack` option, swapping `Editor.icons`, and restoring the
 //! Janet-installed default pack in `Editor.default_icons`.
 
-pub use icons::{IconKind, IconPack, find_and_load, pack_search_dirs};
 pub use icons::vscode;
+pub use icons::{IconKind, IconPack, find_and_load, pack_search_dirs};
 
 use std::path::Path;
 

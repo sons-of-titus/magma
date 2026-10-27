@@ -17,41 +17,67 @@ use super::vcs::vc_spawn_op;
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("vc-branch-create",
+    cmds.register_fn(
+        "vc-branch-create",
         "Create and check out a new branch",
         vec![ArgSpec::new("name", ArgType::String)],
         |editor, args| {
-            let name = args.get("name").and_then(|a| a.as_string())
+            let name = args
+                .get("name")
+                .and_then(|a| a.as_string())
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| "vc-branch-create requires a branch name".to_string())?;
-            vc_spawn_op(editor, VcRemoteOp::Checkout { branch: name, create: true }, None, true)
-        });
+            vc_spawn_op(
+                editor,
+                VcRemoteOp::Checkout {
+                    branch: name,
+                    create: true,
+                },
+                None,
+                true,
+            )
+        },
+    );
 
-    cmds.register_fn("vc-stash",
+    cmds.register_fn(
+        "vc-stash",
         "Stash the working tree changes (vc-stash [message])",
-        vec![ArgSpec::optional("message", ArgType::String, ArgValue::String(String::new()))],
+        vec![ArgSpec::optional(
+            "message",
+            ArgType::String,
+            ArgValue::String(String::new()),
+        )],
         |editor, args| {
-            let msg = args.get("message").and_then(|a| a.as_string())
+            let msg = args
+                .get("message")
+                .and_then(|a| a.as_string())
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
             vc_spawn_op(editor, VcRemoteOp::StashPush(msg), None, true)
-        });
+        },
+    );
 
-    cmds.register_fn("vc-stash-pop",
+    cmds.register_fn(
+        "vc-stash-pop",
         "Pop the stash at the given index",
         vec![ArgSpec::new("index", ArgType::Integer)],
-        |editor, args| stash_op(editor, index_arg(args)?, StashOp::Pop));
+        |editor, args| stash_op(editor, index_arg(args)?, StashOp::Pop),
+    );
 
-    cmds.register_fn("vc-stash-apply",
+    cmds.register_fn(
+        "vc-stash-apply",
         "Apply (keep) the stash at the given index",
         vec![ArgSpec::new("index", ArgType::Integer)],
-        |editor, args| stash_op(editor, index_arg(args)?, StashOp::Apply));
+        |editor, args| stash_op(editor, index_arg(args)?, StashOp::Apply),
+    );
 
-    cmds.register_fn("vc-stash-drop",
+    cmds.register_fn(
+        "vc-stash-drop",
         "Drop the stash at the given index",
         vec![ArgSpec::new("index", ArgType::Integer)],
-        |editor, args| stash_op(editor, index_arg(args)?, StashOp::Drop));
+        |editor, args| stash_op(editor, index_arg(args)?, StashOp::Drop),
+    );
 }
 
 // ── Branch list ──────────────────────────────────────────────────────────────
@@ -63,14 +89,25 @@ pub(crate) fn spawn_branch_list(editor: &mut Editor) -> CommandResult {
         let sender = bg.sender.clone();
         bg.spawn_blocking(move || {
             let branches = crate::vc::run_op(&root, &backend, &VcRemoteOp::ListBranches)
-                .map(|out| parse_branch_lines(&out).into_iter().map(|b| b.name).collect())
+                .map(|out| {
+                    parse_branch_lines(&out)
+                        .into_iter()
+                        .map(|b| b.name)
+                        .collect()
+                })
                 .unwrap_or_default();
-            let _ = sender.send(BackgroundEvent::Vc(
-                crate::vc::Event::BranchesReady { branches }));
+            let _ = sender.send(BackgroundEvent::Vc(crate::vc::Event::BranchesReady {
+                branches,
+            }));
         });
     } else {
         editor.vc.branches = crate::vc::run_op(&root, &backend, &VcRemoteOp::ListBranches)
-            .map(|out| parse_branch_lines(&out).into_iter().map(|b| b.name).collect())
+            .map(|out| {
+                parse_branch_lines(&out)
+                    .into_iter()
+                    .map(|b| b.name)
+                    .collect()
+            })
             .unwrap_or_default();
     }
     Ok(())
@@ -89,8 +126,9 @@ pub(crate) fn spawn_stash_list(editor: &mut Editor) -> CommandResult {
             let stashes = crate::vc::run_op(&root, &backend, &VcRemoteOp::StashList)
                 .map(|out| parse_stash_lines(&out))
                 .unwrap_or_default();
-            let _ = sender.send(BackgroundEvent::Vc(
-                crate::vc::Event::StashListed { result: Ok(stashes) }));
+            let _ = sender.send(BackgroundEvent::Vc(crate::vc::Event::StashListed {
+                result: Ok(stashes),
+            }));
         });
     } else {
         editor.vc.stashes = crate::vc::run_op(&root, &backend, &VcRemoteOp::StashList)
@@ -102,7 +140,11 @@ pub(crate) fn spawn_stash_list(editor: &mut Editor) -> CommandResult {
 
 // ── Stash ops ────────────────────────────────────────────────────────────────
 
-enum StashOp { Pop, Apply, Drop }
+enum StashOp {
+    Pop,
+    Apply,
+    Drop,
+}
 
 fn stash_op(editor: &mut Editor, index: usize, op: StashOp) -> CommandResult {
     let remote = match op {
@@ -116,14 +158,18 @@ fn stash_op(editor: &mut Editor, index: usize, op: StashOp) -> CommandResult {
 // ── shared ───────────────────────────────────────────────────────────────────
 
 fn active(editor: &Editor) -> Result<(String, std::path::PathBuf), String> {
-    match (editor.vc.active_backend_name.clone(), editor.vc.repo_root.clone()) {
+    match (
+        editor.vc.active_backend_name.clone(),
+        editor.vc.repo_root.clone(),
+    ) {
         (Some(b), Some(r)) => Ok((b, r)),
         _ => Err("No active VC backend".to_string()),
     }
 }
 
 fn index_arg(args: &std::collections::HashMap<String, ArgValue>) -> Result<usize, String> {
-    args.get("index").and_then(|a| a.as_integer())
+    args.get("index")
+        .and_then(|a| a.as_integer())
         .filter(|&i| i >= 0)
         .map(|i| i as usize)
         .ok_or_else(|| "an index is required".to_string())

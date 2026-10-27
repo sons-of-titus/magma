@@ -25,14 +25,31 @@ pub enum Event {
         result: Result<Arc<DapHandle>, String>,
     },
     /// The debuggee stopped (breakpoint hit, step complete, etc.).
-    Stopped { session_id: SessionId, reason: String, thread_id: u64 },
+    Stopped {
+        session_id: SessionId,
+        reason: String,
+        thread_id: u64,
+    },
     /// A line of console/stdout output from the debuggee.
-    Output { session_id: SessionId, category: String, output: String },
+    Output {
+        session_id: SessionId,
+        category: String,
+        output: String,
+    },
     /// The debug adapter process terminated.
     Terminated { session_id: SessionId },
     /// A generic adapter response (evaluate result, unknown event).
-    Response { session_id: SessionId, event_type: String, data: String },
+    Response {
+        session_id: SessionId,
+        event_type: String,
+        data: String,
+    },
     /// A DAP command response (stackTrace/scopes/variables/threads) — feeds
     /// the session model the debug pane renders.
-    CommandResult { session_id: SessionId, command: String, success: bool, body: String },
+    CommandResult {
+        session_id: SessionId,
+        command: String,
+        success: bool,
+        body: String,
+    },
 }

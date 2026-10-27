@@ -43,9 +43,10 @@ impl Editor {
     pub fn view_of_buffer(&self, buf: usize) -> Option<&crate::text_engine::BufferView> {
         if let Some(win) = self.view_tree.focused_window()
             && self.view_tree.buffer(win) == Some(buf)
-                && let Some(v) = self.window_views.get(&(win, buf)) {
-                    return Some(v);
-                }
+            && let Some(v) = self.window_views.get(&(win, buf))
+        {
+            return Some(v);
+        }
         if let Some((_, v)) = self.window_views.iter().find(|((_, b), _)| *b == buf) {
             return Some(v);
         }
@@ -53,13 +54,18 @@ impl Editor {
     }
 
     /// Mutable `view_of_buffer`.
-    pub fn view_of_buffer_mut(&mut self, buf: usize) -> Option<&mut crate::text_engine::BufferView> {
+    pub fn view_of_buffer_mut(
+        &mut self,
+        buf: usize,
+    ) -> Option<&mut crate::text_engine::BufferView> {
         let focused = self.view_tree.focused_window();
         let focused_buf = focused.and_then(|w| self.view_tree.buffer(w));
         if let (Some(win), Some(shown)) = (focused, focused_buf)
-            && shown == buf && self.window_views.contains_key(&(win, buf)) {
-                return self.window_views.get_mut(&(win, buf));
-            }
+            && shown == buf
+            && self.window_views.contains_key(&(win, buf))
+        {
+            return self.window_views.get_mut(&(win, buf));
+        }
         let forked = self
             .window_views
             .iter()
@@ -94,8 +100,7 @@ impl Editor {
     /// carrying its revision transition and edit spans (docs/core-redesign.md
     /// §6).  Call before draining the event bus.
     pub fn publish_buffer_changes(&mut self) {
-        let mut notes: Vec<(usize, crate::text_engine::transaction::EditTransaction)> =
-            Vec::new();
+        let mut notes: Vec<(usize, crate::text_engine::transaction::EditTransaction)> = Vec::new();
         for (key, arc) in self.buffers.iter() {
             let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             if buf.has_pending_changes() {
@@ -146,5 +151,4 @@ impl Editor {
         self.publish_buffer_changes();
         crate::script_runtime::dispatch_events(self);
     }
-
 }

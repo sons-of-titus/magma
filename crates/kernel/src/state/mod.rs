@@ -1,55 +1,54 @@
 //! Editor state — the central `Editor` struct and all sub-modules.
 
-pub mod views;
 pub mod mode;
 pub mod persist;
+pub mod views;
 pub use font;
-pub mod options;
-pub mod snippet;
-pub mod cursor;
-pub mod visual;
 pub mod completion;
-pub mod io;
-pub mod gutter;
-pub mod overlay;
-pub mod minimap;
-pub mod search;
+pub mod cursor;
 pub mod editing;
+pub mod gutter;
+pub mod io;
+pub mod minimap;
+pub mod options;
+pub mod overlay;
+pub mod search;
+pub mod snippet;
+pub mod visual;
 
 use std::sync::{Arc, Mutex};
 
-use crate::text_engine::{Buffer, BufferView};
-pub use id;
+use crate::agent::AgentManager;
 use crate::clipboard::Clipboard;
 use crate::command::CommandRegistry;
-use crate::event::EventBus;
-use crate::storage::FileSystem;
-use crate::keymap::KeymapManager;
-use crate::runtime::BackgroundHandle;
-use crate::script_runtime::ScriptRuntime;
-use crate::render::view_tree::ViewTree;
 use crate::debug::DebugManager;
-use crate::agent::AgentManager;
+use crate::event::EventBus;
 use crate::extension::ExtensionRegistry;
-use crate::semantic::{SemanticEngine, LanguageRegistry};
-use crate::task::TaskScheduler;
+use crate::keymap::KeymapManager;
+use crate::render::view_tree::ViewTree;
+use crate::runtime::BackgroundHandle;
 use crate::scheduler::WorkScheduler;
+use crate::script_runtime::ScriptRuntime;
+use crate::semantic::{LanguageRegistry, SemanticEngine};
+use crate::storage::FileSystem;
+use crate::task::TaskScheduler;
+use crate::text_engine::{Buffer, BufferView};
+pub use id;
 
-pub use mode::{EditorMode, Selection, SearchDirection};
-pub use font::{ContextFont, FontConfig};
-pub use cursor::{ExtraCursor, MultiCursorState};
-pub use completion::CompletionState;
-pub use snippet::SnippetState;
-pub use crate::project::{
-    Project, ProjectManager, ProjectMember, Workspace,
-    Module, Dependency, DependencyKind,
-};
-pub use io::IoState;
-pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
-pub use overlay::{Overlay, LayoutSnapshot};
-pub use search::SearchState;
-pub use editing::EditingState;
 pub use crate::input::event::{MouseButton, MouseEventKind};
+pub use crate::project::{
+    Dependency, DependencyKind, Module, Project, ProjectManager, ProjectMember, Workspace,
+};
+pub use completion::CompletionState;
+pub use cursor::{ExtraCursor, MultiCursorState};
+pub use editing::EditingState;
+pub use font::{ContextFont, FontConfig};
+pub use gutter::{FoldIcons, GutterCell, GutterRegistry};
+pub use io::IoState;
+pub use mode::{EditorMode, SearchDirection, Selection};
+pub use overlay::{LayoutSnapshot, Overlay};
+pub use search::SearchState;
+pub use snippet::SnippetState;
 
 /// Tracks mouse press/drag state across frames.
 #[derive(Debug, Clone)]
@@ -170,7 +169,8 @@ pub struct Editor {
     /// revision its tree was parsed at.
     pub ts_trees: std::collections::HashMap<usize, crate::semantic::ts_registry::TsTreeState>,
     pub ts_languages: std::collections::HashMap<usize, String>,
-    pub saved_layouts: std::collections::HashMap<String, (Vec<crate::render::view_tree::Pane>, usize)>,
+    pub saved_layouts:
+        std::collections::HashMap<String, (Vec<crate::render::view_tree::Pane>, usize)>,
     pub mark_ring: Vec<(String, usize)>,
     pub module_paths: Vec<String>,
     pub font_changed: bool,
@@ -219,25 +219,25 @@ pub struct Editor {
 impl Editor {
     pub fn new(fs: Box<dyn FileSystem>) -> Self {
         let mut theme = std::collections::HashMap::new();
-        theme.insert("bg".into(),               (30,  30,  46));
-        theme.insert("fg".into(),               (205, 214, 244));
-        theme.insert("line-num".into(),         (108, 112, 134));
-        theme.insert("line-num-bg".into(),      (30,  30,  46));
+        theme.insert("bg".into(), (30, 30, 46));
+        theme.insert("fg".into(), (205, 214, 244));
+        theme.insert("line-num".into(), (108, 112, 134));
+        theme.insert("line-num-bg".into(), (30, 30, 46));
         theme.insert("line-num-current".into(), (205, 214, 244));
-        theme.insert("status-bg".into(),        (24,  24,  37));
-        theme.insert("status-fg".into(),        (205, 214, 244));
-        theme.insert("diag-error".into(),       (243, 139, 168));
-        theme.insert("diag-warn".into(),        (250, 179, 135));
-        theme.insert("highlight-bg".into(),     (49,  50,  68));
-        theme.insert("highlight-fg".into(),     (203, 166, 247));
-        theme.insert("selection-bg".into(),     (137, 180, 250));
-        theme.insert("selection-fg".into(),     (30,  30,  46));
-        theme.insert("gui-bg".into(),           (30,  30,  46));
-        theme.insert("terminal-bg".into(),      (0,   0,   0));
-        theme.insert("terminal-fg".into(),      (0,   255, 0));
-        theme.insert("diff-add".into(),         (166, 227, 161));
-        theme.insert("diff-del".into(),         (243, 139, 168));
-        theme.insert("diff-hunk".into(),        (137, 180, 250));
+        theme.insert("status-bg".into(), (24, 24, 37));
+        theme.insert("status-fg".into(), (205, 214, 244));
+        theme.insert("diag-error".into(), (243, 139, 168));
+        theme.insert("diag-warn".into(), (250, 179, 135));
+        theme.insert("highlight-bg".into(), (49, 50, 68));
+        theme.insert("highlight-fg".into(), (203, 166, 247));
+        theme.insert("selection-bg".into(), (137, 180, 250));
+        theme.insert("selection-fg".into(), (30, 30, 46));
+        theme.insert("gui-bg".into(), (30, 30, 46));
+        theme.insert("terminal-bg".into(), (0, 0, 0));
+        theme.insert("terminal-fg".into(), (0, 255, 0));
+        theme.insert("diff-add".into(), (166, 227, 161));
+        theme.insert("diff-del".into(), (243, 139, 168));
+        theme.insert("diff-hunk".into(), (137, 180, 250));
 
         Editor {
             buffers: slab::Slab::new(),
@@ -257,7 +257,11 @@ impl Editor {
             registers: std::collections::HashMap::new(),
             marks: std::collections::HashMap::new(),
             command_history: Vec::new(),
-            search: crate::state::search::SearchState { pattern: None, forward: true, ..Default::default() },
+            search: crate::state::search::SearchState {
+                pattern: None,
+                forward: true,
+                ..Default::default()
+            },
             editing: EditingState::default(),
             clipboard: Clipboard::new(),
             alternate_buffer: None,
@@ -290,8 +294,11 @@ impl Editor {
             quickfix_menu: None,
             module_paths: {
                 let home = std::env::var("HOME").unwrap_or_default();
-                if home.is_empty() { vec![] }
-                else { vec![format!("{}/.config/magma/plugins", home)] }
+                if home.is_empty() {
+                    vec![]
+                } else {
+                    vec![format!("{}/.config/magma/plugins", home)]
+                }
             },
             runtime: None,
             snippet: SnippetState::default(),
@@ -322,23 +329,27 @@ impl Editor {
         let buf = crate::text_engine::Buffer::new(crate::state::id::BufferId(id), name);
         let arc = Arc::new(Mutex::new(buf));
         let key = self.buffers.insert(arc.clone());
-        self.views.insert(key, crate::text_engine::BufferView::new(arc));
+        self.views
+            .insert(key, crate::text_engine::BufferView::new(arc));
         key
     }
 
     /// Create a new buffer + view with initial content.
     pub fn create_buffer_from_str(&mut self, name: &str, content: &str) -> usize {
         let id = self.allocate_buffer_id();
-        let buf = crate::text_engine::Buffer::from_string(crate::state::id::BufferId(id), name, content);
+        let buf =
+            crate::text_engine::Buffer::from_string(crate::state::id::BufferId(id), name, content);
         let arc = Arc::new(Mutex::new(buf));
         let key = self.buffers.insert(arc.clone());
-        self.views.insert(key, crate::text_engine::BufferView::new(arc));
+        self.views
+            .insert(key, crate::text_engine::BufferView::new(arc));
         key
     }
 
     /// Get the focused buffer's slab key (0 if none).
     pub fn focused_buffer_key(&self) -> usize {
-        self.view_tree.focused_window()
+        self.view_tree
+            .focused_window()
             .and_then(|wid| self.view_tree.buffer(wid))
             .unwrap_or(0)
     }
@@ -346,25 +357,25 @@ impl Editor {
     /// Look up a theme color by key, falling back to a hardcoded default.
     pub fn theme_color(&self, key: &str) -> (u8, u8, u8) {
         self.theme.get(key).copied().unwrap_or(match key {
-            "bg"               => (30,  30,  46),
-            "fg"               => (205, 214, 244),
-            "line-num"         => (108, 112, 134),
-            "line-num-bg"      => (30,  30,  46),
+            "bg" => (30, 30, 46),
+            "fg" => (205, 214, 244),
+            "line-num" => (108, 112, 134),
+            "line-num-bg" => (30, 30, 46),
             "line-num-current" => (205, 214, 244),
-            "status-bg"        => (24,  24,  37),
-            "status-fg"        => (205, 214, 244),
-            "diag-error"       => (243, 139, 168),
-            "diag-warn"        => (250, 179, 135),
-            "highlight-bg"     => (49,  50,  68),
-            "highlight-fg"     => (203, 166, 247),
-            "selection-bg"     => (137, 180, 250),
-            "selection-fg"     => (30,  30,  46),
-            "gui-bg"           => (30,  30,  46),
-            "cursor"           => (180, 190, 254),
-            "diff-add"         => (166, 227, 161),
-            "diff-del"         => (243, 139, 168),
-            "diff-hunk"        => (137, 180, 250),
-            _                  => (200, 200, 200),
+            "status-bg" => (24, 24, 37),
+            "status-fg" => (205, 214, 244),
+            "diag-error" => (243, 139, 168),
+            "diag-warn" => (250, 179, 135),
+            "highlight-bg" => (49, 50, 68),
+            "highlight-fg" => (203, 166, 247),
+            "selection-bg" => (137, 180, 250),
+            "selection-fg" => (30, 30, 46),
+            "gui-bg" => (30, 30, 46),
+            "cursor" => (180, 190, 254),
+            "diff-add" => (166, 227, 161),
+            "diff-del" => (243, 139, 168),
+            "diff-hunk" => (137, 180, 250),
+            _ => (200, 200, 200),
         })
     }
 
@@ -382,11 +393,14 @@ impl Editor {
                 let c_line = buf.slice(0, cursor).chars().filter(|&c| c == '\n').count();
                 let (first, last) = (a_line.min(c_line), a_line.max(c_line));
                 let start = buf.line_start_offset(first).unwrap_or(0);
-                let end = buf.line_start_offset(last).map(|o| {
-                    let text = buf.slice(o, buf.len());
-                    let line_text = text.split('\n').next().unwrap_or("");
-                    o + line_text.len() + 1
-                }).unwrap_or(buf.len());
+                let end = buf
+                    .line_start_offset(last)
+                    .map(|o| {
+                        let text = buf.slice(o, buf.len());
+                        let line_text = text.split('\n').next().unwrap_or("");
+                        o + line_text.len() + 1
+                    })
+                    .unwrap_or(buf.len());
                 return Some((start, end.min(buf.len())));
             }
         }
@@ -412,7 +426,8 @@ impl Editor {
     /// Names of buffers quit must protect: modified and writable.  Read-only
     /// buffers hold generated content (shell/grep output), not user work.
     pub fn dirty_buffer_names(&self) -> Vec<String> {
-        self.buffers.iter()
+        self.buffers
+            .iter()
             .filter_map(|(key, arc)| {
                 let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                 let saving = self.io.saves_in_flight.contains_key(&key);

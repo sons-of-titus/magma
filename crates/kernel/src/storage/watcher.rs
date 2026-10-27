@@ -49,9 +49,9 @@ impl FileWatcher {
                             true
                         } else {
                             let roots = roots_clone.lock().unwrap_or_else(|e| e.into_inner());
-                            paths.iter().any(|p| {
-                                roots.iter().any(|r| p.starts_with(r.as_str()))
-                            })
+                            paths
+                                .iter()
+                                .any(|p| roots.iter().any(|r| p.starts_with(r.as_str())))
                         }
                     };
 
@@ -101,7 +101,10 @@ impl FileWatcher {
                 return;
             }
         }
-        if let Err(e) = self._watcher.watch(std::path::Path::new(&canonical), RecursiveMode::Recursive) {
+        if let Err(e) = self
+            ._watcher
+            .watch(std::path::Path::new(&canonical), RecursiveMode::Recursive)
+        {
             debug!("FileWatcher: failed to watch project {canonical:?}: {e}");
         }
     }

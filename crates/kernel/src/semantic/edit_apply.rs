@@ -33,36 +33,50 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
     if let Some(doc_changes) = json.get("documentChanges").and_then(|d| d.as_array()) {
         for entry in doc_changes {
             if let Some(text_doc) = entry.get("textDocument")
-                && let Some(raw_uri) = text_doc.get("uri").and_then(|u| u.as_str()) {
-                    let path = super::lsp_proto::uri_to_path(raw_uri);
-                    if let Some(edits) = entry.get("edits").and_then(|e| e.as_array()) {
-                        for e in edits {
-                            if let Some(range) = parse_text_edit(e) {
-                                edits_by_uri.entry(path.clone()).or_default().push(range);
-                            }
+                && let Some(raw_uri) = text_doc.get("uri").and_then(|u| u.as_str())
+            {
+                let path = super::lsp_proto::uri_to_path(raw_uri);
+                if let Some(edits) = entry.get("edits").and_then(|e| e.as_array()) {
+                    for e in edits {
+                        if let Some(range) = parse_text_edit(e) {
+                            edits_by_uri.entry(path.clone()).or_default().push(range);
                         }
                     }
                 }
+            }
         }
     }
 
     for (path, ranges) in edits_by_uri {
-        let key = ed.buffers.iter()
-            .find(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(&path))
+        let key = ed
+            .buffers
+            .iter()
+            .find(|(_, arc)| {
+                arc.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .path
+                    .as_deref()
+                    == Some(&path)
+            })
             .map(|(k, _)| k);
         let Some(key) = key else { continue };
-        let Some(view) = ed.view_of_buffer_mut(key) else { continue };
+        let Some(view) = ed.view_of_buffer_mut(key) else {
+            continue;
+        };
 
         // Resolve LSP (line, character) positions against THIS buffer's
         // line index before touching anything.
         let buffer = view.buffer.clone();
         let buf = buffer.lock().unwrap_or_else(|e| e.into_inner());
-        let mut spans: Vec<(usize, usize, String)> = ranges.into_iter()
-            .map(|r| (
-                offset_of_lsp_position(&buf, r.start.0, r.start.1),
-                offset_of_lsp_position(&buf, r.end.0, r.end.1),
-                r.new_text,
-            ))
+        let mut spans: Vec<(usize, usize, String)> = ranges
+            .into_iter()
+            .map(|r| {
+                (
+                    offset_of_lsp_position(&buf, r.start.0, r.start.1),
+                    offset_of_lsp_position(&buf, r.end.0, r.end.1),
+                    r.new_text,
+                )
+            })
             .collect();
         drop(buf);
 
@@ -70,9 +84,15 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
         spans.sort_by_key(|b| std::cmp::Reverse(b.0));
         for (start, end, new_text) in spans {
             let buf_len = buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
-            if end > buf_len || start > end { continue; }
-            if start < end { view.delete(start, end); }
-            if !new_text.is_empty() { view.insert(start, &new_text); }
+            if end > buf_len || start > end {
+                continue;
+            }
+            if start < end {
+                view.delete(start, end);
+            }
+            if !new_text.is_empty() {
+                view.insert(start, &new_text);
+            }
         }
     }
 }
@@ -84,7 +104,11 @@ fn parse_text_edit(edit: &serde_json::Value) -> Option<EditRange> {
     Some(EditRange {
         start: line_char(start)?,
         end: line_char(end)?,
-        new_text: edit.get("newText").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+        new_text: edit
+            .get("newText")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string(),
     })
 }
 
@@ -119,9 +143,7 @@ mod tests {
     use super::*;
 
     fn buffer_of(text: &str) -> Buffer {
-        crate::text_engine::Buffer::from_string(
-            crate::state::id::BufferId(1), "t", text,
-        )
+        crate::text_engine::Buffer::from_string(crate::state::id::BufferId(1), "t", text)
     }
 
     #[test]
@@ -138,7 +160,15 @@ mod tests {
     #[test]
     fn offset_of_clamps_past_line_and_document() {
         let buf = buffer_of("ab\ncd");
-        assert_eq!(offset_of_lsp_position(&buf, 0, 99), 3, "past end of line clamps to line end");
-        assert_eq!(offset_of_lsp_position(&buf, 99, 0), buf.len(), "past document clamps to end");
+        assert_eq!(
+            offset_of_lsp_position(&buf, 0, 99),
+            3,
+            "past end of line clamps to line end"
+        );
+        assert_eq!(
+            offset_of_lsp_position(&buf, 99, 0),
+            buf.len(),
+            "past document clamps to end"
+        );
     }
 }

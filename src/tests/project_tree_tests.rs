@@ -15,7 +15,7 @@ fn files() -> Vec<String> {
 
 #[test]
 fn tree_nests_and_sorts_dirs_before_files() {
-    let tree = build(&files());
+    let tree = build(&files(), &HashSet::new());
     assert_eq!(view_names(&tree), vec!["docs", "src", "Cargo.toml"]);
     let src = tree.iter().find(|n| n.name == "src").unwrap();
     assert!(src.is_dir);
@@ -27,7 +27,7 @@ fn tree_nests_and_sorts_dirs_before_files() {
 
 #[test]
 fn visible_rows_respect_collapsed_directories() {
-    let tree = build(&files());
+    let tree = build(&files(), &HashSet::new());
     let mut expanded = HashSet::new();
 
     let collapsed = visible_rows(&tree, &expanded);

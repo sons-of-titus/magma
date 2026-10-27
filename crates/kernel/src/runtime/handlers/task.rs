@@ -1,9 +1,9 @@
 //! Task background-event handlers — task completion with tool diagnostics,
 //! scheduler work, completion word scans, and tree-sitter parse readiness.
 
-use crate::state::Editor;
 use crate::event::keys;
 use crate::event::payload::*;
+use crate::state::Editor;
 
 use super::super::BackgroundEvent;
 
@@ -12,31 +12,56 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::WorkProgress { id, done, total } => {
             ed.scheduler.update_progress(id, done, total);
             let name = ed.scheduler.name(id).unwrap_or("").to_string();
-            ed.events.emit_typed(keys::events::SCHEDULER_WORK_PROGRESS, SchedulerWorkProgressPayload {
-                id: id.to_string(), name, done: done.to_string(), total: total.to_string(),
-            });
+            ed.events.emit_typed(
+                keys::events::SCHEDULER_WORK_PROGRESS,
+                SchedulerWorkProgressPayload {
+                    id: id.to_string(),
+                    name,
+                    done: done.to_string(),
+                    total: total.to_string(),
+                },
+            );
         }
         BackgroundEvent::WorkCompleted { id } => {
             let name = ed.scheduler.name(id).unwrap_or("").to_string();
             ed.scheduler.mark_completed(id);
-            ed.events.emit_typed(keys::events::SCHEDULER_WORK_COMPLETED, SchedulerWorkCompletedPayload {
-                id: id.to_string(), name,
-            });
+            ed.events.emit_typed(
+                keys::events::SCHEDULER_WORK_COMPLETED,
+                SchedulerWorkCompletedPayload {
+                    id: id.to_string(),
+                    name,
+                },
+            );
         }
         BackgroundEvent::WorkFailed { id, error } => {
             let name = ed.scheduler.name(id).unwrap_or("").to_string();
             ed.scheduler.mark_failed(id, error.clone());
-            ed.events.emit_typed(keys::events::SCHEDULER_WORK_FAILED, SchedulerWorkFailedPayload {
-                id: id.to_string(), name, error,
-            });
+            ed.events.emit_typed(
+                keys::events::SCHEDULER_WORK_FAILED,
+                SchedulerWorkFailedPayload {
+                    id: id.to_string(),
+                    name,
+                    error,
+                },
+            );
         }
-        BackgroundEvent::BufferWords { buf_key, revision, words } => {
-            let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
+        BackgroundEvent::BufferWords {
+            buf_key,
+            revision,
+            words,
+        } => {
+            let current = ed
+                .buffers
+                .get(buf_key)
+                .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
             if current == Some(revision) {
-                ed.completion.word_cache.insert(buf_key, crate::state::completion::WordCache {
-                    revision,
-                    words: std::sync::Arc::new(words.into_iter().collect()),
-                });
+                ed.completion.word_cache.insert(
+                    buf_key,
+                    crate::state::completion::WordCache {
+                        revision,
+                        words: std::sync::Arc::new(words.into_iter().collect()),
+                    },
+                );
             }
             // Clear the in-flight marker only for the request that landed —
             // a newer revision's scan must keep its slot.
@@ -60,14 +85,34 @@ fn handle_task_event(ed: &mut Editor, event: crate::task::Event) {
             // builds show progress as they run.
             if let Some(sink) = ed.task_scheduler.output_sinks.get(&id).cloned() {
                 crate::task::append_output_line(ed, &sink, &line);
+            } else {
+                // Run-config launches stream into the output pane, so a long
+                // run shows progress as it runs instead of only at completion.
+                let task_name = ed
+                    .task_scheduler
+                    .tasks
+                    .get(&id)
+                    .map(|t| t.name.clone())
+                    .unwrap_or_default();
+                let line = format!("{line}\n");
+                match &mut ed.last_task {
+                    Some((name, output)) if name == &task_name => output.push_str(&line),
+                    _ => ed.last_task = Some((task_name, line)),
+                }
             }
             let mut data = std::collections::HashMap::new();
             data.insert("task-id".to_string(), id.to_string());
             data.insert("stream".to_string(), stream);
-            data.insert("line".to_string(), line);
+            data.insert("line".to_string(), line.trim_end().to_string());
             ed.events.emit("task-output-line", data);
         }
-        Event::RunCompleted { id, exit_code, stdout, stderr, duration_ms } => {
+        Event::RunCompleted {
+            id,
+            exit_code,
+            stdout,
+            stderr,
+            duration_ms,
+        } => {
             handle_task_run_completed(ed, id, exit_code, stdout, stderr, duration_ms);
         }
     }
@@ -84,10 +129,18 @@ fn handle_task_run_completed(
     duration_ms: u64,
 ) {
     use crate::task::TaskOutput;
-    let output = TaskOutput { stdout, stderr, exit_code, duration_ms };
-    let handled = crate::task::finish_output_task(
-        ed, id, exit_code, &output.stdout, &output.stderr);
-    let (task_cmd, task_cwd) = ed.task_scheduler.tasks.get(&id)
+    let output = TaskOutput {
+        stdout,
+        stderr,
+        exit_code,
+        duration_ms,
+    };
+    let handled =
+        crate::task::finish_output_task(ed, id, exit_code, &output.stdout, &output.stderr);
+    let (task_cmd, task_cwd) = ed
+        .task_scheduler
+        .tasks
+        .get(&id)
         .map(|t| (t.command.clone(), t.cwd.clone()))
         .unwrap_or_default();
     // Run-config launches stream to the output pane, not a sink
@@ -99,36 +152,56 @@ fn handle_task_run_completed(
             .or_else(|| ed.project_manager.project.root.clone())
             .unwrap_or_default();
         crate::task::apply_tool_diagnostics(
-            ed, &task_cmd, &format!("{}{}", output.stdout, output.stderr), &cwd);
+            ed,
+            &task_cmd,
+            &format!("{}{}", output.stdout, output.stderr),
+            &cwd,
+        );
     }
-    let task_name = ed.task_scheduler.tasks.get(&id)
+    let task_name = ed
+        .task_scheduler
+        .tasks
+        .get(&id)
         .map(|t| t.name.clone())
         .unwrap_or_default();
     ed.task_scheduler.running.remove(&id);
-    ed.last_task = Some((task_name.clone(), format!(
-        "$ {}\n{}{}",
-        ed.task_scheduler.tasks.get(&id).map(|t| t.command.clone()).unwrap_or_default(),
-        output.stdout,
-        output.stderr,
-    )));
+    ed.last_task = Some((
+        task_name.clone(),
+        format!(
+            "$ {}\n{}{}",
+            ed.task_scheduler
+                .tasks
+                .get(&id)
+                .map(|t| t.command.clone())
+                .unwrap_or_default(),
+            output.stdout,
+            output.stderr,
+        ),
+    ));
     if exit_code == 0 {
         ed.task_scheduler.mark_completed(id, output);
         ed.scheduler.complete_task(id);
-        ed.events.emit_typed(keys::events::TASK_COMPLETED, TaskCompletedPayload {
-            id: id.to_string(),
-            name: task_name,
-            exit_code: exit_code.to_string(),
-            duration_ms: duration_ms.to_string(),
-        });
+        ed.events.emit_typed(
+            keys::events::TASK_COMPLETED,
+            TaskCompletedPayload {
+                id: id.to_string(),
+                name: task_name,
+                exit_code: exit_code.to_string(),
+                duration_ms: duration_ms.to_string(),
+            },
+        );
     } else {
         let err = format!("exit code {exit_code}");
         ed.task_scheduler.mark_failed(id, err.clone(), output);
         ed.scheduler.fail_task(id, err.clone());
-        ed.events.emit_typed(keys::events::TASK_FAILED, TaskFailedPayload {
-            id: id.to_string(),
-            name: task_name,
-            error: err,
-        });
+        ed.events.emit_typed(
+            keys::events::TASK_FAILED,
+            TaskFailedPayload {
+                id: id.to_string(),
+                name: task_name,
+                error: err,
+            },
+        );
     }
     crate::run_config::continue_pending(ed, id, exit_code);
     let mut rt = ed.runtime.take();

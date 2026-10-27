@@ -14,8 +14,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::state::completion::{CompletionItem, WordCache};
 use crate::state::Editor;
+use crate::state::completion::{CompletionItem, WordCache};
 
 /// Minimum typed prefix for the automatic popup (ctrl-space triggers at 1).
 const AUTO_TRIGGER_PREFIX: usize = 2;
@@ -37,9 +37,12 @@ fn is_word_char(c: char) -> bool {
 /// Length of the word prefix directly before the cursor — the cursor's line
 /// only, so the cost is O(line) regardless of document size.
 pub fn word_prefix_len(editor: &Editor) -> usize {
-    let Some((line_text, col)) = cursor_line_and_col(editor) else { return 0 };
+    let Some((line_text, col)) = cursor_line_and_col(editor) else {
+        return 0;
+    };
     let before = &line_text[..col.min(line_text.len())];
-    let word_start = before.rfind(|c: char| !is_word_char(c))
+    let word_start = before
+        .rfind(|c: char| !is_word_char(c))
         .map(|i| i + 1)
         .unwrap_or(0);
     before.len() - word_start
@@ -47,7 +50,9 @@ pub fn word_prefix_len(editor: &Editor) -> usize {
 
 /// (line text, cursor byte column within that line) of the focused view.
 fn cursor_line_and_col(editor: &Editor) -> Option<(String, usize)> {
-    let buf_id = editor.view_tree.focused_window()
+    let buf_id = editor
+        .view_tree
+        .focused_window()
         .and_then(|wid| editor.view_tree.buffer(wid))?;
     let view = editor.view_of_buffer(buf_id)?;
     let cursor = view.cursor_offset();
@@ -63,7 +68,9 @@ fn scan_words(text: &str, out: &mut BTreeSet<String>) {
     let mut start: Option<usize> = None;
     for (i, c) in text.char_indices().chain([(text.len(), '\0')]) {
         if is_word_char(c) {
-            if start.is_none() { start = Some(i); }
+            if start.is_none() {
+                start = Some(i);
+            }
         } else if let Some(s) = start.take() {
             out.insert(text[s..i].to_string());
         }
@@ -83,9 +90,10 @@ fn candidate_words(editor: &mut Editor, buf_id: usize) -> Option<Arc<BTreeSet<St
     };
 
     if let Some(cache) = editor.completion.word_cache.get(&buf_id)
-        && cache.revision == revision {
-            return Some(cache.words.clone());
-        }
+        && cache.revision == revision
+    {
+        return Some(cache.words.clone());
+    }
 
     if len <= INLINE_WORD_SCAN_LIMIT {
         let mut words = BTreeSet::new();
@@ -96,7 +104,13 @@ fn candidate_words(editor: &mut Editor, buf_id: usize) -> Option<Arc<BTreeSet<St
             }
         }
         let words = Arc::new(words);
-        editor.completion.word_cache.insert(buf_id, WordCache { revision, words: words.clone() });
+        editor.completion.word_cache.insert(
+            buf_id,
+            WordCache {
+                revision,
+                words: words.clone(),
+            },
+        );
         editor.completion.words_requested = None;
         return Some(words);
     }
@@ -111,76 +125,103 @@ fn candidate_words(editor: &mut Editor, buf_id: usize) -> Option<Arc<BTreeSet<St
         // Lane P1, coalesced per buffer: typing past a queued scan
         // supersedes it.
         let coalesce = format!("words-{buf_id}");
-        bg.spawn_on(crate::runtime::Lane::Foreground, Some(&coalesce), move || {
-            let mut words = BTreeSet::new();
-            let mut offset = 0usize;
-            loop {
-                let (chunk, still_current) = {
-                    // Re-lock per chunk: the interactive path may mutate
-                    // between chunks, and a changed revision voids the scan.
-                    match arc2_lock(&arc) {
-                        Some(buf) => {
-                            let current = buf.revision();
-                            if current != revision {
-                                (String::new(), false)
-                            } else if offset >= buf.len() {
-                                (String::new(), true)
-                            } else {
-                                let end = (offset + WORD_SCAN_CHUNK).min(buf.len());
-                                let text = buf.slice(offset, end);
-                                offset = end;
-                                (text, true)
+        bg.spawn_on(
+            crate::runtime::Lane::Foreground,
+            Some(&coalesce),
+            move || {
+                let mut words = BTreeSet::new();
+                let mut offset = 0usize;
+                loop {
+                    let (chunk, still_current) = {
+                        // Re-lock per chunk: the interactive path may mutate
+                        // between chunks, and a changed revision voids the scan.
+                        match arc2_lock(&arc) {
+                            Some(buf) => {
+                                let current = buf.revision();
+                                if current != revision {
+                                    (String::new(), false)
+                                } else if offset >= buf.len() {
+                                    (String::new(), true)
+                                } else {
+                                    let end = (offset + WORD_SCAN_CHUNK).min(buf.len());
+                                    let text = buf.slice(offset, end);
+                                    offset = end;
+                                    (text, true)
+                                }
                             }
+                            None => (String::new(), false),
                         }
-                        None => (String::new(), false),
+                    };
+                    if !still_current {
+                        return;
                     }
-                };
-                if !still_current { return; }
-                scan_words(&chunk, &mut words);
-                if chunk.is_empty() { break; }
-            }
-            let _ = sender.send(crate::runtime::BackgroundEvent::BufferWords {
-                buf_key: buf_id,
-                revision,
-                words: words.into_iter().collect(),
-            });
-        });
+                    scan_words(&chunk, &mut words);
+                    if chunk.is_empty() {
+                        break;
+                    }
+                }
+                let _ = sender.send(crate::runtime::BackgroundEvent::BufferWords {
+                    buf_key: buf_id,
+                    revision,
+                    words: words.into_iter().collect(),
+                });
+            },
+        );
     }
 
     // Serve whatever previous revision we have while the scan runs.
-    editor.completion.word_cache.get(&buf_id).map(|c| c.words.clone())
+    editor
+        .completion
+        .word_cache
+        .get(&buf_id)
+        .map(|c| c.words.clone())
 }
 
 /// Lock helper so the chunk loop above stays readable.
-fn arc2_lock(arc: &std::sync::Arc<std::sync::Mutex<crate::text_engine::Buffer>>)
-    -> Option<std::sync::MutexGuard<'_, crate::text_engine::Buffer>> {
+fn arc2_lock(
+    arc: &std::sync::Arc<std::sync::Mutex<crate::text_engine::Buffer>>,
+) -> Option<std::sync::MutexGuard<'_, crate::text_engine::Buffer>> {
     arc.lock().ok()
 }
 
 /// (Re)collect candidates for the word before the cursor.  With no word
 /// under the cursor this is a no-op; with no candidates it dismisses.
 pub fn trigger(editor: &mut Editor) {
-    let Some(buf_id) = editor.view_tree.focused_window()
-        .and_then(|wid| editor.view_tree.buffer(wid)) else { return };
-    let Some((line_text, col)) = cursor_line_and_col(editor) else { return };
+    let Some(buf_id) = editor
+        .view_tree
+        .focused_window()
+        .and_then(|wid| editor.view_tree.buffer(wid))
+    else {
+        return;
+    };
+    let Some((line_text, col)) = cursor_line_and_col(editor) else {
+        return;
+    };
 
     let before = &line_text[..col.min(line_text.len())];
-    let word_start = before.rfind(|c: char| !is_word_char(c))
+    let word_start = before
+        .rfind(|c: char| !is_word_char(c))
         .map(|i| i + 1)
         .unwrap_or(0);
     let prefix = before[word_start..].to_string();
-    if prefix.is_empty() { return; }
+    if prefix.is_empty() {
+        return;
+    }
 
     // Words from the buffer (cached / backgrounded), filtered by prefix
     // range — never a full-set copy.
     let mut items: Vec<CompletionItem> = Vec::new();
     if let Some(words) = candidate_words(editor, buf_id) {
         for w in words.range(prefix.clone()..) {
-            if !w.starts_with(prefix.as_str()) { break; }
+            if !w.starts_with(prefix.as_str()) {
+                break;
+            }
             if w != &prefix && items.len() < MAX_ITEMS {
                 items.push(CompletionItem::word(w.clone()));
             }
-            if items.len() >= MAX_ITEMS { break; }
+            if items.len() >= MAX_ITEMS {
+                break;
+            }
         }
     }
 
@@ -192,10 +233,16 @@ pub fn trigger(editor: &mut Editor) {
         }
     }
     for (_path, sym) in editor.index.symbols_with_prefix(&prefix) {
-        if sym.name != prefix && !items.iter().any(|i| i.label == sym.name)
-            && items.len() < MAX_ITEMS {
-            items.push(CompletionItem { label: sym.name.clone(), insert: sym.name.clone(),
-                                        kind: sym.kind.as_str().to_string(), detail: _path.clone() });
+        if sym.name != prefix
+            && !items.iter().any(|i| i.label == sym.name)
+            && items.len() < MAX_ITEMS
+        {
+            items.push(CompletionItem {
+                label: sym.name.clone(),
+                insert: sym.name.clone(),
+                kind: sym.kind.as_str().to_string(),
+                detail: _path.clone(),
+            });
         }
     }
 
@@ -213,17 +260,26 @@ pub fn trigger(editor: &mut Editor) {
 /// response event carries the buffer + revision; the merge on arrival
 /// discards results for superseded keystrokes.
 fn request_lsp_completion(editor: &Editor, buf_id: usize, prefix: &str) -> bool {
-    if prefix.is_empty() { return false; }
-    let Some(lang) = editor.lsp.language_for_buffer(buf_id) else { return false };
-    let Some(server) = editor.lsp.get(&lang) else { return false };
-    let Some(arc) = editor.buffers.get(buf_id) else { return false };
+    if prefix.is_empty() {
+        return false;
+    }
+    let Some(lang) = editor.lsp.language_for_buffer(buf_id) else {
+        return false;
+    };
+    let Some(server) = editor.lsp.get(&lang) else {
+        return false;
+    };
+    let Some(arc) = editor.buffers.get(buf_id) else {
+        return false;
+    };
     let (uri, position, revision) = {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let uri = match buf.path.as_deref() {
             Some(p) => format!("file://{p}"),
             None => return false,
         };
-        let cursor = editor.view_of_buffer(buf_id)
+        let cursor = editor
+            .view_of_buffer(buf_id)
             .map(|v| v.cursor.offset)
             .unwrap_or(0);
         (uri, buf.lsp_position(cursor.min(buf.len())), buf.revision())
@@ -266,22 +322,36 @@ pub fn parse_lsp_completion_items(json: &str) -> Vec<CompletionItem> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
         return Vec::new();
     };
-    let arr = v.as_array().cloned()
+    let arr = v
+        .as_array()
+        .cloned()
         .or_else(|| v.get("items").and_then(|i| i.as_array()).cloned())
         .unwrap_or_default();
-    arr.iter().filter_map(|item| {
-        let label = item.get("label")?.as_str()?.to_string();
-        let insert = item.get("insertText").and_then(|t| t.as_str())
-            .unwrap_or(&label).to_string();
-        Some(CompletionItem {
-            label,
-            insert,
-            kind: item.get("kind").and_then(|k| k.as_u64())
-                .map(lsp_kind_name).unwrap_or_default().to_string(),
-            detail: item.get("detail").and_then(|d| d.as_str())
-                .unwrap_or_default().to_string(),
+    arr.iter()
+        .filter_map(|item| {
+            let label = item.get("label")?.as_str()?.to_string();
+            let insert = item
+                .get("insertText")
+                .and_then(|t| t.as_str())
+                .unwrap_or(&label)
+                .to_string();
+            Some(CompletionItem {
+                label,
+                insert,
+                kind: item
+                    .get("kind")
+                    .and_then(|k| k.as_u64())
+                    .map(lsp_kind_name)
+                    .unwrap_or_default()
+                    .to_string(),
+                detail: item
+                    .get("detail")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            })
         })
-    }).collect()
+        .collect()
 }
 
 /// Fold server completions (already prefix-filtered by the caller) into the
@@ -292,14 +362,17 @@ pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
         return;
     }
     let prefix = editor.completion.prefix.clone();
-    let mut merged: Vec<CompletionItem> = items.into_iter()
+    let mut merged: Vec<CompletionItem> = items
+        .into_iter()
         .filter(|i| i.label.starts_with(prefix.as_str()) && i.label != prefix)
         .collect();
     for existing in editor.completion.items.drain(..) {
         if !merged.iter().any(|i| i.label == existing.label) {
             merged.push(existing);
         }
-        if merged.len() >= MAX_ITEMS { break; }
+        if merged.len() >= MAX_ITEMS {
+            break;
+        }
     }
     merged.truncate(MAX_ITEMS);
     editor.completion.items = merged;
@@ -308,8 +381,7 @@ pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
 
 /// The automatic popup: only after a word prefix long enough to be useful.
 pub fn auto_trigger_if_word(editor: &mut Editor, key: &str) {
-    let word_char = key.chars().count() == 1
-        && key.chars().next().is_some_and(is_word_char);
+    let word_char = key.chars().count() == 1 && key.chars().next().is_some_and(is_word_char);
     if word_char && word_prefix_len(editor) >= AUTO_TRIGGER_PREFIX {
         trigger(editor);
     }
@@ -335,8 +407,13 @@ pub fn accept(editor: &mut Editor) {
     if !editor.completion.visible || editor.completion.items.is_empty() {
         return;
     }
-    let Some(buf_id) = editor.view_tree.focused_window()
-        .and_then(|wid| editor.view_tree.buffer(wid)) else { return };
+    let Some(buf_id) = editor
+        .view_tree
+        .focused_window()
+        .and_then(|wid| editor.view_tree.buffer(wid))
+    else {
+        return;
+    };
     let item = editor.completion.items[editor.completion.idx].clone();
     let prefix = editor.completion.prefix.clone();
 
@@ -386,10 +463,14 @@ mod tests {
         trigger(&mut ed);
         let prefix_hit = ed.completion.visible;
 
-        assert!(!ed.completion.word_cache.contains_key(&key),
-            "a mid-size buffer must not build its word set inline");
-        assert!(!prefix_hit,
-            "without a background pool the big-buffer path serves no candidates yet");
+        assert!(
+            !ed.completion.word_cache.contains_key(&key),
+            "a mid-size buffer must not build its word set inline"
+        );
+        assert!(
+            !prefix_hit,
+            "without a background pool the big-buffer path serves no candidates yet"
+        );
     }
 
     #[test]
@@ -404,9 +485,20 @@ mod tests {
             view.set_cursor(2); // inside "alpha"
         }
         trigger(&mut ed);
-        assert!(ed.completion.visible, "the popup opens from the inline scan");
+        assert!(
+            ed.completion.visible,
+            "the popup opens from the inline scan"
+        );
         assert!(ed.completion.word_cache.contains_key(&key));
-        let labels: Vec<&str> = ed.completion.items.iter().map(|i| i.label.as_str()).collect();
-        assert!(labels.contains(&"alpha"), "prefix-matched words surface: {labels:?}");
+        let labels: Vec<&str> = ed
+            .completion
+            .items
+            .iter()
+            .map(|i| i.label.as_str())
+            .collect();
+        assert!(
+            labels.contains(&"alpha"),
+            "prefix-matched words surface: {labels:?}"
+        );
     }
 }

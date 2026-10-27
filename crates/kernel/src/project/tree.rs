@@ -8,21 +8,21 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct FileNode {
-    pub name:     String,
-    pub path:     String,
-    pub is_dir:   bool,
-    pub ignored:  bool,
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub ignored: bool,
     pub children: Vec<FileNode>,
 }
 
 /// One visible row, ready for a frontend list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeRow {
-    pub name:     String,
-    pub path:     String,
-    pub depth:    usize,
-    pub is_dir:   bool,
-    pub ignored:  bool,
+    pub name: String,
+    pub path: String,
+    pub depth: usize,
+    pub is_dir: bool,
+    pub ignored: bool,
     pub expanded: bool,
 }
 

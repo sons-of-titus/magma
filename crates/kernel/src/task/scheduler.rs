@@ -70,7 +70,13 @@ pub struct TaskScheduler {
 
 impl TaskScheduler {
     pub fn new() -> Self {
-        TaskScheduler { tasks: HashMap::new(), named: HashMap::new(), running: HashMap::new(), output_sinks: HashMap::new(), next_id: 1 }
+        TaskScheduler {
+            tasks: HashMap::new(),
+            named: HashMap::new(),
+            running: HashMap::new(),
+            output_sinks: HashMap::new(),
+            next_id: 1,
+        }
     }
 
     /// Define (or redefine) a named task.  Returns the stable task ID for this name.
@@ -98,14 +104,20 @@ impl TaskScheduler {
         let id = self.next_id;
         self.next_id += 1;
         self.named.insert(name.clone(), id);
-        self.tasks.insert(id, Task {
-            id, name, command,
-            args: Vec::new(),
-            cwd: None,
-            environment, dependencies,
-            status: TaskStatus::Pending,
-            output: None,
-        });
+        self.tasks.insert(
+            id,
+            Task {
+                id,
+                name,
+                command,
+                args: Vec::new(),
+                cwd: None,
+                environment,
+                dependencies,
+                status: TaskStatus::Pending,
+                output: None,
+            },
+        );
         id
     }
 
@@ -120,7 +132,8 @@ impl TaskScheduler {
             None => return false,
         };
         task.dependencies.iter().all(|dep_id| {
-            self.tasks.get(dep_id)
+            self.tasks
+                .get(dep_id)
                 .map(|t| t.status == TaskStatus::Completed)
                 .unwrap_or(true)
         })
@@ -135,7 +148,9 @@ impl TaskScheduler {
         id: TaskId,
         bg: &crate::runtime::BackgroundHandle,
     ) -> Result<(), String> {
-        let task = self.tasks.get_mut(&id)
+        let task = self
+            .tasks
+            .get_mut(&id)
             .ok_or_else(|| format!("task {id} not found"))?;
         match task.status {
             TaskStatus::Running => {
@@ -202,8 +217,11 @@ impl TaskScheduler {
                                 sink.push('\n');
                                 let _ = sender.send(crate::runtime::BackgroundEvent::Task(
                                     super::Event::OutputLine {
-                                        id, stream: stream_name.into(), line,
-                                    }));
+                                        id,
+                                        stream: stream_name.into(),
+                                        line,
+                                    },
+                                ));
                             }
                             sink
                         })
@@ -223,7 +241,9 @@ impl TaskScheduler {
                     let err_handle = stream_lines(err, "stderr", id, sender.clone());
                     let out = out_handle.join().unwrap_or_default();
                     let err = err_handle.join().unwrap_or_default();
-                    let code = child_slot.lock().unwrap_or_else(|e| e.into_inner())
+                    let code = child_slot
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
                         .as_mut()
                         .and_then(|c| c.wait().ok())
                         .and_then(|s| s.code())
@@ -234,7 +254,13 @@ impl TaskScheduler {
             };
             let duration_ms = start.elapsed().as_millis() as u64;
             let _ = sender.send(crate::runtime::BackgroundEvent::Task(
-                super::Event::RunCompleted { id, exit_code, stdout, stderr, duration_ms },
+                super::Event::RunCompleted {
+                    id,
+                    exit_code,
+                    stdout,
+                    stderr,
+                    duration_ms,
+                },
             ));
         });
 
@@ -248,7 +274,8 @@ impl TaskScheduler {
         name: &str,
         bg: &crate::runtime::BackgroundHandle,
     ) -> Result<TaskId, String> {
-        let id = self.task_by_name(name)
+        let id = self
+            .task_by_name(name)
             .ok_or_else(|| format!("task '{name}' not defined"))?;
         if !self.dependencies_satisfied(id) {
             return Err(format!("task '{name}' has unsatisfied dependencies"));
@@ -275,33 +302,37 @@ impl TaskScheduler {
     pub fn cancel(&mut self, id: TaskId) {
         if let Some(slot) = self.running.get(&id)
             && let Ok(mut guard) = slot.lock()
-            && let Some(child) = guard.as_mut() {
-                crate::util::proctree::kill_tree_hard(child.id() as i32);
-                let _ = child.kill();
-            }
+            && let Some(child) = guard.as_mut()
+        {
+            crate::util::proctree::kill_tree_hard(child.id() as i32);
+            let _ = child.kill();
+        }
         self.running.remove(&id);
         if let Some(task) = self.tasks.get_mut(&id)
-            && matches!(task.status, TaskStatus::Running | TaskStatus::Pending) {
-                task.status = TaskStatus::Cancelled;
-            }
+            && matches!(task.status, TaskStatus::Running | TaskStatus::Pending)
+        {
+            task.status = TaskStatus::Cancelled;
+        }
     }
 
     /// Called from `process_background_event` when a task exits with code 0.
     pub fn mark_completed(&mut self, id: TaskId, output: TaskOutput) {
         if let Some(task) = self.tasks.get_mut(&id)
-            && task.status == TaskStatus::Running {
-                task.status = TaskStatus::Completed;
-                task.output = Some(output);
-            }
+            && task.status == TaskStatus::Running
+        {
+            task.status = TaskStatus::Completed;
+            task.output = Some(output);
+        }
     }
 
     /// Called from `process_background_event` when a task exits with non-zero code.
     pub fn mark_failed(&mut self, id: TaskId, error: String, output: TaskOutput) {
         if let Some(task) = self.tasks.get_mut(&id)
-            && task.status == TaskStatus::Running {
-                task.status = TaskStatus::Failed(error);
-                task.output = Some(output);
-            }
+            && task.status == TaskStatus::Running
+        {
+            task.status = TaskStatus::Failed(error);
+            task.output = Some(output);
+        }
     }
 
     pub fn status(&self, id: TaskId) -> Option<&TaskStatus> {
@@ -315,10 +346,10 @@ impl TaskScheduler {
     /// Return IDs of Pending tasks whose dependencies are all Completed.
     /// Called after a task finishes to schedule newly-unblocked tasks.
     pub fn ready_to_run(&self) -> Vec<TaskId> {
-        self.tasks.values()
+        self.tasks
+            .values()
             .filter(|t| t.status == TaskStatus::Pending && self.dependencies_satisfied(t.id))
             .map(|t| t.id)
             .collect()
     }
-
 }

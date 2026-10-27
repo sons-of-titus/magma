@@ -3,10 +3,10 @@
 //! `LineNumbers`, `Folding`, `GitSigns`, `Diagnostics`, `Breakpoints`,
 //! `Coverage`, and `JanetProvider`.
 
-use crate::text_engine::Buffer;
-use crate::render::surface::Style;
-use crate::render::gutter::{GutterCell, GutterCtx, GutterProvider, GutterRegistry};
 use crate::render::frame::bool_option;
+use crate::render::gutter::{GutterCell, GutterCtx, GutterProvider, GutterRegistry};
+use crate::render::surface::Style;
+use crate::text_engine::Buffer;
 
 // ── LineNumbers ───────────────────────────────────────────────────────────────
 
@@ -14,8 +14,12 @@ use crate::render::frame::bool_option;
 pub struct LineNumbers;
 
 impl GutterProvider for LineNumbers {
-    fn name(&self) -> &str { ":line-numbers" }
-    fn width(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        ":line-numbers"
+    }
+    fn width(&self) -> usize {
+        0
+    }
 
     fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
         let show_rel = bool_option(ctx.editor, "relativenumber");
@@ -27,11 +31,24 @@ impl GutterProvider for LineNumbers {
         let col_w = GutterRegistry::provider_width(self, ctx.line_count);
         let text = format!("{:>width$} ", display_num, width = col_w.saturating_sub(1));
         let (fg, bg) = if line == ctx.cursor_line {
-            (ctx.editor.theme_color("line-num-current"), ctx.editor.theme_color("line-num-bg"))
+            (
+                ctx.editor.theme_color("line-num-current"),
+                ctx.editor.theme_color("line-num-bg"),
+            )
         } else {
-            (ctx.editor.theme_color("line-num"), ctx.editor.theme_color("line-num-bg"))
+            (
+                ctx.editor.theme_color("line-num"),
+                ctx.editor.theme_color("line-num-bg"),
+            )
         };
-        Some(GutterCell { text, style: Style { fg, bg, ..Default::default() } })
+        Some(GutterCell {
+            text,
+            style: Style {
+                fg,
+                bg,
+                ..Default::default()
+            },
+        })
     }
 }
 
@@ -41,8 +58,12 @@ impl GutterProvider for LineNumbers {
 pub struct Folding;
 
 impl GutterProvider for Folding {
-    fn name(&self) -> &str { ":folding" }
-    fn width(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        ":folding"
+    }
+    fn width(&self) -> usize {
+        1
+    }
 
     fn render(&self, _line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
         let fold_icons = &ctx.editor.gutter.fold_icons;
@@ -51,13 +72,18 @@ impl GutterProvider for Folding {
         } else {
             " "
         };
-        let style = ctx.editor.resolve_face_style(&fold_icons.face)
+        let style = ctx
+            .editor
+            .resolve_face_style(&fold_icons.face)
             .unwrap_or_else(|| Style {
                 fg: ctx.editor.theme_color("line-num"),
                 bg: ctx.editor.theme_color("line-num-bg"),
                 ..Default::default()
             });
-        Some(GutterCell { text: icon.to_string(), style })
+        Some(GutterCell {
+            text: icon.to_string(),
+            style,
+        })
     }
 }
 
@@ -68,11 +94,17 @@ impl GutterProvider for Folding {
 pub struct GitSigns;
 
 impl GutterProvider for GitSigns {
-    fn name(&self) -> &str { ":git-signs" }
-    fn width(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        ":git-signs"
+    }
+    fn width(&self) -> usize {
+        1
+    }
 
     fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
-        ctx.editor.gutter.cached_cell(":git-signs", ctx.buf_id, line)
+        ctx.editor
+            .gutter
+            .cached_cell(":git-signs", ctx.buf_id, line)
     }
 
     fn update(&mut self, buf_id: usize, _buffer: &Buffer) {
@@ -88,8 +120,12 @@ impl GutterProvider for GitSigns {
 pub struct Diagnostics;
 
 impl GutterProvider for Diagnostics {
-    fn name(&self) -> &str { ":diagnostics" }
-    fn width(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        ":diagnostics"
+    }
+    fn width(&self) -> usize {
+        1
+    }
 
     fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
         let sev = ctx.diag_lines.get(&line)?;
@@ -101,7 +137,12 @@ impl GutterProvider for Diagnostics {
         };
         Some(GutterCell {
             text: sev.to_string(),
-            style: Style { fg, bg: (bg_r, bg_g, bg_b), bold: true, ..Default::default() },
+            style: Style {
+                fg,
+                bg: (bg_r, bg_g, bg_b),
+                bold: true,
+                ..Default::default()
+            },
         })
     }
 }
@@ -114,8 +155,12 @@ impl GutterProvider for Diagnostics {
 pub struct Breakpoints;
 
 impl GutterProvider for Breakpoints {
-    fn name(&self) -> &str { ":breakpoints" }
-    fn width(&self) -> usize { 2 }
+    fn name(&self) -> &str {
+        ":breakpoints"
+    }
+    fn width(&self) -> usize {
+        2
+    }
 
     fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
         let path = ctx.buf_path?;
@@ -133,14 +178,19 @@ impl GutterProvider for Breakpoints {
         } else {
             ("○ ", red)
         };
-        let style = ctx.editor.resolve_face_style("gutter-breakpoint")
+        let style = ctx
+            .editor
+            .resolve_face_style("gutter-breakpoint")
             .unwrap_or_else(|| Style {
                 fg,
                 bg: ctx.editor.theme_color("line-num-bg"),
                 bold: bp.enabled,
                 ..Default::default()
             });
-        Some(GutterCell { text: text.to_string(), style })
+        Some(GutterCell {
+            text: text.to_string(),
+            style,
+        })
     }
 }
 
@@ -150,9 +200,15 @@ impl GutterProvider for Breakpoints {
 pub struct Coverage;
 
 impl GutterProvider for Coverage {
-    fn name(&self) -> &str { ":coverage" }
-    fn width(&self) -> usize { 1 }
-    fn render(&self, _line: usize, _ctx: &GutterCtx) -> Option<GutterCell> { None }
+    fn name(&self) -> &str {
+        ":coverage"
+    }
+    fn width(&self) -> usize {
+        1
+    }
+    fn render(&self, _line: usize, _ctx: &GutterCtx) -> Option<GutterCell> {
+        None
+    }
 }
 
 // ── JanetProvider ─────────────────────────────────────────────────────────────
@@ -165,11 +221,17 @@ pub struct JanetProvider {
 }
 
 impl GutterProvider for JanetProvider {
-    fn name(&self) -> &str { &self.provider_name }
-    fn width(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        &self.provider_name
+    }
+    fn width(&self) -> usize {
+        1
+    }
 
     fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
-        ctx.editor.gutter.cached_cell(&self.provider_name, ctx.buf_id, line)
+        ctx.editor
+            .gutter
+            .cached_cell(&self.provider_name, ctx.buf_id, line)
     }
 
     fn update(&mut self, buf_id: usize, _buffer: &Buffer) {

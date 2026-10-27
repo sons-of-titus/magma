@@ -13,28 +13,28 @@ pub fn translate_key(text: &str, ctrl: bool, shift: bool, alt: bool, meta: bool)
     let c = text.chars().next()?;
 
     let named: Option<&str> = match c {
-        c if c == char::from(Key::Escape)     => Some("esc"),
-        c if c == char::from(Key::Backspace)  => Some("backspace"),
-        c if c == char::from(Key::Return)     => Some("return"),
-        c if c == char::from(Key::Tab)        => Some("tab"),
-        c if c == char::from(Key::Delete)     => Some("delete"),
-        c if c == char::from(Key::LeftArrow)  => Some("left"),
+        c if c == char::from(Key::Escape) => Some("esc"),
+        c if c == char::from(Key::Backspace) => Some("backspace"),
+        c if c == char::from(Key::Return) => Some("return"),
+        c if c == char::from(Key::Tab) => Some("tab"),
+        c if c == char::from(Key::Delete) => Some("delete"),
+        c if c == char::from(Key::LeftArrow) => Some("left"),
         c if c == char::from(Key::RightArrow) => Some("right"),
-        c if c == char::from(Key::UpArrow)    => Some("up"),
-        c if c == char::from(Key::DownArrow)  => Some("down"),
-        c if c == char::from(Key::Home)       => Some("home"),
-        c if c == char::from(Key::End)        => Some("end"),
-        c if c == char::from(Key::PageUp)     => Some("page-up"),
-        c if c == char::from(Key::PageDown)   => Some("page-down"),
-        c if c == char::from(Key::F1)  => Some("f1"),
-        c if c == char::from(Key::F2)  => Some("f2"),
-        c if c == char::from(Key::F3)  => Some("f3"),
-        c if c == char::from(Key::F4)  => Some("f4"),
-        c if c == char::from(Key::F5)  => Some("f5"),
-        c if c == char::from(Key::F6)  => Some("f6"),
-        c if c == char::from(Key::F7)  => Some("f7"),
-        c if c == char::from(Key::F8)  => Some("f8"),
-        c if c == char::from(Key::F9)  => Some("f9"),
+        c if c == char::from(Key::UpArrow) => Some("up"),
+        c if c == char::from(Key::DownArrow) => Some("down"),
+        c if c == char::from(Key::Home) => Some("home"),
+        c if c == char::from(Key::End) => Some("end"),
+        c if c == char::from(Key::PageUp) => Some("page-up"),
+        c if c == char::from(Key::PageDown) => Some("page-down"),
+        c if c == char::from(Key::F1) => Some("f1"),
+        c if c == char::from(Key::F2) => Some("f2"),
+        c if c == char::from(Key::F3) => Some("f3"),
+        c if c == char::from(Key::F4) => Some("f4"),
+        c if c == char::from(Key::F5) => Some("f5"),
+        c if c == char::from(Key::F6) => Some("f6"),
+        c if c == char::from(Key::F7) => Some("f7"),
+        c if c == char::from(Key::F8) => Some("f8"),
+        c if c == char::from(Key::F9) => Some("f9"),
         c if c == char::from(Key::F10) => Some("f10"),
         c if c == char::from(Key::F11) => Some("f11"),
         c if c == char::from(Key::F12) => Some("f12"),
@@ -94,9 +94,9 @@ fn is_private_use(c: char) -> bool {
 
 fn modifier_prefix(ctrl: bool, shift: bool) -> &'static str {
     match (ctrl, shift) {
-        (true, true)  => "ctrl-shift",
+        (true, true) => "ctrl-shift",
         (true, false) => "ctrl",
-        (false, _)    => "meta",
+        (false, _) => "meta",
     }
 }
 
@@ -110,7 +110,10 @@ mod tests {
 
     #[test]
     fn ctrl_chord_uses_ascii_form() {
-        assert_eq!(translate_key("s", true, false, false, false).as_deref(), Some("ctrl-s"));
+        assert_eq!(
+            translate_key("s", true, false, false, false).as_deref(),
+            Some("ctrl-s")
+        );
     }
 
     #[test]
@@ -123,15 +126,30 @@ mod tests {
 
     #[test]
     fn mac_command_and_physical_control_both_map_to_ctrl() {
-        assert_eq!(translate_key("q", true, false, false, false).as_deref(), Some("ctrl-q"));
-        assert_eq!(translate_key("q", false, false, false, true).as_deref(), Some("ctrl-q"));
+        assert_eq!(
+            translate_key("q", true, false, false, false).as_deref(),
+            Some("ctrl-q")
+        );
+        assert_eq!(
+            translate_key("q", false, false, false, true).as_deref(),
+            Some("ctrl-q")
+        );
     }
 
     #[test]
     fn named_keys_use_the_keymap_names() {
-        assert_eq!(translate_key(&named(Key::Return), false, false, false, false).as_deref(), Some("return"));
-        assert_eq!(translate_key(&named(Key::Escape), false, false, false, false).as_deref(), Some("esc"));
-        assert_eq!(translate_key(&named(Key::PageUp), false, false, false, false).as_deref(), Some("page-up"));
+        assert_eq!(
+            translate_key(&named(Key::Return), false, false, false, false).as_deref(),
+            Some("return")
+        );
+        assert_eq!(
+            translate_key(&named(Key::Escape), false, false, false, false).as_deref(),
+            Some("esc")
+        );
+        assert_eq!(
+            translate_key(&named(Key::PageUp), false, false, false, false).as_deref(),
+            Some("page-up")
+        );
     }
 
     #[test]
@@ -144,13 +162,25 @@ mod tests {
 
     #[test]
     fn plain_and_unicode_text_pass_through() {
-        assert_eq!(translate_key("a", false, false, false, false).as_deref(), Some("a"));
-        assert_eq!(translate_key("é", false, false, false, false).as_deref(), Some("é"));
+        assert_eq!(
+            translate_key("a", false, false, false, false).as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            translate_key("é", false, false, false, false).as_deref(),
+            Some("é")
+        );
     }
 
     #[test]
     fn a_bare_modifier_is_not_text() {
-        assert_eq!(translate_key(&named(Key::Shift), false, true, false, false), None);
-        assert_eq!(translate_key(&named(Key::Control), true, false, false, false), None);
+        assert_eq!(
+            translate_key(&named(Key::Shift), false, true, false, false),
+            None
+        );
+        assert_eq!(
+            translate_key(&named(Key::Control), true, false, false, false),
+            None
+        );
     }
 }

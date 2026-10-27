@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::text_engine::Buffer;
 use crate::render::surface::Style;
+use crate::text_engine::Buffer;
 
 // ── FoldIcons ─────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,6 @@ pub struct GutterRegistry {
     pub sign_cache: HashMap<(String, usize, usize), (String, Style)>,
 }
 
-
 impl GutterRegistry {
     /// Resolve the display width of a provider, handling dynamic sizing.
     pub fn provider_width(provider: &dyn GutterProvider, line_count: usize) -> usize {
@@ -102,14 +101,19 @@ impl GutterRegistry {
 
     /// Total gutter width in terminal cells (sum of all provider widths).
     pub fn total_width(&self, line_count: usize) -> usize {
-        self.providers.iter()
+        self.providers
+            .iter()
             .map(|p| Self::provider_width(p.as_ref(), line_count))
             .sum()
     }
 
     /// Add or replace a provider by name.
     pub fn add_provider(&mut self, provider: Box<dyn GutterProvider>) {
-        if let Some(pos) = self.providers.iter().position(|p| p.name() == provider.name()) {
+        if let Some(pos) = self
+            .providers
+            .iter()
+            .position(|p| p.name() == provider.name())
+        {
             self.providers[pos] = provider;
         } else {
             self.providers.push(provider);
@@ -142,17 +146,20 @@ impl GutterRegistry {
         cells: Vec<(usize, String, Style)>,
     ) {
         // Clear old entries for this (name, buf_id) pair.
-        self.sign_cache.retain(|(k_name, k_buf, _), _| {
-            k_name != name || *k_buf != buf_id
-        });
+        self.sign_cache
+            .retain(|(k_name, k_buf, _), _| k_name != name || *k_buf != buf_id);
         for (line, text, style) in cells {
-            self.sign_cache.insert((name.to_string(), buf_id, line), (text, style));
+            self.sign_cache
+                .insert((name.to_string(), buf_id, line), (text, style));
         }
     }
 
     /// Look up a cached cell for `(name, buf_id, line)`.
     pub fn cached_cell(&self, name: &str, buf_id: usize, line: usize) -> Option<GutterCell> {
         let (text, style) = self.sign_cache.get(&(name.to_string(), buf_id, line))?;
-        Some(GutterCell { text: text.clone(), style: *style })
+        Some(GutterCell {
+            text: text.clone(),
+            style: *style,
+        })
     }
 }

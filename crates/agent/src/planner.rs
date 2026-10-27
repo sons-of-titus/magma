@@ -1,7 +1,7 @@
 //! Planner implementations (Phase 11 — AI/Agent Architecture).
 
-use std::collections::HashMap;
 use crate::types::{AgentContext, Plan, PlanStep, Planner};
+use std::collections::HashMap;
 
 pub struct BuiltinPlanner;
 
@@ -40,7 +40,11 @@ impl Planner for BuiltinPlanner {
             Plan::empty(format!(
                 "Goal: {goal}\nActive file: {}\nLanguage: {}\nDiagnostics: {}\nSymbols known: {}",
                 ctx.active_buffer_path.as_deref().unwrap_or("<scratch>"),
-                if ctx.active_buffer_language.is_empty() { "unknown" } else { &ctx.active_buffer_language },
+                if ctx.active_buffer_language.is_empty() {
+                    "unknown"
+                } else {
+                    &ctx.active_buffer_language
+                },
                 ctx.diagnostics.len(),
                 ctx.symbols.len(),
             ))
@@ -63,7 +67,10 @@ mod tests {
         let plan = p.plan("run:build", &empty_ctx());
         assert_eq!(plan.steps.len(), 1);
         assert_eq!(plan.steps[0].command, "task/run");
-        assert_eq!(plan.steps[0].args.get("name").map(|s| s.as_str()), Some("build"));
+        assert_eq!(
+            plan.steps[0].args.get("name").map(|s| s.as_str()),
+            Some("build")
+        );
     }
 
     #[test]
@@ -95,7 +102,10 @@ mod tests {
         let p = BuiltinPlanner;
         for goal in ["run:test", "goto:Foo", "diagnose:bar", "just asking"] {
             let plan = p.plan(goal, &empty_ctx());
-            assert!(!plan.rationale.is_empty(), "rationale empty for goal={goal}");
+            assert!(
+                !plan.rationale.is_empty(),
+                "rationale empty for goal={goal}"
+            );
         }
     }
 }

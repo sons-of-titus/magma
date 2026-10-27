@@ -11,6 +11,14 @@ use super::undo::UndoHistory;
 use super::{MajorMode, Position};
 use id::{BufferId, MarkId};
 
+/// Decoded image payload for an image buffer.  Stored as raw RGBA8 bytes so
+/// the text crate stays free of image-decoding dependencies.
+#[derive(Debug, Clone)]
+pub struct ImageData {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+}
 #[derive(Debug)]
 pub struct Buffer {
     pub id: BufferId,
@@ -47,6 +55,8 @@ pub struct Buffer {
     /// through every committed transaction so breakpoints track their lines
     /// as the text edits, like marks do.
     pub bp_anchors: Vec<(u64, Anchor)>,
+    /// Decoded image payload when this buffer represents an image file.
+    pub image: Option<ImageData>,
 }
 
 impl Buffer {
@@ -69,6 +79,7 @@ impl Buffer {
             ephemeral: false,
             header_line: None,
             bp_anchors: Vec::new(),
+            image: None,
         }
     }
 

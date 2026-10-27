@@ -14,4 +14,4 @@ pub mod watcher;
 pub mod workspace;
 
 pub use disk::DiskFileSystem;
-pub use workspace::{WorkspaceManager, WorkspaceState, PersistedBuffer};
+pub use workspace::{PersistedBuffer, WorkspaceManager, WorkspaceState};

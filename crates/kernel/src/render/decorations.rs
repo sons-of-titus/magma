@@ -2,10 +2,10 @@
 //!
 //! Called from `render_frame` after all text and highlights have been drawn.
 
-use crate::text_engine::{Buffer, Decoration};
 use crate::render::host::RenderHost;
-use crate::state::Editor;
 use crate::render::surface::{Style, Surface};
+use crate::state::Editor;
+use crate::text_engine::{Buffer, Decoration};
 
 /// Compute the width of the widest `LinePrefix` decoration across all layers
 /// for the given buffer view.  Returns 0 when no prefix decorations exist.
@@ -14,7 +14,8 @@ pub fn prefix_margin_width(editor: &dyn RenderHost, buf_id: usize) -> usize {
         Some(v) => v,
         None => return 0,
     };
-    view.decoration_layers.values()
+    view.decoration_layers
+        .values()
         .flat_map(|v| v.iter())
         .filter_map(|d| match d {
             Decoration::LinePrefix { text, .. } => Some(text.chars().count()),
@@ -43,7 +44,9 @@ pub fn render_decorations(
         Some(v) => v,
         None => return,
     };
-    if view.decoration_layers.is_empty() { return; }
+    if view.decoration_layers.is_empty() {
+        return;
+    }
 
     // Collect sorted layer names for deterministic render order.
     let mut layer_names: Vec<&str> = view.decoration_layers.keys().map(|s| s.as_str()).collect();
@@ -57,7 +60,9 @@ pub fn render_decorations(
         for decor in layer {
             match decor {
                 Decoration::LinePrefix { line, text, face } => {
-                    if *line < scroll_top || *line >= scroll_top + visible_lines { continue; }
+                    if *line < scroll_top || *line >= scroll_top + visible_lines {
+                        continue;
+                    }
                     let surf_row = row_offset + (*line - scroll_top) as u16;
                     let style = editor.resolve_face_style(face);
                     let prefix_x = gutter_width as u16;
@@ -65,26 +70,43 @@ pub fn render_decorations(
                     let drawn: String = text.chars().take(max_len).collect();
                     surface.set_text(prefix_x, surf_row, &drawn, style);
                 }
-                Decoration::InlineText { line, col, text, face } => {
-                    if *line < scroll_top || *line >= scroll_top + visible_lines { continue; }
-                    if *col < scroll_left { continue; }
+                Decoration::InlineText {
+                    line,
+                    col,
+                    text,
+                    face,
+                } => {
+                    if *line < scroll_top || *line >= scroll_top + visible_lines {
+                        continue;
+                    }
+                    if *col < scroll_left {
+                        continue;
+                    }
                     let surf_row = row_offset + (*line - scroll_top) as u16;
                     let sx = content_x + (*col - scroll_left) as u16;
-                    if sx >= surface.width { continue; }
+                    if sx >= surface.width {
+                        continue;
+                    }
                     let style = editor.resolve_face_style(face);
                     let max_cols = (surface.width - sx) as usize;
                     let drawn: String = text.chars().take(max_cols).collect();
                     surface.set_text(sx, surf_row, &drawn, style);
                 }
                 Decoration::EndOfLine { line, text, face } => {
-                    if *line < scroll_top || *line >= scroll_top + visible_lines { continue; }
+                    if *line < scroll_top || *line >= scroll_top + visible_lines {
+                        continue;
+                    }
                     let surf_row = row_offset + (*line - scroll_top) as u16;
                     let line_text = buf.line(*line).unwrap_or_default();
                     let end_col = line_text.chars().count();
-                    if end_col < scroll_left { continue; }
+                    if end_col < scroll_left {
+                        continue;
+                    }
                     let eol_col = content_x as usize + (end_col - scroll_left);
                     let sx = (eol_col + 1) as u16;
-                    if sx >= surface.width { continue; }
+                    if sx >= surface.width {
+                        continue;
+                    }
                     let style = editor.resolve_face_style(face);
                     let max_cols = (surface.width - sx) as usize;
                     let drawn: String = text.chars().take(max_cols).collect();
@@ -103,7 +125,9 @@ pub fn render_overlays(
     overlay_fg: (u8, u8, u8),
     surface: &mut Surface,
 ) {
-    if overlays.is_empty() { return; }
+    if overlays.is_empty() {
+        return;
+    }
 
     let mut sorted: Vec<&crate::state::Overlay> = overlays.iter().collect();
     sorted.sort_by_key(|o| o.z_order);
@@ -116,29 +140,38 @@ pub fn render_overlays(
         };
         for dy in 0..ov.height {
             let sy = ov.y + dy;
-            if sy >= surface.height { break; }
+            if sy >= surface.height {
+                break;
+            }
             for dx in 0..ov.width {
                 let sx = ov.x + dx;
-                if sx >= surface.width { break; }
+                if sx >= surface.width {
+                    break;
+                }
                 surface.set_cell(sx, sy, ' ', Some(bg_style));
             }
         }
 
         if let Some(buf_id) = ov.buffer_id
-            && let Some(arc) = host.buffer(buf_id) {
-                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                // Only the rows the overlay can show are extracted.
-                let max_rows = ov.height as usize;
-                let max_cols = ov.width as usize;
-                for (row, line) in (0..max_rows).filter_map(|r| buf.line(r)) .enumerate() {
-                    let sy = ov.y + row as u16;
-                    if sy >= surface.height { break; }
-                    for (col, ch) in line.chars().enumerate().take(max_cols) {
-                        let sx = ov.x + col as u16;
-                        if sx >= surface.width { break; }
-                        surface.set_cell(sx, sy, ch, Some(bg_style));
+            && let Some(arc) = host.buffer(buf_id)
+        {
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            // Only the rows the overlay can show are extracted.
+            let max_rows = ov.height as usize;
+            let max_cols = ov.width as usize;
+            for (row, line) in (0..max_rows).filter_map(|r| buf.line(r)).enumerate() {
+                let sy = ov.y + row as u16;
+                if sy >= surface.height {
+                    break;
+                }
+                for (col, ch) in line.chars().enumerate().take(max_cols) {
+                    let sx = ov.x + col as u16;
+                    if sx >= surface.width {
+                        break;
                     }
+                    surface.set_cell(sx, sy, ch, Some(bg_style));
                 }
             }
+        }
     }
 }

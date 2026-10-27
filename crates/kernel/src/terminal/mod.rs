@@ -4,8 +4,8 @@
 //! output → exit → close).  The GUI's terminal dock is the only surface that
 //! renders sessions; the central pane and the tab bar never see them.
 
-pub use vt::{ansi, screen};
 pub use vt::screen::{Cell, Color, TerminalScreen};
+pub use vt::{ansi, screen};
 
 pub mod session;
 
@@ -57,9 +57,15 @@ impl TerminalManager {
         cwd: &std::path::Path,
         sender: tokio::sync::mpsc::UnboundedSender<BackgroundEvent>,
     ) -> Result<usize, String> {
-        let size = PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
         let pty_system = native_pty_system();
-        let pair = pty_system.openpty(size)
+        let pair = pty_system
+            .openpty(size)
             .map_err(|e| format!("Failed to create PTY: {}", e))?;
 
         let mut cmd_builder = CommandBuilder::new(cmd);
@@ -69,13 +75,19 @@ impl TerminalManager {
         cmd_builder.env("TERM", "xterm-256color");
         cmd_builder.cwd(cwd);
 
-        let child = pair.slave.spawn_command(cmd_builder)
+        let child = pair
+            .slave
+            .spawn_command(cmd_builder)
             .map_err(|e| format!("Failed to spawn command in PTY: {}", e))?;
         let killer = child.clone_killer();
         let pid = child.process_id().map(|p| p as i32);
-        let reader = pair.master.try_clone_reader()
+        let reader = pair
+            .master
+            .try_clone_reader()
             .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
-        let writer = pair.master.take_writer()
+        let writer = pair
+            .master
+            .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
 
         let id = self.next_id;
@@ -112,10 +124,11 @@ impl TerminalManager {
         std::thread::spawn(move || {
             let mut child = child;
             let status = child.wait().ok();
-            let exit_code = status.as_ref()
-                .map(|s| s.exit_code() as i32)
-                .unwrap_or(-1);
-            let _ = sender.send(BackgroundEvent::TerminalExited { terminal_id: id, exit_code });
+            let exit_code = status.as_ref().map(|s| s.exit_code() as i32).unwrap_or(-1);
+            let _ = sender.send(BackgroundEvent::TerminalExited {
+                terminal_id: id,
+                exit_code,
+            });
         });
         Ok(id)
     }
@@ -134,7 +147,8 @@ impl TerminalManager {
     }
 
     pub fn send_input(&self, id: usize, input: &str) -> Result<(), String> {
-        let result = self.get(id)
+        let result = self
+            .get(id)
             .ok_or_else(|| "Not a terminal".to_string())?
             .send_input(input);
         if result.is_ok() {
@@ -144,7 +158,8 @@ impl TerminalManager {
     }
 
     pub fn resize(&mut self, id: usize, cols: u16, rows: u16) -> Result<(), String> {
-        let session = self.get_mut(id)
+        let session = self
+            .get_mut(id)
             .ok_or_else(|| "Not a terminal".to_string())?;
         let result = session.resize(cols, rows);
         session.screen.resize(cols, rows);
@@ -250,7 +265,10 @@ fn read_pipe(
                 // Raw bytes: the emulator on the foreground parses ANSI;
                 // UTF-8 sequences split across reads are reassembled first.
                 let data = decode_chunk(&mut utf8_pending, &buf[..n]);
-                if sender.send(BackgroundEvent::TerminalOutput { terminal_id, data }).is_err() {
+                if sender
+                    .send(BackgroundEvent::TerminalOutput { terminal_id, data })
+                    .is_err()
+                {
                     break;
                 }
                 // The event channel has no waker of its own; this is what

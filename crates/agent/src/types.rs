@@ -16,9 +16,9 @@ pub enum AgentStatus {
 impl AgentStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
-            AgentStatus::Running   => "running",
+            AgentStatus::Running => "running",
             AgentStatus::Completed => "completed",
-            AgentStatus::Failed    => "failed",
+            AgentStatus::Failed => "failed",
         }
     }
 }
@@ -29,7 +29,10 @@ pub enum TranscriptEntry {
     /// A reasoning/plan step.
     Thought(String),
     /// A command the agent dispatched.
-    Action { command: String, description: String },
+    Action {
+        command: String,
+        description: String,
+    },
     /// The outcome of a foreground-executed step.
     StepOutput(String),
 }
@@ -57,22 +60,27 @@ pub struct AgentManager {
 }
 
 impl AgentManager {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Create a new session in `Running` state and return its ID.
     pub fn create_session(&mut self, prompt: impl Into<String>) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
-        self.sessions.insert(id, AgentSession {
+        self.sessions.insert(
             id,
-            prompt: prompt.into(),
-            status: AgentStatus::Running,
-            result: None,
-            error: None,
-            transcript: Vec::new(),
-            messages: Vec::new(),
-            turns_left: MAX_TURNS,
-        });
+            AgentSession {
+                id,
+                prompt: prompt.into(),
+                status: AgentStatus::Running,
+                result: None,
+                error: None,
+                transcript: Vec::new(),
+                messages: Vec::new(),
+                turns_left: MAX_TURNS,
+            },
+        );
         id
     }
 
@@ -106,21 +114,25 @@ impl AgentManager {
     }
 
     pub fn request_stop(&mut self, id: u64) -> bool {
-        self.sessions.get_mut(&id).map(|s| {
-            if s.status == AgentStatus::Running {
-                s.turns_left = 0;
-                true
-            } else {
-                false
-            }
-        }).unwrap_or(false)
+        self.sessions
+            .get_mut(&id)
+            .map(|s| {
+                if s.status == AgentStatus::Running {
+                    s.turns_left = 0;
+                    true
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false)
     }
 
     pub fn note_transcript(&mut self, id: u64, entry: TranscriptEntry) {
         if let Some(s) = self.sessions.get_mut(&id)
-            && s.status == AgentStatus::Running {
-                s.transcript.push(entry);
-            }
+            && s.status == AgentStatus::Running
+        {
+            s.transcript.push(entry);
+        }
     }
 
     pub fn note_thought(&mut self, id: u64, thought: &str) {
@@ -128,10 +140,13 @@ impl AgentManager {
     }
 
     pub fn note_action(&mut self, id: u64, command: &str, description: &str) {
-        self.note_transcript(id, TranscriptEntry::Action {
-            command: command.to_string(),
-            description: description.to_string(),
-        });
+        self.note_transcript(
+            id,
+            TranscriptEntry::Action {
+                command: command.to_string(),
+                description: description.to_string(),
+            },
+        );
     }
 
     pub fn note_step_output(&mut self, id: u64, output: &str) {
@@ -228,7 +243,10 @@ pub struct Plan {
 
 impl Plan {
     pub fn empty(rationale: impl Into<String>) -> Self {
-        Plan { steps: Vec::new(), rationale: rationale.into() }
+        Plan {
+            steps: Vec::new(),
+            rationale: rationale.into(),
+        }
     }
 }
 
@@ -295,9 +313,9 @@ mod tests {
 
     #[test]
     fn agent_status_as_str() {
-        assert_eq!(AgentStatus::Running.as_str(),   "running");
+        assert_eq!(AgentStatus::Running.as_str(), "running");
         assert_eq!(AgentStatus::Completed.as_str(), "completed");
-        assert_eq!(AgentStatus::Failed.as_str(),    "failed");
+        assert_eq!(AgentStatus::Failed.as_str(), "failed");
     }
 
     #[test]

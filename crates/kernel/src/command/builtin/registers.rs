@@ -10,7 +10,9 @@ use super::helpers::*;
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("delete-line", "Delete the current line",
+    cmds.register_fn(
+        "delete-line",
+        "Delete the current line",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -35,10 +37,16 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("change-line", "Delete the current line and enter insert mode",
+    cmds.register_fn(
+        "change-line",
+        "Delete the current line and enter insert mode",
         vec![],
         |editor, _args| {
-            crate::command::execute_command(editor, "delete-line", &std::collections::HashMap::new())?;
+            crate::command::execute_command(
+                editor,
+                "delete-line",
+                &std::collections::HashMap::new(),
+            )?;
             editor.keymaps.pop_layer("editor");
             editor.editor_mode = EditorMode::new("insert", true);
             editor.keymaps.push_layer("insert");
@@ -47,7 +55,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("yank-line", "Copy the current line into the yank register",
+    cmds.register_fn(
+        "yank-line",
+        "Copy the current line into the yank register",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -69,53 +79,76 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("put", "Paste yanked/deleted text after cursor",
+    cmds.register_fn(
+        "put",
+        "Paste yanked/deleted text after cursor",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.editing.yanked_text.clone()
+            let text = editor
+                .editing
+                .yanked_text
+                .clone()
                 .or_else(|| editor.clipboard.get_text());
             if let Some(content) = text
-                && let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                    let pos = view.cursor_offset();
-                    let paste_pos = {
-                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                        let after = buf.slice(pos, buf.len());
-                        after.chars().next().map(|c| pos + c.len_utf8()).unwrap_or(pos)
-                    };
-                    view.insert(paste_pos, &content);
-                    view.set_cursor(paste_pos);
-                }
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                let pos = view.cursor_offset();
+                let paste_pos = {
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+                    let after = buf.slice(pos, buf.len());
+                    after
+                        .chars()
+                        .next()
+                        .map(|c| pos + c.len_utf8())
+                        .unwrap_or(pos)
+                };
+                view.insert(paste_pos, &content);
+                view.set_cursor(paste_pos);
+            }
             emit_cursor_moved(editor);
             Ok(())
         },
     );
 
-    cmds.register_fn("put-before", "Paste yanked/deleted text before cursor",
+    cmds.register_fn(
+        "put-before",
+        "Paste yanked/deleted text before cursor",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.editing.yanked_text.clone()
+            let text = editor
+                .editing
+                .yanked_text
+                .clone()
                 .or_else(|| editor.clipboard.get_text());
             if let Some(content) = text
-                && let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                    let pos = view.cursor_offset();
-                    view.insert(pos, &content);
-                    view.set_cursor(pos);
-                }
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                let pos = view.cursor_offset();
+                view.insert(pos, &content);
+                view.set_cursor(pos);
+            }
             emit_cursor_moved(editor);
             Ok(())
         },
     );
 
-    cmds.register_fn("put-after-cursor", "Paste, cursor after pasted text (gp)",
+    cmds.register_fn(
+        "put-after-cursor",
+        "Paste, cursor after pasted text (gp)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.editing.yanked_text.clone()
+            let text = editor
+                .editing
+                .yanked_text
+                .clone()
                 .or_else(|| editor.clipboard.get_text())
                 .unwrap_or_default();
-            if text.is_empty() { return Ok(()); }
+            if text.is_empty() {
+                return Ok(());
+            }
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor_offset();
                 view.insert(pos, &text);
@@ -126,14 +159,21 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("put-before-cursor", "Paste before, cursor after pasted text (gP)",
+    cmds.register_fn(
+        "put-before-cursor",
+        "Paste before, cursor after pasted text (gP)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            let text = editor.editing.yanked_text.clone()
+            let text = editor
+                .editing
+                .yanked_text
+                .clone()
                 .or_else(|| editor.clipboard.get_text())
                 .unwrap_or_default();
-            if text.is_empty() { return Ok(()); }
+            if text.is_empty() {
+                return Ok(());
+            }
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let pos = view.cursor_offset();
                 view.insert(pos, &text);
@@ -144,12 +184,14 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("insert-register", "Insert register content in insert mode (ctrl-r)",
-        vec![
-            ArgSpec::new("register", ArgType::String),
-        ],
+    cmds.register_fn(
+        "insert-register",
+        "Insert register content in insert mode (ctrl-r)",
+        vec![ArgSpec::new("register", ArgType::String)],
         |editor, args| {
-            let reg = args.get("register").and_then(|a| a.as_string())
+            let reg = args
+                .get("register")
+                .and_then(|a| a.as_string())
                 .unwrap_or("\"");
             let text = if reg == "\"" || reg == "0" {
                 editor.editing.yanked_text.clone()
@@ -167,21 +209,29 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("start-macro-recording", "Start recording macro into register (q<char>)",
-        vec![
-            ArgSpec::new("register", ArgType::String),
-        ],
+    cmds.register_fn(
+        "start-macro-recording",
+        "Start recording macro into register (q<char>)",
+        vec![ArgSpec::new("register", ArgType::String)],
         |editor, args| {
-            let reg = args.get("register").and_then(|a| a.as_string())
+            let reg = args
+                .get("register")
+                .and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "register required".to_string())?;
             editor.editing.recording_macro = Some(reg.to_string());
-            editor.editing.macros.entry(reg.to_string()).or_insert_with(Vec::new);
+            editor
+                .editing
+                .macros
+                .entry(reg.to_string())
+                .or_insert_with(Vec::new);
             Ok(())
         },
     );
 
-    cmds.register_fn("stop-macro-recording", "Stop recording macro (q while recording)",
+    cmds.register_fn(
+        "stop-macro-recording",
+        "Stop recording macro (q while recording)",
         vec![],
         |editor, _args| {
             editor.editing.recording_macro = None;
@@ -192,15 +242,17 @@ pub(super) fn register(editor: &mut Editor) {
     // vim-macro-toggle: used by the char-capture callback for "q".
     // If not recording, starts recording into the char/register arg.
     // If already recording, stops.
-    cmds.register_fn("macro-toggle", "Toggle macro recording (char-capture callback for q)",
-        vec![
-            ArgSpec::new("char", ArgType::String),
-        ],
+    cmds.register_fn(
+        "macro-toggle",
+        "Toggle macro recording (char-capture callback for q)",
+        vec![ArgSpec::new("char", ArgType::String)],
         |editor, args| {
             if editor.editing.recording_macro.is_some() {
                 editor.editing.recording_macro = None;
             } else {
-                let reg = args.get("char").or_else(|| args.get("register"))
+                let reg = args
+                    .get("char")
+                    .or_else(|| args.get("register"))
                     .and_then(|a| a.as_string())
                     .and_then(|s| s.chars().next())
                     .map(|c| c.to_string())
@@ -214,15 +266,21 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("play-macro", "Play back macro from register (@<char>)",
-        vec![
-            ArgSpec::new("register", ArgType::String),
-        ],
+    cmds.register_fn(
+        "play-macro",
+        "Play back macro from register (@<char>)",
+        vec![ArgSpec::new("register", ArgType::String)],
         |editor, args| {
-            let reg = args.get("register").and_then(|a| a.as_string())
+            let reg = args
+                .get("register")
+                .and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "register required".to_string())?;
-            let keys = editor.editing.macros.get(&reg.to_string()).cloned()
+            let keys = editor
+                .editing
+                .macros
+                .get(&reg.to_string())
+                .cloned()
                 .unwrap_or_default();
             for key in &keys {
                 dispatch_key(editor, key);
@@ -231,58 +289,78 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("set-mark", "Set a mark at cursor position (m<char>)",
-        vec![
-            crate::command::args::ArgSpec::new("char", crate::command::args::ArgType::String),
-        ],
+    cmds.register_fn(
+        "set-mark",
+        "Set a mark at cursor position (m<char>)",
+        vec![crate::command::args::ArgSpec::new(
+            "char",
+            crate::command::args::ArgType::String,
+        )],
         |editor, args| {
-            let ch = args.get("char").and_then(|a| a.as_string())
+            let ch = args
+                .get("char")
+                .and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "mark char required".to_string())?;
             let buf_id = get_current_buffer_id(editor);
-            let pos = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let pos = editor
+                .view_of_buffer(buf_id)
+                .map(|v| v.cursor_offset())
+                .unwrap_or(0);
             editor.marks.insert(ch, pos);
             Ok(())
         },
     );
 
-    cmds.register_fn("jump-to-mark", "Jump to mark line ('<char>)",
-        vec![
-            crate::command::args::ArgSpec::new("char", crate::command::args::ArgType::String),
-        ],
+    cmds.register_fn(
+        "jump-to-mark",
+        "Jump to mark line ('<char>)",
+        vec![crate::command::args::ArgSpec::new(
+            "char",
+            crate::command::args::ArgType::String,
+        )],
         |editor, args| {
-            let ch = args.get("char").and_then(|a| a.as_string())
+            let ch = args
+                .get("char")
+                .and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "mark char required".to_string())?;
             let buf_id = get_current_buffer_id(editor);
             if let Some(&mark_pos) = editor.marks.get(&ch)
-                && let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                    let offset = {
-                        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                        let text = buf.slice(0, mark_pos);
-                        let line = text.chars().filter(|&c| c == '\n').count();
-                        buf.line_start_offset(line).unwrap_or(mark_pos)
-                    };
-                    view.set_cursor(offset);
-                }
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                let offset = {
+                    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+                    let text = buf.slice(0, mark_pos);
+                    let line = text.chars().filter(|&c| c == '\n').count();
+                    buf.line_start_offset(line).unwrap_or(mark_pos)
+                };
+                view.set_cursor(offset);
+            }
             emit_cursor_moved(editor);
             Ok(())
         },
     );
 
-    cmds.register_fn("jump-to-mark-char", "Jump to mark exact position (`<char>)",
-        vec![
-            crate::command::args::ArgSpec::new("char", crate::command::args::ArgType::String),
-        ],
+    cmds.register_fn(
+        "jump-to-mark-char",
+        "Jump to mark exact position (`<char>)",
+        vec![crate::command::args::ArgSpec::new(
+            "char",
+            crate::command::args::ArgType::String,
+        )],
         |editor, args| {
-            let ch = args.get("char").and_then(|a| a.as_string())
+            let ch = args
+                .get("char")
+                .and_then(|a| a.as_string())
                 .and_then(|s| s.chars().next())
                 .ok_or_else(|| "mark char required".to_string())?;
             let buf_id = get_current_buffer_id(editor);
             if let Some(&mark_pos) = editor.marks.get(&ch)
-                && let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                    view.set_cursor(mark_pos);
-                }
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                view.set_cursor(mark_pos);
+            }
             emit_cursor_moved(editor);
             Ok(())
         },

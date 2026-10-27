@@ -6,7 +6,10 @@
 
 /// Which side of the diff a changed line sits on.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum Bar { Add, Del }
+pub(crate) enum Bar {
+    Add,
+    Del,
+}
 
 /// One parsed `@@ -a,b +c,d @@` hunk range (1-based; lengths may be 0).
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -28,7 +31,12 @@ fn parse_hunk_header(line: &str) -> Option<HunkRange> {
     let mut parts = rest[..end].split(' ');
     let (old_start, old_len) = parse_range(parts.next()?.strip_prefix('-')?)?;
     let (new_start, new_len) = parse_range(parts.next()?.strip_prefix('+')?)?;
-    Some(HunkRange { old_start, old_len, new_start, new_len })
+    Some(HunkRange {
+        old_start,
+        old_len,
+        new_start,
+        new_len,
+    })
 }
 
 fn parse_range(s: &str) -> Option<(usize, usize)> {
@@ -52,9 +60,15 @@ pub fn hunk_covers(hunk: &HunkRange, line: usize) -> bool {
 pub fn changed_lines(hunks: &[HunkRange], left: bool) -> Vec<usize> {
     let mut out = Vec::new();
     for h in hunks {
-        let (start, len) = if left { (h.old_start, h.old_len) } else { (h.new_start, h.new_len) };
+        let (start, len) = if left {
+            (h.old_start, h.old_len)
+        } else {
+            (h.new_start, h.new_len)
+        };
         for n in start..start + len {
-            if n > 0 { out.push(n - 1); }
+            if n > 0 {
+                out.push(n - 1);
+            }
         }
     }
     out.sort_unstable();

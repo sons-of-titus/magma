@@ -8,7 +8,9 @@ use super::helpers::*;
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
 
-    cmds.register_fn("cursor-left", "Move cursor left",
+    cmds.register_fn(
+        "cursor-left",
+        "Move cursor left",
         vec![],
         |editor, _args| {
             move_cursor(editor, -1);
@@ -16,7 +18,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("cursor-right", "Move cursor right",
+    cmds.register_fn(
+        "cursor-right",
+        "Move cursor right",
         vec![],
         |editor, _args| {
             move_cursor(editor, 1);
@@ -24,29 +28,32 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("cursor-up", "Move cursor up",
-        vec![],
-        |editor, _args| {
-            let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let line = current_line(view);
-                if line > 0 {
-                    let col = current_col(view);
-                    move_to_line_col(view, line - 1, col);
-                }
+    cmds.register_fn("cursor-up", "Move cursor up", vec![], |editor, _args| {
+        let buf_id = get_current_buffer_id(editor);
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            let line = current_line(view);
+            if line > 0 {
+                let col = current_col(view);
+                move_to_line_col(view, line - 1, col);
             }
-            emit_cursor_moved(editor);
-            Ok(())
-        },
-    );
+        }
+        emit_cursor_moved(editor);
+        Ok(())
+    });
 
-    cmds.register_fn("cursor-down", "Move cursor down",
+    cmds.register_fn(
+        "cursor-down",
+        "Move cursor down",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
-                let count = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_count();
+                let count = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_count();
                 if line + 1 < count {
                     let col = current_col(view);
                     move_to_line_col(view, line + 1, col);
@@ -57,13 +64,19 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("line-start", "Move cursor to start of current line",
+    cmds.register_fn(
+        "line-start",
+        "Move cursor to start of current line",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
-                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(line);
+                let offset = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_start_offset(line);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -73,7 +86,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("line-end", "Move cursor to end of current line",
+    cmds.register_fn(
+        "line-end",
+        "Move cursor to end of current line",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -92,7 +107,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("move-to-first-char", "Move to first non-whitespace on line",
+    cmds.register_fn(
+        "move-to-first-char",
+        "Move to first non-whitespace on line",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -112,7 +129,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-buffer-start", "Move cursor to first line",
+    cmds.register_fn(
+        "goto-buffer-start",
+        "Move cursor to first line",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -124,7 +143,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-buffer-end", "Move cursor to last line",
+    cmds.register_fn(
+        "goto-buffer-end",
+        "Move cursor to last line",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -137,17 +158,22 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-line", "Go to a specific line (1-indexed). Defaults to last line.",
-        vec![
-            ArgSpec::optional("line", ArgType::Integer, ArgValue::Integer(-1)),
-        ],
+    cmds.register_fn(
+        "goto-line",
+        "Go to a specific line (1-indexed). Defaults to last line.",
+        vec![ArgSpec::optional(
+            "line",
+            ArgType::Integer,
+            ArgValue::Integer(-1),
+        )],
         |editor, args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let target_offset = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     let line_count = buf.line_count();
-                    let line = args.get("line")
+                    let line = args
+                        .get("line")
                         .and_then(|a| a.as_integer())
                         .map(|n| n as usize)
                         .filter(|&n| n > 0)
@@ -165,14 +191,20 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-screen-top", "Move cursor to top of screen (H)",
+    cmds.register_fn(
+        "goto-screen-top",
+        "Move cursor to top of screen (H)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(20);
-                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
+                let offset = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -182,14 +214,20 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-screen-middle", "Move cursor to middle of screen (M)",
+    cmds.register_fn(
+        "goto-screen-middle",
+        "Move cursor to middle of screen (M)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(10);
-                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
+                let offset = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -199,7 +237,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-screen-bottom", "Move cursor to bottom of screen (L)",
+    cmds.register_fn(
+        "goto-screen-bottom",
+        "Move cursor to bottom of screen (L)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
@@ -212,14 +252,20 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("scroll-to-top", "Move cursor near screen top (zt)",
+    cmds.register_fn(
+        "scroll-to-top",
+        "Move cursor near screen top (zt)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(20);
-                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
+                let offset = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -229,14 +275,20 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("scroll-to-middle", "Move cursor near screen middle (zz)",
+    cmds.register_fn(
+        "scroll-to-middle",
+        "Move cursor near screen middle (zz)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
                 let target = line.saturating_sub(10);
-                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(target);
+                let offset = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_start_offset(target);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -246,13 +298,19 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("scroll-to-bottom", "Move cursor near screen bottom (zb)",
+    cmds.register_fn(
+        "scroll-to-bottom",
+        "Move cursor near screen bottom (zb)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some(view) = editor.view_of_buffer_mut(buf_id) {
                 let line = current_line(view);
-                let offset = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(line);
+                let offset = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_start_offset(line);
                 if let Some(offset) = offset {
                     view.set_cursor(offset);
                 }
@@ -262,10 +320,14 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-older-change", "Jump to older change in change list (g;)",
+    cmds.register_fn(
+        "goto-older-change",
+        "Jump to older change in change list (g;)",
         vec![],
         |editor, _args| {
-            if editor.editing.change_list.is_empty() { return Ok(()); }
+            if editor.editing.change_list.is_empty() {
+                return Ok(());
+            }
             if editor.editing.change_list_idx > 0 {
                 editor.editing.change_list_idx -= 1;
             }
@@ -280,10 +342,14 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("goto-newer-change", "Jump to newer change in change list (g,)",
+    cmds.register_fn(
+        "goto-newer-change",
+        "Jump to newer change in change list (g,)",
         vec![],
         |editor, _args| {
-            if editor.editing.change_list.is_empty() { return Ok(()); }
+            if editor.editing.change_list.is_empty() {
+                return Ok(());
+            }
             if editor.editing.change_list_idx < editor.editing.change_list.len().saturating_sub(1) {
                 editor.editing.change_list_idx += 1;
             }
@@ -298,7 +364,9 @@ pub(super) fn register(editor: &mut Editor) {
         },
     );
 
-    cmds.register_fn("go-to-last-insert-pos", "Go to last insert position (gi)",
+    cmds.register_fn(
+        "go-to-last-insert-pos",
+        "Go to last insert position (gi)",
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);

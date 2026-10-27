@@ -191,9 +191,10 @@ fn event_payloads_carry_the_walk_and_record() {
     let indexed = Event::ProjectIndexed {
         project_name: "demo".into(),
         files: vec!["src/main.rs".into()],
+        ignored_files: vec![],
     };
     match indexed.clone() {
-        Event::ProjectIndexed { project_name, files } => {
+        Event::ProjectIndexed { project_name, files, ignored_files: _ } => {
             assert_eq!(project_name, "demo");
             assert_eq!(files, vec!["src/main.rs".to_string()]);
         }

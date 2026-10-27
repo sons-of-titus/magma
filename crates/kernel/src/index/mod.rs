@@ -27,29 +27,39 @@ use extract::IndexedSymbol;
 /// pool; records land as `index::Event::RecordArrived` and merge on the foreground.
 pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
     use std::time::UNIX_EPOCH;
-    let Some(root) = ed.project_manager.project.root.clone() else { return };
+    let Some(root) = ed.project_manager.project.root.clone() else {
+        return;
+    };
     ed.index.open_project(&root.to_string_lossy());
     let keep: std::collections::HashSet<String> = files.iter().cloned().collect();
     ed.index.retain_paths(&keep);
 
-    let stale: Vec<String> = files.iter().filter(|rel| {
-        let abs = root.join(rel.as_str());
-        match std::fs::metadata(&abs) {
-            Ok(meta) => {
-                let mtime = meta.modified().ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                !ed.index.is_current(rel, meta.len(), mtime)
+    let stale: Vec<String> = files
+        .iter()
+        .filter(|rel| {
+            let abs = root.join(rel.as_str());
+            match std::fs::metadata(&abs) {
+                Ok(meta) => {
+                    let mtime = meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    !ed.index.is_current(rel, meta.len(), mtime)
+                }
+                Err(_) => false,
             }
-            Err(_) => false,
-        }
-    }).cloned().collect();
+        })
+        .cloned()
+        .collect();
 
     if stale.is_empty() {
         return;
     }
-    let Some(bg) = ed.background.clone() else { return };
+    let Some(bg) = ed.background.clone() else {
+        return;
+    };
     ed.index.note_pending(stale.len());
     for chunk in stale.chunks(64) {
         let chunk = chunk.to_vec();
@@ -57,22 +67,33 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
         let sender = bg.sender.clone();
         // Lane P2, coalesced per reconcile round: a newer walk supersedes
         // extraction jobs still queued from the previous one.
-        bg.spawn_on(crate::runtime::Lane::Indexing, Some("index-reconcile"), move || {
-            for rel in chunk {
-                let abs = root.join(&rel);
-                let Ok(meta) = std::fs::metadata(&abs) else { continue };
-                // Non-UTF8 files (binaries, exotic encodings) are skipped:
-                // the index is a source index.
-                let Ok(text) = std::fs::read_to_string(&abs) else { continue };
-                let mtime = meta.modified().ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let rec = crate::index::record_from_text(&rel, mtime, &text);
-                let _ = sender.send(BackgroundEvent::Index(
-                    crate::index::Event::RecordArrived(rec)));
-            }
-        });
+        bg.spawn_on(
+            crate::runtime::Lane::Indexing,
+            Some("index-reconcile"),
+            move || {
+                for rel in chunk {
+                    let abs = root.join(&rel);
+                    let Ok(meta) = std::fs::metadata(&abs) else {
+                        continue;
+                    };
+                    // Non-UTF8 files (binaries, exotic encodings) are skipped:
+                    // the index is a source index.
+                    let Ok(text) = std::fs::read_to_string(&abs) else {
+                        continue;
+                    };
+                    let mtime = meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let rec = crate::index::record_from_text(&rel, mtime, &text);
+                    let _ = sender.send(BackgroundEvent::Index(
+                        crate::index::Event::RecordArrived(rec),
+                    ));
+                }
+            },
+        );
     }
 }
 
@@ -92,7 +113,10 @@ impl IndexStore {
         if self.loaded_root.as_deref() == Some(root) {
             return;
         }
-        self.records = store::load(&store::index_path_for_root(root, &crate::state::persist::state_dir()));
+        self.records = store::load(&store::index_path_for_root(
+            root,
+            &crate::state::persist::state_dir(),
+        ));
         self.loaded_root = Some(root.to_string());
         self.dirty = false;
         self.pending = 0;
@@ -102,20 +126,25 @@ impl IndexStore {
     /// new (not a no-op re-stamp).
     pub fn apply(&mut self, rec: IndexRecord) -> bool {
         self.pending = self.pending.saturating_sub(1);
-        let unchanged = self.records.get(&rec.path)
+        let unchanged = self
+            .records
+            .get(&rec.path)
             .map(|existing| existing.hash == rec.hash)
             .unwrap_or(false);
         if unchanged {
             return false;
         }
-        self.records.insert(rec.path.clone(), store::FileRecord {
-            path: rec.path,
-            mtime_secs: rec.mtime_secs,
-            size: rec.size,
-            hash: rec.hash,
-            language: rec.language,
-            symbols: rec.symbols,
-        });
+        self.records.insert(
+            rec.path.clone(),
+            store::FileRecord {
+                path: rec.path,
+                mtime_secs: rec.mtime_secs,
+                size: rec.size,
+                hash: rec.hash,
+                language: rec.language,
+                symbols: rec.symbols,
+            },
+        );
         self.dirty = true;
         true
     }
@@ -157,7 +186,10 @@ impl IndexStore {
     /// Symbols defined in one file.
     pub fn symbols_in_file(&self, path: &str) -> &[IndexedSymbol] {
         static EMPTY: [IndexedSymbol; 0] = [];
-        self.records.get(path).map(|r| r.symbols.as_slice()).unwrap_or(&EMPTY)
+        self.records
+            .get(path)
+            .map(|r| r.symbols.as_slice())
+            .unwrap_or(&EMPTY)
     }
 
     pub fn stats(&self) -> IndexStats {
@@ -177,7 +209,9 @@ impl IndexStore {
         if !self.dirty {
             return Ok(());
         }
-        let Some(root) = &self.loaded_root else { return Ok(()) };
+        let Some(root) = &self.loaded_root else {
+            return Ok(());
+        };
         let path = store::index_path_for_root(root, &crate::state::persist::state_dir());
         let result = store::save(&path, &self.records);
         if result.is_ok() {
@@ -188,7 +222,8 @@ impl IndexStore {
 
     /// Whether a file's stamps say its record is current.
     pub fn is_current(&self, path: &str, size: u64, mtime_secs: u64) -> bool {
-        self.records.get(path)
+        self.records
+            .get(path)
             .map(|r| r.size == size && r.mtime_secs == mtime_secs)
             .unwrap_or(false)
     }
@@ -205,7 +240,11 @@ mod tests {
             size: 10,
             hash,
             language: "rust".into(),
-            symbols: vec![IndexedSymbol { name: name.into(), kind: "fn".into(), line: 0 }],
+            symbols: vec![IndexedSymbol {
+                name: name.into(),
+                kind: "fn".into(),
+                line: 0,
+            }],
         }
     }
 
@@ -213,8 +252,14 @@ mod tests {
     fn apply_merges_and_dedupes_by_hash() {
         let mut idx = IndexStore::default();
         assert!(idx.apply(rec("a.rs", "alpha", 1)), "first record is new");
-        assert!(!idx.apply(rec("a.rs", "alpha", 1)), "same hash is a no-op re-stamp");
-        assert!(idx.apply(rec("a.rs", "alpha", 2)), "changed hash re-indexes");
+        assert!(
+            !idx.apply(rec("a.rs", "alpha", 1)),
+            "same hash is a no-op re-stamp"
+        );
+        assert!(
+            idx.apply(rec("a.rs", "alpha", 2)),
+            "changed hash re-indexes"
+        );
         assert_eq!(idx.stats().files, 1);
         assert_eq!(idx.stats().symbols, 1);
     }

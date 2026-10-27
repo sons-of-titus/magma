@@ -20,36 +20,48 @@ static HANDOFF: LazyLock<std::sync::Mutex<VecDeque<(usize, u64, tree_sitter::Tre
 
 /// Schedule a parse for `buf_key` if a grammar is registered for it.
 pub fn schedule_tree_update(ed: &mut crate::state::Editor, buf_key: usize) {
-    let Some(lang) = ed.ts_languages.get(&buf_key).cloned() else { return };
-    let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
-    let Some(bg) = ed.background.clone() else { return };
+    let Some(lang) = ed.ts_languages.get(&buf_key).cloned() else {
+        return;
+    };
+    let Some(arc) = ed.buffers.get(buf_key).cloned() else {
+        return;
+    };
+    let Some(bg) = ed.background.clone() else {
+        return;
+    };
     let revision = arc.lock().unwrap_or_else(|e| e.into_inner()).revision();
     let coalesce = format!("ts-{buf_key}");
     let sender = bg.sender.clone();
     // Lane P1, coalesced per buffer: typing past a queued parse
     // supersedes it.
-    bg.spawn_on(crate::runtime::Lane::Foreground, Some(&coalesce), move || {
-        let (text, still_current) = {
-            let Ok(buf) = arc.lock() else { return };
-            if buf.revision() != revision {
-                (String::new(), false)
-            } else {
-                (buf.slice(0, buf.len()), true)
+    bg.spawn_on(
+        crate::runtime::Lane::Foreground,
+        Some(&coalesce),
+        move || {
+            let (text, still_current) = {
+                let Ok(buf) = arc.lock() else { return };
+                if buf.revision() != revision {
+                    (String::new(), false)
+                } else {
+                    (buf.slice(0, buf.len()), true)
+                }
+            };
+            if !still_current {
+                return;
             }
-        };
-        if !still_current { return; }
-        let Some(tree) = super::ts_registry::parse_tree(&lang, &text) else { return };
-        {
-            let mut handoff = HANDOFF.lock().unwrap_or_else(|e| e.into_inner());
-            handoff.push_back((buf_key, revision, tree));
-            while handoff.len() > HANDOFF_CAP {
-                handoff.pop_front();
+            let Some(tree) = super::ts_registry::parse_tree(&lang, &text) else {
+                return;
+            };
+            {
+                let mut handoff = HANDOFF.lock().unwrap_or_else(|e| e.into_inner());
+                handoff.push_back((buf_key, revision, tree));
+                while handoff.len() > HANDOFF_CAP {
+                    handoff.pop_front();
+                }
             }
-        }
-        let _ = sender.send(crate::runtime::BackgroundEvent::TsTreeReady {
-            buf_key, revision,
-        });
-    });
+            let _ = sender.send(crate::runtime::BackgroundEvent::TsTreeReady { buf_key, revision });
+        },
+    );
 }
 
 /// Move any parsed tree matching a live buffer revision into the
@@ -59,7 +71,10 @@ pub fn schedule_tree_update(ed: &mut crate::state::Editor, buf_key: usize) {
 /// synchronously; that was the TAB/typing stall).
 pub fn take_ready_tree(ed: &mut crate::state::Editor, buf_key: usize, revision: u64) {
     let mut handoff = HANDOFF.lock().unwrap_or_else(|e| e.into_inner());
-    let current = ed.buffers.get(buf_key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
+    let current = ed
+        .buffers
+        .get(buf_key)
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
     let mut picked_tree = false;
     let mut kept = VecDeque::new();
     while let Some((k, rev, tree)) = handoff.pop_front() {

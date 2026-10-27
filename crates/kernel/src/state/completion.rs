@@ -14,7 +14,11 @@ impl CompletionItem {
     pub fn word(label: impl Into<String>) -> Self {
         let label = label.into();
         let insert = label.clone();
-        CompletionItem { label, insert, ..Default::default() }
+        CompletionItem {
+            label,
+            insert,
+            ..Default::default()
+        }
     }
 }
 

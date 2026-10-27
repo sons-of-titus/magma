@@ -110,7 +110,9 @@ impl ProjectManager {
     /// otherwise).
     pub fn detect(&mut self, root: &str) {
         let path = std::path::Path::new(root);
-        let Some(language) = detect::detect_language(path) else { return };
+        let Some(language) = detect::detect_language(path) else {
+            return;
+        };
 
         self.project.language = language.to_string();
         let pb = PathBuf::from(root);
@@ -123,9 +125,10 @@ impl ProjectManager {
     /// detection or indexing enriches the active project.
     pub fn sync_active_to_registry(&mut self) {
         if let (Some(name), proj) = (self.current_project.clone(), self.project.clone())
-            && self.projects.contains_key(&name) {
-                self.projects.insert(name, proj);
-            }
+            && self.projects.contains_key(&name)
+        {
+            self.projects.insert(name, proj);
+        }
     }
 
     /// Launch one of the project's run configurations through the Task
@@ -136,7 +139,10 @@ impl ProjectManager {
         scheduler: &mut crate::task::TaskScheduler,
         bg: &crate::runtime::BackgroundHandle,
     ) -> Result<u64, String> {
-        let root = self.project.root.clone()
+        let root = self
+            .project
+            .root
+            .clone()
             .ok_or_else(|| "no project open".to_string())?;
         self.run_configs.launch(name, scheduler, bg, &root)
     }
@@ -173,10 +179,7 @@ impl ProjectManager {
     ///
     /// Called after file indexing completes (`index::Event::ProjectIndexed`)
     /// so the Semantic Engine can route providers to newly indexed files.
-    pub fn sync_to_project_graph(
-        &self,
-        graph: &mut crate::semantic::project_graph::ProjectGraph,
-    ) {
+    pub fn sync_to_project_graph(&self, graph: &mut crate::semantic::project_graph::ProjectGraph) {
         let lang = self.project.language.as_str();
         for file_path in &self.project.files {
             if !graph.files.contains_key(file_path.as_str()) {
@@ -198,11 +201,15 @@ pub fn open_root(editor: &mut crate::state::Editor, path: &str) {
 
     let was_active = editor.project_manager.project.root.is_some();
     if was_active {
-        editor.events.emit_typed(keys::events::PROJECT_CLOSED, crate::event::payload::EmptyPayload);
+        editor.events.emit_typed(
+            keys::events::PROJECT_CLOSED,
+            crate::event::payload::EmptyPayload,
+        );
     }
 
     let pb = PathBuf::from(path);
-    let name = pb.file_name()
+    let name = pb
+        .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string());
     editor.project_manager.run_configs = crate::run_config::RunConfigManager::default();
@@ -217,12 +224,18 @@ pub fn open_root(editor: &mut crate::state::Editor, path: &str) {
         ..Project::default()
     };
     editor.project_manager.current_project = Some(name.clone());
-    editor.project_manager.projects.insert(name.clone(), editor.project_manager.project.clone());
+    editor
+        .project_manager
+        .projects
+        .insert(name.clone(), editor.project_manager.project.clone());
 
     push_recent(editor, path);
     editor.events.emit_typed(
         keys::events::PROJECT_OPENED,
-        crate::event::payload::ProjectOpenedPayload { root: path.to_string(), name },
+        crate::event::payload::ProjectOpenedPayload {
+            root: path.to_string(),
+            name,
+        },
     );
 }
 
@@ -230,7 +243,10 @@ pub fn open_root(editor: &mut crate::state::Editor, path: &str) {
 /// and persist it.
 pub fn push_recent(editor: &mut crate::state::Editor, path: &str) {
     editor.project_manager.recent_projects.retain(|p| p != path);
-    editor.project_manager.recent_projects.insert(0, path.to_string());
+    editor
+        .project_manager
+        .recent_projects
+        .insert(0, path.to_string());
     editor.project_manager.recent_projects.truncate(50);
     crate::state::persist::save_recent_projects(&editor.project_manager.recent_projects);
 }
@@ -252,14 +268,22 @@ fn index_ignored_dir(name: &str) -> bool {
 /// Churn inside an ignored directory never lands in the index, and a data
 /// write to an already-indexed file doesn't change the list — only creates,
 /// removals, and the first sighting of an unknown path do.
-pub fn index_change_marks_dirty(root: &std::path::Path, path: &str, kind: &str, indexed: &[String]) -> bool {
-    let Ok(rel_path) = std::path::Path::new(path).strip_prefix(root) else { return false };
+pub fn index_change_marks_dirty(
+    root: &std::path::Path,
+    path: &str,
+    kind: &str,
+    indexed: &[String],
+) -> bool {
+    let Ok(rel_path) = std::path::Path::new(path).strip_prefix(root) else {
+        return false;
+    };
     let mut components = rel_path.components().peekable();
     while let Some(component) = components.next() {
         if components.peek().is_some()
-            && index_ignored_dir(component.as_os_str().to_string_lossy().as_ref()) {
-                return false;
-            }
+            && index_ignored_dir(component.as_os_str().to_string_lossy().as_ref())
+        {
+            return false;
+        }
     }
     match kind {
         "removed" => true,
@@ -271,7 +295,10 @@ pub fn index_change_marks_dirty(root: &std::path::Path, path: &str, kind: &str, 
 /// Recursively list files under `dir`, skipping VCS/build/dependency dirs.
 /// Paths are stored **relative to `root`** — the project's canonical file
 /// identity everywhere (sidebar tree, quick-open, project graph).
-fn walk_dir(dir: &std::path::Path, root: &std::path::Path) -> std::io::Result<(Vec<String>, HashSet<String>)> {
+fn walk_dir(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+) -> std::io::Result<(Vec<String>, HashSet<String>)> {
     let mut files = Vec::new();
     let mut ignored = HashSet::new();
     let mut stack = gitignore::IgnoreStack::default();
@@ -295,7 +322,10 @@ fn walk_inner(
         return Ok(());
     }
     let pushed_ignore = gitignore::parse_file(&dir.join(".gitignore"))
-        .map(|gi| { stack.push(gi); true })
+        .map(|gi| {
+            stack.push(gi);
+            true
+        })
         .unwrap_or(false);
     let result = (|| -> std::io::Result<()> {
         for entry in std::fs::read_dir(dir)? {
@@ -306,14 +336,20 @@ fn walk_inner(
                 continue;
             }
             let is_dir = ft.is_dir();
-            let name = path.file_name().map(|n| n.to_string_lossy().to_string())
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             // Hardcoded ignored dirs (dot, node_modules, target): skip entirely.
             if is_dir && index_ignored_dir(&name) {
                 continue;
             }
             let gitignored = stack.ignored(&path, is_dir);
-            let rel = path.strip_prefix(root).ok().and_then(|p| p.to_str()).map(|s| s.to_string());
+            let rel = path
+                .strip_prefix(root)
+                .ok()
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string());
             if gitignored {
                 if let Some(r) = &rel {
                     ignored.insert(r.clone());
@@ -326,7 +362,9 @@ fn walk_inner(
                     walk_inner(&path, root, stack, files, ignored, depth + 1)?;
                 }
             } else if let Some(r) = rel {
-                files.push(r);
+                if !gitignored {
+                    files.push(r);
+                }
             }
         }
         Ok(())
@@ -341,8 +379,12 @@ fn walk_inner(
 /// `BackgroundEvent::Index(index::Event::ProjectIndexed)`; the dirty flag
 /// clears at enqueue time so a slow walk never queues duplicates.
 pub fn spawn_file_index(ed: &mut crate::state::Editor) -> bool {
-    let Some(root) = ed.project_manager.project.root.clone() else { return false };
-    let Some(bg) = ed.background.clone() else { return false };
+    let Some(root) = ed.project_manager.project.root.clone() else {
+        return false;
+    };
+    let Some(bg) = ed.background.clone() else {
+        return false;
+    };
     let name = ed.project_manager.project.name.clone().unwrap_or_default();
     let sender = bg.sender.clone();
     ed.project_manager.project.file_index_dirty = false;
@@ -354,12 +396,15 @@ pub fn spawn_file_index(ed: &mut crate::state::Editor) -> bool {
                 project_name: name,
                 files,
                 ignored_files: ignored,
-            }));
+            },
+        ));
     });
     true
 }
 
 /// Test entry point: the index walk over `root`.
 pub fn walk_files_for_test(root: &std::path::Path) -> Vec<String> {
-    walk_dir(root, root).map(|(files, _)| files).unwrap_or_default()
+    walk_dir(root, root)
+        .map(|(files, _)| files)
+        .unwrap_or_default()
 }

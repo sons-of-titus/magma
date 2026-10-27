@@ -1,10 +1,10 @@
 pub mod args;
 pub mod builtin;
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use crate::state::Editor;
 use args::{ArgSpec, ArgValue};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub type CommandResult = Result<(), String>;
 
@@ -41,20 +41,18 @@ impl CommandRegistry {
         args: Vec<ArgSpec>,
         handler: Box<CommandFn>,
     ) {
-        self.commands.insert(name.to_string(), CommandEntry {
-            description: description.to_string(),
-            args,
-            handler: Arc::from(handler),
-        });
+        self.commands.insert(
+            name.to_string(),
+            CommandEntry {
+                description: description.to_string(),
+                args,
+                handler: Arc::from(handler),
+            },
+        );
     }
 
-    pub fn register_fn<F>(
-        &mut self,
-        name: &str,
-        description: &str,
-        args: Vec<ArgSpec>,
-        handler: F,
-    ) where
+    pub fn register_fn<F>(&mut self, name: &str, description: &str, args: Vec<ArgSpec>, handler: F)
+    where
         F: Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync + 'static,
     {
         self.register(name, description, args, Box::new(handler));
@@ -68,12 +66,16 @@ impl CommandRegistry {
     /// name.  `needs_args` is true when the command declares a required
     /// argument without a default — callers that cannot prompt skip those.
     pub fn list_detailed(&self) -> Vec<(String, String, bool)> {
-        let mut out: Vec<(String, String, bool)> = self.commands.iter()
-            .map(|(name, e)| (
-                name.clone(),
-                e.description.clone(),
-                e.args.iter().any(|a| a.required && a.default.is_none()),
-            ))
+        let mut out: Vec<(String, String, bool)> = self
+            .commands
+            .iter()
+            .map(|(name, e)| {
+                (
+                    name.clone(),
+                    e.description.clone(),
+                    e.args.iter().any(|a| a.required && a.default.is_none()),
+                )
+            })
             .collect();
         out.sort_by(|a, b| a.0.cmp(&b.0));
         out
@@ -134,11 +136,16 @@ pub fn execute_command(
 
     // Record cursor position in change list for edit commands
     if result.is_ok() && is_change_command(name) {
-        let buf_id = editor.view_tree.focused_window()
+        let buf_id = editor
+            .view_tree
+            .focused_window()
             .and_then(|wid| editor.view_tree.buffer(wid))
             .unwrap_or(0);
         if editor.buffers.contains(buf_id) {
-            let pos = editor.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
+            let pos = editor
+                .view_of_buffer(buf_id)
+                .map(|v| v.cursor_offset())
+                .unwrap_or(0);
             editor.editing.change_list.push(pos);
             editor.editing.change_list_idx = editor.editing.change_list.len();
         }
@@ -152,10 +159,7 @@ pub fn execute_command(
 /// through here.  Commands with declared argument specs consume the rest
 /// positionally; commands without specs (Janet-defined `(fn [arg] …)`) get
 /// the raw remainder as their single `"arg"` value.
-pub fn execute_command_line(
-    editor: &mut Editor,
-    input: &str,
-) -> CommandResult {
+pub fn execute_command_line(editor: &mut Editor, input: &str) -> CommandResult {
     let input = input.trim();
     let Some(space) = input.find(char::is_whitespace) else {
         return execute_command(editor, input, &HashMap::new());

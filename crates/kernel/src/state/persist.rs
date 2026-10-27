@@ -59,8 +59,7 @@ pub fn load_command_history() -> Vec<String> {
 pub fn save_command_history(history: &[String]) {
     let path = state_dir().join(HISTORY_FILE);
     let max = history.len().min(500);
-    let content = history[history.len() - max..]
-        .join("\n");
+    let content = history[history.len() - max..].join("\n");
     let _ = std::fs::write(&path, &content);
 }
 
@@ -99,7 +98,9 @@ pub fn save_marks(marks: &[PersistedMark]) {
 /// Called once when the GUI exits.
 pub fn save_session(editor: &super::Editor) {
     save_command_history(&editor.command_history);
-    let marks: Vec<PersistedMark> = editor.marks.iter()
+    let marks: Vec<PersistedMark> = editor
+        .marks
+        .iter()
         .map(|(&name, &byte_offset)| PersistedMark {
             name,
             buffer_id: 0,
@@ -118,7 +119,8 @@ pub fn load_recent_projects() -> Vec<String> {
     let path = state_dir().join(RECENT_PROJECTS_FILE);
     std::fs::read_to_string(&path)
         .map(|content| {
-            content.lines()
+            content
+                .lines()
                 .map(|l| l.trim().to_string())
                 .filter(|l| !l.is_empty())
                 .collect()
@@ -135,7 +137,8 @@ pub fn save_recent_projects(projects: &[String]) {
 /// The most recently opened project that still exists on disk — the one to
 /// reopen at startup, skipping any paths that have since been moved or deleted.
 pub fn most_recent_existing_project(projects: &[String]) -> Option<String> {
-    projects.iter()
+    projects
+        .iter()
         .find(|p| std::path::Path::new(p).is_dir())
         .cloned()
 }

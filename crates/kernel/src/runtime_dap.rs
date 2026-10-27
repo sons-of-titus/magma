@@ -11,15 +11,24 @@ use crate::state::MessageKind;
 /// Open `path` in a buffer and place the cursor at the 1-based `line`.
 pub(crate) fn open_source_line(ed: &mut Editor, path: &str, line: usize) {
     let mut args = std::collections::HashMap::new();
-    args.insert("path".to_string(),
-        crate::command::args::ArgValue::Path(path.to_string()));
+    args.insert(
+        "path".to_string(),
+        crate::command::args::ArgValue::Path(path.to_string()),
+    );
     if crate::command::execute_command(ed, "open-file", &args).is_err() {
         return;
     }
-    let Some((key, arc)) = ed.buffers.iter()
+    let Some((key, arc)) = ed
+        .buffers
+        .iter()
         .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path))
-        .map(|(k, a)| (k, a.clone())) else { return };
-    let offset = arc.lock().unwrap_or_else(|e| e.into_inner())
+        .map(|(k, a)| (k, a.clone()))
+    else {
+        return;
+    };
+    let offset = arc
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
         .line_start_offset(line.saturating_sub(1))
         .unwrap_or(0);
     if let Some(view) = ed.views.get_mut(&key) {
@@ -34,7 +43,11 @@ pub fn request_variables(ed: &mut Editor, session_id: u64, r: i64) {
         session.pending_variables = Some(r);
     }
     crate::script_runtime::send_dap_command(
-        ed, session_id, "variables", &format!(r#"{{"variablesReference":{r}}}"#));
+        ed,
+        session_id,
+        "variables",
+        &format!(r#"{{"variablesReference":{r}}}"#),
+    );
 }
 
 /// Send `evaluate` for every watch expression against the current top frame.
@@ -42,14 +55,17 @@ fn evaluate_watches(ed: &mut Editor, session_id: u64, frame_id: u64) {
     let watches = ed.debug.watches.clone();
     let mut args_list: Vec<String> = Vec::new();
     {
-        let Some(session) = ed.debug.sessions.get_mut(&session_id) else { return };
+        let Some(session) = ed.debug.sessions.get_mut(&session_id) else {
+            return;
+        };
         session.watch_results = vec![None; watches.len()];
         session.pending_watch_evals.clear();
         for (i, expr) in watches.iter().enumerate() {
             session.pending_watch_evals.push_back(i);
             let escaped = expr.replace('\\', "\\\\").replace('"', "\\\"");
             args_list.push(format!(
-                r#"{{"expression":"{escaped}","context":"watch","frameId":{frame_id}}}"#));
+                r#"{{"expression":"{escaped}","context":"watch","frameId":{frame_id}}}"#
+            ));
         }
     }
     for args in &args_list {
@@ -64,38 +80,55 @@ pub fn apply_dap_command_result(
     success: bool,
     body: &str,
 ) {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(body) else { return };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(body) else {
+        return;
+    };
     match (command, success) {
         ("stackTrace", true) => {
-            let frames: Vec<crate::debug::types::StackFrame> = v["stackFrames"].as_array()
-                .map(|arr| arr.iter().map(|f| crate::debug::types::StackFrame {
-                    id: f["id"].as_u64().unwrap_or(0),
-                    name: f["name"].as_str().unwrap_or("?").to_string(),
-                    source: f["source"]["path"].as_str().map(|s| s.to_string()),
-                    line: f["line"].as_u64().unwrap_or(0) as usize,
-                    column: f["column"].as_u64().unwrap_or(0) as usize,
-                }).collect())
+            let frames: Vec<crate::debug::types::StackFrame> = v["stackFrames"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|f| crate::debug::types::StackFrame {
+                            id: f["id"].as_u64().unwrap_or(0),
+                            name: f["name"].as_str().unwrap_or("?").to_string(),
+                            source: f["source"]["path"].as_str().map(|s| s.to_string()),
+                            line: f["line"].as_u64().unwrap_or(0) as usize,
+                            column: f["column"].as_u64().unwrap_or(0) as usize,
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
             let first = frames.first().cloned();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.set_frames(frames);
-                session.stopped_line = first.as_ref()
+                session.stopped_line = first
+                    .as_ref()
                     .and_then(|f| f.source.clone())
                     .map(|path| (path, f_line(&first)));
             }
             if let Some(frame_id) = first.as_ref().map(|f| f.id) {
                 // The current execution location opens in the editor.
-                if let Some((path, line)) = ed.debug.sessions.get(&session_id)
-                    .and_then(|s| s.stopped_line.clone()) {
+                if let Some((path, line)) = ed
+                    .debug
+                    .sessions
+                    .get(&session_id)
+                    .and_then(|s| s.stopped_line.clone())
+                {
                     open_source_line(ed, &path, line);
                 }
                 crate::script_runtime::send_dap_command(
-                    ed, session_id, "scopes", &format!(r#"{{"frameId":{frame_id}}}"#));
+                    ed,
+                    session_id,
+                    "scopes",
+                    &format!(r#"{{"frameId":{frame_id}}}"#),
+                );
                 evaluate_watches(ed, session_id, frame_id);
             }
         }
         ("scopes", true) => {
-            let scope_ref = v["scopes"].as_array()
+            let scope_ref = v["scopes"]
+                .as_array()
                 .and_then(|s| s.first())
                 .and_then(|s| s["variablesReference"].as_u64());
             if let Some(r) = scope_ref {
@@ -106,15 +139,23 @@ pub fn apply_dap_command_result(
             }
         }
         ("variables", true) => {
-            let vars: Vec<crate::debug::types::Variable> = v["variables"].as_array()
-                .map(|arr| arr.iter().map(|x| crate::debug::types::Variable {
-                    name: x["name"].as_str().unwrap_or("?").to_string(),
-                    value: x["value"].as_str().unwrap_or("").to_string(),
-                    type_name: x["type"].as_str().map(|s| s.to_string()),
-                    variables_reference: x["variablesReference"].as_i64().unwrap_or(0),
-                }).collect())
+            let vars: Vec<crate::debug::types::Variable> = v["variables"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|x| crate::debug::types::Variable {
+                            name: x["name"].as_str().unwrap_or("?").to_string(),
+                            value: x["value"].as_str().unwrap_or("").to_string(),
+                            type_name: x["type"].as_str().map(|s| s.to_string()),
+                            variables_reference: x["variablesReference"].as_i64().unwrap_or(0),
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
-            let r = ed.debug.sessions.get_mut(&session_id)
+            let r = ed
+                .debug
+                .sessions
+                .get_mut(&session_id)
                 .and_then(|s| s.pending_variables.take())
                 .unwrap_or(0);
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
@@ -124,11 +165,18 @@ pub fn apply_dap_command_result(
         ("setBreakpoints", true) => {
             // The adapter echoes the breakpoints with verified flags and
             // (possibly adjusted) lines: the session stores what is real.
-            let verified: Vec<(bool, usize)> = v["breakpoints"].as_array()
-                .map(|arr| arr.iter()
-                    .map(|bp| (bp["verified"].as_bool().unwrap_or(false),
-                               bp["line"].as_u64().unwrap_or(0) as usize))
-                    .collect())
+            let verified: Vec<(bool, usize)> = v["breakpoints"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|bp| {
+                            (
+                                bp["verified"].as_bool().unwrap_or(false),
+                                bp["line"].as_u64().unwrap_or(0) as usize,
+                            )
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.set_verified_breakpoints(verified);
@@ -144,11 +192,16 @@ pub fn apply_dap_command_result(
             }
         }
         ("threads", true) => {
-            let threads: Vec<crate::debug::types::Thread> = v["threads"].as_array()
-                .map(|arr| arr.iter().map(|t| crate::debug::types::Thread {
-                    id: t["id"].as_u64().unwrap_or(0),
-                    name: t["name"].as_str().unwrap_or("?").to_string(),
-                }).collect())
+            let threads: Vec<crate::debug::types::Thread> = v["threads"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|t| crate::debug::types::Thread {
+                            id: t["id"].as_u64().unwrap_or(0),
+                            name: t["name"].as_str().unwrap_or("?").to_string(),
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                 session.set_threads(threads);
@@ -165,7 +218,9 @@ fn f_line(frame: &Option<crate::debug::types::StackFrame>) -> usize {
 /// DAP `evaluate` response handling: correlated watch results land in the
 /// session model, everything else appends to the console.
 pub(crate) fn apply_dap_response(ed: &mut Editor, session_id: u64, data: &str) {
-    let Some(session) = ed.debug.sessions.get_mut(&session_id) else { return };
+    let Some(session) = ed.debug.sessions.get_mut(&session_id) else {
+        return;
+    };
     if let Some(i) = session.pending_watch_evals.pop_front() {
         if i < session.watch_results.len() {
             session.watch_results[i] = Some(data.to_string());
@@ -181,7 +236,8 @@ pub(crate) fn note_request_error(ed: &mut Editor, session_id: u64, command: &str
     if command == "initialize" {
         return;
     }
-    let message = serde_json::from_str::<serde_json::Value>(body).ok()
+    let message = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
         .and_then(|v| v["message"].as_str().map(str::to_string))
         .unwrap_or_else(|| "adapter error".to_string());
     let line = format!("! {command}: {message}");

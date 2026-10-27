@@ -13,7 +13,8 @@ pub fn buffer_at_path(ed: &Editor, disk_path: &str) -> Option<usize> {
     ed.buffers.iter().find_map(|(key, arc)| {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let p = buf.path.as_ref()?;
-        let canon = std::fs::canonicalize(p).ok()
+        let canon = std::fs::canonicalize(p)
+            .ok()
             .map(|c| c.to_string_lossy().into_owned())
             .unwrap_or_else(|| p.clone());
         (canon == disk_path).then_some(key)
@@ -24,15 +25,21 @@ pub fn buffer_at_path(ed: &Editor, disk_path: &str) -> Option<usize> {
 /// foreground thread: one canonicalize per open buffer, no I/O beyond the
 /// reload read itself.
 pub fn handle_file_changed(ed: &mut Editor, disk_path: &str, kind: &str) {
-    let Some(buf_key) = buffer_at_path(ed, disk_path) else { return };
+    let Some(buf_key) = buffer_at_path(ed, disk_path) else {
+        return;
+    };
 
     if kind == "removed" {
-        ed.show_message(crate::state::MessageKind::Error,
-            format!("{disk_path} was removed on disk"));
+        ed.show_message(
+            crate::state::MessageKind::Error,
+            format!("{disk_path} was removed on disk"),
+        );
         return;
     }
 
-    let (dirty, name) = ed.buffers.get(buf_key)
+    let (dirty, name) = ed
+        .buffers
+        .get(buf_key)
         .map(|arc| {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             (buf.modified(), buf.name.clone())
@@ -40,8 +47,12 @@ pub fn handle_file_changed(ed: &mut Editor, disk_path: &str, kind: &str) {
         .unwrap_or((false, String::new()));
 
     if dirty {
-        ed.show_message(crate::state::MessageKind::Error,
-            format!("{name} changed on disk and has unsaved edits — saving will overwrite the disk file"));
+        ed.show_message(
+            crate::state::MessageKind::Error,
+            format!(
+                "{name} changed on disk and has unsaved edits — saving will overwrite the disk file"
+            ),
+        );
         return;
     }
 
@@ -50,17 +61,15 @@ pub fn handle_file_changed(ed: &mut Editor, disk_path: &str, kind: &str) {
         Some(bg) => {
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
-                let content = std::fs::read_to_string(&path)
-                    .map_err(|e| e.to_string());
-                let _ = sender.send(
-                    crate::runtime::BackgroundEvent::BufferReloaded { buf_key, content });
+                let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
+                let _ = sender
+                    .send(crate::runtime::BackgroundEvent::BufferReloaded { buf_key, content });
             });
         }
         // Without a pool (tests, embedders) the read is cheap enough to do
         // inline on the caller's thread.
         None => {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| e.to_string());
+            let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
             apply_reload(ed, buf_key, content);
         }
     }
@@ -73,8 +82,10 @@ pub fn apply_reload(ed: &mut Editor, buf_key: usize, content: Result<String, Str
     let content = match content {
         Ok(c) => c,
         Err(e) => {
-            ed.show_message(crate::state::MessageKind::Error,
-                format!("reload failed: {e}"));
+            ed.show_message(
+                crate::state::MessageKind::Error,
+                format!("reload failed: {e}"),
+            );
             return;
         }
     };
@@ -86,12 +97,16 @@ pub fn apply_reload(ed: &mut Editor, buf_key: usize, content: Result<String, Str
     if identical {
         if let Some(arc) = ed.buffers.get(buf_key) {
             let rev = arc.lock().unwrap_or_else(|e| e.into_inner()).revision();
-            arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(rev);
+            arc.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .mark_saved_at(rev);
         }
         return;
     }
 
-    let Some(view) = ed.view_of_buffer(buf_key) else { return };
+    let Some(view) = ed.view_of_buffer(buf_key) else {
+        return;
+    };
     let (line, column) = {
         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
         let p = buf.position_of(view.cursor.offset);
@@ -113,17 +128,21 @@ pub fn apply_reload(ed: &mut Editor, buf_key: usize, content: Result<String, Str
             let start = buf.line_start_offset(l).unwrap_or(0);
             let end = buf.line_start_offset(l + 1).unwrap_or(buf.len());
             let line_text = buf.slice(start, end);
-            start + line_text.chars()
-                .take_while(|c| *c != '\n')
-                .take(column)
-                .map(|c| c.len_utf8())
-                .sum::<usize>()
+            start
+                + line_text
+                    .chars()
+                    .take_while(|c| *c != '\n')
+                    .take(column)
+                    .map(|c| c.len_utf8())
+                    .sum::<usize>()
         };
         view.set_cursor(offset);
     }
     if let Some(arc) = ed.buffers.get(buf_key) {
         let rev = arc.lock().unwrap_or_else(|e| e.into_inner()).revision();
-        arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(rev);
+        arc.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .mark_saved_at(rev);
     }
     ed.frame_dirty = true;
 }

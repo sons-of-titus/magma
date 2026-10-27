@@ -19,18 +19,26 @@ pub fn capture(ed: &Editor) -> SessionState {
     for (key, arc) in ed.buffers.iter() {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let Some(path) = &buf.path else { continue };
-        let cursor = ed.views.get(&key)
-            .map(|v| v.cursor_offset())
-            .unwrap_or(0);
-        buffers.push(SessionBuffer { path: path.clone(), cursor });
+        let cursor = ed.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
+        buffers.push(SessionBuffer {
+            path: path.clone(),
+            cursor,
+        });
         if key == focused_key {
             focused = Some(path.clone());
         }
     }
 
-    let breakpoints = ed.debug.breakpoints.values()
+    let breakpoints = ed
+        .debug
+        .breakpoints
+        .values()
         .flat_map(|bps| bps.iter())
-        .map(|bp| SessionBreakpoint { file: bp.file.clone(), line: bp.line, enabled: bp.enabled })
+        .map(|bp| SessionBreakpoint {
+            file: bp.file.clone(),
+            line: bp.line,
+            enabled: bp.enabled,
+        })
         .collect();
 
     SessionState {
@@ -56,7 +64,9 @@ pub fn save_if_project(ed: &Editor) {
 /// Reopen the recorded files with their cursors, breakpoints, and watches.
 /// Missing files are skipped; the recorded focus wins at the end.
 pub fn restore(ed: &mut Editor, root: &std::path::Path) {
-    let Some(state) = session::read(root) else { return };
+    let Some(state) = session::read(root) else {
+        return;
+    };
 
     for entry in &state.buffers {
         if !std::path::Path::new(&entry.path).exists() {
@@ -64,15 +74,25 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
         }
         if open_path(ed, &entry.path)
             && let Some((key, _)) = ed.buffers.iter().find(|(_, arc)| {
-                arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(entry.path.as_str())
+                arc.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .path
+                    .as_deref()
+                    == Some(entry.path.as_str())
             })
-                && let Some(view) = ed.views.get_mut(&key) {
-                    view.set_cursor(entry.cursor);
-                }
+            && let Some(view) = ed.views.get_mut(&key)
+        {
+            view.set_cursor(entry.cursor);
+        }
     }
 
     for bp in &state.breakpoints {
-        if ed.debug.breakpoints_for(&bp.file).iter().all(|b| b.line != bp.line) {
+        if ed
+            .debug
+            .breakpoints_for(&bp.file)
+            .iter()
+            .all(|b| b.line != bp.line)
+        {
             ed.debug.add_breakpoint(bp.file.clone(), bp.line);
             if !bp.enabled {
                 ed.debug.set_enabled(&bp.file, bp.line, false);
@@ -93,8 +113,10 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
 /// Open a file through the `open-file` command (dedupe + focus semantics).
 fn open_path(ed: &mut Editor, path: &str) -> bool {
     let mut args = std::collections::HashMap::new();
-    args.insert("path".to_string(),
-        crate::command::args::ArgValue::Path(path.to_string()));
+    args.insert(
+        "path".to_string(),
+        crate::command::args::ArgValue::Path(path.to_string()),
+    );
     crate::command::execute_command(ed, "open-file", &args).is_ok()
 }
 
@@ -104,8 +126,8 @@ mod tests {
 
     #[test]
     fn disabled_flag_defaults_true_for_older_sessions() {
-        let state: SessionState = serde_json::from_str(
-            r#"{"breakpoints":[{"file":"/a.rs","line":3}]}"#).unwrap();
+        let state: SessionState =
+            serde_json::from_str(r#"{"breakpoints":[{"file":"/a.rs","line":3}]}"#).unwrap();
         assert!(state.breakpoints[0].enabled);
     }
 }

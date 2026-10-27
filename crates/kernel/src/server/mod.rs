@@ -9,10 +9,10 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
-use serde::{Deserialize, Serialize};
 
 use crate::runtime::BackgroundEvent;
 use crate::state::Editor;
@@ -21,14 +21,42 @@ use crate::state::Editor;
 /// async side; the foreground loop only ever touches in-memory state.
 enum ServerOp {
     Ping,
-    OpenFile { path: String, content: String, id: u64 },
-    GetBuffer { buf_id: usize, id: u64 },
-    Insert { buf_id: usize, text: String, offset: Option<usize>, id: u64 },
-    Delete { buf_id: usize, start: usize, end: usize, id: u64 },
-    Save { buf_id: usize, id: u64 },
-    Eval { code: String, id: u64 },
-    Close { buf_id: usize, id: u64 },
-    ListBuffers { id: u64 },
+    OpenFile {
+        path: String,
+        content: String,
+        id: u64,
+    },
+    GetBuffer {
+        buf_id: usize,
+        id: u64,
+    },
+    Insert {
+        buf_id: usize,
+        text: String,
+        offset: Option<usize>,
+        id: u64,
+    },
+    Delete {
+        buf_id: usize,
+        start: usize,
+        end: usize,
+        id: u64,
+    },
+    Save {
+        buf_id: usize,
+        id: u64,
+    },
+    Eval {
+        code: String,
+        id: u64,
+    },
+    Close {
+        buf_id: usize,
+        id: u64,
+    },
+    ListBuffers {
+        id: u64,
+    },
 }
 
 type Responder = tokio::sync::oneshot::Sender<Response>;
@@ -98,7 +126,9 @@ fn foreground_loop(
         ed.publish_buffer_changes();
         ed.dispatch_events_scoped();
 
-        let Some((op, responder)) = op_rx.blocking_recv() else { return };
+        let Some((op, responder)) = op_rx.blocking_recv() else {
+            return;
+        };
         let response = apply_op(&mut ed, op);
         let _ = responder.send(response);
     }
@@ -121,19 +151,26 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
                 }
             }
             let name = std::path::Path::new(&path)
-                .file_name().map(|n| n.to_string_lossy().into_owned())
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.clone());
             let buf_id = ed.allocate_buffer_id();
             let mut buf = crate::text_engine::Buffer::from_string(
-                crate::state::id::BufferId(buf_id), &name, &content,
+                crate::state::id::BufferId(buf_id),
+                &name,
+                &content,
             );
             buf.path = Some(path);
             let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
             let entry = ed.buffers.vacant_entry();
             let key = entry.key();
             entry.insert(arc.clone());
-            ed.views.insert(key, crate::text_engine::BufferView::new(arc));
-            Response::ok(serde_json::json!({"buffer": key, "name": name, "size": content.len()}), id)
+            ed.views
+                .insert(key, crate::text_engine::BufferView::new(arc));
+            Response::ok(
+                serde_json::json!({"buffer": key, "name": name, "size": content.len()}),
+                id,
+            )
         }
         ServerOp::GetBuffer { buf_id, id } => {
             let Some(arc) = ed.buffers.get(buf_id) else {
@@ -149,27 +186,55 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
             });
             Response::ok(result, id)
         }
-        ServerOp::Insert { buf_id, text, offset, id } => {
+        ServerOp::Insert {
+            buf_id,
+            text,
+            offset,
+            id,
+        } => {
             if !ed.buffers.contains(buf_id) {
                 return Response::error(&format!("Buffer {buf_id} not found"), id);
             }
-            let pos = offset.unwrap_or_else(|| ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0));
+            let pos = offset.unwrap_or_else(|| {
+                ed.view_of_buffer(buf_id)
+                    .map(|v| v.cursor_offset())
+                    .unwrap_or(0)
+            });
             if let Some(view) = ed.view_of_buffer_mut(buf_id) {
                 view.insert(pos, &text);
             }
-            let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len()).unwrap_or(0);
+            let cursor = ed
+                .view_of_buffer(buf_id)
+                .map(|v| v.cursor_offset())
+                .unwrap_or(0);
+            let size = ed
+                .buffers
+                .get(buf_id)
+                .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len())
+                .unwrap_or(0);
             Response::ok(serde_json::json!({"cursor": cursor, "size": size}), id)
         }
-        ServerOp::Delete { buf_id, start, end, id } => {
+        ServerOp::Delete {
+            buf_id,
+            start,
+            end,
+            id,
+        } => {
             if !ed.buffers.contains(buf_id) {
                 return Response::error(&format!("Buffer {buf_id} not found"), id);
             }
             if let Some(view) = ed.view_of_buffer_mut(buf_id) {
                 view.delete(start, end);
             }
-            let cursor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-            let size = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len()).unwrap_or(0);
+            let cursor = ed
+                .view_of_buffer(buf_id)
+                .map(|v| v.cursor_offset())
+                .unwrap_or(0);
+            let size = ed
+                .buffers
+                .get(buf_id)
+                .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).len())
+                .unwrap_or(0);
             Response::ok(serde_json::json!({"cursor": cursor, "size": size}), id)
         }
         ServerOp::Save { buf_id, id } => {
@@ -189,7 +254,9 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
             match std::thread::spawn(write).join() {
                 Ok(Ok(())) => {
                     if let Some(arc) = ed.buffers.get_mut(buf_id) {
-                        arc.lock().unwrap_or_else(|e| e.into_inner()).mark_saved_at(rev);
+                        arc.lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .mark_saved_at(rev);
                     }
                     Response::ok(serde_json::json!({"saved": true}), id)
                 }
@@ -213,17 +280,22 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
             } else {
                 Response::error(&format!("Buffer {buf_id} not found"), id)
             }
-        }ServerOp::ListBuffers { id } => {
-            let buffers: Vec<serde_json::Value> = ed.buffers.iter().map(|(key, arc)| {
-                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                serde_json::json!({
-                    "id": key,
-                    "name": buf.name.clone(),
-                    "path": buf.path.clone(),
-                    "size": buf.len(),
-                    "modified": buf.modified(),
+        }
+        ServerOp::ListBuffers { id } => {
+            let buffers: Vec<serde_json::Value> = ed
+                .buffers
+                .iter()
+                .map(|(key, arc)| {
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+                    serde_json::json!({
+                        "id": key,
+                        "name": buf.name.clone(),
+                        "path": buf.path.clone(),
+                        "size": buf.len(),
+                        "modified": buf.modified(),
+                    })
                 })
-            }).collect();
+                .collect();
             Response::ok(serde_json::json!(buffers), id)
         }
     }
@@ -234,7 +306,7 @@ async fn handle_client(
     stream: TcpStream,
     token: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
 
@@ -243,9 +315,13 @@ async fn handle_client(
     match first {
         Some(l) if l.trim() == format!("auth {token}") => {}
         _ => {
-            writer.write_all(
-                Response::error("unauthorized: expected 'auth <token>' handshake", 0)
-                    .to_json().as_bytes()).await?;
+            writer
+                .write_all(
+                    Response::error("unauthorized: expected 'auth <token>' handshake", 0)
+                        .to_json()
+                        .as_bytes(),
+                )
+                .await?;
             writer.write_all(b"\n").await?;
             return Ok(());
         }
@@ -253,7 +329,9 @@ async fn handle_client(
 
     while let Some(raw) = lines.next_line().await? {
         let line = raw.trim().to_string();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         let request: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
@@ -277,7 +355,13 @@ async fn handle_client(
         let (responder, receipt) = tokio::sync::oneshot::channel();
         let id = request.id;
         if op_tx.send((op, responder)).is_err() {
-            writer.write_all(Response::error("server shutting down", id).to_json().as_bytes()).await?;
+            writer
+                .write_all(
+                    Response::error("server shutting down", id)
+                        .to_json()
+                        .as_bytes(),
+                )
+                .await?;
             writer.write_all(b"\n").await?;
             continue;
         }
@@ -298,42 +382,75 @@ async fn handle_client(
 async fn translate_op(request: &Request) -> Result<ServerOp, Response> {
     let id = request.id;
     let arg_u64 = |name: &str| request.args.get(name).and_then(|v| v.as_u64());
-    let arg_str = |name: &str| request.args.get(name).and_then(|v| v.as_str()).map(String::from);
+    let arg_str = |name: &str| {
+        request
+            .args
+            .get(name)
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    };
 
     match request.cmd.as_str() {
         "ping" => Ok(ServerOp::Ping),
         "open-file" => {
-            let path = arg_str("path").ok_or_else(|| Response::error("Missing 'path' argument", id))?;
-            let content = tokio::fs::read_to_string(&path).await
+            let path =
+                arg_str("path").ok_or_else(|| Response::error("Missing 'path' argument", id))?;
+            let content = tokio::fs::read_to_string(&path)
+                .await
                 .map_err(|e| Response::error(&format!("Cannot read {path}: {e}"), id))?;
             Ok(ServerOp::OpenFile { path, content, id })
         }
         "get-buffer" => {
-            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            let buf_id = arg_u64("buffer")
+                .ok_or_else(|| Response::error("Missing 'buffer' argument", id))?
+                as usize;
             Ok(ServerOp::GetBuffer { buf_id, id })
         }
         "insert" => {
-            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
-            let text = arg_str("text").ok_or_else(|| Response::error("Missing 'text' argument", id))?;
+            let buf_id = arg_u64("buffer")
+                .ok_or_else(|| Response::error("Missing 'buffer' argument", id))?
+                as usize;
+            let text =
+                arg_str("text").ok_or_else(|| Response::error("Missing 'text' argument", id))?;
             let offset = arg_u64("offset").map(|v| v as usize);
-            Ok(ServerOp::Insert { buf_id, text, offset, id })
+            Ok(ServerOp::Insert {
+                buf_id,
+                text,
+                offset,
+                id,
+            })
         }
         "delete" => {
-            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
-            let start = arg_u64("start").ok_or_else(|| Response::error("Missing 'start' argument", id))? as usize;
-            let end = arg_u64("end").ok_or_else(|| Response::error("Missing 'end' argument", id))? as usize;
-            Ok(ServerOp::Delete { buf_id, start, end, id })
+            let buf_id = arg_u64("buffer")
+                .ok_or_else(|| Response::error("Missing 'buffer' argument", id))?
+                as usize;
+            let start = arg_u64("start")
+                .ok_or_else(|| Response::error("Missing 'start' argument", id))?
+                as usize;
+            let end = arg_u64("end").ok_or_else(|| Response::error("Missing 'end' argument", id))?
+                as usize;
+            Ok(ServerOp::Delete {
+                buf_id,
+                start,
+                end,
+                id,
+            })
         }
         "save" => {
-            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            let buf_id = arg_u64("buffer")
+                .ok_or_else(|| Response::error("Missing 'buffer' argument", id))?
+                as usize;
             Ok(ServerOp::Save { buf_id, id })
         }
         "eval" => {
-            let code = arg_str("code").ok_or_else(|| Response::error("Missing 'code' argument", id))?;
+            let code =
+                arg_str("code").ok_or_else(|| Response::error("Missing 'code' argument", id))?;
             Ok(ServerOp::Eval { code, id })
         }
         "close" => {
-            let buf_id = arg_u64("buffer").ok_or_else(|| Response::error("Missing 'buffer' argument", id))? as usize;
+            let buf_id = arg_u64("buffer")
+                .ok_or_else(|| Response::error("Missing 'buffer' argument", id))?
+                as usize;
             Ok(ServerOp::Close { buf_id, id })
         }
         "list-buffers" => Ok(ServerOp::ListBuffers { id }),
@@ -364,15 +481,26 @@ struct Response {
 
 impl Response {
     fn ok(result: serde_json::Value, id: u64) -> Self {
-        Response { ok: true, result: Some(result), error: None, id }
+        Response {
+            ok: true,
+            result: Some(result),
+            error: None,
+            id,
+        }
     }
 
     fn error(msg: &str, id: u64) -> Self {
-        Response { ok: false, result: None, error: Some(msg.to_string()), id }
+        Response {
+            ok: false,
+            result: None,
+            error: Some(msg.to_string()),
+            id,
+        }
     }
 
     fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|_| r#"{"ok":false,"error":"serialization error","id":0}"#.to_string())
+        serde_json::to_string(self)
+            .unwrap_or_else(|_| r#"{"ok":false,"error":"serialization error","id":0}"#.to_string())
     }
 }
 
@@ -385,7 +513,9 @@ fn getrandom_fill(buf: &mut [u8]) {
             // Unreachable on any supported platform; fall back to a
             // time-address mix rather than a constant token.
             let seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
             for (i, b) in buf.iter_mut().enumerate() {
                 *b = ((seed >> ((i % 16) * 8)) & 0xff) as u8 ^ (i as u8);
             }

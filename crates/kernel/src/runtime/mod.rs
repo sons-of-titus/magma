@@ -14,9 +14,9 @@ mod pool;
 
 pub use pool::{BackgroundHandle, Lane};
 
-use tokio::sync::mpsc;
-use tokio::runtime::Runtime;
 use std::sync::Arc;
+use tokio::runtime::Runtime;
+use tokio::sync::mpsc;
 
 use crate::state::Editor;
 
@@ -38,20 +38,47 @@ pub struct TaskState {
 /// Events sent from background tasks to the main thread event loop.
 #[derive(Debug, Clone)]
 pub enum BackgroundEvent {
-    FileReadResult { path: String, content: Result<String, String>, request_id: u64 },
-    FileWriteResult { path: String, result: Result<(), String>, request_id: u64 },
+    FileReadResult {
+        path: String,
+        content: Result<String, String>,
+        request_id: u64,
+    },
+    FileWriteResult {
+        path: String,
+        result: Result<(), String>,
+        request_id: u64,
+    },
     /// Terminal output chunk from a background process.
-    TerminalOutput { terminal_id: usize, data: String },
+    TerminalOutput {
+        terminal_id: usize,
+        data: String,
+    },
     /// A terminal process has exited.
-    TerminalExited { terminal_id: usize, exit_code: i32 },
+    TerminalExited {
+        terminal_id: usize,
+        exit_code: i32,
+    },
     /// A watched file changed on disk.
-    FileChanged { path: String, kind: String },
+    FileChanged {
+        path: String,
+        kind: String,
+    },
     /// A line of output from a managed subprocess (Sprint 3).
-    ProcessOutput { id: u64, line: String, stream: String },
+    ProcessOutput {
+        id: u64,
+        line: String,
+        stream: String,
+    },
     /// A managed subprocess has exited (Sprint 3).
-    ProcessExited { id: u64, exit_code: i32, cmd: String },
+    ProcessExited {
+        id: u64,
+        exit_code: i32,
+        cmd: String,
+    },
     /// A background task is ready for its Janet function to be called on the main thread (Sprint 3).
-    TaskReady { id: u64 },
+    TaskReady {
+        id: u64,
+    },
     /// The task subsystem's own event vocabulary.
     Task(crate::task::Event),
     /// A project's file list finished indexing.
@@ -60,24 +87,52 @@ pub enum BackgroundEvent {
     Project(crate::project::Event),
     // ── Sprint 13 Network API ─────────────────────────────────────────────
     /// An HTTP request completed successfully.
-    HttpResponse { id: u64, status: u16, body: String },
+    HttpResponse {
+        id: u64,
+        status: u16,
+        body: String,
+    },
     /// An HTTP request failed.
-    HttpError { id: u64, error: String },
+    HttpError {
+        id: u64,
+        error: String,
+    },
     /// An outbound TCP connection was established.
-    TcpConnected { id: u64 },
+    TcpConnected {
+        id: u64,
+    },
     /// A line of data arrived from an outbound TCP connection.
-    TcpData { id: u64, data: String },
+    TcpData {
+        id: u64,
+        data: String,
+    },
     /// An outbound TCP connection was closed by the remote end.
-    TcpClosed { id: u64 },
+    TcpClosed {
+        id: u64,
+    },
     /// An outbound TCP connection failed.
-    TcpError { id: u64, error: String },
+    TcpError {
+        id: u64,
+        error: String,
+    },
     /// A new client connected to a `net/tcp-listen` server.
     /// `write_tx` is the channel to push lines to that specific client.
-    TcpClientConnected { server_id: u64, client_id: u64, write_tx: tokio::sync::mpsc::UnboundedSender<String> },
+    TcpClientConnected {
+        server_id: u64,
+        client_id: u64,
+        write_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    },
     /// A line of data arrived from a client connected to a listening server.
-    TcpClientData { server_id: u64, client_id: u64, data: String },
+    TcpClientData {
+        server_id: u64,
+        client_id: u64,
+        data: String,
+    },
     /// A client disconnected from a listening server.
-    TcpClientDisconnected { server_id: u64, client_id: u64 },
+    TcpClientDisconnected {
+        server_id: u64,
+        client_id: u64,
+    },
     /// The debug subsystem's own event vocabulary.
     Dap(crate::debug::Event),
     /// The LSP subsystem's own event vocabulary.
@@ -86,12 +141,22 @@ pub enum BackgroundEvent {
     Custom(String, String),
     // ── Phase 11 AI/Agent Architecture ───────────────────────────────────────
     /// Agent emitted a reasoning step.
-    AgentThought { session_id: u64, thought: String },
+    AgentThought {
+        session_id: u64,
+        thought: String,
+    },
     /// Agent decided to execute a command; args are JSON-encoded key=value pairs.
-    AgentAction { session_id: u64, command: String, description: String },
+    AgentAction {
+        session_id: u64,
+        command: String,
+        description: String,
+    },
     /// A foreground-executed agent step reported its outcome; the output
     /// feeds the next LLM turn.
-    AgentStepResult { session_id: u64, output: String },
+    AgentStepResult {
+        session_id: u64,
+        output: String,
+    },
     /// A model reply landed: assistant text + tool calls (or the error).
     /// Drives the agent turn loop on the foreground.
     AgentLlmReply {
@@ -101,37 +166,72 @@ pub enum BackgroundEvent {
         error: Option<String>,
     },
     /// Agent completed a session successfully.
-    AgentResult { session_id: u64, result: String },
+    AgentResult {
+        session_id: u64,
+        result: String,
+    },
     /// Agent session failed.
-    AgentError { session_id: u64, error: String },
+    AgentError {
+        session_id: u64,
+        error: String,
+    },
     // ── Phase 9 Concurrency Model ─────────────────────────────────────────────
     /// A directly-submitted work item reported progress.
-    WorkProgress { id: u64, done: u64, total: u64 },
+    WorkProgress {
+        id: u64,
+        done: u64,
+        total: u64,
+    },
     /// A directly-submitted work item completed successfully.
-    WorkCompleted { id: u64 },
+    WorkCompleted {
+        id: u64,
+    },
     /// A directly-submitted work item failed.
-    WorkFailed { id: u64, error: String },
+    WorkFailed {
+        id: u64,
+        error: String,
+    },
     /// Auto-save heartbeat: the foreground loop snapshots dirty buffers and
     /// hands the writes to the background pool.
     AutoSaveTick,
     /// An auto-save write landed on disk for the given buffer revision.
     /// Only that exact revision may be marked clean (docs/core-redesign.md §5.1).
-    AutoSaveWritten { buf_key: usize, saved_rev: u64 },
+    AutoSaveWritten {
+        buf_key: usize,
+        saved_rev: u64,
+    },
     /// A background word scan finished for completion.  Applied only when
     /// the buffer is still at the scanned revision; otherwise discarded.
-    BufferWords { buf_key: usize, revision: u64, words: Vec<String> },
+    BufferWords {
+        buf_key: usize,
+        revision: u64,
+        words: Vec<String>,
+    },
     /// A scheduled tree-sitter parse finished on the lane; pick the tree
     /// up from the bounded handoff store if the revision still matches.
-    TsTreeReady { buf_key: usize, revision: u64 },
+    TsTreeReady {
+        buf_key: usize,
+        revision: u64,
+    },
     /// The version-control subsystem's own event vocabulary.
     Vc(crate::vc::Event),
     /// An external-change reload read finished off the foreground thread.
-    BufferReloaded { buf_key: usize, content: Result<String, String> },
+    BufferReloaded {
+        buf_key: usize,
+        content: Result<String, String>,
+    },
     /// An explicit save's disk write finished; only this exact revision
     /// may be marked clean.
-    SaveWritten { buf_key: usize, path: String, saved_rev: u64 },
+    SaveWritten {
+        buf_key: usize,
+        path: String,
+        saved_rev: u64,
+    },
     /// An explicit save's disk write failed.
-    SaveFailed { buf_key: usize, error: String },
+    SaveFailed {
+        buf_key: usize,
+        error: String,
+    },
 }
 
 /// Process a background event on the main thread, dispatching it to the

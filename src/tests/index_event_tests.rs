@@ -18,6 +18,7 @@ fn index_events_round_trip_through_the_shared_channel_in_send_order() {
     bg.send_event(BackgroundEvent::Index(IndexEvent::ProjectIndexed {
         project_name: "demo".into(),
         files: vec!["src/main.rs".into(), "src/lib.rs".into()],
+        ignored_files: vec![],
     }));
     bg.send_event(BackgroundEvent::FileReadResult {
         path: "/tmp/a".into(),
@@ -37,7 +38,7 @@ fn index_events_round_trip_through_the_shared_channel_in_send_order() {
     assert_eq!(seen.len(), 4, "no event may be dropped or duplicated");
     assert!(matches!(
         &seen[0],
-        BackgroundEvent::Index(IndexEvent::ProjectIndexed { project_name, files })
+        BackgroundEvent::Index(IndexEvent::ProjectIndexed { project_name, files, ignored_files: _ })
             if project_name.as_str() == "demo" && files.len() == 2
     ));
     assert!(matches!(
@@ -74,6 +75,7 @@ fn project_indexed_dispatch_updates_the_registry_and_emits_the_bus_event() {
     process_background_event(&mut ed, BackgroundEvent::Index(IndexEvent::ProjectIndexed {
         project_name: "demo".into(),
         files: vec!["src/main.rs".into()],
+        ignored_files: vec![],
     }));
     ed.events.drain_and_dispatch();
 

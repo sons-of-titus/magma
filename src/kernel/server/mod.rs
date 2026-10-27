@@ -39,6 +39,7 @@ pub async fn run_server(
     editor: Editor,
     bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
     addr: &str,
+    script_runtime: Option<Box<dyn crate::kernel::script_runtime::ScriptRuntime>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(addr).await?;
     // Every op — eval executes arbitrary Janet — requires the bearer
@@ -60,7 +61,7 @@ pub async fn run_server(
     let (op_tx, op_rx) = mpsc::unbounded_channel::<(ServerOp, Responder)>();
     std::thread::Builder::new()
         .name("magma-server-foreground".into())
-        .spawn(move || foreground_loop(editor, bg_receiver, op_rx))?;
+        .spawn(move || foreground_loop(editor, bg_receiver, op_rx, script_runtime))?;
 
     loop {
         let (stream, peer) = listener.accept().await?;
@@ -81,13 +82,12 @@ fn foreground_loop(
     mut ed: Editor,
     mut bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
     op_rx: mpsc::UnboundedReceiver<(ServerOp, Responder)>,
+    mut script_runtime: Option<Box<dyn crate::kernel::script_runtime::ScriptRuntime>>,
 ) {
-    #[cfg(feature = "janet")]
-    {
-        use crate::kernel::scripting::ScriptRuntime;
-        let mut rt = crate::kernel::scripting::JanetRuntime::new();
+    if let Some(rt) = script_runtime.take() {
+        let mut rt = rt;
         rt.init(&mut ed);
-        ed.runtime = Some(Box::new(rt));
+        ed.runtime = Some(rt);
     }
 
     let mut op_rx = op_rx;

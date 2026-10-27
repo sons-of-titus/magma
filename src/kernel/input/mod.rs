@@ -179,7 +179,7 @@ pub fn dispatch_key(ed: &mut crate::kernel::state::Editor, key: &str) {
 }
 
 /// Get the focused buffer's slab key, or 0.
-pub(crate) fn focused_buffer_id(ed: &crate::kernel::state::Editor) -> usize {
+pub fn focused_buffer_id(ed: &crate::kernel::state::Editor) -> usize {
     ed.view_tree.focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)

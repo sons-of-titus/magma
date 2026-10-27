@@ -25,16 +25,12 @@ fn handle_dap_event(ed: &mut Editor, event: crate::kernel::debug::Event) {
                     // require the sequence (e.g. js-debug) hang without it.
                     crate::kernel::debug::sync_breakpoint_lines(ed);
                     let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
-                    #[cfg(feature = "janet")]
                     for file in files {
-                        crate::kernel::scripting::send_dap_command(
+                        crate::kernel::script_runtime::send_dap_command(
                             ed, session_id, "setBreakpoints",
                             &ed.debug.set_breakpoints_args(&file));
                     }
-                    #[cfg(not(feature = "janet"))]
-                    let _ = files;
-                    #[cfg(feature = "janet")]
-                    crate::kernel::scripting::send_dap_command(
+                    crate::kernel::script_runtime::send_dap_command(
                         ed, session_id, "configurationDone", "{}");
                     ed.events.emit_typed(keys::events::DEBUG_SESSION_STARTED,
                         crate::kernel::event::payload::DebugSessionStartedPayload {
@@ -56,13 +52,11 @@ fn handle_dap_event(ed: &mut Editor, event: crate::kernel::debug::Event) {
                 session.stopped_thread = Some(thread_id);
             }
             // A stopped debuggee with no stack is a facade — fetch it.
-            #[cfg(feature = "janet")]
-            crate::kernel::scripting::send_dap_command(
+            crate::kernel::script_runtime::send_dap_command(
                 ed, session_id, "stackTrace", &format!(r#"{{"threadId":{thread_id},"startFrame":0,"levels":20}}"#),
             );
             // The thread list changes across stops; refresh it for the pane.
-            #[cfg(feature = "janet")]
-            crate::kernel::scripting::send_dap_command(ed, session_id, "threads", "{}");
+            crate::kernel::script_runtime::send_dap_command(ed, session_id, "threads", "{}");
             ed.events.emit_typed(keys::events::DEBUG_STOPPED, crate::kernel::event::payload::DebugStoppedPayload {
                 session_id: session_id.to_string(),
                 reason,

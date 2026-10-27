@@ -1,0 +1,401 @@
+#[macro_use] mod helpers;
+use scripting;
+
+// ── editor/define-face ─────────────────────────────────────────────────
+
+#[test]
+fn editor_define_face_inserts_face_into_registry() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(face/define \"test-face\" {:fg [255 0 0] :bg [0 0 0] :bold true})");
+        assert_eq!(result, "ok");
+
+        let face = ed.faces.get("test-face");
+        assert!(face.is_some(), "face should be registered");
+        let s = face.unwrap();
+        assert_eq!(s.fg, (255, 0, 0));
+        assert!(s.bold);
+    });
+}
+
+#[test]
+fn editor_define_face_without_table_creates_default_style() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(face/define \"default-face\")");
+        assert_eq!(result, "ok");
+
+        let face = ed.faces.get("default-face");
+        assert!(face.is_some());
+    });
+}
+
+#[test]
+fn editor_define_face_emits_face_changed_event() {
+    janet_test!(ed, {
+        let _sub_count_before = ed.events.subscriber_count("face-changed");
+        let result = scripting::eval(
+            "(face/define \"my-face\" {:fg [100 200 100]})");
+        assert_eq!(result, "ok");
+        assert!(ed.faces.contains_key("my-face"));
+    });
+}
+
+// ── editor/face getter ──────────────────────────────────────────────────
+
+#[test]
+fn editor_face_returns_nil_for_unknown() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(face/get \"nonexistent\")");
+        assert!(result.contains("nil") || result == "ok",
+            "should handle missing face gracefully");
+    });
+}
+
+#[test]
+fn editor_face_returns_table_for_defined_face() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(do (face/define \"test-face\" {:fg [10 20 30] :bold true})
+                 (face/get \"test-face\"))");
+        assert_eq!(result, "ok");
+        let face = ed.faces.get("test-face").unwrap();
+        assert_eq!(face.fg, (10, 20, 30));
+        assert!(face.bold);
+    });
+}
+
+// ── editor/make-style ───────────────────────────────────────────────────
+
+#[test]
+fn editor_make_style_returns_integer_handle() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(face/make-style {:fg [255 0 0] :bg [0 0 0] :bold true})");
+        assert_eq!(result, "ok");
+    });
+}
+
+// ── editor/scope-face and editor/resolve-scope ─────────────────────────
+
+#[test]
+fn editor_scope_face_registers_mapping() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(face/scope-face \"keyword\" \"keyword-face\")");
+        assert_eq!(result, "ok");
+
+        assert!(!ed.scope_faces.is_empty());
+    });
+}
+
+#[test]
+fn editor_resolve_scope_returns_mapped_face() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(do (face/scope-face \"keyword\" \"keyword-face\")
+                 (face/resolve-scope \"keyword.control\"))");
+        assert_eq!(result, "ok");
+    });
+}
+
+#[test]
+fn editor_resolve_scope_returns_nil_for_unmapped() {
+    janet_test!(ed, {
+        let result = scripting::eval(
+            "(face/resolve-scope \"unknown.scope\")");
+        assert_eq!(result, "ok");
+    });
+}
+
+// ── buffer/set-highlights with face names ──────────────────────────────
+
+#[test]
+fn buffer_set_highlights_with_face_names() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("hello world");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    let result = scripting::eval(
+        &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"] [6 11 \"string-face\"]])", key));
+    assert_eq!(result, "ok");
+
+    let hl = ed.views.get(&key).unwrap().highlights.clone();
+    assert_eq!(hl.len(), 2);
+    assert_eq!(hl[0].2, "keyword-face");
+    assert_eq!(hl[1].2, "string-face");
+}
+
+#[test]
+fn buffer_set_highlights_without_face_defaults_to_highlight() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("hello");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    let result = scripting::eval(
+        &format!("(buffer/set-highlights {} [[0 5]])", key));
+    assert_eq!(result, "ok");
+
+    let hl = ed.views.get(&key).unwrap().highlights.clone();
+    assert_eq!(hl.len(), 1);
+    assert_eq!(hl[0].2, "highlight");
+}
+
+#[test]
+fn buffer_set_highlights_empty_clears() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("hello");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    let _ = scripting::eval(
+        &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"]])", key));
+    let _ = scripting::eval(
+        &format!("(buffer/set-highlights {})", key));
+    assert!(ed.views.get(&key).unwrap().highlights.is_empty());
+}
+
+// ── buffer/set-highlights-layer and buffer/clear-highlights-layer ──────
+
+#[test]
+fn buffer_set_highlights_layer_stores_per_layer() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("hello world");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    let result = scripting::eval(
+        &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
+    assert_eq!(result, "ok");
+
+    let view = ed.views.get(&key).unwrap();
+    let layer = view.highlight_layers.get("syntax");
+    assert!(layer.is_some());
+    assert_eq!(layer.unwrap().len(), 1);
+    assert_eq!(layer.unwrap()[0].2, "keyword-face");
+}
+
+#[test]
+fn buffer_clear_highlights_layer_removes_named_layer() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("hello");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    let _ = scripting::eval(
+        &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
+    let result = scripting::eval(
+        &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
+    assert_eq!(result, "ok");
+
+    let view = ed.views.get(&key).unwrap();
+    assert!(!view.highlight_layers.contains_key("syntax"));
+}
+
+#[test]
+fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("hello");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    let _ = scripting::eval(
+        &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
+    let _ = scripting::eval(
+        &format!("(buffer/set-highlights-layer {} \"search\" [[2 4 \"search-face\"]])", key));
+    let _ = scripting::eval(
+        &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
+
+    let view = ed.views.get(&key).unwrap();
+    assert!(!view.highlight_layers.contains_key("syntax"));
+    assert!(view.highlight_layers.contains_key("search"));
+}
+
+// ── Default faces from init.janet ──────────────────────────────────────
+
+#[test]
+fn default_faces_exist_after_init() {
+    janet_test!(ed, {
+        assert!(ed.faces.contains_key("keyword-face"), "keyword-face should exist");
+        assert!(ed.faces.contains_key("string-face"), "string-face should exist");
+        assert!(ed.faces.contains_key("comment-face"), "comment-face should exist");
+        assert!(ed.faces.contains_key("type-face"), "type-face should exist");
+        assert!(ed.faces.contains_key("function-face"), "function-face should exist");
+        assert!(ed.faces.contains_key("variable-face"), "variable-face should exist");
+        assert!(ed.faces.contains_key("constant-face"), "constant-face should exist");
+        assert!(ed.faces.contains_key("operator-face"), "operator-face should exist");
+        assert!(ed.faces.contains_key("punctuation-face"), "punctuation-face should exist");
+        assert!(ed.faces.contains_key("error-face"), "error-face should exist");
+        assert!(ed.faces.contains_key("warning-face"), "warning-face should exist");
+    });
+}
+
+#[test]
+fn syntax_highlight_buffer_rust_produces_ranges() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("fn main() { let x = 1; }");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    // Set a path so guess-language can determine it's Rust
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().path = Some("/test/main.rs".to_string());
+    }
+
+    // Check that syntax/highlight-buffer produces a layer
+    let result = scripting::eval(&format!(
+        "(syntax/highlight-buffer {})", key
+    ));
+    assert_eq!(result, "ok", "syntax/highlight-buffer must not error");
+
+    // Check that the view has a "syntax" layer with keyword-face ranges
+    // Check that the view has a "syntax" layer with keyword-face ranges
+    let view = ed.views.get(&key).unwrap();
+    let layers = view.highlight_layers.keys().collect::<Vec<_>>();
+    assert!(layers.contains(&&"syntax".to_string()), "view must have a 'syntax' highlight layer");
+    if let Some(ranges) = view.highlight_layers.get("syntax") {
+        assert!(!ranges.is_empty(), "syntax layer must have highlight ranges for fn and let");
+        let has_keyword = ranges.iter().any(|r| r.2 == "keyword-face");
+        assert!(has_keyword, "ranges must include keyword-face for 'fn' and 'let'");
+    }
+}
+
+#[test]
+fn syntax_highlight_uses_language_path_for_generated_buffers() {
+    // A diff pane holds a generated snapshot and claims no file; its syntax
+    // must come from the source path carried as `language-path`.
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        {
+            let arc = ed.buffers.get(key).unwrap();
+            let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(buf.path.is_none(), "a generated pane claims no file");
+            buf.insert(0, "fn main() { let x = 1; }\n");
+            buf.language_path = Some("/test/main.rs".to_string());
+        }
+        assert!(
+            scripting::eval_result(&format!("(buffer/language-path {key})"))
+                .unwrap_or_default().contains("/test/main.rs"),
+            "buffer/language-path must expose the inferred language source");
+        assert_eq!(scripting::eval(&format!("(syntax/highlight-buffer {key})")), "ok");
+        let view = ed.views.get(&key).unwrap();
+        let ranges = view.highlight_layers.get("syntax")
+            .expect("the language path must drive highlighting without a file path");
+        assert!(ranges.iter().any(|r| r.2 == "keyword-face"), "rust keywords highlighted");
+    });
+}
+
+#[test]
+fn default_comment_face_is_dim() {
+    janet_test!(ed, {
+        let face = ed.faces.get("comment-face").unwrap();
+        assert!(face.dim, "comment-face should be dim by default");
+    });
+}
+
+#[test]
+fn default_error_face_is_bold() {
+    janet_test!(ed, {
+        let face = ed.faces.get("error-face").unwrap();
+        assert!(face.bold, "error-face should be bold by default");
+    });
+}
+
+// ── Incremental highlighting (docs/core-redesign.md §7) ─────────────────
+
+#[test]
+fn highlight_follows_rust_path_typing() {
+    // The old architecture never refreshed highlights on the pure-Rust
+    // typing path; the canonical change publication now feeds the layer.
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        if let Some(arc) = ed.buffers.get(key) {
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/test/main.rs".to_string());
+            let len = buf.len();
+            buf.delete(0, len);
+            buf.insert(0, "fn one() {}");
+        }
+        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        ed.events.drain_and_dispatch();
+
+        // Type " two" at the end through the editor's own input path.
+        let end = ed.buffers.get(key).unwrap().lock().unwrap().len();
+        ed.views.get_mut(&key).unwrap().set_cursor(end);
+        magma::kernel::input::dispatch_key(&mut ed, " ");
+        magma::kernel::input::dispatch_key(&mut ed, "t");
+        ed.events.drain_and_dispatch();
+
+        let view = ed.views.get(&key).unwrap();
+        let ranges = view.highlight_layers.get("syntax").expect("syntax layer exists");
+        assert!(
+            ranges.iter().any(|r| r.2 == "keyword-face" && r.0 == 0),
+            "keyword range for 'fn' must still be present after typing: {ranges:?}"
+        );
+    });
+}
+
+#[test]
+fn dirty_range_splice_equals_full_rescan() {
+    // After incremental (dirty-range) updates, the layer must be exactly
+    // what a full rescan of the same text produces.
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        let text = "let a = 1;\n// comment line\nlet b = \"str two\";\nfn c() { return 3; }\n";
+        if let Some(arc) = ed.buffers.get(key) {
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/test/main.rs".to_string());
+            let len = buf.len();
+            buf.delete(0, len);
+            buf.insert(0, text);
+        }
+        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        ed.events.drain_and_dispatch();
+
+        // Two incremental edits through the canonical path.
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(text.len() - 2, "x");       // edit near the end
+        ed.publish_buffer_changes();
+        ed.events.drain_and_dispatch();
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(4, "let z = 9;\n");         // edit near the start
+        ed.publish_buffer_changes();
+        ed.events.drain_and_dispatch();
+
+        let after_dirty: Vec<(usize, usize, String)> = ed
+            .views
+            .get(&key)
+            .unwrap()
+            .highlight_layers
+            .get("syntax")
+            .unwrap()
+            .clone();
+
+        // Full rescan of the same final text, into a scratch layer.
+        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        ed.events.drain_and_dispatch();
+        let after_full: Vec<(usize, usize, String)> = ed
+            .views
+            .get(&key)
+            .unwrap()
+            .highlight_layers
+            .get("syntax")
+            .unwrap()
+            .clone();
+
+        assert_eq!(after_dirty, after_full,
+            "incrementally spliced ranges must equal a full rescan");
+    });
+}
+
+

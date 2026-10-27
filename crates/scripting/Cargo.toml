@@ -1,0 +1,23 @@
+[package]
+name = "scripting"
+version = "0.1.0"
+edition = "2024"
+description = "Janet scripting runtime and API bridge for Magma"
+
+[features]
+default = ["janet"]
+janet = ["dep:evil-janet"]
+
+[dependencies]
+magma = { path = "../.." }
+logging = { path = "../logging" }
+evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+ureq = "2"
+notify = "7.0"
+slab = "0.4"
+tree-sitter = "0.24"
+tree-sitter-language = "0.1"
+streaming-iterator = "0.1"

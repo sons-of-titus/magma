@@ -33,8 +33,7 @@ pub fn request_variables(ed: &mut Editor, session_id: u64, r: i64) {
     if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
         session.pending_variables = Some(r);
     }
-    #[cfg(feature = "janet")]
-    crate::kernel::scripting::send_dap_command(
+    crate::kernel::script_runtime::send_dap_command(
         ed, session_id, "variables", &format!(r#"{{"variablesReference":{r}}}"#));
 }
 
@@ -53,12 +52,9 @@ fn evaluate_watches(ed: &mut Editor, session_id: u64, frame_id: u64) {
                 r#"{{"expression":"{escaped}","context":"watch","frameId":{frame_id}}}"#));
         }
     }
-    #[cfg(feature = "janet")]
     for args in &args_list {
-        crate::kernel::scripting::send_dap_command(ed, session_id, "evaluate", args);
+        crate::kernel::script_runtime::send_dap_command(ed, session_id, "evaluate", args);
     }
-    #[cfg(not(feature = "janet"))]
-    let _ = (session_id, args_list);
 }
 
 pub(crate) fn apply_dap_command_result(
@@ -93,8 +89,7 @@ pub(crate) fn apply_dap_command_result(
                     .and_then(|s| s.stopped_line.clone()) {
                     open_source_line(ed, &path, line);
                 }
-                #[cfg(feature = "janet")]
-                crate::kernel::scripting::send_dap_command(
+                crate::kernel::script_runtime::send_dap_command(
                     ed, session_id, "scopes", &format!(r#"{{"frameId":{frame_id}}}"#));
                 evaluate_watches(ed, session_id, frame_id);
             }

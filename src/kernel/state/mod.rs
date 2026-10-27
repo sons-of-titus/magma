@@ -26,7 +26,7 @@ use crate::kernel::event::EventBus;
 use crate::kernel::storage::FileSystem;
 use crate::kernel::keymap::KeymapManager;
 use crate::kernel::runtime::BackgroundHandle;
-use crate::kernel::scripting::ScriptRuntime;
+use crate::kernel::script_runtime::ScriptRuntime;
 use crate::kernel::render::view_tree::ViewTree;
 use crate::kernel::debug::DebugManager;
 use crate::kernel::agent::AgentManager;
@@ -158,12 +158,6 @@ pub struct Editor {
     pub faces: std::collections::HashMap<String, crate::kernel::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
     pub cursor_shape: String,
-    /// Cursor blink phase, owned by the GUI's heartbeat (§9.4); the cursor
-    /// renders while true.
-    pub cursor_visible: bool,
-    /// When true the GUI paints the cursor as a native rect overlay and the
-    /// surface must not stamp a cursor glyph.
-    pub cursor_overlay: bool,
     /// Pointer-hover code info card (GUI only; None while hidden).
     pub hover: Option<HoverCard>,
     /// Invalidation flag for the GUI: every mutating entry point (key
@@ -277,8 +271,6 @@ impl Editor {
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),
             cursor_shape: "beam".to_string(),
-            cursor_visible: true,
-            cursor_overlay: false,
             hover: None,
             frame_dirty: true,
             ts_trees: std::collections::HashMap::new(),

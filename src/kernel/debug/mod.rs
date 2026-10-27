@@ -179,10 +179,9 @@ pub fn sync_breakpoint_lines(ed: &mut crate::kernel::state::Editor) {
 pub fn set_breakpoint_enabled(ed: &mut crate::kernel::state::Editor, file: &str, line: usize, enabled: bool) {
     ed.debug.set_enabled(file, line, enabled);
     sync_breakpoint_lines(ed);
-    #[cfg(feature = "janet")]
     if let Some(sid) = ed.debug.active_session {
         let args = ed.debug.set_breakpoints_args(file);
-        crate::kernel::scripting::send_dap_command(ed, sid, "setBreakpoints", &args);
+        crate::kernel::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
     }
 }
 
@@ -204,10 +203,9 @@ pub fn toggle_breakpoint_at(ed: &mut crate::kernel::state::Editor, file: &str, l
         buf.attach_breakpoint(bp_id, offset);
     }
     sync_breakpoint_lines(ed);
-    #[cfg(feature = "janet")]
     if let Some(sid) = ed.debug.active_session {
         let args = ed.debug.set_breakpoints_args(file);
-        crate::kernel::scripting::send_dap_command(ed, sid, "setBreakpoints", &args);
+        crate::kernel::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
     }
     ed.events.emit_typed(
         crate::kernel::event::keys::events::DEBUG_BREAKPOINT_CHANGED,
@@ -230,10 +228,9 @@ pub fn remove_breakpoints_at(ed: &mut crate::kernel::state::Editor, file: &str, 
             buf.detach_breakpoint(id);
         }
     }
-    #[cfg(feature = "janet")]
     if let Some(sid) = ed.debug.active_session {
         let args = ed.debug.set_breakpoints_args(file);
-        crate::kernel::scripting::send_dap_command(ed, sid, "setBreakpoints", &args);
+        crate::kernel::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
     }
     ed.events.emit_typed(
         crate::kernel::event::keys::events::DEBUG_BREAKPOINT_CHANGED,
@@ -284,9 +281,8 @@ pub fn resync_after_save(ed: &mut crate::kernel::state::Editor, path: &str) {
         return;
     }
     sync_breakpoint_lines(ed);
-    #[cfg(feature = "janet")]
     if let Some(sid) = ed.debug.active_session {
         let args = ed.debug.set_breakpoints_args(path);
-        crate::kernel::scripting::send_dap_command(ed, sid, "setBreakpoints", &args);
+        crate::kernel::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
     }
 }

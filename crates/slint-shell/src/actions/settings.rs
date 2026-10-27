@@ -153,8 +153,15 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
         app.on_settings_select_category(move |category| {
+            let category = category.max(0).min(4);
+            // The page branches on the view's property, and refresh reads the
+            // category back from it — state alone would be clobbered before
+            // the rows were ever projected.
+            if let Some(a) = weak.upgrade() {
+                a.set_settings_category(category);
+            }
             let mut s = state.borrow_mut();
-            s.settings_category = category.max(0).min(4);
+            s.settings_category = category;
             s.settings_rows_dirty = true;
             refresh(&weak, &mut s);
         });

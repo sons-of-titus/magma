@@ -1,4 +1,4 @@
-use magma::kernel::keymap::KeymapManager;
+use kernel::keymap::KeymapManager;
 
 fn main() {
     // Benchmark: resolve in empty keymap (miss)

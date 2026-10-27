@@ -1,4 +1,4 @@
-use magma::kernel::render::surface::{Surface, Style};
+use kernel::render::surface::{Surface, Style};
 
 fn main() {
     // Benchmark: Surface::new at 80x24

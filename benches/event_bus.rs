@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use magma::kernel::event::EventBus;
+use kernel::event::EventBus;
 
 fn main() {
     // Benchmark: emit + drain_and_dispatch with N subscribers
@@ -45,8 +45,8 @@ fn main() {
     {
         let mut bus = EventBus::new();
         bus.on("hooked-event", |_| None);
-        bus.add_hook("hooked-event", magma::kernel::event::HookPhase::Before, |_| None);
-        bus.add_hook("hooked-event", magma::kernel::event::HookPhase::After, |_| None);
+        bus.add_hook("hooked-event", kernel::event::HookPhase::Before, |_| None);
+        bus.add_hook("hooked-event", kernel::event::HookPhase::After, |_| None);
         let start = std::time::Instant::now();
         for _ in 0..10_000 {
             bus.emit("hooked-event", HashMap::new());
@@ -108,7 +108,7 @@ fn main() {
         let mut bus = EventBus::new();
         bus.on("transform-test", |_| None);
         for i in 0..10 {
-            bus.add_hook("transform-test", magma::kernel::event::HookPhase::Transform, move |data| {
+            bus.add_hook("transform-test", kernel::event::HookPhase::Transform, move |data| {
                 let mut d = data.clone();
                 d.insert(format!("k{}", i), format!("v{}", i));
                 Some(d)

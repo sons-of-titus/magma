@@ -1,4 +1,4 @@
-use magma::kernel::text_engine::rope::Rope;
+use kernel::text_engine::rope::Rope;
 
 fn make_rope(lines: usize) -> Rope {
     let content = "hello world this is a line of text\n".repeat(lines);

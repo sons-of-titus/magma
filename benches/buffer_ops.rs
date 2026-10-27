@@ -1,5 +1,5 @@
-use magma::kernel::state::id::BufferId;
-use magma::kernel::text_engine::Buffer;
+use kernel::state::id::BufferId;
+use kernel::text_engine::Buffer;
 
 fn make_buffer(lines: usize) -> Buffer {
     let content = "hello world this is a line of text\n".repeat(lines);

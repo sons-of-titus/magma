@@ -8,13 +8,13 @@
 
 use std::time::Instant;
 
-use magma::kernel::command::builtin;
-use magma::kernel::index;
-use magma::kernel::render::frame::render_frame; // noqa
-use magma::kernel::render::surface::Surface;
-use magma::kernel::runtime::BackgroundHandle;
-use magma::kernel::state::Editor;
-use magma::kernel::storage::disk::DiskFileSystem;
+use kernel::command::builtin;
+use kernel::index;
+use kernel::render::frame::render_frame; // noqa
+use kernel::render::surface::Surface;
+use kernel::runtime::BackgroundHandle;
+use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
 
 fn editor_with(content: &str) -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -107,7 +107,7 @@ fn main() {
     for _ in 0..300 {
         let t = Instant::now();
         while let Ok(event) = rx.try_recv() {
-            magma::kernel::runtime::process_background_event(&mut ed, event);
+            kernel::runtime::process_background_event(&mut ed, event);
         }
         stats.push(t.elapsed().as_nanos() as u64);
     }

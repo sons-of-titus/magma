@@ -1,4 +1,4 @@
-use magma::kernel::command::{CommandRegistry, args::{ArgSpec, ArgType, ArgValue}};
+use kernel::command::{CommandRegistry, args::{ArgSpec, ArgType, ArgValue}};
 
 fn main() {
     // Benchmark: register N commands

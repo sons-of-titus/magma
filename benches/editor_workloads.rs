@@ -7,11 +7,11 @@
 
 use std::time::Instant;
 
-use magma::kernel::command::{self, builtin};
-use magma::kernel::render::frame::render_frame;
-use magma::kernel::render::surface::Surface;
-use magma::kernel::state::Editor;
-use magma::kernel::storage::disk::DiskFileSystem;
+use kernel::command::{self, builtin};
+use kernel::render::frame::render_frame;
+use kernel::render::surface::Surface;
+use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
 
 fn editor_with(content: &str) -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));

@@ -15,12 +15,12 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use magma::kernel::command::builtin;
-use magma::kernel::input;
-use magma::kernel::render::frame::render_frame;
-use magma::kernel::render::surface::Surface;
-use magma::kernel::state::Editor;
-use magma::kernel::storage::disk::DiskFileSystem;
+use kernel::command::builtin;
+use kernel::input;
+use kernel::render::frame::render_frame;
+use kernel::render::surface::Surface;
+use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
 
 /// Allocation counter — the memory axis of the harness.
 static ALLOCATED: AtomicU64 = AtomicU64::new(0);

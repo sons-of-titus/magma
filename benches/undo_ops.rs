@@ -1,9 +1,9 @@
-use magma::kernel::text_engine::edit::Edit;
-use magma::kernel::text_engine::revision::Revision;
-use magma::kernel::text_engine::transaction::{
+use kernel::text_engine::edit::Edit;
+use kernel::text_engine::revision::Revision;
+use kernel::text_engine::transaction::{
     CommittedEdit, EditTransaction, TransactionOrigin,
 };
-use magma::kernel::text_engine::undo::UndoHistory;
+use kernel::text_engine::undo::UndoHistory;
 
 fn insert_txn(rev: u64, offset: usize, text: &str) -> EditTransaction {
     EditTransaction {

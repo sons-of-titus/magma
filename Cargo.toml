@@ -31,7 +31,6 @@ members = [
     "crates/extension",
     "crates/net",
     "crates/clipboard",
-    "crates/gui",
     "crates/slint-shell",
     "crates/scripting",
     "crates/kernel",
@@ -147,4 +146,15 @@ harness = false
 default = ["janet"]
 janet = []
 
-
+[profile.dev.package.slint]
+opt-level = 3
+[profile.dev.package.i-slint-core]
+opt-level = 3
+[profile.dev.package.i-slint-renderer-skia]
+opt-level = 3
+[profile.dev.package.skia-bindings]
+opt-level = 3
+[profile.dev.package.i-slint-backend-winit]
+opt-level = 3
+[profile.dev.package.winit]
+opt-level = 3

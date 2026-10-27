@@ -732,17 +732,15 @@ path `kernel::render::row_layout::*` is preserved via re-export.
 
 The frontend is now a workspace crate, not a kernel feature.
 
-- `crates/gui` (package `magma-gui`, binary `magma`) owns the egui shell:
-  the 37 `gui*` modules, `tool_window*`, font registration, input translation,
-  dialogs, and the wgpu/egui pane paint callback. It depends on `magma`.
-- `crates/slint-shell` (package `magma-slint`) is the declarative successor.
-  It renders the same `Surface` into a Slint `Image`, forwards Slint key
-  events through `translate_key` into the kernel's key-string grammar, and
-  projects tabs, files, and status into Slint models. `src/kernel/render/tabs.rs`
-  owns the tab projection so both frontends (and kernel tests) share it.
-- `crates/gpu` is now a pure CPU atlas: glyph UVs, instance builders, and the
-  `ab_glyph` rasterizer. The egui paint callback moved to `crates/gui`;
-  no wgpu or egui types remain in `gpu`.
+- `crates/slint-shell` (package `magma-slint`) is now the sole frontend. It
+  renders the same `Surface` into a Slint `Image`, forwards Slint key events
+  through `translate_key` into the kernel's key-string grammar, and projects
+  tabs, files, and status into Slint models. `src/kernel/render/tabs.rs` owns
+  the tab projection.
+- The egui-based `crates/gui` (package `magma-gui`) has been removed; the
+  Slint shell is the only UI.
+- `crates/gpu` is a pure CPU atlas: glyph UVs, instance builders, and the
+  `ab_glyph` rasterizer. No wgpu or egui types remain in `gpu`.
 
 Kernel changes that made the boundary real:
 
@@ -763,18 +761,9 @@ Kernel changes that made the boundary real:
 - `io.terminals.pty_waker` remains the only frontend-facing wake hook; it is a
   plain callback channel with no toolkit type.
 
-Remaining GUI-side work (tracked, not done):
-
-- The Slint shell currently covers the menu row, tabs, project file list,
-  status bar, editor pane, key dispatch, open-project, and background-event
-  drain. Dialogs, tool windows (terminal/find/output/debug/agent/commit),
-  minimap, hover cards, and IME composition are still egui-only. The egui
-  frontend stays until those reach parity, then `crates/gui` is deleted.
-- IME in the Slint pane needs the invisible native `TextInput` overlay the
-  plan calls for; a `FocusScope` alone does not expose composition.
-- The Slint pane uploads the grid as an RGBA image. Importing a
-  renderer-owned wgpu texture (`set_rendering_notifier`, `unstable-wgpu-30`)
-  is the performance follow-up.
+GUI-side work: complete. The Slint shell is the only frontend; the egui
+crate has been removed. Remaining Slint follow-ups (IME composition overlay,
+wgpu texture import) are tracked separately.
 
 ## Verification
 

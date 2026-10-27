@@ -1,13 +1,12 @@
 # GUI Architecture — Chrome vs Editor Pane
 
-The GUI is a native IDE shell wrapped around a `Surface`-based editor core.
-It lives in `crates/gui` (package `magma-gui`) and depends on the `magma`
-kernel; the kernel no longer has a `gui` feature and pulls in no
-egui/eframe/winit dependency. The pane contract is
+The GUI is now the Slint shell: `crates/slint-shell` (package `magma-slint`)
+is the sole frontend. The egui-based `crates/gui` (package `magma-gui`) has
+been removed. The pane contract is
 `render_frame_with(&Editor, &mut Surface, CursorPaint)`: the kernel turns
 editor semantics into a character grid, the frontend decides how to paint it.
-`crates/slint-shell` (package `magma-slint`) is the declarative successor —
-it consumes the same `Surface` and dispatches the same key strings.
+`crates/slint-shell` consumes the same `Surface` and dispatches the same key
+strings.
 
 The split is deliberate:
 

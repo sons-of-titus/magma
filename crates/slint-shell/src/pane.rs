@@ -4,34 +4,90 @@
 //! turns that grid into RGBA pixels using the glyph atlas, then hands them to
 //! Slint as an `Image`.  No widget toolkit types reach the kernel.
 
-use magma::kernel::render::gpu_atlas::GpuGlyphAtlas;
-use magma::kernel::render::surface::Surface;
-use slint::SharedPixelBuffer;
+use kernel::render::gpu_atlas::{GlyphUv, GpuGlyphAtlas};
+use kernel::render::surface::Surface;
 
-pub const CHAR_W: u32 = 10;
-pub const LINE_H: u32 = 20;
-pub const RAIL_W: f32 = 32.0;
-pub const SIDEBAR_W: f32 = 240.0;
-const CHROME_H: f32 = 30.0 + 30.0 + 22.0 + 24.0;
+use crate::theme::{Rgb, TerminalPalette};
 
-pub fn grid_size(logical_w: f32, logical_h: f32) -> (u32, u32) {
-    let pane_w = (logical_w - RAIL_W - SIDEBAR_W).max(80.0);
-    let pane_h = (logical_h - CHROME_H).max(40.0);
+pub const CHAR_W: u32 = 7;
+pub const LINE_H: u32 = 17;
+
+/// Terminal dock inner height: the dock is 200px, its header 26px.
+pub const TERMINAL_DOCK_BODY_H: f32 = 174.0;
+pub const TERMINAL_TABS_H: f32 = 26.0;
+
+/// Grid for the terminal body.  The dock spans the window width; the session
+/// tab strip is carved out of its height, and the body is rounded down to
+/// whole rows so the rendered texture is never scaled.
+pub fn terminal_grid_size(logical_w: f32, sessions: usize, cell_w: u32, cell_h: u32) -> (u32, u32) {
+    let tabs = if sessions > 0 { TERMINAL_TABS_H } else { 0.0 };
+    let cell_w = cell_w.max(1) as f32;
+    let cell_h = cell_h.max(1) as f32;
+    let body = (TERMINAL_DOCK_BODY_H - tabs).max(cell_h);
     (
-        (pane_w / CHAR_W as f32).floor().max(1.0) as u32,
-        (pane_h / LINE_H as f32).floor().max(1.0) as u32,
+        (logical_w / cell_w).floor().max(1.0) as u32,
+        (body / cell_h).floor().max(1.0) as u32,
     )
 }
 
-pub fn blit_rgba(surface: &Surface, atlas: &GpuGlyphAtlas) -> (Vec<u8>, u32, u32) {
-    let w = surface.width as u32 * CHAR_W;
-    let h = surface.height as u32 * LINE_H;
+/// Device-pixel size of one grid cell at `scale`.
+pub fn cell_size(cell_w: u32, cell_h: u32, scale: f32) -> (u32, u32) {
+    let scale = if scale < 1.0 { 1.0 } else { scale };
+    (
+        (cell_w.max(1) as f32 * scale).round().max(1.0) as u32,
+        (cell_h.max(1) as f32 * scale).round().max(1.0) as u32,
+    )
+}
+
+/// Coverage of one on-screen pixel from the glyph's atlas cell.  A cell
+/// rasterized at the screen's exact pixel size is a straight texel copy; a
+/// differently sized atlas cell is box-filtered down.
+fn glyph_alpha(atlas: &GpuGlyphAtlas, uv: &GlyphUv, px: u32, py: u32, cell_w: u32, cell_h: u32) -> u8 {
+    let aw = atlas.atlas_width;
+    if uv.w == cell_w && uv.h == cell_h {
+        let src = (((uv.y + py) * aw + uv.x + px) * 4 + 3) as usize;
+        if src < atlas.atlas_pixels.len() {
+            // SAFETY: src is within bounds (checked above).
+            return unsafe { *atlas.atlas_pixels.get_unchecked(src) };
+        }
+        return 0;
+    }
+    let sx0 = uv.x as f32 + px as f32 * uv.w as f32 / cell_w as f32;
+    let sx1 = uv.x as f32 + (px + 1) as f32 * uv.w as f32 / cell_w as f32;
+    let sy0 = uv.y as f32 + py as f32 * uv.h as f32 / cell_h as f32;
+    let sy1 = uv.y as f32 + (py + 1) as f32 * uv.h as f32 / cell_h as f32;
+    let mut sum: u32 = 0;
+    let mut count: u32 = 0;
+    let x_start = sx0.floor().max(0.0) as u32;
+    let x_end = sx1.ceil().min(atlas.atlas_width as f32) as u32;
+    let y_start = sy0.floor().max(0.0) as u32;
+    let y_end = sy1.ceil().min(atlas.atlas_height as f32) as u32;
+    for sy in y_start..y_end {
+        for sx in x_start..x_end {
+            let src = ((sy * aw + sx) * 4 + 3) as usize;
+            if src < atlas.atlas_pixels.len() {
+                // SAFETY: src is within bounds (checked above).
+                sum += unsafe { *atlas.atlas_pixels.get_unchecked(src) } as u32;
+                count += 1;
+            }
+        }
+    }
+    if count > 0 { (sum / count) as u8 } else { 0 }
+}
+
+pub fn blit_rgba(surface: &Surface, atlas: &GpuGlyphAtlas, cell_w: u32, cell_h: u32, scale: f32) -> (Vec<u8>, u32, u32) {
+    let (cell_w, cell_h) = cell_size(cell_w, cell_h, scale);
+    let w = surface.width as u32 * cell_w;
+    let h = surface.height as u32 * cell_h;
     let mut dst = vec![0u8; (w * h * 4) as usize];
     let aw = atlas.atlas_width;
 
+    let cells = surface.cells();
+    let surf_w = surface.width as usize;
     for cy in 0..surface.height {
         for cx in 0..surface.width {
-            let Some(cell) = surface.cell(cx, cy) else { continue };
+            // SAFETY: (cx, cy) is within surface dimensions.
+            let cell = unsafe { cells.get_unchecked((cy as usize) * surf_w + (cx as usize)) };
             let (br, bg, bb) = cell.style.bg;
             let (mut fr, mut fg, mut fb) = cell.style.fg;
             if cell.style.bold {
@@ -39,22 +95,74 @@ pub fn blit_rgba(surface: &Surface, atlas: &GpuGlyphAtlas) -> (Vec<u8>, u32, u32
                 fg = fg.saturating_add(24);
                 fb = fb.saturating_add(24);
             }
-            let glyph = if cell.ch == ' ' { None } else { atlas.glyphs.get(&cell.ch) };
+            // Control chars are row terminators, not visible glyphs; painting
+            // them through the box fallback would leave a marker at every
+            // line end.  Missing visible glyphs (CJK, icons) still get the box.
+            let glyph = if cell.ch == ' ' || cell.ch.is_control() {
+                None
+            } else {
+                atlas.glyphs.get(&cell.ch)
+                    .or_else(|| atlas.glyphs.get(&'\u{25A1}'))
+            };
 
-            for py in 0..LINE_H {
-                for px in 0..CHAR_W {
-                    let mut alpha = 0u8;
-                    if let Some(uv) = glyph {
-                        let sx = uv.x + px * uv.w / CHAR_W;
-                        let sy = uv.y + py * uv.h / LINE_H;
-                        let src = ((sy * aw + sx) * 4 + 3) as usize;
-                        alpha = atlas.atlas_pixels.get(src).copied().unwrap_or(0);
+            let x0 = cx as u32 * cell_w;
+            for py in 0..cell_h {
+                let row = (cy as u32 * cell_h + py) * w + x0;
+                let out = &mut dst[(row * 4) as usize..((row + cell_w) * 4) as usize];
+                let Some(uv) = glyph else {
+                    // SAFETY: out has cell_w*4 bytes.
+                    unsafe {
+                        let mut p = out.as_mut_ptr();
+                        let end = p.add(out.len());
+                        while p < end {
+                            *p = br; *p.add(1) = bg; *p.add(2) = bb; *p.add(3) = 255;
+                            p = p.add(4);
+                        }
                     }
-                    let o = (((cy as u32 * LINE_H + py) * w + cx as u32 * CHAR_W + px) * 4) as usize;
-                    dst[o]     = blend(fr, br, alpha);
-                    dst[o + 1] = blend(fg, bg, alpha);
-                    dst[o + 2] = blend(fb, bb, alpha);
-                    dst[o + 3] = 255;
+                    continue;
+                };
+
+                if uv.w == cell_w && uv.h == cell_h {
+                    // Atlas cell == screen cell: a direct texel row copy.
+                    let src_row = (((uv.y + py) * aw + uv.x) * 4 + 3) as usize;
+                    // SAFETY: atlas cell and screen cell dimensions match, so the
+                    // src and dst ranges are in bounds.
+                    unsafe {
+                        let mut src_ptr = atlas.atlas_pixels.as_ptr().add(src_row);
+                        let mut dst_ptr = out.as_mut_ptr();
+                        for _ in 0..cell_w {
+                            let a = *src_ptr;
+                            if a == 0 {
+                                *dst_ptr = br;
+                                *dst_ptr.add(1) = bg;
+                                *dst_ptr.add(2) = bb;
+                                *dst_ptr.add(3) = 255;
+                            } else if a == 255 {
+                                *dst_ptr = fr;
+                                *dst_ptr.add(1) = fg;
+                                *dst_ptr.add(2) = fb;
+                                *dst_ptr.add(3) = 255;
+                            } else {
+                                *dst_ptr = blend(fr, br, a);
+                                *dst_ptr.add(1) = blend(fg, bg, a);
+                                *dst_ptr.add(2) = blend(fb, bb, a);
+                                *dst_ptr.add(3) = 255;
+                            }
+                            src_ptr = src_ptr.add(4);
+                            dst_ptr = dst_ptr.add(4);
+                        }
+                    }
+                } else {
+                    for (px, o) in out.chunks_exact_mut(4).enumerate() {
+                        let a = glyph_alpha(atlas, uv, px as u32, py, cell_w, cell_h);
+                        // SAFETY: `o` is a 4-byte chunk from chunks_exact_mut(4).
+                        unsafe {
+                            *o.get_unchecked_mut(0) = blend(fr, br, a);
+                            *o.get_unchecked_mut(1) = blend(fg, bg, a);
+                            *o.get_unchecked_mut(2) = blend(fb, bb, a);
+                            *o.get_unchecked_mut(3) = 255;
+                        }
+                    }
                 }
             }
         }
@@ -62,27 +170,57 @@ pub fn blit_rgba(surface: &Surface, atlas: &GpuGlyphAtlas) -> (Vec<u8>, u32, u32
     (dst, w, h)
 }
 
-pub fn blit(surface: &Surface, atlas: &GpuGlyphAtlas) -> slint::Image {
-    let (rgba, w, h) = blit_rgba(surface, atlas);
-    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
-    buffer.make_mut_bytes().copy_from_slice(&rgba);
-    slint::Image::from_rgba8(buffer)
+/// Cheap content fingerprint for the cell grid.  Frontends use it to skip the
+/// pixel blit and texture upload when only chrome changed.
+pub fn surface_signature(surface: &Surface) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    let mut feed = |v: u64| {
+        h ^= v;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    let cells = surface.cells();
+    let surf_w = surface.width as usize;
+    for y in 0..surface.height {
+        for x in 0..surface.width {
+            // SAFETY: (x, y) is within surface dimensions.
+            let c = unsafe { cells.get_unchecked((y as usize) * surf_w + (x as usize)) };
+            feed(c.ch as u64);
+            feed(u32::from_be_bytes([c.style.fg.0, c.style.fg.1, c.style.fg.2, c.style.bold as u8]) as u64);
+            feed(u32::from_be_bytes([c.style.bg.0, c.style.bg.1, c.style.bg.2, 0]) as u64);
+        }
+    }
+    h
+}
+
+/// Measure the tight cell size (logical pixels) for a font at `font_size`.
+pub fn measure_cell(font_bytes: &[u8], font_size: f32) -> (u32, u32) {
+    use ab_glyph::{Font as _, FontRef, PxScale, ScaleFont as _};
+    let Ok(font) = FontRef::try_from_slice(font_bytes) else {
+        return (CHAR_W, LINE_H);
+    };
+    let scaled = font.as_scaled(PxScale::from(font_size));
+    let gid = scaled.glyph_id('M');
+    let adv = scaled.h_advance(gid);
+    let cell_w = adv.ceil().max(1.0) as u32;
+    let glyph_h = (scaled.ascent() - scaled.descent()).ceil().max(1.0) as u32;
+    let cell_h = ((font_size * 1.15).ceil() as u32).max(glyph_h);
+    (cell_w.max(4), cell_h)
 }
 
 pub const MINIMAP_W: u32 = 90;
 
-/// Resolve a terminal Color to RGB using a 16-color palette.
-fn term_color(c: magma::kernel::terminal::Color, palette: &[(u8,u8,u8); 16], default_fg: (u8,u8,u8)) -> (u8,u8,u8) {
-    use magma::kernel::terminal::Color;
+/// Resolve a terminal color against the active theme's console palette.
+fn term_color(c: kernel::terminal::Color, palette: &TerminalPalette, default: Rgb) -> Rgb {
+    use kernel::terminal::Color;
     match c {
-        Color::Default => default_fg,
-        Color::Rgb(r,g,b) => (r,g,b),
-        Color::Indexed(i) => palette[(i as usize).min(15)],
+        Color::Default => default,
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Indexed(i) => palette.ansi[(i as usize).min(15)],
     }
 }
 
 pub fn blit_minimap(
-    ed: &magma::kernel::state::Editor,
+    ed: &kernel::state::Editor,
     buf_id: usize,
     width: u32,
     height: u32,
@@ -194,66 +332,136 @@ pub fn blit_minimap(
     slint::Image::from_rgba8(buffer)
 }
 
-pub fn blit_terminal(
-    lines: &[magma::kernel::terminal::screen::StyledLine],
-    atlas: &magma::kernel::render::gpu_atlas::GpuGlyphAtlas,
-    width: u32,
-    height: u32,
-) -> slint::Image {
-    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width.max(1), height.max(1));
-    let dst = buffer.make_mut_bytes();
-    let w = width.max(1);
-    let h = height.max(1);
+pub fn blit_terminal_rgba(
+    lines: &[kernel::terminal::screen::StyledLine],
+    atlas: &GpuGlyphAtlas,
+    cols: u32,
+    rows: u32,
+    cell_w: u32,
+    cell_h: u32,
+    palette: &TerminalPalette,
+    cursor: Option<(usize, usize)>,
+) -> (Vec<u8>, u32, u32) {
+    let (cell_w, cell_h) = (cell_w.max(1), cell_h.max(1));
+    let w = cols.max(1) * cell_w;
+    let h = rows.max(1) * cell_h;
+    let mut dst = vec![0u8; (w * h * 4) as usize];
 
-    let palette: [(u8,u8,u8); 16] = [
-        (30,31,34), (243,139,168), (166,227,161), (249,226,175),
-        (137,180,250), (203,166,247), (148,226,213), (157,160,168),
-        (67,69,74), (243,139,168), (166,227,161), (249,226,175),
-        (137,180,250), (203,166,247), (148,226,213), (223,225,229),
-    ];
-    let default_fg = (223u8, 225u8, 229u8);
-    let default_bg = (30u8, 31u8, 34u8);
-
-    for i in (0..dst.len()).step_by(4) {
-        dst[i] = default_bg.0; dst[i+1] = default_bg.1; dst[i+2] = default_bg.2; dst[i+3] = 255;
+    // SAFETY: dst has (w*h*4) bytes.
+    unsafe {
+        let mut p = dst.as_mut_ptr();
+        let end = p.add(dst.len());
+        let (r, g, b) = (palette.bg.0, palette.bg.1, palette.bg.2);
+        while p < end {
+            *p = r; *p.add(1) = g; *p.add(2) = b; *p.add(3) = 255;
+            p = p.add(4);
+        }
     }
 
-    let row_h: u32 = LINE_H;
-    let max_lines = (h / row_h).max(1) as usize;
-    let lines: Vec<&magma::kernel::terminal::screen::StyledLine> = lines.iter().rev().take(max_lines).rev().collect();
+    let start = lines.len().saturating_sub(rows as usize);
+    for (ri, line) in lines[start..].iter().enumerate() {
+        let y0 = ri as u32 * cell_h;
 
-    for (ri, line) in lines.iter().enumerate() {
-        let y0 = ri as u32 * row_h;
+        // Run backgrounds first so the cursor block can sit above them.
+        for span in &line.spans {
+            let (br, bg, bb) = term_color(span.style.bg, palette, palette.bg);
+            if (br, bg, bb) == palette.bg { continue; }
+            let span_x = span.start as u32 * cell_w;
+            let span_w = (span.len as u32 * cell_w).min(w.saturating_sub(span_x));
+            for py in 0..cell_h {
+                let yi = y0 + py;
+                if yi >= h { break; }
+                let row = yi * w;
+                for px in 0..span_w {
+                    let o = ((row + span_x + px) * 4) as usize;
+                    dst[o] = br; dst[o + 1] = bg; dst[o + 2] = bb; dst[o + 3] = 255;
+                }
+            }
+        }
+
+        if let Some((cr, cc)) = cursor
+            && cr == ri
+            && cc < cols as usize
+        {
+            let x0 = cc as u32 * cell_w;
+            for py in 0..cell_h {
+                let yi = y0 + py;
+                if yi >= h { break; }
+                let row = yi * w;
+                for px in 0..cell_w {
+                    let o = ((row + x0 + px) * 4) as usize;
+                    dst[o] = palette.cursor.0;
+                    dst[o + 1] = palette.cursor.1;
+                    dst[o + 2] = palette.cursor.2;
+                    dst[o + 3] = 255;
+                }
+            }
+        }
+
+        // Styled spans are column runs; the text has one char per cell.
         for span in &line.spans {
             let style = span.style;
-            let (mut fr, mut fg, mut fb) = term_color(style.fg, &palette, default_fg);
-            let (br, bg, bb) = term_color(style.bg, &palette, default_bg);
+            let (mut fr, mut fg, mut fb) = term_color(style.fg, palette, palette.fg);
             if style.bold { fr = fr.saturating_add(24); fg = fg.saturating_add(24); fb = fb.saturating_add(24); }
             if style.dim { fr /= 2; fg /= 2; fb /= 2; }
-            let start = span.start as usize;
-            let len = span.len as usize;
-            let end = (start + len).min(line.text.len());
-            // render each char in span
-            for (ci, ch) in line.text[start..end].chars().enumerate() {
-                if ch == ' ' { continue; }
-                let glyph = atlas.glyphs.get(&ch);
-                let aw = atlas.atlas_width;
-                let x0 = (start + ci) as u32 * CHAR_W;
-                if let Some(uv) = glyph {
-                    for py in 0..row_h {
-                        for px in 0..10u32 {
-                            let sx = (uv.x as u32 + px * uv.w as u32 / 10).min(aw.saturating_sub(1));
-                            let sy = (uv.y as u32 + py * uv.h as u32 / row_h).min(atlas.atlas_height.saturating_sub(1));
-                            let src = ((sy * aw + sx) * 4 + 3) as usize;
-                            let alpha = atlas.atlas_pixels.get(src).copied().unwrap_or(0);
-                            let xi = x0 + px;
-                            let yi = y0 + py;
-                            if xi < w && yi < h {
-                                let o = ((yi * w + xi) * 4) as usize;
-                                dst[o] = blend(fr, br, alpha);
-                                dst[o+1] = blend(fg, bg, alpha);
-                                dst[o+2] = blend(fb, bb, alpha);
-                                dst[o+3] = 255;
+
+            let span_x = span.start as u32 * cell_w;
+            let (br, bg, bb) = term_color(style.bg, palette, palette.bg);
+            for (ci, ch) in line.text.chars()
+                .skip(span.start as usize)
+                .take(span.len as usize)
+                .enumerate()
+            {
+                if ch == ' ' || ch.is_control() { continue; }
+                let Some(uv) = atlas.glyphs.get(&ch)
+                    .or_else(|| atlas.glyphs.get(&'\u{25A1}')) else { continue };
+                let col = span.start as usize + ci;
+                let on_cursor = cursor == Some((ri, col));
+                let (fr, fg, fb) = if on_cursor { palette.bg } else { (fr, fg, fb) };
+                let (br, bg, bb) = if on_cursor { palette.cursor } else { (br, bg, bb) };
+                let x0 = span_x + ci as u32 * cell_w;
+                if x0 + cell_w > w { break; }
+                let direct = uv.w == cell_w && uv.h == cell_h;
+                for py in 0..cell_h {
+                    let yi = y0 + py;
+                    if yi >= h { break; }
+                    let row = yi * w + x0;
+                    let out = &mut dst[(row * 4) as usize..((row + cell_w) * 4) as usize];
+                    if direct {
+                        let src_row = (((uv.y + py) * atlas.atlas_width + uv.x) * 4 + 3) as usize;
+                        // SAFETY: out has cell_w*4 bytes and atlas range is in bounds.
+                        unsafe {
+                            let mut src_ptr = atlas.atlas_pixels.as_ptr().add(src_row);
+                            let mut dst_ptr = out.as_mut_ptr();
+                            for _ in 0..cell_w {
+                                let alpha = *src_ptr;
+                                if alpha != 0 {
+                                    if alpha == 255 {
+                                        *dst_ptr = fr; *dst_ptr.add(1) = fg; *dst_ptr.add(2) = fb; *dst_ptr.add(3) = 255;
+                                    } else {
+                                        *dst_ptr = blend(fr, br, alpha);
+                                        *dst_ptr.add(1) = blend(fg, bg, alpha);
+                                        *dst_ptr.add(2) = blend(fb, bb, alpha);
+                                        *dst_ptr.add(3) = 255;
+                                    }
+                                }
+                                src_ptr = src_ptr.add(4);
+                                dst_ptr = dst_ptr.add(4);
+                            }
+                        }
+                    } else {
+                        // SAFETY: out has cell_w*4 bytes.
+                        unsafe {
+                            let mut dst_ptr = out.as_mut_ptr();
+                            for px in 0..cell_w {
+                                let alpha = glyph_alpha(atlas, uv, px, py, cell_w, cell_h);
+                                if alpha != 0 {
+                                    *dst_ptr = blend(fr, br, alpha);
+                                    *dst_ptr.add(1) = blend(fg, bg, alpha);
+                                    *dst_ptr.add(2) = blend(fb, bb, alpha);
+                                    *dst_ptr.add(3) = 255;
+                                }
+                                dst_ptr = dst_ptr.add(4);
                             }
                         }
                     }
@@ -261,10 +469,98 @@ pub fn blit_terminal(
             }
         }
     }
-    slint::Image::from_rgba8(buffer)
+    (dst, w, h)
 }
 
+/// `fg * a/255 + bg * (1 - a/255)` without an integer division in the
+/// per-pixel loop.  `x <= 255 * 255`, so the 16.16 multiply-and-round is
+/// exact for this range.
+#[inline(always)]
 fn blend(fg: u8, bg: u8, alpha: u8) -> u8 {
-    let a = alpha as u16;
-    (((fg as u16 * a) + (bg as u16 * (255 - a))) / 255) as u8
+    let a = alpha as u32;
+    let x = fg as u32 * a + bg as u32 * (255 - a);
+    ((x * 257 + 32768) >> 16) as u8
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kernel::render::surface::Style;
+
+    #[test]
+    fn hidpi_blit_doubles_the_output_grid() {
+        let surface = Surface::new(3, 2);
+        let atlas = GpuGlyphAtlas::new();
+        let (rgba, w, h) = blit_rgba(&surface, &atlas, CHAR_W, LINE_H, 2.0);
+        assert_eq!((w, h), (3 * CHAR_W * 2, 2 * LINE_H * 2));
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+    }
+
+    #[test]
+    fn control_cells_paint_only_their_background() {
+        let mut surface = Surface::new(1, 1);
+        let bg = (12u8, 34, 56);
+        surface.set_cell(0, 0, '\n', Some(Style { bg, fg: (255, 255, 255), ..Style::default() }));
+
+        let atlas = GpuGlyphAtlas::new();
+        let (rgba, w, h) = blit_rgba(&surface, &atlas, CHAR_W, LINE_H, 1.0);
+        assert_eq!((w, h), (CHAR_W, LINE_H));
+        for px in rgba.chunks_exact(4) {
+            assert_eq!(&px[..3], &[bg.0, bg.1, bg.2], "a newline must not paint a glyph");
+        }
+    }
+
+    #[test]
+    fn visible_cells_paint_their_foreground() {
+        let mut surface = Surface::new(1, 1);
+        let fg = (255u8, 0, 0);
+        surface.set_cell(0, 0, 'A', Some(Style { bg: (0, 0, 0), fg, ..Style::default() }));
+
+        let atlas = GpuGlyphAtlas::new();
+        let (rgba, _, _) = blit_rgba(&surface, &atlas, CHAR_W, LINE_H, 1.0);
+        assert_eq!(&rgba[..3], &[fg.0, fg.1, fg.2]);
+        assert_eq!(rgba[3], 255);
+    }
+
+    #[test]
+    fn terminal_grid_reserves_the_jetbrains_tab_strip() {
+        assert_eq!(terminal_grid_size(800.0, 0, 7, 17), (114, 10));
+        assert_eq!(terminal_grid_size(800.0, 1, 7, 17), (114, 8));
+    }
+
+    #[test]
+    fn terminal_background_comes_from_the_theme() {
+        let atlas = GpuGlyphAtlas::new();
+        let palette = crate::theme::palette("intellij-dark").terminal;
+        let lines = vec![kernel::terminal::screen::StyledLine::default()];
+        let (rgba, _, _) = blit_terminal_rgba(&lines, &atlas, 1, 1, 8, 16, &palette, None);
+        assert_eq!(&rgba[..3], &[palette.bg.0, palette.bg.1, palette.bg.2]);
+    }
+
+    #[test]
+    fn terminal_ansi_slots_come_from_the_theme() {
+        let atlas = GpuGlyphAtlas::new();
+        let palette = crate::theme::palette("intellij-dark").terminal;
+        let style = kernel::terminal::screen::Style {
+            bg: kernel::terminal::Color::Indexed(1),
+            ..Default::default()
+        };
+        let lines = vec![kernel::terminal::screen::StyledLine {
+            text: " ".into(),
+            spans: vec![kernel::terminal::screen::Span { start: 0, len: 1, style }],
+        }];
+        let (rgba, _, _) = blit_terminal_rgba(&lines, &atlas, 1, 1, 8, 16, &palette, None);
+        let ansi = palette.ansi[1];
+        assert_eq!(&rgba[..3], &[ansi.0, ansi.1, ansi.2]);
+    }
+
+    #[test]
+    fn terminal_cursor_uses_the_theme_cursor_color() {
+        let atlas = GpuGlyphAtlas::new();
+        let palette = crate::theme::palette("intellij-dark").terminal;
+        let lines = vec![kernel::terminal::screen::StyledLine::default()];
+        let (rgba, _, _) = blit_terminal_rgba(&lines, &atlas, 1, 1, 8, 16, &palette, Some((0, 0)));
+        assert_eq!(&rgba[..3], &[palette.cursor.0, palette.cursor.1, palette.cursor.2]);
+    }
+}
+

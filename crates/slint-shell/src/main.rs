@@ -15,46 +15,36 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use magma::kernel::boot::{self, BootOptions};
+use kernel::boot::{self, BootOptions};
 #[cfg(feature = "janet")]
 use scripting;
-use magma::kernel::project::tree::{build, collect_dirs, FileNode};
-use magma::kernel::render::frame::render_frame_with;
-use magma::kernel::render::gpu_atlas::GpuGlyphAtlas;
-use magma::kernel::render::surface::Surface;
-use magma::kernel::render::tabs;
-use magma::kernel::render::CursorPaint;
-use magma::kernel::runtime::{process_background_event, BackgroundEvent};
-use magma::kernel::state::Editor;
-use magma::kernel::workspace::{self, WorkspaceRuntime};
+use kernel::project::tree::{build, collect_dirs, FileNode};
+use kernel::render::frame::render_frame_with;
+use kernel::render::gpu_atlas::GpuGlyphAtlas;
+use kernel::render::surface::Surface;
+use kernel::render::tabs;
+use kernel::render::CursorPaint;
+use kernel::runtime::{process_background_event, BackgroundEvent};
+use kernel::state::Editor;
+use kernel::workspace::{self, WorkspaceRuntime};
 use slint::{ModelRc, VecModel};
 
 slint::include_modules!();
 
 const STATUS_TTL: Duration = Duration::from_secs(6);
 
-#[derive(Default)]
-struct PaneTexState {
-    device: Option<Arc<slint::wgpu_30::wgpu::Device>>,
-    queue:  Option<Arc<slint::wgpu_30::wgpu::Queue>>,
-    texture: Option<slint::wgpu_30::wgpu::Texture>,
-    tex_w: u32,
-    tex_h: u32,
-    rgba: Vec<u8>,
-    w: u32,
-    h: u32,
-    dirty: bool,
-}
-
 struct AppState {
     editor:            Editor,
     bg_receiver:       tokio::sync::mpsc::UnboundedReceiver<BackgroundEvent>,
     atlas:             GpuGlyphAtlas,
+    atlas_ppx:         f32,
+    cell_w:            u32,
+    cell_h:            u32,
     surface:           Surface,
-    tex_state:         Arc<Mutex<PaneTexState>>,
+    terminal_grid:     (usize, u32, u32),
+    surface_sig:       u64,
     rendered_revision: u64,
     message:           String,
     workspace:         WorkspaceRuntime,
@@ -65,6 +55,8 @@ struct AppState {
     tree_root:         Option<PathBuf>,
     rail:              i32,
     theme_name:        String,
+    app_font_name:     String,
+    app_font_size:     f32,
     menu_title:        Option<&'static str>,
     menu_x:            f32,
     menu_visible:      bool,
@@ -78,16 +70,25 @@ struct AppState {
     dialog_input:      String,
     settings_visible:  bool,
     terminal_scroll:   usize,
+    wheel_y:           f32,
+    wheel_x:           f32,
+    welcome_visible:   bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    slint::BackendSelector::new()
-        .require_wgpu_30(slint::wgpu_30::WGPUConfiguration::default())
-        .select()?;
+    slint::BackendSelector::new().select()?;
+    // Register the bundled Symbols Nerd Font so icon-pack glyphs render.
+    {
+        use slint::fontique_011::fontique;
+        let bytes: &[u8] = include_bytes!("../../../assets/fonts/SymbolsNerdFont-Regular.ttf");
+        let blob = fontique::Blob::new(std::sync::Arc::new(bytes.to_vec()));
+        let mut collection = slint::fontique_011::shared_collection();
+        let _ = collection.register_fonts(blob, None);
+    }
     #[cfg(feature = "janet")]
     let rt = {
         let r = scripting::JanetRuntime::new();
-        Some(Box::new(r) as Box<dyn magma::kernel::script_runtime::ScriptRuntime>)
+        Some(Box::new(r) as Box<dyn kernel::script_runtime::ScriptRuntime>)
     };
     #[cfg(not(feature = "janet"))]
     let rt = None;
@@ -111,15 +112,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(bytes) = editor.font_config.primary_font() {
         atlas.rasterize(bytes, editor.font_config.size);
     }
+    let (init_cell_w, init_cell_h) = editor.font_config.primary_font()
+        .map(|b| pane::measure_cell(b, editor.font_config.size))
+        .unwrap_or((7, 17));
 
     let workspace = WorkspaceRuntime::new(&editor);
-    let tex_state = Arc::new(Mutex::new(PaneTexState::default()));
     let state = Rc::new(RefCell::new(AppState {
         editor,
         bg_receiver: boot.bg_receiver,
         atlas,
+        atlas_ppx: 0.0,
+        cell_w: init_cell_w,
+        cell_h: init_cell_h,
         surface: Surface::new(1, 1),
-        tex_state: tex_state.clone(),
+        terminal_grid: (0, 0, 0),
+        surface_sig: 0,
         rendered_revision: u64::MAX,
         message: String::new(),
         workspace,
@@ -128,9 +135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         expanded: HashSet::new(),
         tree_epoch: u64::MAX,
         tree_root: None,
-        rail: 0,
-        theme_name: String::new(),
-        menu_title: None,
+        rail:              0,
+        theme_name:        String::new(),
+        app_font_name:     String::new(),
+        app_font_size:     12.0,
+        menu_title:        None,
         menu_x: 0.0,
         menu_visible: false,
         bottom:            -1,
@@ -143,70 +152,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dialog_input:      String::new(),
         settings_visible:  false,
         terminal_scroll:   0,
+        wheel_y:           0.0,
+        wheel_x:           0.0,
+        welcome_visible:   false,
     }));
 
     let app = AppWindow::new()?;
-
-    // ── GPU pane texture via rendering notifier ────────────────────────────
-    {
-        let tex_state = tex_state.clone();
-        let weak = app.as_weak();
-        app.window().set_rendering_notifier(move |state, graphics_api| {
-            let (device, queue) = match graphics_api {
-                slint::GraphicsAPI::WGPU30 { device, queue, .. } => (device.clone(), queue.clone()),
-                _ => return,
-            };
-            match state {
-                slint::RenderingState::RenderingSetup => {
-                    let mut ts = tex_state.lock().unwrap();
-                    ts.device = Some(Arc::new(device));
-                    ts.queue = Some(Arc::new(queue));
-                }
-                slint::RenderingState::BeforeRendering => {
-                    let mut ts = tex_state.lock().unwrap();
-                    let device = match &ts.device { Some(d) => d.clone(), None => return };
-                    let queue = match &ts.queue { Some(q) => q.clone(), None => return };
-                    if !ts.dirty || ts.rgba.is_empty() { return; }
-                    let w = ts.w;
-                    let h = ts.h;
-                    if ts.texture.is_none() || ts.tex_w != w || ts.tex_h != h {
-                        ts.texture = Some(device.create_texture(&slint::wgpu_30::wgpu::TextureDescriptor {
-                            label: Some("pane"),
-                            size: slint::wgpu_30::wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
-                            mip_level_count: 1,
-                            sample_count: 1,
-                            dimension: slint::wgpu_30::wgpu::TextureDimension::D2,
-                            format: slint::wgpu_30::wgpu::TextureFormat::Rgba8Unorm,
-                            usage: slint::wgpu_30::wgpu::TextureUsages::TEXTURE_BINDING | slint::wgpu_30::wgpu::TextureUsages::COPY_DST | slint::wgpu_30::wgpu::TextureUsages::RENDER_ATTACHMENT,
-                            view_formats: &[],
-                        }));
-                        ts.tex_w = w;
-                        ts.tex_h = h;
-                    }
-                    if let Some(tex) = &ts.texture {
-                        queue.write_texture(
-                            tex.as_image_copy(),
-                            &ts.rgba,
-                            slint::wgpu_30::wgpu::TexelCopyBufferLayout {
-                                offset: 0,
-                                bytes_per_row: Some(w * 4),
-                                rows_per_image: None,
-                            },
-                            slint::wgpu_30::wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
-                        );
-                        if let Ok(image) = slint::Image::try_from(tex.clone()) {
-                            ts.dirty = false;
-                            drop(ts);
-                            if let Some(app) = weak.upgrade() {
-                                app.set_pane(image);
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }).unwrap();
-    }
 
     actions::install(&app, Rc::clone(&state));
 
@@ -229,8 +180,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 s.editor.frame_dirty = true;
             }
             let resized = weak.upgrade().is_some_and(|app| {
-                let (w, h) = logical_size(&app);
-                let (cols, rows) = pane::grid_size(w, h);
+                // The window is unmapped during the first refresh, so its
+                // scale factor only becomes final once the backend shows it.
+                let ppx = app.window().scale_factor();
+                if (ppx - s.atlas_ppx).abs() > 0.001 {
+                    return true;
+                }
+                let (cols, rows) = editor_grid(&app, s.cell_w, s.cell_h);
                 s.surface.width != cols as u16 || s.surface.height != rows as u16
             });
             if resized || s.editor.frame_dirty || s.rendered_revision != revision_of(&s.editor) {
@@ -258,6 +214,24 @@ fn logical_size(app: &AppWindow) -> (f32, f32) {
     (size.width as f32 / scale, size.height as f32 / scale)
 }
 
+/// Editor grid from the actual laid-out pane, so the image, the surface, and
+/// click hit-testing all agree with what is on screen.  Before the first
+/// layout pass the element has no size yet; fall back to the window size
+/// minus the fixed chrome (menu, tabs, breadcrumb, bottom bar, status).
+fn editor_grid(app: &AppWindow, cell_w: u32, cell_h: u32) -> (u32, u32) {
+    let mut w = app.get_editor_view_width() as f32;
+    let mut h = app.get_editor_view_height() as f32;
+    if w < 1.0 || h < 1.0 {
+        let (lw, lh) = logical_size(app);
+        w = (lw - 304.0).max(80.0);
+        h = (lh - 132.0).max(40.0);
+    }
+    (
+        (w / cell_w.max(1) as f32).floor().max(1.0) as u32,
+        (h / cell_h.max(1) as f32).floor().max(1.0) as u32,
+    )
+}
+
 fn revision_of(editor: &Editor) -> u64 {
     editor
         .buffers
@@ -269,35 +243,89 @@ fn revision_of(editor: &Editor) -> u64 {
 fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let Some(app) = weak.upgrade() else { return };
 
+    // Commands and chrome actions queue editor events (buffer-created drives
+    // syntax highlighting and LSP attach); nothing else would drain them.
+    state.editor.dispatch_events_scoped();
+
+    let ppx = app.window().scale_factor() as f32;
+    let ppx = if ppx < 1.0 { 1.0 } else { ppx };
+    let font_changed = state.editor.font_changed;
+    if font_changed { state.editor.font_changed = false; }
+    // Recompute the cell grid from the (possibly new) font metrics so the
+    // editor and terminal stay tight instead of inheriting a fixed cell.
+    if font_changed || state.cell_w == 0 {
+        if let Some(bytes) = state.editor.font_config.primary_font() {
+            let (cw, ch) = pane::measure_cell(bytes, state.editor.font_config.size);
+            state.cell_w = cw.max(1);
+            state.cell_h = ch.max(1);
+        }
+    }
+    let atlas_rebuilt = font_changed || (ppx - state.atlas_ppx).abs() > 0.001;
+    if atlas_rebuilt {
+        if font_changed { state.editor.row_layouts.clear(); }
+        if let Some(bytes) = state.editor.font_config.primary_font() {
+            state.atlas.rasterize_for_grid(
+                bytes, state.editor.font_config.size, ppx, state.cell_w, state.cell_h,
+            );
+        }
+        state.atlas_ppx = ppx;
+        // The grid did not change, but every glyph pixel did.
+        state.surface_sig = 0;
+    }
+
     sync_theme(&app, state);
+    app.set_app_font_name(state.app_font_name.as_str().into());
+    app.set_app_font_size(state.app_font_size);
+    kernel::icons::sync_option(&mut state.editor);
     sync_tree(&app, state);
 
     let ed = &mut state.editor;
-    let (logical_w, logical_h) = logical_size(&app);
-    let (cols, rows) = pane::grid_size(logical_w, logical_h);
+    let (logical_w, _) = logical_size(&app);
+    let (cols, rows) = editor_grid(&app, state.cell_w, state.cell_h);
     if state.surface.width != cols as u16 || state.surface.height != rows as u16 {
         state.surface.resize(cols as u16, rows as u16);
+        ed.view_tree.resize(cols as u16, rows as u16);
         state.rendered_revision = u64::MAX;
     }
     render_frame_with(ed, &mut state.surface, CursorPaint::Stamp { visible: true });
-    let (rgba, pw, ph) = pane::blit_rgba(&state.surface, &state.atlas);
-    {
-        let mut ts = state.tex_state.lock().unwrap();
-        ts.rgba = rgba;
-        ts.w = pw;
-        ts.h = ph;
-        ts.dirty = true;
+
+    // Only re-blit and re-upload when the grid actually changed: status,
+    // tabs, terminal output and other chrome updates do not touch it.
+    let sig = pane::surface_signature(&state.surface);
+    if sig != state.surface_sig {
+        let (rgba, pw, ph) = pane::blit_rgba(&state.surface, &state.atlas, state.cell_w, state.cell_h, state.atlas_ppx);
+        let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(pw.max(1), ph.max(1));
+        let dst = buffer.make_mut_bytes();
+        let n = dst.len().min(rgba.len());
+        dst[..n].copy_from_slice(&rgba[..n]);
+        app.set_pane(slint::Image::from_rgba8(buffer));
+        state.surface_sig = sig;
     }
-    app.set_pane_width((cols * pane::CHAR_W) as f32);
-    app.set_pane_height((rows * pane::LINE_H) as f32);
 
     let focused = ed.view_tree.focused_window();
     let tab_models: Vec<TabItem> = tabs::collect_tabs(ed)
         .into_iter()
-        .map(|t| TabItem {
-            title: t.label.into(),
-            active: focused == Some(t.window_id),
-            modified: t.modified,
+        .map(|t| {
+            let (icon, icon_color, icon_path, icon_image) = match t.icon {
+                Some(kernel::icons::IconKind::Glyph { glyph, color }) => {
+                    (glyph.to_string(), color.map(|(r,g,b)| slint::Color::from_rgb_u8(r,g,b)).unwrap_or(slint::Color::from_rgb_u8(166,173,200)), String::new(), slint::Image::default())
+                }
+                Some(kernel::icons::IconKind::Svg { path }) => {
+                    let p = path.to_string_lossy().into_owned();
+                    let img = slint::Image::load_from_path(std::path::Path::new(&p)).unwrap_or_default();
+                    (String::new(), slint::Color::from_rgb_u8(166,173,200), p, img)
+                }
+                None => (String::new(), slint::Color::from_rgb_u8(166,173,200), String::new(), slint::Image::default()),
+            };
+            TabItem {
+                title: t.label.into(),
+                active: focused == Some(t.window_id),
+                modified: t.modified,
+                icon: icon.into(),
+                icon_color,
+                icon_path: icon_path.into(),
+                icon_image,
+            }
         })
         .collect();
     app.set_tabs(ModelRc::new(VecModel::from(tab_models)));
@@ -337,21 +365,51 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             .unwrap_or(0) as i32;
         app.set_terminal_active(active);
     }
-    // terminal image (styled)
+    // terminal image (styled, device resolution)
     {
-        let session = ed.io.terminals.focused
-            .or_else(|| ed.io.terminals.sessions.first().map(|s| s.id))
-            .and_then(|id| ed.io.terminals.get(id));
-        if let Some(sess) = session {
-            let total = sess.screen.line_count();
-            let visible = 200 / 16;
-            let start = total.saturating_sub(visible).saturating_sub(state.terminal_scroll);
-            let lines: Vec<_> = (start..start + visible.min(total - start)).map(|i| sess.screen.styled_line(i)).collect();
-            let img = pane::blit_terminal(&lines, &state.atlas, 800, 200);
-            app.set_terminal_image(img);
-        } else {
-            // empty image
-            app.set_terminal_image(slint::Image::from_rgba8(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(1,1)));
+        let session_count = ed.io.terminals.sessions.len();
+        let (term_cols, term_rows) = pane::terminal_grid_size(logical_w, session_count, state.cell_w, state.cell_h);
+        let term_id = ed.io.terminals.focused
+            .or_else(|| ed.io.terminals.sessions.first().map(|s| s.id));
+        if state.bottom == 0 && let Some(id) = term_id {
+            if state.terminal_grid != (id, term_cols, term_rows) {
+                if let Err(e) = ed.io.terminals.resize(id, term_cols as u16, term_rows as u16) {
+                    state.message = e;
+                }
+                state.terminal_grid = (id, term_cols, term_rows);
+            }
+            if let Some(sess) = ed.io.terminals.get(id) {
+                let total = sess.screen.line_count();
+                let visible = term_rows as usize;
+                let max_scroll = total.saturating_sub(visible);
+                if state.terminal_scroll > max_scroll { state.terminal_scroll = max_scroll; }
+                let start = total.saturating_sub(visible).saturating_sub(state.terminal_scroll);
+                let count = visible.min(total - start);
+                let lines: Vec<_> = (start..start + count)
+                    .map(|i| sess.screen.styled_line(i))
+                    .collect();
+                let cursor = if ed.io.terminals.focused == Some(id) && sess.screen.cursor_visible() {
+                    let line = sess.screen.scrollback_len() + sess.screen.cursor_screen_row() as usize;
+                    line.checked_sub(start)
+                        .filter(|row| *row < count)
+                        .map(|row| (row, sess.screen.cursor_col() as usize))
+                } else {
+                    None
+                };
+                let terminal_palette = theme::palette(&state.theme_name).terminal;
+                let (cell_w, cell_h) = pane::cell_size(state.cell_w, state.cell_h, ppx);
+                let (rgba, tw, th) = pane::blit_terminal_rgba(
+                    &lines, &state.atlas, term_cols, term_rows, cell_w, cell_h,
+                    &terminal_palette, cursor,
+                );
+                let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(tw.max(1), th.max(1));
+                let dst = buffer.make_mut_bytes();
+                let n = dst.len().min(rgba.len());
+                dst[..n].copy_from_slice(&rgba[..n]);
+                app.set_terminal_image(slint::Image::from_rgba8(buffer));
+            }
+        } else if state.bottom == 0 {
+            app.set_terminal_image(slint::Image::default());
         }
     }
     app.set_find_rows(ModelRc::new(VecModel::from(projection::find_rows(ed))));
@@ -375,7 +433,19 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             .map(Into::into)
             .collect::<Vec<slint::SharedString>>(),
     )));
-    app.set_show_welcome(ed.project_manager.project.root.is_none());
+    let now_welcome = ed.project_manager.project.root.is_none();
+    if now_welcome != state.welcome_visible {
+        state.welcome_visible = now_welcome;
+        if now_welcome {
+            app.window().set_size(slint::WindowSize::Logical(slint::LogicalSize::new(640.0, 480.0)));
+        } else {
+            let (w, _) = logical_size(&app);
+            if w < 900.0 {
+                app.window().set_size(slint::WindowSize::Logical(slint::LogicalSize::new(1280.0, 800.0)));
+            }
+        }
+    }
+    app.set_show_welcome(now_welcome);
     app.set_status_mode(projection::status_mode(ed).as_str().into());
 
     app.set_menu_visible(state.menu_visible);
@@ -394,14 +464,14 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             let focused_pane = ed.view_tree.focused_window()
                 .and_then(|wid| ed.view_tree.window(wid).cloned());
             let focused_buf = focused_pane.as_ref().and_then(|p| p.buffer_id);
-            let cell_x = (state.last_px / pane::CHAR_W as f32).max(0.0) as u16;
-            let cell_y = (state.last_py / pane::LINE_H as f32).max(0.0) as u16;
+            let cell_x = (state.last_px / state.cell_w as f32).max(0.0) as u16;
+            let cell_y = (state.last_py / state.cell_h as f32).max(0.0) as u16;
             let target = if let (Some(pane), Some(buf_id)) = (&focused_pane, focused_buf) {
-                magma::kernel::input::mouse::resolve_click_to_offset(ed, buf_id, pane, cell_x, cell_y)
+                kernel::input::mouse::resolve_click_to_offset(ed, buf_id, pane, cell_x, cell_y)
                     .and_then(|offset| {
                         let arc = ed.buffers.get(buf_id)?;
                         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                        let (ws, we) = magma::kernel::input::mouse::word_range_at(&buf, offset)?;
+                        let (ws, we) = kernel::input::mouse::word_range_at(&buf, offset)?;
                         let diag_line = buf.position_of(offset).line;
                         let diag = buf.get_diagnostics().into_iter()
                             .find(|d| d.line == diag_line)
@@ -440,14 +510,14 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             let new_card = match (&target, ed.hover.as_ref()) {
                 (None, _) => None,
                 (Some(_), Some(card)) if Some(&card.word) == target.as_ref().map(|t| &t.0) => None,
-                (Some((w, diag, _, _)), _) => Some(magma::kernel::state::HoverCard {
+                (Some((w, diag, _, _)), _) => Some(kernel::state::HoverCard {
                     word: w.clone(),
                     px: state.last_px,
                     py: state.last_py,
                     since: std::time::Instant::now(),
                     lines: {
                         let mut lines = Vec::new();
-                        let defs: Vec<(String, &magma::kernel::index::extract::IndexedSymbol)> =
+                        let defs: Vec<(String, &kernel::index::extract::IndexedSymbol)> =
                             ed.index.symbols_with_prefix(w)
                                 .into_iter()
                                 .filter(|(_, sym)| sym.name == *w)
@@ -498,16 +568,16 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             let (cx, cy) = if let Some(pane) = &focused_pane {
                 let buf_id = pane.buffer_id.unwrap_or(0);
                 let visible_rows = pane.height as usize;
-                let st = magma::kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
+                let st = kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
                 let header_rows = if ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).header_line.is_some()).unwrap_or(false) { 1 } else { 0 };
                 let total_lines = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count()).unwrap_or(1);
-                let gutter = magma::kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
-                let x = (gutter as f32 + st.cursor_col as f32) * pane::CHAR_W as f32;
-                let y = (header_rows as f32 + st.cursor_vis_row as f32) * pane::LINE_H as f32;
+                let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
+                let x = (gutter as f32 + st.cursor_col as f32) * state.cell_w as f32;
+                let y = (header_rows as f32 + st.cursor_vis_row as f32) * state.cell_h as f32;
                 (x, y)
             } else { (0.0, 0.0) };
             app.set_completion_x(cx);
-            app.set_completion_y(cy + pane::LINE_H as f32);
+            app.set_completion_y(cy + state.cell_h as f32);
             let items: Vec<slint::SharedString> = ed.completion.items.iter().take(10).map(|i| i.label.as_str().into()).collect();
             app.set_completion_items(slint::ModelRc::new(slint::VecModel::from(items)));
             app.set_completion_selected(ed.completion.idx as i32);
@@ -528,13 +598,13 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             let (qx, qy) = if let Some(pane) = &focused_pane {
                 let buf_id = pane.buffer_id.unwrap_or(0);
                 let visible_rows = pane.height as usize;
-                let st = magma::kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
+                let st = kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
                 let header_rows = if ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).header_line.is_some()).unwrap_or(false) { 1 } else { 0 };
                 let total_lines = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count()).unwrap_or(1);
-                let gutter = magma::kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
-                let x = (gutter as f32 + st.cursor_col as f32) * pane::CHAR_W as f32;
-                let y = (header_rows as f32 + st.cursor_vis_row as f32) * pane::LINE_H as f32;
-                (x, y + pane::LINE_H as f32)
+                let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
+                let x = (gutter as f32 + st.cursor_col as f32) * state.cell_w as f32;
+                let y = (header_rows as f32 + st.cursor_vis_row as f32) * state.cell_h as f32;
+                (x, y + state.cell_h as f32)
             } else { (0.0, 0.0) };
             app.set_quickfix_x(qx);
             app.set_quickfix_y(qy);
@@ -550,8 +620,8 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             if let Some(pane) = &focused_pane
                 && let Some(buf_id) = pane.buffer_id {
                     let visible_rows = pane.height as usize;
-                    let scroll_top = magma::kernel::render::frame::pane_scroll_top(ed, pane, buf_id, visible_rows.max(1));
-                    let img = pane::blit_minimap(ed, buf_id, pane::MINIMAP_W, pane.height as u32 * pane::LINE_H, scroll_top, visible_rows);
+                    let scroll_top = kernel::render::frame::pane_scroll_top(ed, pane, buf_id, visible_rows.max(1));
+                    let img = pane::blit_minimap(ed, buf_id, pane::MINIMAP_W, pane.height as u32 * state.cell_h, scroll_top, visible_rows);
                     app.set_minimap(img);
                 }
         }
@@ -569,12 +639,12 @@ fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         let (cx, cy) = if let Some(pane) = &focused_pane {
             let buf_id = pane.buffer_id.unwrap_or(0);
             let visible_rows = pane.height as usize;
-            let st = magma::kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
+            let st = kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
             let header_rows = if ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).header_line.is_some()).unwrap_or(false) { 1 } else { 0 };
             let total_lines = ed.buffers.get(buf_id).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count()).unwrap_or(1);
-            let gutter = magma::kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
-            let x = (gutter as f32 + st.cursor_col as f32) * pane::CHAR_W as f32;
-            let y = (header_rows as f32 + st.cursor_vis_row as f32) * pane::LINE_H as f32;
+            let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
+            let x = (gutter as f32 + st.cursor_col as f32) * state.cell_w as f32;
+            let y = (header_rows as f32 + st.cursor_vis_row as f32) * state.cell_h as f32;
             (x, y)
         } else { (0.0, 0.0) };
         app.set_cursor_x(cx);
@@ -606,7 +676,10 @@ fn sync_tree(app: &AppWindow, state: &mut AppState) {
     if state.tree_epoch != project.files_epoch || state.tree_root != root {
         state.tree_epoch = project.files_epoch;
         state.tree_root = root;
-        state.tree_nodes = build(&project.files);
+        let mut all: Vec<String> = project.files.clone();
+        all.extend(project.ignored_files.iter().cloned());
+        let ignored: HashSet<String> = project.ignored_files.clone();
+        state.tree_nodes = build(&all, &ignored);
         state.dirs.clear();
         collect_dirs(&state.tree_nodes, &mut state.dirs);
         state.expanded.clear();
@@ -633,10 +706,11 @@ fn sync_tree(app: &AppWindow, state: &mut AppState) {
     app.set_tree_empty(empty.into());
 
     let rows = if state.rail == 0 {
-        projection::tree_rows(&state.tree_nodes, &state.expanded)
+        projection::tree_rows(&state.editor, &state.tree_nodes, &state.expanded)
     } else {
         Vec::new()
     };
     app.set_tree(ModelRc::new(VecModel::from(rows)));
     app.set_selected_path(projection::current_path(&state.editor).into());
 }
+// DELIBERATE SYNTAX ERROR @@@@

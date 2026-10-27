@@ -5,10 +5,10 @@
 
 use std::collections::HashSet;
 
-use magma::kernel::project::tree::{
+use kernel::project::tree::{
     relative_to_project, segments, visible_rows, FileNode,
 };
-use magma::kernel::state::{Editor, MessageKind};
+use kernel::state::{Editor, MessageKind};
 
 use crate::{AgentLine, ChangeRow, FindRow, MenuItem, TreeItem};
 
@@ -78,19 +78,81 @@ pub fn pane_message(ed: &Editor) -> String {
     }
 }
 
-pub fn tree_rows(nodes: &[FileNode], expanded: &HashSet<String>) -> Vec<TreeItem> {
+pub fn tree_rows(ed: &Editor, nodes: &[FileNode], expanded: &HashSet<String>) -> Vec<TreeItem> {
+    // Collect modified files and files with errors.
+    let mut modified_files: HashSet<String> = HashSet::new();
+    let mut error_files: HashSet<String> = HashSet::new();
+    for (key, arc) in &ed.buffers {
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        if buf.modified() {
+            let rel = relative_to_project(ed.project_manager.project.root.as_deref(), &buf.path.clone().unwrap_or_else(|| buf.name.clone()));
+            if !rel.is_empty() { modified_files.insert(rel); }
+        }
+        let has_err = buf.get_diagnostics().iter().any(|d| d.severity == kernel::text_engine::diagnostic::DiagnosticSeverity::Error);
+        if has_err {
+            let rel = relative_to_project(ed.project_manager.project.root.as_deref(), &buf.path.clone().unwrap_or_else(|| buf.name.clone()));
+            if !rel.is_empty() { error_files.insert(rel); }
+        }
+        let _ = key;
+    }
     visible_rows(nodes, expanded)
         .into_iter()
-        .map(|row| TreeItem {
-            name: row.name.into(),
-            path: row.path.into(),
-            depth: row.depth as i32,
-            is_dir: row.is_dir,
-            expanded: row.expanded,
+        .map(|row| {
+            let (icon, color, icon_path, icon_image) = icon_for(ed, &row.name, row.is_dir, row.expanded);
+            TreeItem {
+                name: row.name.into(),
+                path: row.path.clone().into(),
+                depth: row.depth as i32,
+                is_dir: row.is_dir,
+                ignored: row.ignored,
+                modified: modified_files.contains(&row.path),
+                has_error: error_files.contains(&row.path),
+                expanded: row.expanded,
+                icon: icon.into(),
+                icon_color: color,
+                icon_path: icon_path.into(),
+                icon_image,
+            }
         })
         .collect()
 }
 
+fn icon_for(ed: &Editor, name: &str, is_dir: bool, expanded: bool) -> (String, slint::Color, String, slint::Image) {
+    let (glyph, color, path) = if is_dir {
+        match ed.icons.folder_icon(expanded) {
+            Some(kernel::icons::IconKind::Glyph { glyph, color }) => {
+                (*glyph, color.map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b)), None)
+            }
+            Some(kernel::icons::IconKind::Svg { path }) => {
+                ('\0', None, Some(path.clone()))
+            }
+            _ => ('\u{F024B}', None, None),
+        }
+    } else {
+        match ed.icons.lookup(name) {
+            Some(kernel::icons::IconKind::Glyph { glyph, color }) => {
+                (*glyph, color.map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b)), None)
+            }
+            Some(kernel::icons::IconKind::Svg { path }) => {
+                ('\0', None, Some(path.clone()))
+            }
+            _ => ('\u{EA7B}', None, None),
+        }
+    };
+    let color = color.unwrap_or(if is_dir {
+        slint::Color::from_rgb_u8(180, 190, 254)
+    } else {
+        slint::Color::from_rgb_u8(166, 173, 200)
+    });
+    let icon_path = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let icon_image = if !icon_path.is_empty() {
+        slint::Image::load_from_path(std::path::Path::new(&icon_path)).unwrap_or_default()
+    } else {
+        slint::Image::default()
+    };
+    let glyph_str = if icon_path.is_empty() { glyph.to_string() } else { String::new() };
+    (glyph_str, color, icon_path, icon_image)
+}
 pub fn menu_title(title: &str) -> &'static str {
     match title {
         "Edit" => "Edit",
@@ -192,11 +254,11 @@ pub fn agent_lines(ed: &Editor) -> Vec<AgentLine> {
     }];
     for entry in &session.transcript {
         let (text, role) = match entry {
-            magma::kernel::agent::TranscriptEntry::Thought(text) => (text.clone(), "agent"),
-            magma::kernel::agent::TranscriptEntry::Action { command, description } => {
+            kernel::agent::TranscriptEntry::Thought(text) => (text.clone(), "agent"),
+            kernel::agent::TranscriptEntry::Action { command, description } => {
                 (format!("⚒ {command} — {description}"), "action")
             }
-            magma::kernel::agent::TranscriptEntry::StepOutput(text) => (text.clone(), "agent"),
+            kernel::agent::TranscriptEntry::StepOutput(text) => (text.clone(), "agent"),
         };
         lines.push(AgentLine { text: text.into(), role: role.into() });
     }
@@ -217,14 +279,14 @@ pub fn agent_running(ed: &Editor) -> bool {
     ed.agent
         .sessions
         .values()
-        .any(|s| s.status == magma::kernel::agent::AgentStatus::Running)
+        .any(|s| s.status == kernel::agent::AgentStatus::Running)
 }
 
 pub fn running_session(ed: &Editor) -> Option<u64> {
     ed.agent
         .sessions
         .values()
-        .filter(|s| s.status == magma::kernel::agent::AgentStatus::Running)
+        .filter(|s| s.status == kernel::agent::AgentStatus::Running)
         .max_by_key(|s| s.id)
         .map(|s| s.id)
 }

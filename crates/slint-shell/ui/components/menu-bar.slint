@@ -53,6 +53,7 @@ export component MenuBar inherits Rectangle {
             label: "Navigate";
             clicked => { root.menu-opened("Navigate", self.absolute-position.x); }
         }
+        Rectangle { horizontal-stretch: 1; }
         MenuButton {
             label: "Run";
             clicked => { root.menu-opened("Run", self.absolute-position.x); }

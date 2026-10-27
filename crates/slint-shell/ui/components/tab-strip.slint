@@ -4,6 +4,10 @@ export struct TabItem {
     title: string,
     active: bool,
     modified: bool,
+    icon: string,
+    icon-color: color,
+    icon-path: string,
+    icon-image: image,
 }
 
 component Tab inherits Rectangle {
@@ -12,7 +16,7 @@ component Tab inherits Rectangle {
     callback closed();
 
     height: Theme.tab-height;
-    width: Math.max(96px, label.preferred-width + 52px + (item.modified ? 10px : 0px));
+    width: Math.max(96px, label.preferred-width + 52px + (item.modified ? 10px : 0px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px));
     background: item.active
         ? Theme.tab-active
         : (touch.has-hover ? Theme.tab-hover : transparent);
@@ -34,9 +38,29 @@ component Tab inherits Rectangle {
         background: Theme.blue;
     }
 
+    // Icon: SVG image or Nerd Font glyph, before the title.
+    if item.icon-path != "" : Image {
+        x: (item.modified ? 22px : 10px);
+        y: (root.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        source: item.icon-image;
+    }
+
+    if item.icon-path == "" && item.icon != "" : Text {
+        x: (item.modified ? 22px : 10px);
+        width: 16px;
+        text: item.icon;
+        color: item.icon-color;
+        font-family: "Symbols Nerd Font";
+        font-size: 13px;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+
     label := Text {
-        x: item.modified ? 22px : 10px;
-        width: Math.max(0px, root.width - (item.modified ? 22px : 10px) - 30px);
+        x: (item.modified ? 22px : 10px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px);
+        width: Math.max(0px, root.width - ((item.modified ? 22px : 10px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px)) - 30px);
         text: root.item.title;
         color: root.item.active ? Theme.text : (touch.has-hover ? Theme.text : Theme.subtext0);
         font-size: Theme.font-ui;

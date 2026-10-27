@@ -115,6 +115,10 @@ impl Surface {
         let idx = (y as usize) * (self.width as usize) + (x as usize);
         self.cells.get(idx)
     }
+    /// Direct access to the backing cell slice, in row-major order.
+    pub fn cells(&self) -> &[Cell] {
+        &self.cells
+    }
 
     pub fn rows(&self) -> Vec<Vec<&Cell>> {
         let mut rows = Vec::with_capacity(self.height as usize);

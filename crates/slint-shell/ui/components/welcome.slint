@@ -8,99 +8,80 @@ export component Welcome inherits Rectangle {
 
     background: Theme.base;
 
-    HorizontalLayout {
-        alignment: center;
-        VerticalLayout {
-            alignment: center;
+    VerticalLayout {
+        padding: 32px;
+        spacing: 10px;
 
-            card := Rectangle {
-                width: 620px;
-                height: 460px;
-                background: Theme.mantle;
-                border-radius: 12px;
-                border-width: 1px;
-                border-color: Theme.border;
-                drop-shadow-blur: 32px;
-                drop-shadow-color: #00000066;
-                drop-shadow-offset-y: 12px;
+        Text {
+            text: "Magma";
+            color: Theme.text;
+            font-size: 40px;
+            font-weight: 700;
+        }
 
-                VerticalLayout {
-                    padding: 28px;
-                    spacing: 10px;
+        Text {
+            text: "A programmable text editor — Rust kernel, Janet userland.";
+            color: Theme.subtext0;
+            font-size: Theme.font-ui;
+        }
 
-                    Text {
-                        text: "Magma";
-                        color: Theme.text;
-                        font-size: 40px;
-                        font-weight: 700;
-                    }
+        Text {
+            text: "Open a folder to start editing, or pick a recent project.";
+            color: Theme.overlay0;
+            font-size: Theme.font-small;
+        }
 
-                    Text {
-                        text: "A programmable text editor — Rust kernel, Janet userland.";
-                        color: Theme.subtext0;
-                        font-size: Theme.font-ui;
-                    }
+        Rectangle { height: 8px; }
 
-                    Text {
-                        text: "Open a folder to start editing, or pick a recent project.";
-                        color: Theme.overlay0;
-                        font-size: Theme.font-small;
-                    }
+        Button {
+            label: "Open Folder…";
+            primary: true;
+            width: 140px;
+            clicked => { root.open-folder(); }
+        }
 
-                    Rectangle { height: 8px; }
+        Rectangle { height: 6px; }
 
-                    Button {
-                        label: "Open Folder…";
-                        primary: true;
-                        width: 140px;
-                        clicked => { root.open-folder(); }
-                    }
+        Text {
+            text: "RECENT PROJECTS";
+            color: Theme.overlay0;
+            font-size: 10px;
+            font-weight: 600;
+        }
 
-                    Rectangle { height: 6px; }
+        if root.recents.length == 0 : Text {
+            text: "No recent projects yet.";
+            color: Theme.overlay0;
+            font-size: Theme.font-small;
+        }
 
-                    Text {
-                        text: "RECENT PROJECTS";
-                        color: Theme.overlay0;
-                        font-size: 10px;
-                        font-weight: 600;
-                    }
+        for recent in root.recents : Rectangle {
+            height: 24px;
+            border-radius: Theme.radius;
+            background: recent-touch.has-hover ? Theme.surface0 : transparent;
 
-                    if root.recents.length == 0 : Text {
-                        text: "No recent projects yet.";
-                        color: Theme.overlay0;
-                        font-size: Theme.font-small;
-                    }
-
-                    for recent in root.recents : Rectangle {
-                        height: 24px;
-                        border-radius: Theme.radius;
-                        background: recent-touch.has-hover ? Theme.surface0 : transparent;
-
-                        Text {
-                            x: 6px;
-                            text: recent;
-                            color: Theme.subtext1;
-                            font-size: Theme.font-small;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            width: parent.width - 12px;
-                        }
-
-                        recent-touch := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.open-recent(recent); }
-                        }
-                    }
-
-                    Rectangle { vertical-stretch: 1; }
-
-                    Text {
-                        text: "ctrl-shift-o  go to symbol    ctrl-shift-f  find    ctrl-q  quit";
-                        color: Theme.overlay0;
-                        font-size: 10px;
-                    }
-                }
+            Text {
+                x: 6px;
+                text: recent;
+                color: Theme.subtext1;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+                width: parent.width - 12px;
             }
+
+            recent-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.open-recent(recent); }
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        Text {
+            text: "ctrl-shift-o  go to symbol    ctrl-shift-f  find    ctrl-q  quit";
+            color: Theme.overlay0;
+            font-size: 10px;
         }
     }
 }

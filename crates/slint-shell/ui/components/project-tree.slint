@@ -6,7 +6,14 @@ export struct TreeItem {
     path: string,
     depth: int,
     is-dir: bool,
+    ignored: bool,
+    modified: bool,
+    has-error: bool,
     expanded: bool,
+    icon: string,
+    icon-color: color,
+    icon-path: string,
+    icon-image: image,
 }
 
 component TreeRow inherits Rectangle {
@@ -27,14 +34,35 @@ component TreeRow inherits Rectangle {
         horizontal-alignment: center;
     }
 
+    if item.icon-path != "" : Image {
+        x: item.depth * 14px + 22px;
+        width: 16px;
+        height: 16px;
+        source: item.icon-image;
+        opacity: item.ignored ? 0.4 : 1.0;
+    }
+
+    if item.icon-path == "" : Text {
+        x: item.depth * 14px + 22px;
+        width: 16px;
+        text: item.icon;
+        color: item.icon-color;
+        font-family: "Symbols Nerd Font";
+        font-size: 13px;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        opacity: item.ignored ? 0.4 : 1.0;
+    }
+
     Text {
-        x: item.depth * 14px + 24px;
-        width: parent.width - (item.depth * 14px + 32px);
+        x: item.depth * 14px + 42px;
+        width: parent.width - (item.depth * 14px + 50px);
         text: item.name;
-        color: item.is-dir ? Theme.lavender : (selected ? Theme.text : Theme.subtext1);
+        color: item.has-error ? Theme.red : (item.ignored ? Theme.overlay0 : (item.modified ? Theme.blue : (item.is-dir ? Theme.lavender : (selected ? Theme.text : Theme.subtext1))));
         font-size: Theme.font-ui;
         vertical-alignment: center;
         overflow: elide;
+        opacity: item.ignored ? 0.5 : 1.0;
     }
 
     touch := TouchArea {

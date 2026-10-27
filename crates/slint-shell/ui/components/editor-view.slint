@@ -2,13 +2,14 @@ import { Theme } from "../theme.slint";
 
 export component EditorView inherits Rectangle {
     in property <image> pane;
-    in property <length> pane-width: 800px;
-    in property <length> pane-height: 600px;
     in property <string> pane-message;
     in property <image> minimap;
     in property <bool> minimap-visible: false;
     in property <length> cursor-x: 0px;
     in property <length> cursor-y: 0px;
+
+    out property <length> view-width: self.width;
+    out property <length> view-height: self.height;
 
     callback key(string, bool, bool, bool, bool);
     callback mouse-pressed-left(length, length, bool, bool, bool, bool);
@@ -27,16 +28,19 @@ export component EditorView inherits Rectangle {
 
     Image {
         source: root.pane;
-        width: root.pane-width;
-        height: root.pane-height;
+        width: 100%;
+        height: 100%;
+        image-fit: fill;
+        image-rendering: smooth;
     }
 
     if root.minimap-visible : Image {
-        x: root.pane-width - 90px;
+        x: root.width - 90px;
         y: 0;
         width: 90px;
-        height: root.pane-height;
+        height: 100%;
         source: root.minimap;
+        image-fit: fill;
     }
 
     if root.pane-message != "" : Text {

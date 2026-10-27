@@ -4,13 +4,13 @@
 //! `Editor.theme` and `Editor.faces`.  Both are pushed from the same palette
 //! so the surface never clashes with the shell.
 
-use magma::kernel::render::surface::Style;
-use magma::kernel::state::Editor;
+use kernel::render::surface::Style;
+use kernel::state::Editor;
 use slint::ComponentHandle;
 
 use crate::{AppWindow, Theme};
 
-type Rgb = (u8, u8, u8);
+pub type Rgb = (u8, u8, u8);
 
 pub struct Syntax {
     pub keyword:     Rgb,
@@ -34,6 +34,17 @@ pub struct Palette {
     pub lavender: Rgb, pub warning: Rgb, pub border: Rgb,
     pub tab_active: Rgb, pub tab_hover: Rgb, pub selected: Rgb,
     pub syntax: Syntax,
+    pub terminal: TerminalPalette,
+}
+
+/// Console colors for the terminal dock: default foreground/background, the
+/// block cursor, and the 16 ANSI slots.  Each theme carries its own set so the
+/// PTY output never falls back to another frontend's palette.
+pub struct TerminalPalette {
+    pub fg: Rgb,
+    pub bg: Rgb,
+    pub cursor: Rgb,
+    pub ansi: [Rgb; 16],
 }
 
 pub fn palette(name: &str) -> Palette {
@@ -51,6 +62,15 @@ pub fn palette(name: &str) -> Palette {
                 constant: (23, 80, 235), operator: (30, 31, 34), punctuation: (30, 31, 34),
                 error: (219, 59, 75), warning: (194, 125, 0),
             },
+            terminal: TerminalPalette {
+                fg: (30, 31, 34), bg: (255, 255, 255), cursor: (30, 31, 34),
+                ansi: [
+                    (0, 0, 0), (219, 59, 75), (32, 138, 60), (194, 125, 0),
+                    (53, 116, 240), (166, 38, 190), (0, 135, 175), (108, 112, 126),
+                    (140, 140, 140), (229, 80, 95), (60, 168, 88), (214, 152, 32),
+                    (90, 140, 240), (190, 90, 210), (36, 160, 200), (30, 31, 34),
+                ],
+            },
         },
         "mocha" => Palette {
             crust: (17, 17, 27), mantle: (24, 24, 37), base: (30, 30, 46),
@@ -64,6 +84,15 @@ pub fn palette(name: &str) -> Palette {
                 type_: (137, 180, 250), function: (250, 179, 135), variable: (205, 214, 244),
                 constant: (249, 226, 175), operator: (137, 220, 235), punctuation: (166, 173, 200),
                 error: (243, 139, 168), warning: (250, 179, 135),
+            },
+            terminal: TerminalPalette {
+                fg: (205, 214, 244), bg: (30, 30, 46), cursor: (205, 214, 244),
+                ansi: [
+                    (69, 71, 90), (243, 139, 168), (166, 227, 161), (249, 226, 175),
+                    (137, 180, 250), (245, 194, 231), (148, 226, 213), (186, 194, 222),
+                    (88, 91, 112), (243, 139, 168), (166, 227, 161), (249, 226, 175),
+                    (137, 180, 250), (245, 194, 231), (148, 226, 213), (166, 173, 200),
+                ],
             },
         },
         "latte" => Palette {
@@ -79,6 +108,15 @@ pub fn palette(name: &str) -> Palette {
                 constant: (223, 142, 29), operator: (4, 165, 229), punctuation: (92, 95, 119),
                 error: (210, 15, 57), warning: (254, 100, 11),
             },
+            terminal: TerminalPalette {
+                fg: (76, 79, 105), bg: (239, 241, 245), cursor: (76, 79, 105),
+                ansi: [
+                    (92, 95, 119), (210, 15, 57), (64, 160, 43), (223, 142, 29),
+                    (30, 102, 245), (234, 118, 203), (23, 146, 153), (172, 176, 190),
+                    (108, 111, 133), (210, 15, 57), (64, 160, 43), (223, 142, 29),
+                    (30, 102, 245), (234, 118, 203), (23, 146, 153), (188, 192, 204),
+                ],
+            },
         },
         _ => Palette {
             crust: (30, 31, 34), mantle: (43, 45, 48), base: (30, 31, 34),
@@ -92,6 +130,15 @@ pub fn palette(name: &str) -> Palette {
                 type_: (185, 188, 209), function: (86, 168, 245), variable: (188, 190, 196),
                 constant: (42, 172, 184), operator: (169, 183, 198), punctuation: (169, 183, 198),
                 error: (247, 84, 100), warning: (214, 174, 88),
+            },
+            terminal: TerminalPalette {
+                fg: (223, 225, 229), bg: (30, 31, 34), cursor: (223, 225, 229),
+                ansi: [
+                    (0, 0, 0), (250, 83, 85), (18, 110, 0), (194, 195, 0),
+                    (69, 129, 235), (250, 84, 255), (51, 194, 193), (173, 173, 173),
+                    (85, 85, 85), (251, 113, 114), (103, 255, 79), (255, 255, 0),
+                    (109, 157, 252), (251, 130, 255), (96, 212, 213), (238, 238, 238),
+                ],
             },
         },
     }

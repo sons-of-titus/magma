@@ -8,9 +8,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use magma::kernel::command::args::ArgValue;
-use magma::kernel::command::execute_command;
-use magma::kernel::render::tabs;
+use kernel::command::args::ArgValue;
+use kernel::command::execute_command;
+use kernel::render::tabs;
 use slint::ComponentHandle;
 
 use crate::{input, logical_size, pane, projection, refresh, AppState, AppWindow};
@@ -22,7 +22,7 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         app.on_key(move |text, ctrl, shift, alt, meta| {
             let Some(key) = input::translate_key(&text, ctrl, shift, alt, meta) else { return };
             let mut s = state.borrow_mut();
-            magma::kernel::input::dispatch_key(&mut s.editor, &key);
+            kernel::input::dispatch_key(&mut s.editor, &key);
             s.editor.dispatch_events_scoped();
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
@@ -145,25 +145,21 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 }
                 "dialog:settings" => {
                     s.settings_visible = true;
-                    if let Some(a) = weak.upgrade() { a.set_settings_visible(true); }
+                    if let Some(a) = weak.upgrade() {
+                        a.set_settings_visible(true);
+                        a.set_settings_app_font_name(s.app_font_name.clone().into());
+                        a.set_settings_app_font_size(s.app_font_size.to_string().into());
+                        a.set_settings_editor_font_name(s.editor.font_config.family.clone().into());
+                        a.set_settings_editor_font_size(s.editor.font_config.size.to_string().into());
+                        a.set_settings_ligatures(s.editor.font_config.ligatures);
+                    }
                 }
                 c if c.starts_with("settings:theme:") => {
                     let name = c.trim_start_matches("settings:theme:");
                     s.editor.options.insert("gui-theme".into(), name.into());
                     s.theme_name.clear();
                 }
-                c if c.starts_with("settings:font:") => {
-                    let (ui, small) = match c.trim_start_matches("settings:font:") {
-                        "small" => (11.0f32, 10.0f32),
-                        "large" => (16.0f32, 14.0f32),
-                        _ => (13.0f32, 11.0f32),
-                    };
-                    if let Some(a) = weak.upgrade() {
-                        let g = a.global::<crate::Theme>();
-                        g.set_font_ui(ui);
-                        g.set_font_small(small);
-                    }
-                }
+                // Font sizing is handled by apply-font-settings now.
                 "toggle-minimap" => {
                     let cur = s.editor.options.get("minimap-enabled").map(|v| v.as_str()) == Some("true");
                     s.editor.options.insert("minimap-enabled".into(), if cur { "false".into() } else { "true".into() });
@@ -235,7 +231,7 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 s.bottom = -1;
             } else {
                 s.bottom = index;
-                if index == 0 {
+                if index == 0 && s.editor.io.terminals.sessions.is_empty() {
                     let _ = execute_command(&mut s.editor, "terminal-start", &HashMap::new());
                 }
             }
@@ -267,13 +263,16 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
-        app.on_terminal_scroll(move |d| {
+        app.on_terminal_close(move |i| {
             let mut s = state.borrow_mut();
-            let delta = (d / 16.0) as i32;
-            if delta > 0 {
-                s.terminal_scroll = s.terminal_scroll.saturating_add(delta as usize);
-            } else {
-                s.terminal_scroll = s.terminal_scroll.saturating_sub((-delta) as usize);
+            let id = s.editor.io.terminals.sessions.get(i as usize).map(|t| t.id);
+            if let Some(id) = id {
+                let mut args = HashMap::new();
+                args.insert("terminal".to_string(), ArgValue::Integer(id as i64));
+                match execute_command(&mut s.editor, "terminal-close", &args) {
+                    Ok(()) => s.message.clear(),
+                    Err(e) => s.message = e,
+                }
             }
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
@@ -282,15 +281,13 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
-        app.on_terminal_submit(move |text| {
+        app.on_terminal_scroll(move |d| {
             let mut s = state.borrow_mut();
-            let term_id = s.editor.io.terminals.focused
-                .or_else(|| s.editor.io.terminals.sessions.first().map(|t| t.id));
-            if let Some(id) = term_id {
-                let mut args = HashMap::new();
-                args.insert("terminal".to_string(), ArgValue::Integer(id as i64));
-                args.insert("text".to_string(), ArgValue::String(text.to_string() + "\n"));
-                let _ = execute_command(&mut s.editor, "terminal-send-input", &args);
+            let delta = (d / 16.0) as i32;
+            if delta > 0 {
+                s.terminal_scroll = s.terminal_scroll.saturating_add(delta as usize);
+            } else {
+                s.terminal_scroll = s.terminal_scroll.saturating_sub((-delta) as usize);
             }
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
@@ -366,7 +363,7 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 app.set_agent_prompt("".into());
             }
             let mut s = state.borrow_mut();
-            match magma::kernel::agent::loop_::start_session(&mut s.editor, &prompt) {
+            match kernel::agent::loop_::start_session(&mut s.editor, &prompt) {
                 Ok(id) => {
                     s.message = format!("agent session {id} started");
                     s.agent_open = true;
@@ -468,13 +465,13 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
 
     // ── Editor pane mouse ──────────────────────────────────────────────────
     {
-        use magma::kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
+        use kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
         let state = Rc::clone(&state);
         let weak = app.as_weak();
         app.on_mouse_pressed_left(move |x, y, ctrl, shift, alt, _meta| {
             let mut s = state.borrow_mut();
-            let cell_x = (x / pane::CHAR_W as f32).max(0.0) as u16;
-            let cell_y = (y / pane::LINE_H as f32).max(0.0) as u16;
+            let cell_x = (x / s.cell_w as f32).max(0.0) as u16;
+            let cell_y = (y / s.cell_h as f32).max(0.0) as u16;
             let mut mods = Vec::new();
             if ctrl { mods.push("ctrl"); }
             if shift { mods.push("shift"); }
@@ -486,20 +483,20 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 button: MouseButton::Left,
                 modifiers: mods.join(","),
             };
-            let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+            kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
         });
     }
     {
-        use magma::kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
+        use kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
         let state = Rc::clone(&state);
         let weak = app.as_weak();
         app.on_mouse_pressed_right(move |x, y| {
             let mut s = state.borrow_mut();
-            let cell_x = (x / pane::CHAR_W as f32).max(0.0) as u16;
-            let cell_y = (y / pane::LINE_H as f32).max(0.0) as u16;
+            let cell_x = (x / s.cell_w as f32).max(0.0) as u16;
+            let cell_y = (y / s.cell_h as f32).max(0.0) as u16;
             let ev = MouseEvent {
                 kind: MouseEventKind::Click,
                 x: cell_x,
@@ -507,20 +504,20 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 button: MouseButton::Right,
                 modifiers: String::new(),
             };
-            let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+            kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
         });
     }
     {
-        use magma::kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
+        use kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
         let state = Rc::clone(&state);
         let weak = app.as_weak();
         app.on_mouse_pressed_middle(move |x, y| {
             let mut s = state.borrow_mut();
-            let cell_x = (x / pane::CHAR_W as f32).max(0.0) as u16;
-            let cell_y = (y / pane::LINE_H as f32).max(0.0) as u16;
+            let cell_x = (x / s.cell_w as f32).max(0.0) as u16;
+            let cell_y = (y / s.cell_h as f32).max(0.0) as u16;
             let ev = MouseEvent {
                 kind: MouseEventKind::Click,
                 x: cell_x,
@@ -528,8 +525,8 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 button: MouseButton::Middle,
                 modifiers: String::new(),
             };
-            let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+            kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
         });
@@ -539,7 +536,7 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_ime_committed(move |text| {
             let mut s = state.borrow_mut();
-            magma::kernel::input::dispatch_key(&mut s.editor, &text);
+            kernel::input::dispatch_key(&mut s.editor, &text);
             s.editor.dispatch_events_scoped();
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
@@ -557,14 +554,13 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         });
     }
     {
-        use magma::kernel::input::event::{MouseEvent, MouseEventKind};
+        use kernel::input::event::{MouseEvent, MouseEventKind};
         let state = Rc::clone(&state);
-        let weak = app.as_weak();
         app.on_mouse_moved(move |x, y| {
             let mut s = state.borrow_mut();
             if !s.editor.mouse_state.pressed { return; }
-            let cell_x = (x / pane::CHAR_W as f32).max(0.0) as u16;
-            let cell_y = (y / pane::LINE_H as f32).max(0.0) as u16;
+            let cell_x = (x / s.cell_w as f32).max(0.0) as u16;
+            let cell_y = (y / s.cell_h as f32).max(0.0) as u16;
             let button = s.editor.mouse_state.button.clone();
             let ev = MouseEvent {
                 kind: MouseEventKind::Drag,
@@ -573,14 +569,15 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 button,
                 modifiers: String::new(),
             };
-            let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+            kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            // Let the frame timer coalesce drag updates: a full pane blit per
+            // motion event stalls the UI thread.
             s.editor.frame_dirty = true;
-            refresh(&weak, &mut s);
         });
     }
     {
-        use magma::kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
+        use kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
         let state = Rc::clone(&state);
         let weak = app.as_weak();
         app.on_mouse_released(move || {
@@ -592,26 +589,39 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 button: MouseButton::Left,
                 modifiers: String::new(),
             };
-            let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+            kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
         });
     }
     {
-        use magma::kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
+        use kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
         let state = Rc::clone(&state);
-        let weak = app.as_weak();
         app.on_mouse_scrolled(move |x, y, dx, dy, ctrl, shift, alt, _meta| {
             let mut s = state.borrow_mut();
-            let cell_x = (x / pane::CHAR_W as f32).max(0.0) as u16;
-            let cell_y = (y / pane::LINE_H as f32).max(0.0) as u16;
+            let cell_x = (x / s.cell_w as f32).max(0.0) as u16;
+            let cell_y = (y / s.cell_h as f32).max(0.0) as u16;
             let mut mods = Vec::new();
             if ctrl { mods.push("ctrl"); }
             if shift { mods.push("shift"); }
             if alt { mods.push("alt"); }
             let mods = mods.join(",");
-            let v_delta = (dy / pane::LINE_H as f32) as i32;
+
+            // Trackpad deltas are sub-line: accumulate them so a slow
+            // two-finger scroll still advances by whole cell rows.
+            let (raw_x, raw_y) = if shift && dx == 0.0 {
+                (dy, 0.0)
+            } else {
+                (dx, dy)
+            };
+            s.wheel_y += raw_y;
+            s.wheel_x += raw_x;
+            let v_delta = (s.wheel_y / s.cell_h as f32).trunc() as i32;
+            let h_delta = (s.wheel_x / s.cell_w as f32).trunc() as i32;
+            s.wheel_y -= v_delta as f32 * s.cell_h as f32;
+            s.wheel_x -= h_delta as f32 * s.cell_w as f32;
+
             if v_delta != 0 {
                 let ev = MouseEvent {
                     kind: MouseEventKind::Scroll(v_delta),
@@ -620,10 +630,9 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                     button: MouseButton::Left,
                     modifiers: mods.clone(),
                 };
-                let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+                let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+                kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
             }
-            let h_delta = (dx / pane::CHAR_W as f32) as i32;
             if h_delta != 0 {
                 let ev = MouseEvent {
                     kind: MouseEventKind::ScrollX(h_delta),
@@ -632,12 +641,88 @@ pub(crate) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                     button: MouseButton::Left,
                     modifiers: mods,
                 };
-                let dummy_surface = magma::kernel::render::surface::Surface::new(1, 1);
-            magma::kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+                let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+                kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
             }
+            // Coalesce with any further wheel events; the frame timer redraws.
+            s.editor.frame_dirty = true;
+        });
+    }
+
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_apply_font_settings(move || {
+            let Some(app) = weak.upgrade() else { return; };
+            let app_font_name = app.get_settings_app_font_name().to_string();
+            let app_font_size: f32 = app.get_settings_app_font_size().parse::<f32>().unwrap_or(12.0).max(6.0);
+            let editor_font_name = app.get_settings_editor_font_name().to_string();
+            let editor_font_size: f32 = app.get_settings_editor_font_size().parse::<f32>().unwrap_or(15.0).max(4.0);
+            let ligatures = app.get_settings_ligatures();
+
+            let mut s = state.borrow_mut();
+            s.app_font_name = app_font_name.clone();
+            s.app_font_size = app_font_size;
+            if let Some(a) = weak.upgrade() {
+                let g = a.global::<crate::Theme>();
+                g.set_font_ui(app_font_size);
+                g.set_font_small((app_font_size - 1.0).max(8.0));
+                a.set_app_font_name(s.app_font_name.clone().into());
+                a.set_app_font_size(app_font_size);
+            }
+
+            if !editor_font_name.trim().is_empty() {
+                if !s.editor.font_config.loaded_fonts.contains_key(&editor_font_name) {
+                    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+                    if let Some(home) = std::env::var_os("HOME") {
+                        let dir = std::path::PathBuf::from(home).join("Library/Fonts");
+                        if let Ok(entries) = std::fs::read_dir(&dir) {
+                            for e in entries.flatten() {
+                                let p = e.path();
+                                if let Some(ext) = p.extension().and_then(|x| x.to_str())
+                                    && (ext.eq_ignore_ascii_case("ttf") || ext.eq_ignore_ascii_case("otf")) {
+                                        candidates.push(p);
+                                    }
+                            }
+                        }
+                    }
+                    for dir in ["/System/Library/Fonts", "/Library/Fonts"] {
+                        if let Ok(entries) = std::fs::read_dir(dir) {
+                            for e in entries.flatten() {
+                                let p = e.path();
+                                if let Some(ext) = p.extension().and_then(|x| x.to_str())
+                                    && (ext.eq_ignore_ascii_case("ttf") || ext.eq_ignore_ascii_case("otf")) {
+                                        candidates.push(p);
+                                    }
+                            }
+                        }
+                    }
+                    let needle = editor_font_name.to_lowercase();
+                    for p in candidates {
+                        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                        if stem.contains(&needle) || needle.contains(&stem) {
+                            if let Ok(bytes) = std::fs::read(&p)
+                                && bytes.len() > 1000 {
+                                    s.editor.font_config.loaded_fonts.insert(editor_font_name.clone(), bytes);
+                                    break;
+                                }
+                        }
+                    }
+                }
+                s.editor.font_config.family = editor_font_name;
+            }
+            s.editor.font_config.size = editor_font_size;
+            s.editor.font_config.ligatures = ligatures;
+            s.editor.font_changed = true;
+
+            if let Some(bytes) = s.editor.font_config.primary_font().map(|b| b.clone()) {
+                let (cw, ch) = pane::measure_cell(&bytes, editor_font_size);
+                s.cell_w = cw.max(1);
+                s.cell_h = ch.max(1);
+            }
+
             s.editor.frame_dirty = true;
             refresh(&weak, &mut s);
         });
     }
-
 }

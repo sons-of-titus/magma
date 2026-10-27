@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["full"] }
 rfd = "0.15"
 serde_json = "1"
 ab_glyph = "0.2"
+fontdb = { version = "0.23", features = ["fs", "memmap"] }
 
 [features]
 default = ["janet"]

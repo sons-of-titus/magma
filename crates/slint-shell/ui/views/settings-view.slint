@@ -1,0 +1,498 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Field, Check, Picker, NumberField, SectionLabel } from "../components/controls.slint";
+import { Button, ToolbarIcon } from "../components/button.slint";
+
+// One registry-backed setting.  `value` is always the live kernel value;
+// controls write straight back through `set-option`.
+export struct SettingsRow {
+    name: string,
+    description: string,
+    kind: string,       // bool | int | enum | str
+    value: string,
+    int-value: int,
+    choices: [string],
+    modified: bool,
+}
+
+component OptionRow inherits Rectangle {
+    in property <SettingsRow> spec;
+    callback set(string, string);
+    callback reset(string);
+
+    height: desc.preferred-height > 14px ? 52px : 40px;
+
+    HorizontalLayout {
+        padding: 4px;
+        spacing: 12px;
+        alignment: start;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            alignment: start;
+
+            Text {
+                text: spec.name;
+                color: Theme.text-primary;
+                font-size: Theme.font-ui;
+            }
+            desc := Text {
+                text: spec.description;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+
+        // Control sized to the value type; every change writes through to
+        // the kernel immediately.
+        if spec.kind == "bool" : bool-check := Check {
+            y: (parent.height - self.height) / 2;
+            checked: spec.value == "true";
+            toggled => { root.set(spec.name, bool-check.checked ? "true" : "false"); }
+        }
+        if spec.kind == "int" : NumberField {
+            y: (parent.height - self.height) / 2;
+            value: spec.int-value;
+            changed(v) => { root.set(spec.name, "\{v}"); }
+        }
+        if spec.kind == "enum" : Picker {
+            y: (parent.height - self.height) / 2;
+            choices: spec.choices;
+            current-value: spec.value;
+            changed(v) => { root.set(spec.name, v); }
+        }
+        if spec.kind == "str" : str-field := Field {
+            y: (parent.height - self.height) / 2;
+            width: 220px;
+            text: spec.value;
+            accepted => { root.set(spec.name, str-field.text); }
+        }
+
+        if spec.modified : Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: reset-text.preferred-width + 14px;
+            height: 22px;
+            border-radius: Theme.radius;
+            background: reset-touch.has-hover ? Theme.fill : transparent;
+            reset-text := Text {
+                text: "Reset";
+                color: Theme.text-muted;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            reset-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.reset(spec.name); }
+            }
+        }
+    }
+}
+
+component CategoryRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback picked();
+
+    height: 26px;
+    border-radius: Theme.radius;
+    background: selected ? Theme.selection : (touch.has-hover ? Theme.fill-muted : transparent);
+
+    Text {
+        x: 10px;
+        text: root.label;
+        color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        font-size: Theme.font-ui;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+}
+
+export component SettingsView inherits Rectangle {
+    in property <[SettingsRow]> rows;
+    in property <[string]> available-fonts;
+    in property <[string]> agent-models;
+    in property <bool> agent-configured: false;
+    in-out property <int> settings-category: 0;
+    in-out property <string> settings-app-font-name: "";
+    in-out property <int> settings-app-font-size: 12;
+    in-out property <string> settings-editor-font-name: "";
+    in-out property <int> settings-editor-font-size: 15;
+    in-out property <bool> settings-ligatures: false;
+    in-out property <string> settings-agent-provider: "openai";
+    in-out property <string> settings-agent-token: "";
+    in-out property <string> settings-agent-model: "";
+    in-out property <string> settings-search: "";
+
+    callback set-option(string, string);
+    callback reset-option(string);
+    callback add-option(string, string);
+    callback search-changed();
+    callback select-category(int);
+    callback apply-font-settings();
+    callback apply-agent-settings();
+    callback close();
+    callback command(string);
+
+    property <length> card-w: 760px;
+    property <length> card-h: 540px;
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000066;
+
+    // Backdrop click closes; every change is already applied, so nothing
+    // can be lost.
+    TouchArea {
+        clicked => { root.close(); }
+    }
+
+    Rectangle {
+        x: (parent.width - card-w) / 2;
+        y: (parent.height - card-h) / 2;
+        width: card-w;
+        height: card-h;
+        background: Theme.surface-panel;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 6px;
+
+        // Consume clicks inside the card.
+        TouchArea { }
+
+        focus := FocusScope {
+            width: 100%;
+            height: 100%;
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.close();
+                    accept
+                } else {
+                    reject
+                }
+            }
+        }
+
+        // ── Title bar ────────────────────────────────────────────────────
+        HorizontalLayout {
+            x: 16px;
+            y: 12px;
+            width: parent.width - 32px;
+            height: 24px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "Settings";
+                color: Theme.text-primary;
+                font-size: 15px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            Text {
+                text: ["Appearance", "Editing", "Behavior", "Agent", "Advanced"][root.settings-category];
+                color: Theme.text-muted;
+                font-size: Theme.font-ui;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            ToolbarIcon {
+                glyph: "×";
+                clicked => { root.close(); }
+            }
+        }
+
+        // ── Left column: search + categories ─────────────────────────────
+        Rectangle {
+            x: 0;
+            y: 44px;
+            width: 184px;
+            height: parent.height - 44px;
+            background: Theme.chrome;
+
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                height: 100%;
+                background: Theme.border;
+            }
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+
+                Field {
+                    placeholder: "Search settings";
+                    text <=> root.settings-search;
+                    edited => { root.search-changed(); }
+                }
+
+                VerticalLayout {
+                    spacing: 2px;
+                    CategoryRow { label: "Appearance"; selected: root.settings-category == 0; picked => { root.select-category(0); } }
+                    CategoryRow { label: "Editing"; selected: root.settings-category == 1; picked => { root.select-category(1); } }
+                    CategoryRow { label: "Behavior"; selected: root.settings-category == 2; picked => { root.select-category(2); } }
+                    CategoryRow { label: "Agent"; selected: root.settings-category == 3; picked => { root.select-category(3); } }
+                    CategoryRow { label: "Advanced"; selected: root.settings-category == 4; picked => { root.select-category(4); } }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                Text {
+                    text: "Changes apply immediately.";
+                    color: Theme.text-faint;
+                    font-size: 10px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // ── Right column: the selected page ──────────────────────────────
+        Rectangle {
+            x: 184px;
+            y: 44px;
+            width: parent.width - 184px;
+            height: parent.height - 44px;
+
+            ScrollView {
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 10px;
+                    alignment: start;
+
+                    // ── Appearance ───────────────────────────────────
+                    if root.settings-category == 0 : VerticalLayout {
+                        spacing: 10px;
+                        for row in root.rows : OptionRow {
+                            spec: row;
+                            set(n, v) => { root.set-option(n, v); }
+                            reset(n) => { root.reset-option(n); }
+                        }
+
+                        SectionLabel { text: "APPLICATION FONT"; }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Text {
+                                width: 56px;
+                                text: "Family";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                vertical-alignment: center;
+                            }
+                            Picker {
+                                choices: root.available-fonts;
+                                current-value <=> root.settings-app-font-name;
+                                min-w: 180px;
+                                horizontal-stretch: 1;
+                                changed => { root.apply-font-settings(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Text {
+                                width: 56px;
+                                text: "Size";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                vertical-alignment: center;
+                            }
+                            NumberField {
+                                value <=> root.settings-app-font-size;
+                                minimum: 6;
+                                maximum: 72;
+                                changed => { root.apply-font-settings(); }
+                            }
+                        }
+                    }
+
+                    // ── Editing ──────────────────────────────────────
+                    if root.settings-category == 1 : VerticalLayout {
+                        spacing: 10px;
+                        for row in root.rows : OptionRow {
+                            spec: row;
+                            set(n, v) => { root.set-option(n, v); }
+                            reset(n) => { root.reset-option(n); }
+                        }
+
+                        SectionLabel { text: "EDITOR FONT"; }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Text {
+                                width: 56px;
+                                text: "Family";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                vertical-alignment: center;
+                            }
+                            Picker {
+                                choices: root.available-fonts;
+                                current-value <=> root.settings-editor-font-name;
+                                min-w: 180px;
+                                horizontal-stretch: 1;
+                                changed => { root.apply-font-settings(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Text {
+                                width: 56px;
+                                text: "Size";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                vertical-alignment: center;
+                            }
+                            NumberField {
+                                value <=> root.settings-editor-font-size;
+                                minimum: 4;
+                                maximum: 72;
+                                changed => { root.apply-font-settings(); }
+                            }
+                        }
+                        Check {
+                            label: "Enable ligatures";
+                            description: "Render programming ligatures in the editor";
+                            checked <=> root.settings-ligatures;
+                            toggled => { root.apply-font-settings(); }
+                        }
+                    }
+
+                    // ── Behavior ─────────────────────────────────────
+                    if root.settings-category == 2 : VerticalLayout {
+                        spacing: 10px;
+                        for row in root.rows : OptionRow {
+                            spec: row;
+                            set(n, v) => { root.set-option(n, v); }
+                            reset(n) => { root.reset-option(n); }
+                        }
+                    }
+
+                    // ── Agent ────────────────────────────────────────
+                    if root.settings-category == 3 : VerticalLayout {
+                        spacing: 10px;
+                        for row in root.rows : OptionRow {
+                            spec: row;
+                            set(n, v) => { root.set-option(n, v); }
+                            reset(n) => { root.reset-option(n); }
+                        }
+
+                        SectionLabel { text: "CONNECTION"; }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Text {
+                                width: 56px;
+                                text: "Model";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                vertical-alignment: center;
+                            }
+                            Picker {
+                                choices: root.agent-models;
+                                current-value <=> root.settings-agent-model;
+                                min-w: 180px;
+                                horizontal-stretch: 1;
+                                changed => { root.apply-agent-settings(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: start;
+                            Text {
+                                width: 56px;
+                                text: "API key";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                vertical-alignment: center;
+                            }
+                            Field {
+                                width: 240px;
+                                placeholder: root.agent-configured ? "key saved — paste to replace" : "paste API key";
+                                text <=> root.settings-agent-token;
+                                accepted => { root.apply-agent-settings(); }
+                            }
+                            Button {
+                                label: "Save";
+                                primary: true;
+                                clicked => { root.apply-agent-settings(); }
+                            }
+                        }
+                        Text {
+                            text: root.agent-configured ? "✓ API key configured for " + root.settings-agent-provider
+                                                       : "No API key — the agent falls back to the built-in planner.";
+                            color: root.agent-configured ? Theme.success : Theme.text-muted;
+                            font-size: Theme.font-small;
+                        }
+                    }
+
+                    // ── Advanced ─────────────────────────────────────
+                    if root.settings-category == 4 : VerticalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: root.rows.length == 0
+                                ? "No custom options set."
+                                : "Options set outside the registry. API keys are never shown here.";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                        }
+                        for row in root.rows : OptionRow {
+                            spec: row;
+                            set(n, v) => { root.set-option(n, v); }
+                            reset(n) => { root.reset-option(n); }
+                        }
+
+                        SectionLabel { text: "ADD OPTION"; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            add-name := Field {
+                                width: 200px;
+                                placeholder: "option name";
+                            }
+                            add-value := Field {
+                                width: 200px;
+                                placeholder: "value";
+                                accepted => {
+                                    root.add-option(add-name.text, add-value.text);
+                                    add-name.text = "";
+                                    add-value.text = "";
+                                }
+                            }
+                            Button {
+                                label: "Add";
+                                clicked => {
+                                    root.add-option(add-name.text, add-value.text);
+                                    add-name.text = "";
+                                    add-value.text = "";
+                                }
+                            }
+                        }
+                    }
+
+                    // ── No search results ────────────────────────────
+                    if root.settings-search != "" && root.rows.length == 0 : Text {
+                        text: "No settings match “" + root.settings-search + "”.";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-ui;
+                    }
+                }
+            }
+        }
+    }
+}

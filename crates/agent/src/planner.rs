@@ -1,19 +1,8 @@
 //! Planner implementations (Phase 11 — AI/Agent Architecture).
-//!
-//! `BuiltinPlanner` — a deterministic tool-use planner that maps simple goal
-//! strings to editor command sequences without an LLM call.  It is the default
-//! planner when no LLM backend is configured.
 
 use std::collections::HashMap;
-use super::types::{AgentContext, Plan, PlanStep, Planner};
+use crate::types::{AgentContext, Plan, PlanStep, Planner};
 
-/// Simple deterministic planner using prefix-based goal parsing.
-///
-/// Recognised goal prefixes:
-///   `run:<task-name>`         → task/run
-///   `goto:<symbol-name>`      → semantic/definitions
-///   `diagnose:<buffer-path>`  → emits diagnostics summary (no-op steps)
-///   (anything else)           → echo-style summary plan with no steps
 pub struct BuiltinPlanner;
 
 impl Planner for BuiltinPlanner {
@@ -48,7 +37,6 @@ impl Planner for BuiltinPlanner {
                 ctx.diagnostics.join("\n")
             ))
         } else {
-            // Default: summarise context, no editor mutations.
             Plan::empty(format!(
                 "Goal: {goal}\nActive file: {}\nLanguage: {}\nDiagnostics: {}\nSymbols known: {}",
                 ctx.active_buffer_path.as_deref().unwrap_or("<scratch>"),
@@ -63,6 +51,7 @@ impl Planner for BuiltinPlanner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::AgentContext;
 
     fn empty_ctx() -> AgentContext {
         AgentContext::default()

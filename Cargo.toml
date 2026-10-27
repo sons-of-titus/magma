@@ -11,6 +11,7 @@ members = [
     "crates/snippet",
     "crates/icons",
     "crates/fs",
+    "crates/agent",
     "crates/session",
     "crates/index",
     "crates/run_config",
@@ -30,6 +31,9 @@ members = [
     "crates/extension",
     "crates/net",
     "crates/clipboard",
+    "crates/gui",
+    "crates/slint-shell",
+    "crates/scripting",
 ]
 resolver = "3"
 
@@ -70,6 +74,7 @@ keymap = { path = "crates/keymap" }
 extension = { path = "crates/extension" }
 net = { path = "crates/net" }
 clipboard = { path = "crates/clipboard" }
+agent = { path = "crates/agent" }
 anyhow = "1.0"
 thiserror = "1.0"
 regex = "1"
@@ -78,11 +83,6 @@ unicode-segmentation = "1.12"
 smallstr = "0.3"
 slab = "0.4"
 ropey = "1.6"
-eframe = { version = "0.36.2", optional = true, features = ["wgpu"] }
-bytemuck = { version = "1", optional = true }
-ab_glyph = { version = "0.2", optional = true }
-rfd = { version = "0.15", optional = true }
-resvg = { version = "0.45", optional = true }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -99,6 +99,7 @@ unicode-bidi = "0.3"
 
 [dev-dependencies]
 paste = "1.0"
+ab_glyph = "0.2"
 
 [[bench]]
 name = "buffer_ops"
@@ -141,6 +142,5 @@ name = "perf_gates"
 harness = false
 
 [features]
-default = ["janet", "gui"]
-janet = ["dep:evil-janet"]
-gui = ["dep:eframe", "dep:bytemuck", "dep:ab_glyph", "dep:rfd", "dep:resvg", "gpu/gui"]
+default = ["janet"]
+janet = []

@@ -22,7 +22,7 @@ use super::types::{AgentContext, ContextProvider, Planner, PlanStep};
 use super::TranscriptEntry;
 
 /// Maximum model round-trips per session.
-pub const MAX_TURNS: u8 = 12;
+pub use super::MAX_TURNS;
 
 /// Create a session and kick off its first turn.  With an API key this is
 /// the real LLM loop; without one the deterministic BuiltinPlanner runs

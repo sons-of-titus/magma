@@ -1,20 +1,10 @@
-//! LLM backend for the agent loop — an OpenAI-compatible chat-completions
-//! client with tool calling (the roadmap's "scaffolding should get a real
-//! model or be deleted": this is the real model).
-//!
-//! Configuration (F-28 spirit: the agent runs with core privileges, so
-//! enabling it is an explicit act):
-//!   `agent.api-url` option (default `https://api.openai.com/v1`)
-//!   `agent.model`   option (default `gpt-4o-mini`)
-//!   key from the `MAGMA_AGENT_API_KEY` env var or the `agent.api-key` option.
-//! Without a key the agent falls back to the deterministic BuiltinPlanner.
+//! LLM backend for the agent loop.
 
 use serde_json::{json, Value};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const MAX_BUFFER_CONTEXT_CHARS: usize = 8_000;
-/// Hard bound on one HTTP body so a runaway server cannot exhaust memory.
 pub const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,7 +15,6 @@ pub struct LlmConfig {
 }
 
 impl LlmConfig {
-    /// Read the agent configuration from editor options + the environment.
     pub fn from_options(options: &std::collections::HashMap<String, String>) -> Option<Self> {
         let api_key = std::env::var("MAGMA_AGENT_API_KEY").ok()
             .filter(|k| !k.trim().is_empty())
@@ -46,18 +35,13 @@ impl LlmConfig {
     }
 }
 
-/// One tool invocation the model asked for.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
-    /// Raw JSON object text of the `arguments` field.
     pub arguments: String,
 }
 
-/// The tools the agent can call.  Deliberately narrow: everything routes
-/// through the command registry (capability checks and event hooks apply),
-/// plus two read-only introspection helpers.
 pub fn tools_schema() -> Value {
     json!([
         {
@@ -106,7 +90,6 @@ pub fn tools_schema() -> Value {
     ])
 }
 
-/// The system prompt: who the agent is and how it must behave.
 pub fn system_prompt() -> String {
     "You are the Magma editor's built-in agent. You fulfill the user's goal \
      by calling tools — editing files, running commands and build tasks, \
@@ -120,8 +103,7 @@ pub fn system_prompt() -> String {
         .to_string()
 }
 
-/// Context injected as the first user turn so the model starts grounded.
-pub fn context_message(ctx: &super::types::AgentContext) -> String {
+pub fn context_message(ctx: &crate::types::AgentContext) -> String {
     format!(
         "Editor context for this session:\n\n{}",
         ctx.to_prompt_string()
@@ -136,8 +118,6 @@ pub fn truncate_for_context(text: &str) -> String {
     format!("{cut}\n…[truncated]")
 }
 
-/// One chat completion.  Returns the assistant text and any tool calls.
-/// Runs on a background thread; never on the UI thread.
 pub fn chat(cfg: &LlmConfig, messages: &[Value]) -> Result<(String, Vec<ToolCall>), String> {
     let body = json!({
         "model": cfg.model,
@@ -161,8 +141,6 @@ pub fn chat(cfg: &LlmConfig, messages: &[Value]) -> Result<(String, Vec<ToolCall
     parse_chat_response(&raw)
 }
 
-/// Parse a chat-completions response body into (text, tool calls).
-/// Exposed for tests — no network involved.
 pub fn parse_chat_response(raw: &str) -> Result<(String, Vec<ToolCall>), String> {
     let v: Value = serde_json::from_str(raw)
         .map_err(|e| format!("agent LLM bad JSON: {e}"))?;
@@ -198,8 +176,6 @@ mod tests {
 
     #[test]
     fn config_requires_a_key_from_env_or_option() {
-        // No env var, no option → not configured (the deterministic
-        // planner keeps working).
         let empty = std::collections::HashMap::new();
         if std::env::var_os("MAGMA_AGENT_API_KEY").is_none() {
             assert!(!LlmConfig::is_configured(&empty));

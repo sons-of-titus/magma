@@ -1,27 +1,44 @@
-// IntelliJ New UI palette and metrics — the single source for every
-// component. Rust may override these from the `gui-theme` option.
+// Design tokens for the entire shell — the single source for every color,
+// metric, and type size.  Rust pushes the active palette into these
+// properties from the `gui-theme` option; components never hardcode colors.
 
 export global Theme {
-    in-out property <color> crust: #1e1f22;
-    in-out property <color> mantle: #2b2d30;
-    in-out property <color> base: #1e1f22;
-    in-out property <color> surface0: #393b40;
-    in-out property <color> surface1: #43454a;
-    in-out property <color> surface2: #4e5157;
-    in-out property <color> overlay0: #6f737a;
-    in-out property <color> subtext0: #9da0a8;
-    in-out property <color> subtext1: #ced0d6;
-    in-out property <color> text: #dfe1e5;
-    in-out property <color> blue: #3574f0;
-    in-out property <color> red: #f75464;
-    in-out property <color> green: #549159;
-    in-out property <color> lavender: #9aa7b0;
-    in-out property <color> warning: #d6ae58;
-    in-out property <color> border: #393b40;
-    in-out property <color> tab-active: #2c2c2f;
-    in-out property <color> tab-hover: #25262a;
-    in-out property <color> selected: #2e436e;
+    // ── Surfaces: layered backgrounds, darkest chrome → lightest content ──
+    in-out property <color> chrome;         // window furniture: rail, menu, tab strip, headers
+    in-out property <color> surface-panel;  // tool windows and docks
+    in-out property <color> surface;        // editor viewport, inputs, lists
 
+    // ── Interactive fills, subtle → strong ──
+    in-out property <color> fill-muted;     // hover on list rows
+    in-out property <color> fill;           // resting controls, hover emphasis
+    in-out property <color> fill-strong;    // prominent secondary controls
+
+    // ── Structure ──
+    in-out property <color> border;
+    in-out property <color> tab-active;
+    in-out property <color> tab-hover;
+    in-out property <color> selection;
+
+    // ── Text hierarchy ──
+    in-out property <color> text-primary;
+    in-out property <color> text-secondary;
+    in-out property <color> text-muted;
+    in-out property <color> text-faint;
+
+    // ── State colors ──
+    in-out property <color> accent;
+    in-out property <color> accent-muted;
+    in-out property <color> success;
+    in-out property <color> warning;
+    in-out property <color> danger;
+
+    // ── Typography ──
+    in-out property <length> font-ui: 12px;
+    in-out property <length> font-small: 11px;
+    in-out property <length> font-icon: 15px;
+    in-out property <string> font-mono;     // editor family, pushed from Rust
+
+    // ── Metrics ──
     out property <length> menu-height: 30px;
     out property <length> tab-height: 30px;
     out property <length> breadcrumb-height: 22px;
@@ -29,13 +46,11 @@ export global Theme {
     out property <length> rail-width: 32px;
     out property <length> sidebar-width: 240px;
     out property <length> row-height: 24px;
+    out property <length> control-height: 26px;
+    out property <length> tool-header-height: 32px;
 
-    out property <length> radius: 2px;
+    out property <length> radius: 3px;
     out property <length> radius-pill: 4px;
-
-    in-out property <length> font-ui: 12px;
-    in-out property <length> font-small: 11px;
-    in-out property <length> font-icon: 15px;
 
     out property <duration> motion: 120ms;
 }

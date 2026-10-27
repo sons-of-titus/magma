@@ -12,15 +12,15 @@ export component Button inherits Rectangle {
     border-width: primary ? 0px : 1px;
     border-color: Theme.border;
     background: !enabled
-        ? Theme.surface0
+        ? Theme.fill-muted
         : primary
-            ? (touch.pressed ? Theme.blue.darker(0.18)
-                : (touch.has-hover ? Theme.blue.darker(0.08) : Theme.blue))
-            : (touch.has-hover ? Theme.surface1 : Theme.surface0);
+            ? (touch.pressed ? Theme.accent.darker(0.18)
+                : (touch.has-hover ? Theme.accent.darker(0.08) : Theme.accent))
+            : (touch.has-hover ? Theme.fill : Theme.fill-muted);
 
     label-text := Text {
         text: root.label;
-        color: !root.enabled ? Theme.overlay0 : (root.primary ? white : Theme.text);
+        color: !root.enabled ? Theme.text-faint : (root.primary ? white : Theme.text-primary);
         font-size: Theme.font-small;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -35,18 +35,18 @@ export component Button inherits Rectangle {
 
 export component ToolbarIcon inherits Rectangle {
     in property <string> glyph;
-    in property <color> tint: Theme.subtext0;
+    in property <color> tint: Theme.text-muted;
     in property <bool> enabled: true;
     callback clicked();
 
     width: 24px;
     height: 24px;
-    border-radius: 3px;
-    background: enabled && touch.has-hover ? Theme.surface1 : transparent;
+    border-radius: Theme.radius;
+    background: enabled && touch.has-hover ? Theme.fill : transparent;
 
     Text {
         text: root.glyph;
-        color: root.enabled ? root.tint : Theme.overlay0;
+        color: root.enabled ? root.tint : Theme.text-faint;
         font-size: Theme.font-ui;
         horizontal-alignment: center;
         vertical-alignment: center;

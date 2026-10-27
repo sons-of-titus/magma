@@ -1,0 +1,355 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// Themed form controls and panel primitives shared by the agent dock,
+// settings, and dialogs.  Everything here styles itself from `Theme` only —
+// no std-widgets — so popovers and inputs match the chrome in every palette.
+
+// ── Panel primitives ─────────────────────────────────────────────────────────
+
+export component StatusDot inherits Rectangle {
+    in property <color> tint: Theme.text-faint;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: root.tint;
+}
+
+export component SectionLabel inherits Text {
+    color: Theme.text-faint;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+// Left half of a tool-window header: icon, title, and a live status readout.
+// Trailing actions are composed by the caller next to this element.
+export component ToolWindowHeader inherits Rectangle {
+    in property <string> title;
+    in property <image> icon;
+    in property <string> glyph;
+    in property <string> status-text;
+    in property <color> status-tint: Theme.text-faint;
+    height: Theme.tool-header-height;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 8px;
+        alignment: start;
+
+        if root.glyph != "" && root.icon.width == 0 : Text {
+            text: root.glyph;
+            color: Theme.text-muted;
+            font-family: "Symbols Nerd Font";
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        if root.icon.width > 0 : Image {
+            width: 16px;
+            height: 16px;
+            source: root.icon;
+        }
+
+        Text {
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: 12px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+
+        if root.status-text != "" : HorizontalLayout {
+            spacing: 5px;
+            alignment: center;
+
+            StatusDot { y: (parent.height - 8px) / 2; tint: root.status-tint; }
+            Text {
+                text: root.status-text;
+                color: Theme.text-muted;
+                font-size: 10px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+}
+
+// ── Text input ───────────────────────────────────────────────────────────────
+
+export component Field inherits Rectangle {
+    in property <string> placeholder: "";
+    in property <bool> enabled: true;
+    in property <length> font-size: Theme.font-ui;
+    in-out property <string> text;
+    callback accepted();
+    callback edited();
+
+    height: Theme.control-height;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    background: Theme.surface;
+
+    input := TextInput {
+        x: 8px;
+        width: parent.width - 16px;
+        text <=> root.text;
+        color: Theme.text-primary;
+        font-size: root.font-size;
+        enabled: root.enabled;
+        single-line: true;
+        accepted => { root.accepted(); }
+        edited => { root.edited(); }
+    }
+
+    if root.text == "" && !input.has-focus : Text {
+        x: 8px;
+        text: root.placeholder;
+        color: Theme.text-faint;
+        font-size: root.font-size;
+        vertical-alignment: center;
+    }
+}
+
+// ── Checkbox ─────────────────────────────────────────────────────────────────
+
+export component Check inherits Rectangle {
+    in property <string> label;
+    in property <string> description: "";
+    in-out property <bool> checked: false;
+    callback toggled();
+
+    height: label == "" ? Theme.control-height : description == "" ? Theme.control-height : 38px;
+    layout := HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+
+        Rectangle {
+            y: (parent.height - 16px) / 2;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: root.checked ? Theme.accent : Theme.border;
+            background: root.checked ? Theme.accent : Theme.surface;
+
+            Text {
+                text: "✓";
+                color: white;
+                font-size: 11px;
+                font-weight: 700;
+                visible: root.checked;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            if root.label != "" : Text {
+                text: root.label;
+                color: Theme.text-primary;
+                font-size: Theme.font-ui;
+            }
+            if root.description != "" : Text {
+                text: root.description;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+}
+
+component PopupList inherits Rectangle {
+    in property <[string]> choices;
+    in property <string> current;
+    callback selected(string);
+    callback dismiss();
+
+    height: min(root.choices.length * 24px + 8px, 220px);
+    background: Theme.chrome;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 10px;
+    drop-shadow-color: #00000066;
+    drop-shadow-offset-y: 3px;
+
+    // Clicking the padding or gaps between rows closes without selecting.
+    backdrop := TouchArea { clicked => { root.dismiss(); } }
+
+    ScrollView {
+        VerticalLayout {
+            padding: 4px;
+            spacing: 0px;
+            for choice in root.choices : Rectangle {
+                height: 24px;
+                border-radius: 2px;
+                background: row-touch.has-hover ? Theme.fill
+                    : (choice == root.current ? Theme.selection : transparent);
+                Text {
+                    x: 8px;
+                    width: parent.width - 12px;
+                    text: choice;
+                    color: choice == root.current ? Theme.text-primary : Theme.text-secondary;
+                    font-size: Theme.font-ui;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                row-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.selected(choice); }
+                }
+            }
+        }
+    }
+}
+
+// ── Dropdown picker ──────────────────────────────────────────────────────────
+// A themed combobox.  The popup closes on selection, on toggling the button,
+// or when the popup background is clicked; clicking elsewhere in the window
+// leaves it open until the next interaction.
+
+export component Picker inherits Rectangle {
+    in property <[string]> choices;
+    in-out property <string> current-value;
+    in property <string> placeholder: "";
+    in property <bool> enabled: true;
+    in property <length> min-w: 100px;
+    callback changed(string);
+
+    width: max(root.min-w, value.preferred-width + 40px);
+    height: Theme.control-height - 2px;
+    property <bool> open: false;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: open ? Theme.accent : Theme.border;
+    background: touch.pressed ? Theme.fill-muted : (touch.has-hover ? Theme.fill : Theme.surface);
+
+    value := Text {
+        x: 8px;
+        width: parent.width - 30px;
+        text: root.current-value == "" ? root.placeholder : root.current-value;
+        color: root.current-value == "" ? Theme.text-faint : Theme.text-primary;
+        font-size: Theme.font-ui;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Text {
+        x: parent.width - 18px;
+        text: root.open ? "▴" : "▾";
+        color: Theme.text-muted;
+        font-size: 10px;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.open = !root.open; }
+    }
+
+    if root.open : PopupList {
+        y: root.height + 4px;
+        width: max(root.width, 180px);
+        choices: root.choices;
+        current: root.current-value;
+        selected(v) => {
+            root.open = false;
+            if v != root.current-value {
+                root.current-value = v;
+                root.changed(v);
+            }
+        }
+        dismiss => { root.open = false; }
+    }
+}
+
+// ── Numeric stepper ──────────────────────────────────────────────────────────
+
+export component NumberField inherits Rectangle {
+    in-out property <int> value: 0;
+    in property <int> minimum: 0;
+    in property <int> maximum: 1000;
+    in property <bool> enabled: true;
+    callback changed(int);
+
+    width: 92px;
+    height: Theme.control-height - 2px;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+
+    function clamp(v: int) -> int {
+        Math.clamp(v, root.minimum, root.maximum)
+    }
+
+    Text {
+        x: 4px;
+        width: 20px;
+        height: 100%;
+        text: "−";
+        color: root.enabled ? Theme.text-secondary : Theme.text-faint;
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        dec := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                root.value = root.clamp(root.value - 1);
+                root.changed(root.value);
+            }
+        }
+    }
+
+    Text {
+        x: 26px;
+        width: parent.width - 52px;
+        height: 100%;
+        text: root.value;
+        color: Theme.text-primary;
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: parent.width - 24px;
+        width: 20px;
+        height: 100%;
+        text: "+";
+        color: root.enabled ? Theme.text-secondary : Theme.text-faint;
+        font-size: Theme.font-ui;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        inc := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                root.value = root.clamp(root.value + 1);
+                root.changed(root.value);
+            }
+        }
+    }
+}

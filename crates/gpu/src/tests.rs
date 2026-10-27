@@ -26,6 +26,30 @@ fn a_new_atlas_maps_every_baked_character_to_a_grid_cell() {
 }
 
 #[test]
+fn atlas_bakes_the_cursor_and_gutter_glyphs() {
+    let atlas = GpuGlyphAtlas::new();
+    for ch in ['█', '▌', '▏', '▔', '▸', '▾', '●', '○', '—'] {
+        assert!(atlas.contains(ch), "atlas is missing the rendered glyph {ch:?}");
+    }
+}
+
+#[test]
+fn rasterize_at_ppx_grows_cells_with_the_device_ratio() {
+    let font = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let mut atlas = GpuGlyphAtlas::new();
+    atlas.rasterize_at_ppx(font, 15.0, 2.0);
+
+    assert_eq!((atlas.cell_w, atlas.cell_h), (ATLAS_CELL_W * 2, ATLAS_CELL_H * 2));
+    assert_eq!(atlas.atlas_width, ATLAS_COLS * ATLAS_CELL_W * 2);
+    assert_eq!(atlas.atlas_pixels.len(), (atlas.atlas_width * atlas.atlas_height * 4) as usize);
+
+    let uv = atlas.glyphs.get(&'A').expect("A is baked");
+    assert_eq!((uv.w, uv.h), (ATLAS_CELL_W * 2, ATLAS_CELL_H * 2));
+    let [x, y, w, h] = atlas.normalize(uv);
+    assert!(x + w <= 1.001 && y + h <= 1.001, "scaled UV leaves the texture");
+}
+
+#[test]
 fn the_placeholder_atlas_is_opaque_white_and_dirty() {
     let atlas = GpuGlyphAtlas::new();
     assert!(atlas.needs_rebuild(), "a fresh atlas needs an upload");
@@ -41,6 +65,21 @@ fn marking_clean_and_dirty_toggles_the_upload_flag() {
     assert!(!atlas.needs_rebuild());
     atlas.mark_dirty();
     assert!(atlas.needs_rebuild());
+}
+
+#[test]
+fn rasterizer_clips_each_glyph_to_its_cell() {
+    let font = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    // Two 8×8 cells, but only the first one is drawn.  A 96px glyph is far
+    // wider than the cell and must be clipped, not painted into cell two.
+    let pixels = crate::gpu_rasterizer::rasterize_font_atlas(font, 96.0, &['W'], 8, 8, 2);
+    let width = 16;
+    for y in 0..8 {
+        for x in 8..width {
+            let alpha = pixels[((y * width + x) * 4 + 3) as usize];
+            assert_eq!(alpha, 0, "glyph ink crossed the cell boundary at ({x}, {y})");
+        }
+    }
 }
 
 #[test]
@@ -110,4 +149,24 @@ fn rect_instances_skip_the_default_background_and_expand_to_vertices() {
     let vertices = rects_to_vertices(&rects, ATLAS_COLS * ATLAS_CELL_W, ATLAS_CELL_H);
     assert_eq!(vertices.len(), rects.len() * 6);
     assert!((vertices[0][4] - 10.0 / 255.0).abs() < 0.01);
+}
+
+#[test]
+#[ignore]
+fn dump_glyph_cells() {
+    let home = std::env::var("HOME").unwrap();
+    let font = std::fs::read(format!("{home}/Library/Fonts/MonacoNerdFontMono-Regular.ttf")).unwrap();
+    let chars = vec![' ', 's', 't', 'r', 'u', 'c'];
+    let pixels = crate::gpu_rasterizer::rasterize_font_atlas(&font, 30.0, &chars, 20, 40, 6);
+    for (idx, ch) in chars.iter().enumerate().skip(1) {
+        println!("char {ch}");
+        for y in 0..40 {
+            let mut line = String::new();
+            for x in 0..20 {
+                let a = pixels[((y * 120 + idx * 20 + x) * 4 + 3) as usize];
+                line.push(match a { 0 => ' ', 1..=85 => '.', 86..=170 => '+', _ => '#' });
+            }
+            println!("{line}");
+        }
+    }
 }

@@ -63,11 +63,17 @@ pub fn rasterize_font_atlas(
         let bounds = outlined.px_bounds();
         let min_x = bounds.min.x as i64;
         let min_y = bounds.min.y as i64;
+        let cell_x0 = cell_x as i64;
+        let cell_y0 = cell_y as i64;
+        let cell_x1 = cell_x0 + cell_w as i64;
+        let cell_y1 = cell_y0 + cell_h as i64;
         outlined.draw(|px, py, cov| {
             if cov < 0.004 { return }
             let x = min_x + px as i64;
             let y = min_y + py as i64;
-            if x < 0 || y < 0 || x >= width as i64 || y >= height as i64 { return }
+            // Stay inside the glyph's own cell: a face wider than the cell
+            // must be clipped, not painted over its neighbour's glyph.
+            if x < cell_x0 || y < cell_y0 || x >= cell_x1 || y >= cell_y1 { return }
             let idx = ((y * width as i64 + x) * 4) as usize;
             // White glyph with coverage alpha; colour is applied by the shader.
             pixels[idx]     = 255;

@@ -10,6 +10,7 @@
 (gutter/add-provider ":breakpoints")
 (gutter/add-provider ":git-signs")
 (gutter/add-provider ":diagnostics")
+(gutter/add-provider ":exec-line")
 (gutter/add-provider ":line-numbers")
 (gutter/add-provider ":folding")
 

@@ -368,6 +368,8 @@ impl Editor {
             "diag-warn" => (250, 179, 135),
             "highlight-bg" => (49, 50, 68),
             "highlight-fg" => (203, 166, 247),
+            "exec-line-bg" => (68, 84, 106),
+            "exec-line-fg" => (137, 180, 250),
             "selection-bg" => (137, 180, 250),
             "selection-fg" => (30, 30, 46),
             "gui-bg" => (30, 30, 46),

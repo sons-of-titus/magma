@@ -336,7 +336,7 @@ impl View for EditorView {
                     .position(|r| r.start <= stop_offset && stop_offset < r.end)
             {
                 let surf_row = row_offset + row_idx as u16;
-                let (hl_r, hl_g, hl_b) = editor.theme_color("highlight-bg");
+                let (hl_r, hl_g, hl_b) = editor.theme_color("exec-line-bg");
                 for x in content_x..area.x + area.width {
                     if let Some(cell) = surface.cell(x, surf_row) {
                         let style = Style {

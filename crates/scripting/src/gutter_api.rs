@@ -8,14 +8,14 @@
 //!   (gutter/set-fold-icons open closed face)     → nil
 //!   (gutter/set-line-number-format fn-name)      → nil
 
-use evil_janet::*;
 use super::{conv, with_editor};
-use kernel::render::gutter_providers::{
-    Breakpoints, Coverage, Diagnostics, Folding, GitSigns, JanetProvider, LineNumbers,
-};
-use kernel::render::surface::Style;
+use evil_janet::*;
 use kernel::event::keys;
 use kernel::event::payload::GutterProviderUpdatedPayload;
+use kernel::render::gutter_providers::{
+    Breakpoints, Coverage, Diagnostics, ExecLine, Folding, GitSigns, JanetProvider, LineNumbers,
+};
+use kernel::render::surface::Style;
 
 // ── gutter/add-provider ───────────────────────────────────────────────────────
 
@@ -36,8 +36,12 @@ unsafe extern "C-unwind" fn c_add_provider(argc: i32, argv: *mut Janet) -> Janet
                 (":git-signs", None) => Box::new(GitSigns),
                 (":diagnostics", None) => Box::new(Diagnostics),
                 (":breakpoints", None) => Box::new(Breakpoints),
+                (":exec-line", None) => Box::new(ExecLine),
                 (":coverage", None) => Box::new(Coverage),
-                _ => Box::new(JanetProvider { provider_name: name, fn_name }),
+                _ => Box::new(JanetProvider {
+                    provider_name: name,
+                    fn_name,
+                }),
             };
         ed.gutter.add_provider(provider);
         conv::nil()
@@ -69,7 +73,9 @@ unsafe extern "C-unwind" fn c_provider_update(argc: i32, argv: *mut Janet) -> Ja
         let Some(buf_id) = conv::get_int(argc, argv, 1).map(|k| k as usize) else {
             conv::signal_err("gutter/provider-update: buf-id required")
         };
-        if argc < 3 { return conv::nil(); }
+        if argc < 3 {
+            return conv::nil();
+        }
         let cells_val = *argv.add(2);
         let mut cells: Vec<(usize, String, Style)> = Vec::new();
 
@@ -79,25 +85,34 @@ unsafe extern "C-unwind" fn c_provider_update(argc: i32, argv: *mut Janet) -> Ja
             for i in 0..count {
                 let item = *(*arr).data.add(i);
                 if janet_checktype(item, JanetType_JANET_TABLE) == 0
-                    && janet_checktype(item, JanetType_JANET_STRUCT) == 0 {
+                    && janet_checktype(item, JanetType_JANET_STRUCT) == 0
+                {
                     continue;
                 }
-                let line_v   = janet_get(item, conv::keyword("line"));
-                let text_v   = janet_get(item, conv::keyword("text"));
-                let face_v   = janet_get(item, conv::keyword("face"));
+                let line_v = janet_get(item, conv::keyword("line"));
+                let text_v = janet_get(item, conv::keyword("text"));
+                let face_v = janet_get(item, conv::keyword("face"));
                 let line = janet_unwrap_integer(line_v) as usize;
                 let text = if janet_checktype(text_v, JanetType_JANET_STRING) != 0
                     || janet_checktype(text_v, JanetType_JANET_KEYWORD) != 0
                 {
                     let ptr = janet_unwrap_string(text_v);
-                    std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
-                } else { " ".to_string() };
+                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                        .to_string_lossy()
+                        .into_owned()
+                } else {
+                    " ".to_string()
+                };
                 let face = if janet_checktype(face_v, JanetType_JANET_STRING) != 0
                     || janet_checktype(face_v, JanetType_JANET_KEYWORD) != 0
                 {
                     let ptr = janet_unwrap_string(face_v);
-                    std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
-                } else { String::new() };
+                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                        .to_string_lossy()
+                        .into_owned()
+                } else {
+                    String::new()
+                };
                 let style = ed.resolve_face_style(&face).unwrap_or_else(|| Style {
                     fg: ed.theme_color("fg"),
                     bg: ed.theme_color("line-num-bg"),
@@ -108,10 +123,13 @@ unsafe extern "C-unwind" fn c_provider_update(argc: i32, argv: *mut Janet) -> Ja
         }
 
         ed.gutter.set_provider_cells(&name, buf_id, cells);
-        ed.events.emit_typed(keys::events::GUTTER_PROVIDER_UPDATED, GutterProviderUpdatedPayload {
-            provider: name,
-            buffer: buf_id.to_string(),
-        });
+        ed.events.emit_typed(
+            keys::events::GUTTER_PROVIDER_UPDATED,
+            GutterProviderUpdatedPayload {
+                provider: name,
+                buffer: buf_id.to_string(),
+            },
+        );
         conv::nil()
     })
 }
@@ -123,7 +141,7 @@ unsafe extern "C-unwind" fn c_provider_list(_argc: i32, _argv: *mut Janet) -> Ja
         let arr = janet_array(ed.gutter.providers.len() as i32);
         for p in &ed.gutter.providers {
             let tbl = janet_table(2);
-            janet_table_put(tbl, conv::keyword("name"),  conv::string(p.name()));
+            janet_table_put(tbl, conv::keyword("name"), conv::string(p.name()));
             janet_table_put(tbl, conv::keyword("width"), conv::integer(p.width() as i32));
             janet_array_push(arr, janet_wrap_table(tbl));
         }
@@ -135,9 +153,9 @@ unsafe extern "C-unwind" fn c_provider_list(_argc: i32, _argv: *mut Janet) -> Ja
 
 unsafe extern "C-unwind" fn c_set_fold_icons(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let open   = conv::get_str(argc, argv, 0).unwrap_or_else(|| "▾".to_string());
+        let open = conv::get_str(argc, argv, 0).unwrap_or_else(|| "▾".to_string());
         let closed = conv::get_str(argc, argv, 1).unwrap_or_else(|| "▸".to_string());
-        let face   = conv::get_str(argc, argv, 2).unwrap_or_else(|| "fold-face".to_string());
+        let face = conv::get_str(argc, argv, 2).unwrap_or_else(|| "fold-face".to_string());
         ed.gutter.fold_icons.open = open;
         ed.gutter.fold_icons.closed = closed;
         ed.gutter.fold_icons.face = face;

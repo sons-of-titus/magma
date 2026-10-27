@@ -211,6 +211,42 @@ impl GutterProvider for Coverage {
     }
 }
 
+// ── ExecLine ──────────────────────────────────────────────────────────────────
+
+/// Renders the execution pointer — an accent arrow on the stopped debuggee's
+/// line, distinct from the breakpoint dots.  Reads the active session's
+/// `stopped_line` live.
+pub struct ExecLine;
+impl GutterProvider for ExecLine {
+    fn name(&self) -> &str {
+        ":exec-line"
+    }
+    fn width(&self) -> usize {
+        1
+    }
+
+    fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
+        let path = ctx.buf_path?;
+        let (stop_path, stop_line) = ctx
+            .editor
+            .debug
+            .active_session()
+            .and_then(|s| s.stopped_line.clone())?;
+        if stop_path != path || stop_line != line + 1 {
+            return None;
+        }
+        Some(GutterCell {
+            text: "> ".to_string(),
+            style: Style {
+                fg: ctx.editor.theme_color("exec-line-fg"),
+                bg: ctx.editor.theme_color("line-num-bg"),
+                bold: true,
+                ..Default::default()
+            },
+        })
+    }
+}
+
 // ── JanetProvider ─────────────────────────────────────────────────────────────
 
 /// A Janet-defined gutter provider.  Cells are populated via

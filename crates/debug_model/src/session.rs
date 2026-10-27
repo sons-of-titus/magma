@@ -19,6 +19,9 @@ pub struct DebugSession {
     pub variable_scopes: HashMap<i64, Vec<Variable>>,
     /// The first scope's reference — the root of the variables tree.
     pub scope_ref: Option<i64>,
+    /// The first scope's name ("Locals", "Globals", …) as the adapter
+    /// reported it; the variables view labels its group with it.
+    pub scope_name: Option<String>,
     /// The reference whose `variables` response is expected next.
     pub pending_variables: Option<i64>,
     /// Watch expression results, aligned with `DebugManager::watches`.
@@ -29,6 +32,13 @@ pub struct DebugSession {
     /// The top stopped frame's (source path, 1-based line) — the current
     /// execution location the editor highlights.
     pub stopped_line: Option<(String, usize)>,
+    /// The frame whose scopes and watches the UI is inspecting.  `None`
+    /// means "follow the top frame"; a new stop resets the selection.
+    pub selected_frame: Option<FrameId>,
+    /// The adapter's DAP `initialized` event arrived.  Breakpoints and
+    /// configurationDone go out once this is set *and* the live connection
+    /// is registered — either side can be observed first.
+    pub initialized: bool,
     /// DAP console output (adapter stdout, evaluate results), capped.
     pub console: Vec<String>,
     pub stopped: bool,
@@ -50,10 +60,13 @@ impl DebugSession {
             frames: Vec::new(),
             variable_scopes: HashMap::new(),
             scope_ref: None,
+            scope_name: None,
             pending_variables: None,
             watch_results: Vec::new(),
             pending_watch_evals: VecDeque::new(),
             stopped_line: None,
+            selected_frame: None,
+            initialized: false,
             console: Vec::new(),
             stopped: false,
             stopped_thread: None,
@@ -80,15 +93,28 @@ impl DebugSession {
         }
     }
 
-    /// Reset the per-stop state: watches re-arm, stale expansion caches go.
+    /// Reset the per-stop state: watches re-arm, stale expansion caches go,
+    /// and the frame selection falls back to the top frame.
     pub fn note_stopped(&mut self, watch_count: usize) {
         self.stopped = true;
         self.frames.clear();
         self.variable_scopes.clear();
         self.scope_ref = None;
+        self.scope_name = None;
         self.stopped_line = None;
+        self.selected_frame = None;
         self.watch_results = vec![None; watch_count];
         self.pending_watch_evals = VecDeque::new();
+    }
+
+    /// The frame the UI should inspect: the explicit selection, else the top
+    /// frame of the current stack.
+    pub fn current_frame(&self) -> Option<&StackFrame> {
+        let selected = self.selected_frame;
+        self.frames
+            .iter()
+            .find(|f| Some(f.id) == selected)
+            .or_else(|| self.frames.first())
     }
 
     /// Update the frame list from a DAP `stackTrace` response.

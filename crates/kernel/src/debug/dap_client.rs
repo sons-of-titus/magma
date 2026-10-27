@@ -247,6 +247,17 @@ fn dispatch_dap_message<S: super::EventSink>(
                         body: body.to_string(),
                     });
                 }
+                // DAP's configuration handshake: breakpoints and
+                // configurationDone are only legal once the adapter says it
+                // is ready — for lldb-dap that is after launch, when the
+                // module exists and source breakpoints can bind.
+                "initialized" => {
+                    sink.send(super::Event::Response {
+                        session_id,
+                        event_type: "initialized".to_string(),
+                        data: "{}".to_string(),
+                    });
+                }
                 "terminated" | "exited" => {
                     sink.send(super::Event::Terminated { session_id });
                 }

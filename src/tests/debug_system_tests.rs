@@ -33,7 +33,11 @@ fn second_session_does_not_replace_active() {
     let mut mgr = DebugManager::new();
     let first = mgr.new_session("codelldb".into());
     mgr.new_session("debugpy".into());
-    assert_eq!(mgr.active_session, Some(first), "second session must not displace the active one");
+    assert_eq!(
+        mgr.active_session,
+        Some(first),
+        "second session must not displace the active one"
+    );
 }
 
 #[test]
@@ -78,7 +82,13 @@ fn session_next_seq_increments() {
 fn session_set_frames() {
     use crate::kernel::debug::StackFrame;
     let mut s = DebugSession::new(1, "adapter".into());
-    s.set_frames(vec![StackFrame { id: 1, name: "main".into(), source: None, line: 10, column: 0 }]);
+    s.set_frames(vec![StackFrame {
+        id: 1,
+        name: "main".into(),
+        source: None,
+        line: 10,
+        column: 0,
+    }]);
     assert_eq!(s.frames.len(), 1);
     assert_eq!(s.frame(1).unwrap().name, "main");
     assert!(s.frame(2).is_none());
@@ -88,7 +98,10 @@ fn session_set_frames() {
 fn session_set_threads() {
     use crate::kernel::debug::Thread;
     let mut s = DebugSession::new(1, "adapter".into());
-    s.set_threads(vec![Thread { id: 1, name: "main".into() }]);
+    s.set_threads(vec![Thread {
+        id: 1,
+        name: "main".into(),
+    }]);
     assert_eq!(s.threads.len(), 1);
     assert_eq!(s.threads[0].name, "main");
 }
@@ -171,7 +184,14 @@ fn set_breakpoints_args_with_lines() {
 #[test]
 fn breakpoint_struct() {
     use crate::kernel::debug::Breakpoint;
-    let bp = Breakpoint { id: 1, file: "a.rs".into(), line: 10, verified: false, enabled: true, condition: None };
+    let bp = Breakpoint {
+        id: 1,
+        file: "a.rs".into(),
+        line: 10,
+        verified: false,
+        enabled: true,
+        condition: None,
+    };
     assert_eq!(bp.line, 10);
     assert!(!bp.verified);
 }
@@ -192,7 +212,11 @@ fn variable_struct() {
 #[test]
 fn memory_region_struct() {
     use crate::kernel::debug::MemoryRegion;
-    let r = MemoryRegion { address: "0x1000".into(), size: 4096, name: Some("stack".into()) };
+    let r = MemoryRegion {
+        address: "0x1000".into(),
+        size: 4096,
+        name: Some("stack".into()),
+    };
     assert_eq!(r.size, 4096);
 }
 
@@ -205,7 +229,10 @@ fn disabled_breakpoints_are_withheld_from_the_adapter() {
     mgr.add_breakpoint("a.rs".into(), 42);
     mgr.set_enabled("a.rs", 7, false);
     let json = mgr.set_breakpoints_args("a.rs");
-    assert!(!json.contains(r#"{"line":7}"#), "disabled breakpoints do not reach the adapter");
+    assert!(
+        !json.contains(r#"{"line":7}"#),
+        "disabled breakpoints do not reach the adapter"
+    );
     assert!(json.contains(r#"{"line":42}"#));
     // They stay in the model for the UI.
     assert_eq!(mgr.breakpoints_for("a.rs").len(), 2);
@@ -221,7 +248,10 @@ fn all_breakpoints_spans_files_sorted() {
     mgr.add_breakpoint("a.rs".into(), 1);
     let all = mgr.all_breakpoints();
     let lines: Vec<(String, usize)> = all.iter().map(|bp| (bp.file.clone(), bp.line)).collect();
-    assert_eq!(lines, vec![("a.rs".into(), 1), ("a.rs".into(), 9), ("b.rs".into(), 2)]);
+    assert_eq!(
+        lines,
+        vec![("a.rs".into(), 1), ("a.rs".into(), 9), ("b.rs".into(), 2)]
+    );
 }
 
 // ── Line tracking through edits ───────────────────────────────────────────────
@@ -253,8 +283,11 @@ fn breakpoint_lines_track_edits_above_them() {
         assert_eq!(buf.breakpoint_line(bp_id), Some(5));
     }
     crate::kernel::debug::sync_breakpoint_lines(&mut ed);
-    assert_eq!(ed.debug.breakpoints_for(&path)[0].line, 5,
-        "the manager's line follows the anchor after an edit");
+    assert_eq!(
+        ed.debug.breakpoints_for(&path)[0].line,
+        5,
+        "the manager's line follows the anchor after an edit"
+    );
 }
 
 // ── Session model ─────────────────────────────────────────────────────────────
@@ -313,15 +346,225 @@ fn session_start_syncs_breakpoints_then_configuration_done() {
         let has = |cmd: &str| lines.iter().any(|l| l == cmd);
         if has("initialize") && has("setBreakpoints") && has("configurationDone") {
             let idx = |cmd: &str| lines.iter().position(|l| l == cmd).unwrap();
-            assert!(idx("initialize") < idx("setBreakpoints")
-                && idx("setBreakpoints") < idx("configurationDone"),
-                "initialize → setBreakpoints → configurationDone, got {lines:?}");
+            assert!(
+                idx("initialize") < idx("setBreakpoints")
+                    && idx("setBreakpoints") < idx("configurationDone"),
+                "initialize → setBreakpoints → configurationDone, got {lines:?}"
+            );
             break;
         }
-        assert!(std::time::Instant::now() < deadline,
-            "fake adapter never received the bootstrap sequence");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fake adapter never received the bootstrap sequence"
+        );
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
 
     ed.debug.disconnect_all();
+}
+
+// ── Frame selection (Debug panel) ────────────────────────────────────────────
+
+mod frame_selection {
+    use super::*;
+    use crate::kernel::command::args::ArgValue;
+    use crate::kernel::command::execute_command;
+    use crate::kernel::debug::StackFrame;
+    use std::collections::HashMap;
+
+    fn stack() -> Vec<StackFrame> {
+        vec![
+            StackFrame {
+                id: 11,
+                name: "main".into(),
+                source: Some("/p/main.rs".into()),
+                line: 3,
+                column: 1,
+            },
+            StackFrame {
+                id: 12,
+                name: "helper".into(),
+                source: Some("/p/helper.rs".into()),
+                line: 9,
+                column: 5,
+            },
+            StackFrame {
+                id: 13,
+                name: "leaf".into(),
+                source: None,
+                line: 20,
+                column: 1,
+            },
+        ]
+    }
+
+    #[test]
+    fn current_frame_follows_top_when_unselected() {
+        let mut s = DebugSession::new(1, "adapter".into());
+        s.set_frames(stack());
+        assert_eq!(s.current_frame().unwrap().id, 11);
+    }
+
+    #[test]
+    fn current_frame_prefers_explicit_selection() {
+        let mut s = DebugSession::new(1, "adapter".into());
+        s.set_frames(stack());
+        s.selected_frame = Some(13);
+        assert_eq!(s.current_frame().unwrap().id, 13);
+    }
+
+    #[test]
+    fn current_frame_falls_back_when_selection_stale() {
+        let mut s = DebugSession::new(1, "adapter".into());
+        s.set_frames(stack());
+        s.selected_frame = Some(99);
+        assert_eq!(s.current_frame().unwrap().id, 11);
+    }
+
+    #[test]
+    fn note_stopped_resets_frame_selection() {
+        let mut s = DebugSession::new(1, "adapter".into());
+        s.set_frames(stack());
+        s.selected_frame = Some(12);
+        s.note_stopped(2);
+        assert!(s.selected_frame.is_none());
+    }
+
+    fn editor_with_stack() -> crate::kernel::state::Editor {
+        let mut ed = crate::tests::helpers::make_editor();
+        let sid = ed.debug.new_session("adapter".into());
+        ed.debug.sessions.get_mut(&sid).unwrap().set_frames(stack());
+        ed
+    }
+
+    #[test]
+    fn dbg_frame_command_selects_a_known_frame() {
+        let mut ed = editor_with_stack();
+        let mut args = HashMap::new();
+        args.insert("frame".to_string(), ArgValue::Integer(12));
+        execute_command(&mut ed, "dbg-frame", &args).unwrap();
+        assert_eq!(ed.debug.active_session().unwrap().selected_frame, Some(12));
+        assert_eq!(
+            ed.debug
+                .active_session()
+                .unwrap()
+                .current_frame()
+                .unwrap()
+                .id,
+            12
+        );
+    }
+
+    #[test]
+    fn dbg_frame_command_rejects_unknown_frames() {
+        let mut ed = editor_with_stack();
+        let mut args = HashMap::new();
+        args.insert("frame".to_string(), ArgValue::Integer(99));
+        assert!(execute_command(&mut ed, "dbg-frame", &args).is_err());
+        assert!(ed.debug.active_session().unwrap().selected_frame.is_none());
+    }
+
+    #[test]
+    fn dbg_expand_requires_an_active_session() {
+        let mut ed = crate::tests::helpers::make_editor();
+        let mut args = HashMap::new();
+        args.insert("reference".to_string(), ArgValue::Integer(7));
+        assert!(execute_command(&mut ed, "dbg-expand", &args).is_err());
+    }
+
+    #[test]
+    fn dbg_expand_requests_the_given_reference() {
+        let mut ed = editor_with_stack();
+        let sid = ed.debug.active_session.unwrap();
+        let mut args = HashMap::new();
+        args.insert("reference".to_string(), ArgValue::Integer(42));
+        execute_command(&mut ed, "dbg-expand", &args).unwrap();
+        assert_eq!(ed.debug.sessions[&sid].pending_variables, Some(42));
+    }
+}
+
+// ── Breakpoint management commands (Debug panel) ─────────────────────────────
+
+mod breakpoint_commands {
+    use crate::kernel::command::args::ArgValue;
+    use crate::kernel::command::execute_command;
+    use std::collections::HashMap;
+
+    fn bp_args(line: i64, enabled: bool) -> HashMap<String, ArgValue> {
+        let mut args = HashMap::new();
+        args.insert("path".to_string(), ArgValue::Path("/p/main.rs".into()));
+        args.insert("line".to_string(), ArgValue::Integer(line));
+        args.insert("enabled".to_string(), ArgValue::Boolean(enabled));
+        args
+    }
+
+    #[test]
+    fn dbg_bp_enable_flips_the_state() {
+        let mut ed = crate::tests::helpers::make_editor();
+        ed.debug.add_breakpoint("/p/main.rs".into(), 4);
+        execute_command(&mut ed, "dbg-bp-enable", &bp_args(4, false)).unwrap();
+        assert!(!ed.debug.breakpoints_for("/p/main.rs")[0].enabled);
+        execute_command(&mut ed, "dbg-bp-enable", &bp_args(4, true)).unwrap();
+        assert!(ed.debug.breakpoints_for("/p/main.rs")[0].enabled);
+    }
+
+    #[test]
+    fn dbg_bp_remove_deletes_the_breakpoint() {
+        let mut ed = crate::tests::helpers::make_editor();
+        ed.debug.add_breakpoint("/p/main.rs".into(), 4);
+        let mut args = HashMap::new();
+        args.insert("path".to_string(), ArgValue::Path("/p/main.rs".into()));
+        args.insert("line".to_string(), ArgValue::Integer(4));
+        execute_command(&mut ed, "dbg-bp-remove", &args).unwrap();
+        assert!(ed.debug.breakpoints_for("/p/main.rs").is_empty());
+    }
+
+    #[test]
+    fn dbg_bp_commands_reject_zero_lines() {
+        let mut ed = crate::tests::helpers::make_editor();
+        assert!(execute_command(&mut ed, "dbg-bp-enable", &bp_args(0, true)).is_err());
+        assert!(execute_command(&mut ed, "dbg-bp-remove", &bp_args(0, true)).is_err());
+    }
+}
+
+#[test]
+fn initialized_before_started_records_the_flag() {
+    use crate::kernel::debug::Event;
+    use crate::kernel::runtime::{BackgroundEvent, process_background_event};
+    let mut ed = crate::tests::helpers::make_editor();
+    let sid = ed.debug.new_session("adapter".into());
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Dap(Event::Response {
+            session_id: sid,
+            event_type: "initialized".into(),
+            data: "{}".into(),
+        }),
+    );
+    assert!(
+        ed.debug.sessions[&sid].initialized,
+        "the flag must survive until Started arrives"
+    );
+    assert!(
+        ed.debug.connections.is_empty(),
+        "no configuration without a live connection"
+    );
+}
+
+#[test]
+fn set_breakpoints_response_marks_manager_breakpoints_verified() {
+    use crate::kernel::runtime_dap::apply_dap_command_result;
+    let mut ed = crate::tests::helpers::make_editor();
+    ed.debug.add_breakpoint("/p/main.rs".into(), 4);
+    apply_dap_command_result(
+        &mut ed,
+        1,
+        "setBreakpoints",
+        true,
+        r#"{"breakpoints":[{"verified":true,"line":4,"id":1}]}"#,
+    );
+    assert!(
+        ed.debug.breakpoints_for("/p/main.rs")[0].verified,
+        "the adapter's verification lands on the manager breakpoint the gutter renders"
+    );
 }

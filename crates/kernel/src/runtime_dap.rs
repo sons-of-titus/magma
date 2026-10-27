@@ -50,7 +50,12 @@ pub fn request_variables(ed: &mut Editor, session_id: u64, r: i64) {
     );
 }
 
-/// Send `evaluate` for every watch expression against the current top frame.
+/// Send `evaluate` for every watch expression against `frame_id` — the
+/// selected frame's context.  Results are correlated by dispatch order.
+pub fn evaluate_watches_for_frame(ed: &mut Editor, session_id: u64, frame_id: u64) {
+    evaluate_watches(ed, session_id, frame_id)
+}
+
 fn evaluate_watches(ed: &mut Editor, session_id: u64, frame_id: u64) {
     let watches = ed.debug.watches.clone();
     let mut args_list: Vec<String> = Vec::new();
@@ -107,13 +112,21 @@ pub fn apply_dap_command_result(
                     .and_then(|f| f.source.clone())
                     .map(|path| (path, f_line(&first)));
             }
-            if let Some(frame_id) = first.as_ref().map(|f| f.id) {
+            // A fresh stack selects the top frame; scopes and watches are
+            // fetched for whatever frame is selected (top by default).
+            if let Some(frame) = ed
+                .debug
+                .sessions
+                .get(&session_id)
+                .and_then(|s| s.current_frame().cloned())
+            {
                 // The current execution location opens in the editor.
-                if let Some((path, line)) = ed
-                    .debug
-                    .sessions
-                    .get(&session_id)
-                    .and_then(|s| s.stopped_line.clone())
+                if first.as_ref().map(|f| f.id) == Some(frame.id)
+                    && let Some((path, line)) = ed
+                        .debug
+                        .sessions
+                        .get(&session_id)
+                        .and_then(|s| s.stopped_line.clone())
                 {
                     open_source_line(ed, &path, line);
                 }
@@ -121,19 +134,20 @@ pub fn apply_dap_command_result(
                     ed,
                     session_id,
                     "scopes",
-                    &format!(r#"{{"frameId":{frame_id}}}"#),
+                    &format!(r#"{{"frameId":{}}}"#, frame.id),
                 );
-                evaluate_watches(ed, session_id, frame_id);
+                evaluate_watches(ed, session_id, frame.id);
             }
         }
         ("scopes", true) => {
-            let scope_ref = v["scopes"]
-                .as_array()
-                .and_then(|s| s.first())
-                .and_then(|s| s["variablesReference"].as_u64());
+            let first_scope = v["scopes"].as_array().and_then(|s| s.first());
+            let scope_ref = first_scope.and_then(|s| s["variablesReference"].as_u64());
             if let Some(r) = scope_ref {
                 if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
                     session.scope_ref = Some(r as i64);
+                    session.scope_name = first_scope
+                        .and_then(|s| s["name"].as_str())
+                        .map(str::to_string);
                 }
                 request_variables(ed, session_id, r as i64);
             }
@@ -179,7 +193,17 @@ pub fn apply_dap_command_result(
                 })
                 .unwrap_or_default();
             if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
-                session.set_verified_breakpoints(verified);
+                session.set_verified_breakpoints(verified.clone());
+            }
+            // The manager's own breakpoints drive the gutter and the Debug
+            // panel — mirror what the adapter confirmed onto them, matched
+            // by line (the response does not carry the file).
+            for (is_verified, line) in &verified {
+                for bp in ed.debug.breakpoints.values_mut().flatten() {
+                    if bp.line == *line {
+                        bp.verified = *is_verified;
+                    }
+                }
             }
         }
         ("breakpoint", true) => {
@@ -231,7 +255,9 @@ pub(crate) fn apply_dap_response(ed: &mut Editor, session_id: u64, data: &str) {
     session.push_console(&format!("= {data}"));
 }
 
-/// A failed request surfaces in the console, not just the void.
+/// A failed request surfaces in the console, not just the void.  A failed
+/// `evaluate` belongs to the oldest pending watch — record the failure there
+/// so the watch shows its error instead of "evaluating…" forever.
 pub(crate) fn note_request_error(ed: &mut Editor, session_id: u64, command: &str, body: &str) {
     if command == "initialize" {
         return;
@@ -239,9 +265,20 @@ pub(crate) fn note_request_error(ed: &mut Editor, session_id: u64, command: &str
     let message = serde_json::from_str::<serde_json::Value>(body)
         .ok()
         .and_then(|v| v["message"].as_str().map(str::to_string))
+        .or_else(|| {
+            serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v["result"].as_str().map(str::to_string))
+        })
         .unwrap_or_else(|| "adapter error".to_string());
     let line = format!("! {command}: {message}");
     if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+        if command == "evaluate"
+            && let Some(i) = session.pending_watch_evals.pop_front()
+            && i < session.watch_results.len()
+        {
+            session.watch_results[i] = Some(format!("!{message}"));
+        }
         session.push_console(&line);
     } else {
         ed.show_message(MessageKind::Error, format!("{command}: {message}"));

@@ -19,26 +19,17 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
         Event::Started { session_id, result } => {
             match result {
                 Ok(handle) => {
+                    let ready = ed
+                        .debug
+                        .sessions
+                        .get(&session_id)
+                        .is_some_and(|s| s.initialized);
                     ed.debug.connections.insert(session_id, handle);
-                    // Sync every project breakpoint to the fresh adapter,
-                    // then release it with configurationDone — adapters that
-                    // require the sequence (e.g. js-debug) hang without it.
-                    crate::debug::sync_breakpoint_lines(ed);
-                    let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
-                    for file in files {
-                        crate::script_runtime::send_dap_command(
-                            ed,
-                            session_id,
-                            "setBreakpoints",
-                            &ed.debug.set_breakpoints_args(&file),
-                        );
+                    // The adapter may have reported `initialized` before the
+                    // spawner delivered this event; configure now if so.
+                    if ready {
+                        configure_adapter(ed, session_id);
                     }
-                    crate::script_runtime::send_dap_command(
-                        ed,
-                        session_id,
-                        "configurationDone",
-                        "{}",
-                    );
                     ed.events.emit_typed(
                         keys::events::DEBUG_SESSION_STARTED,
                         crate::event::payload::DebugSessionStartedPayload {
@@ -56,6 +47,22 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
                     ed.debug.sessions.remove(&session_id);
                     ed.show_message(crate::state::MessageKind::Error, e);
                 }
+            }
+        }
+        // The adapter's `initialized` event opens the DAP configuration
+        // window: breakpoints bind only from here, and configurationDone
+        // releases the debuggee.  Whichever of this and `Started` lands
+        // second performs the configuration — exactly once.
+        Event::Response {
+            session_id,
+            event_type,
+            ..
+        } if event_type == "initialized" => {
+            if let Some(session) = ed.debug.sessions.get_mut(&session_id) {
+                session.initialized = true;
+            }
+            if ed.debug.connections.contains_key(&session_id) {
+                configure_adapter(ed, session_id);
             }
         }
         Event::Stopped {
@@ -150,4 +157,22 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
             crate::runtime_dap::apply_dap_command_result(ed, session_id, &command, success, &body);
         }
     }
+}
+
+/// Sync every project breakpoint to the adapter — lines may have shifted
+/// since they were set — then release the debuggee with configurationDone.
+/// Exactly one of the `Started`/`initialized` handlers calls this per
+/// session.
+fn configure_adapter(ed: &mut Editor, session_id: u64) {
+    crate::debug::sync_breakpoint_lines(ed);
+    let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
+    for file in files {
+        crate::script_runtime::send_dap_command(
+            ed,
+            session_id,
+            "setBreakpoints",
+            &ed.debug.set_breakpoints_args(&file),
+        );
+    }
+    crate::script_runtime::send_dap_command(ed, session_id, "configurationDone", "{}");
 }

@@ -14,17 +14,24 @@
 
 use serde_json::json;
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 
 type SessionId = kernel::debug::types::SessionId;
 
 /// Send a DAP request through the session's foreground-owned connection.
-pub(crate) fn send_dap_command(ed: &mut kernel::state::Editor, session_id: SessionId, command: &str, arguments: &str) {
-    let Some(handle) = ed.debug.connections.get(&session_id).cloned() else { return };
+pub(crate) fn send_dap_command(
+    ed: &mut kernel::state::Editor,
+    session_id: SessionId,
+    command: &str,
+    arguments: &str,
+) {
+    let Some(handle) = ed.debug.connections.get(&session_id).cloned() else {
+        return;
+    };
     let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or(json!({}));
     handle.request(command, args);
 }
@@ -32,10 +39,12 @@ pub(crate) fn send_dap_command(ed: &mut kernel::state::Editor, session_id: Sessi
 // ── C functions ───────────────────────────────────────────────────────────────
 
 /// The buffer whose path matches `file`, if one is open.
-fn buffer_for_path(ed: &mut kernel::state::Editor, file: &str)
-    -> Option<std::sync::Arc<std::sync::Mutex<kernel::text_engine::Buffer>>>
-{
-    ed.buffers.iter()
+fn buffer_for_path(
+    ed: &mut kernel::state::Editor,
+    file: &str,
+) -> Option<std::sync::Arc<std::sync::Mutex<kernel::text_engine::Buffer>>> {
+    ed.buffers
+        .iter()
         .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file))
         .map(|(_, a)| a.clone())
 }
@@ -45,11 +54,10 @@ fn buffer_for_path(ed: &mut kernel::state::Editor, file: &str)
 /// the `Dap(Started)` background event.
 unsafe extern "C-unwind" fn c_debug_start(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let adapter = unsafe { conv::get_str(argc, argv, 0) }
-            .unwrap_or_else(|| "codelldb".to_string());
+        let adapter =
+            unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_else(|| "codelldb".to_string());
         let launch_config: Option<serde_json::Value> =
-            unsafe { conv::get_str(argc, argv, 1) }
-                .and_then(|c| serde_json::from_str(&c).ok());
+            unsafe { conv::get_str(argc, argv, 1) }.and_then(|c| serde_json::from_str(&c).ok());
         match kernel::debug::spawn_session(ed, &adapter, launch_config) {
             Ok(id) => conv::integer(id as i32),
             Err(_) => conv::nil(),
@@ -74,13 +82,23 @@ unsafe extern "C-unwind" fn c_debug_disconnect(argc: i32, argv: *mut Janet) -> J
 /// (debug/continue &opt thread-id) → nil
 unsafe extern "C-unwind" fn c_debug_continue(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
         let thread_id = unsafe { conv::get_int(argc, argv, 0) }
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
             .unwrap_or(1);
-        send_dap_command(ed, sid, "continue", &format!(r#"{{"threadId":{thread_id}}}"#));
-        if let Some(s) = ed.debug.active_session_mut() { s.stopped = false; }
+        send_dap_command(
+            ed,
+            sid,
+            "continue",
+            &format!(r#"{{"threadId":{thread_id}}}"#),
+        );
+        if let Some(s) = ed.debug.active_session_mut() {
+            s.stopped = false;
+        }
         conv::nil()
     })
 }
@@ -88,7 +106,10 @@ unsafe extern "C-unwind" fn c_debug_continue(argc: i32, argv: *mut Janet) -> Jan
 /// (debug/step-in &opt thread-id) → nil
 unsafe extern "C-unwind" fn c_debug_step_in(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
         let thread_id = unsafe { conv::get_int(argc, argv, 0) }
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
@@ -101,7 +122,10 @@ unsafe extern "C-unwind" fn c_debug_step_in(argc: i32, argv: *mut Janet) -> Jane
 /// (debug/step-over &opt thread-id) → nil
 unsafe extern "C-unwind" fn c_debug_step_over(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
         let thread_id = unsafe { conv::get_int(argc, argv, 0) }
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
@@ -114,12 +138,20 @@ unsafe extern "C-unwind" fn c_debug_step_over(argc: i32, argv: *mut Janet) -> Ja
 /// (debug/step-out &opt thread-id) → nil
 unsafe extern "C-unwind" fn c_debug_step_out(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
         let thread_id = unsafe { conv::get_int(argc, argv, 0) }
             .map(|t| t as u64)
             .or_else(|| ed.debug.active_session().and_then(|s| s.stopped_thread))
             .unwrap_or(1);
-        send_dap_command(ed, sid, "stepOut", &format!(r#"{{"threadId":{thread_id}}}"#));
+        send_dap_command(
+            ed,
+            sid,
+            "stepOut",
+            &format!(r#"{{"threadId":{thread_id}}}"#),
+        );
         conv::nil()
     })
 }
@@ -129,7 +161,9 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
     with_editor(|ed| {
         let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
-        if file.is_empty() { return conv::nil(); }
+        if file.is_empty() {
+            return conv::nil();
+        }
         let bp_id = ed.debug.add_breakpoint(file.clone(), line);
         // While a buffer for this file is open, its line tracks edits.
         if let Some(arc) = buffer_for_path(ed, &file) {
@@ -143,11 +177,14 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
             let args = ed.debug.set_breakpoints_args(&file);
             send_dap_command(ed, sid, "setBreakpoints", &args);
         }
-        ed.events.emit_typed(keys::events::DEBUG_BREAKPOINT_CHANGED, DebugBreakpointChangedPayload {
-            file,
-            line: line.to_string(),
-            action: "add".to_string(),
-        });
+        ed.events.emit_typed(
+            keys::events::DEBUG_BREAKPOINT_CHANGED,
+            DebugBreakpointChangedPayload {
+                file,
+                line: line.to_string(),
+                action: "add".to_string(),
+            },
+        );
         conv::nil()
     })
 }
@@ -157,7 +194,9 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
     with_editor(|ed| {
         let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
-        if file.is_empty() { return conv::nil(); }
+        if file.is_empty() {
+            return conv::nil();
+        }
         let removed = ed.debug.remove_breakpoint(&file, line);
         if let Some(arc) = buffer_for_path(ed, &file) {
             let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
@@ -170,11 +209,14 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
             let args = ed.debug.set_breakpoints_args(&file);
             send_dap_command(ed, sid, "setBreakpoints", &args);
         }
-        ed.events.emit_typed(keys::events::DEBUG_BREAKPOINT_CHANGED, DebugBreakpointChangedPayload {
-            file,
-            line: line.to_string(),
-            action: "remove".to_string(),
-        });
+        ed.events.emit_typed(
+            keys::events::DEBUG_BREAKPOINT_CHANGED,
+            DebugBreakpointChangedPayload {
+                file,
+                line: line.to_string(),
+                action: "remove".to_string(),
+            },
+        );
         conv::nil()
     })
 }
@@ -187,19 +229,32 @@ unsafe extern "C-unwind" fn c_debug_set_enabled(argc: i32, argv: *mut Janet) -> 
         let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
         let enabled = unsafe { conv::get_bool(argc, argv, 2) }.unwrap_or(true);
-        if file.is_empty() { return conv::nil(); }
+        if file.is_empty() {
+            return conv::nil();
+        }
         kernel::debug::set_breakpoint_enabled(ed, &file, line, enabled);
         conv::nil()
     })
 }
 
 /// (debug/pause &opt thread-id) → nil
+/// Without a thread id the last-stopped (or first known) thread is paused —
+/// a hardcoded id would silently miss on adapters that number threads
+/// differently.
 unsafe extern "C-unwind" fn c_debug_pause(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
+        let session = ed.debug.active_session();
         let thread_id = unsafe { conv::get_int(argc, argv, 0) }
             .map(|t| t as u64)
-            .unwrap_or(1);
+            .or_else(|| session.and_then(|s| s.stopped_thread))
+            .or_else(|| session.and_then(|s| s.threads.first().map(|t| t.id)));
+        let Some(thread_id) = thread_id else {
+            return conv::nil();
+        };
         send_dap_command(ed, sid, "pause", &format!(r#"{{"threadId":{thread_id}}}"#));
         conv::nil()
     })
@@ -210,8 +265,13 @@ unsafe extern "C-unwind" fn c_debug_pause(argc: i32, argv: *mut Janet) -> Janet 
 /// failure into the debug console.
 unsafe extern "C-unwind" fn c_debug_restart(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
-        if let Some(s) = ed.debug.active_session_mut() { s.stopped = false; }
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
+        if let Some(s) = ed.debug.active_session_mut() {
+            s.stopped = false;
+        }
         send_dap_command(ed, sid, "restart", "{}");
         conv::nil()
     })
@@ -220,9 +280,13 @@ unsafe extern "C-unwind" fn c_debug_restart(_argc: i32, _argv: *mut Janet) -> Ja
 /// (debug/watch-add expr) → nil
 unsafe extern "C-unwind" fn c_debug_watch_add(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let Some(expr) = (unsafe { conv::get_str(argc, argv, 0) }) else { return conv::nil() };
+        let Some(expr) = (unsafe { conv::get_str(argc, argv, 0) }) else {
+            return conv::nil();
+        };
         let expr = expr.trim().to_string();
-        if expr.is_empty() { return conv::nil(); }
+        if expr.is_empty() {
+            return conv::nil();
+        }
         if !ed.debug.watches.contains(&expr) {
             ed.debug.watches.push(expr);
         }
@@ -233,7 +297,9 @@ unsafe extern "C-unwind" fn c_debug_watch_add(argc: i32, argv: *mut Janet) -> Ja
 /// (debug/watch-remove expr) → nil
 unsafe extern "C-unwind" fn c_debug_watch_remove(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let Some(expr) = (unsafe { conv::get_str(argc, argv, 0) }) else { return conv::nil() };
+        let Some(expr) = (unsafe { conv::get_str(argc, argv, 0) }) else {
+            return conv::nil();
+        };
         ed.debug.watches.retain(|w| w != &expr);
         for session in ed.debug.sessions.values_mut() {
             session.watch_results = vec![None; ed.debug.watches.len()];
@@ -258,8 +324,14 @@ unsafe extern "C-unwind" fn c_debug_evaluate(argc: i32, argv: *mut Janet) -> Jan
     with_editor(|ed| {
         let expr = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
         let frame_id = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0);
-        let sid = match ed.debug.active_session { Some(s) => s, None => return conv::nil() };
-        let escaped = expr.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+        let sid = match ed.debug.active_session {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
+        let escaped = expr
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
         let args = format!(r#"{{"expression":"{escaped}","context":"repl","frameId":{frame_id}}}"#);
         send_dap_command(ed, sid, "evaluate", &args);
         conv::nil()
@@ -270,7 +342,7 @@ unsafe extern "C-unwind" fn c_debug_evaluate(argc: i32, argv: *mut Janet) -> Jan
 unsafe extern "C-unwind" fn c_debug_session(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| match ed.debug.active_session {
         Some(id) => conv::integer(id as i32),
-        None     => conv::nil(),
+        None => conv::nil(),
     })
 }
 

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use crate::kernel::command::{self, builtin};
-use crate::kernel::storage::disk::DiskFileSystem;
 use crate::kernel::state::Editor;
+use crate::kernel::storage::disk::DiskFileSystem;
+use std::collections::HashMap;
 
 pub fn make_editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -28,7 +28,8 @@ pub fn run(ed: &mut Editor, cmd: &str) {
 }
 
 pub fn focused_key(ed: &Editor) -> usize {
-    ed.view_tree.focused_window()
+    ed.view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)
 }
@@ -43,7 +44,6 @@ pub fn cursor(ed: &Editor) -> usize {
     let key = focused_key(ed);
     ed.views.get(&key).unwrap().cursor_offset()
 }
-
 
 /// A minimal DAP adapter that answers `initialize` and appends every request
 /// command it receives to a log file — the observability the ordering tests
@@ -81,6 +81,7 @@ while True:
     if msg.get("command") == "initialize":
         send({"type": "response", "request_seq": msg["seq"], "success": True,
               "command": "initialize", "body": {}})
+        send({"type": "event", "event": "initialized", "body": {}})
     elif msg.get("command") == "threads":
         send({"type": "response", "request_seq": msg["seq"], "success": True,
               "command": "threads",
@@ -89,7 +90,11 @@ while True:
 "#;
 
 pub fn python3_available() -> bool {
-    std::process::Command::new("python3").arg("-c").arg("1").output().is_ok()
+    std::process::Command::new("python3")
+        .arg("-c")
+        .arg("1")
+        .output()
+        .is_ok()
 }
 
 pub struct FakeDap {
@@ -119,8 +124,11 @@ pub fn dap_log_lines(log: &std::path::Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub fn editor_with_background() -> (Editor, crate::kernel::runtime::BackgroundHandle,
-    tokio::sync::mpsc::UnboundedReceiver<crate::kernel::runtime::BackgroundEvent>) {
+pub fn editor_with_background() -> (
+    Editor,
+    crate::kernel::runtime::BackgroundHandle,
+    tokio::sync::mpsc::UnboundedReceiver<crate::kernel::runtime::BackgroundEvent>,
+) {
     let mut ed = make_editor();
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();

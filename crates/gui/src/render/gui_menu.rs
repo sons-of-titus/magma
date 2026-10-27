@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, RichText};
 
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 
 use super::gui_dialog::DialogKind;
 use super::gui_layout::LeftTool;

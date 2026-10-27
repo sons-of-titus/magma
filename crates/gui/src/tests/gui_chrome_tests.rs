@@ -10,7 +10,7 @@ use crate::render::gui_theme::GuiTheme;
 use crate::render::tool_window::{
     AGENT_TOOL, DEBUG_TOOL, OUTPUT_TOOL, TERMINAL_TOOL, DockPosition, ToolWindowManager,
 };
-use magma::kernel::state::options::OPTION_SPECS;
+use kernel::state::options::OPTION_SPECS;
 use crate::tests::helpers::make_editor;
 
 // ── Dock assignment ───────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ fn vc_is_a_gui_panel_with_no_modal_layer_or_status_buffer() {
     // open a magit-style `*vc*` text buffer, hijacking typing in every other
     // buffer — most visibly the scratch buffer it dropped you into.
     let mut ed = make_editor();
-    let _ = magma::kernel::command::execute_command(
+    let _ = kernel::command::execute_command(
         &mut ed, "vc", &std::collections::HashMap::new());
 
     assert!(!ed.keymaps.is_layer_active("vc"),

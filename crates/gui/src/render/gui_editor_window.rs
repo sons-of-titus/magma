@@ -12,9 +12,9 @@ use std::collections::HashMap;
 
 use eframe::egui::{self, FontFamily, FontId};
 
-use magma::kernel::command::execute_command;
-use magma::kernel::input;
-use magma::kernel::state::{Editor, MessageKind};
+use kernel::command::execute_command;
+use kernel::input;
+use kernel::state::{Editor, MessageKind};
 
 use super::gui_breadcrumb::BreadcrumbAction;
 use super::gui_commit_actions;
@@ -333,5 +333,5 @@ fn apply_status_action(ed: &mut Editor, layout: &mut super::gui_layout::GuiLayou
 /// Persist history + marks on editor shutdown; the workspace module owns
 /// the project session and crash-snapshot cleanup.
 fn persist_session(ed: &Editor) {
-    magma::kernel::workspace::persist_session(ed);
+    kernel::workspace::persist_session(ed);
 }

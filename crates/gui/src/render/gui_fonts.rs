@@ -67,7 +67,7 @@ fn system_ui_font() -> Option<&'static Vec<u8>> {
 /// egui font definitions: egui defaults + user-loaded fonts + a system UI
 /// sans for `Proportional` + the bundled icon font.  The GUI and the
 /// glyph-coverage tests must agree on this.
-pub fn font_definitions(font_config: &magma::kernel::state::FontConfig) -> egui::FontDefinitions {
+pub fn font_definitions(font_config: &kernel::state::FontConfig) -> egui::FontDefinitions {
     let mut font_defs = egui::FontDefinitions::default();
     for (alias, bytes) in &font_config.loaded_fonts {
         font_defs.font_data.insert(
@@ -124,6 +124,6 @@ pub fn font_definitions(font_config: &magma::kernel::state::FontConfig) -> egui:
 }
 
 /// Apply `FontConfig` to egui: registers loaded font bytes and rebuilds families.
-pub fn apply_fonts_to_egui(ctx: &egui::Context, font_config: &magma::kernel::state::FontConfig) {
+pub fn apply_fonts_to_egui(ctx: &egui::Context, font_config: &kernel::state::FontConfig) {
     ctx.set_fonts(font_definitions(font_config));
 }

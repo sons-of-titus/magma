@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 
-use magma::kernel::command::{self, args::ArgValue, builtin};
-use magma::kernel::state::Editor;
-use magma::kernel::storage::disk::DiskFileSystem;
+use kernel::command::{self, args::ArgValue, builtin};
+use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
 
 fn editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -105,12 +105,12 @@ fn closed_project_can_be_reopened() {
 // ── Index contract: project-relative paths ───────────────────────────────────
 fn editor_with_background() -> (
     Editor,
-    tokio::sync::mpsc::UnboundedReceiver<magma::kernel::runtime::BackgroundEvent>,
+    tokio::sync::mpsc::UnboundedReceiver<kernel::runtime::BackgroundEvent>,
 ) {
     let mut ed = editor();
     let rt = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    ed.background = Some(magma::kernel::runtime::BackgroundHandle::new(rt, tx));
+    ed.background = Some(kernel::runtime::BackgroundHandle::new(rt, tx));
     (ed, rx)
 }
 
@@ -127,8 +127,8 @@ fn open_project_indexes_files_relative_to_root() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let files = loop {
         match rx.try_recv() {
-            Ok(magma::kernel::runtime::BackgroundEvent::Index(
-                magma::kernel::index::Event::ProjectIndexed { files, .. },
+            Ok(kernel::runtime::BackgroundEvent::Index(
+                kernel::index::Event::ProjectIndexed { files, .. },
             )) => break files,
             _ if std::time::Instant::now() < deadline => {
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -159,12 +159,12 @@ fn most_recent_existing_project_skips_missing_directories() {
         dir.to_string_lossy().into_owned(),
     ];
     assert_eq!(
-        magma::kernel::state::persist::most_recent_existing_project(&recents).as_deref(),
+        kernel::state::persist::most_recent_existing_project(&recents).as_deref(),
         Some(dir.to_str().unwrap()),
         "a vanished most-recent project must fall through to the next live one"
     );
     assert_eq!(
-        magma::kernel::state::persist::most_recent_existing_project(&[]),
+        kernel::state::persist::most_recent_existing_project(&[]),
         None
     );
 
@@ -191,8 +191,8 @@ fn open_project_expands_tilde() {
 
 #[test]
 fn find_files_walks_on_the_pool_and_presents_results() {
-    use magma::kernel::command::{args::ArgValue, execute_command};
-    use magma::kernel::runtime::{BackgroundEvent, process_background_event};
+    use kernel::command::{args::ArgValue, execute_command};
+    use kernel::runtime::{BackgroundEvent, process_background_event};
     use std::time::{Duration, Instant};
 
     let root = std::env::temp_dir().join("magma_find_files_async");
@@ -208,7 +208,7 @@ fn find_files_walks_on_the_pool_and_presents_results() {
     let mut open_args = std::collections::HashMap::new();
     open_args.insert(
         "path".to_string(),
-        magma::kernel::command::args::ArgValue::Path(root.to_string_lossy().into_owned()),
+        kernel::command::args::ArgValue::Path(root.to_string_lossy().into_owned()),
     );
     execute_command(&mut ed, "open-project", &open_args).unwrap();
 
@@ -222,7 +222,7 @@ fn find_files_walks_on_the_pool_and_presents_results() {
     let mut presented = false;
     while Instant::now() < deadline {
         while let Ok(ev) = rx.try_recv() {
-            if let BackgroundEvent::Project(magma::kernel::project::Event::FileSearchListed {
+            if let BackgroundEvent::Project(kernel::project::Event::FileSearchListed {
                 files,
                 ..
             }) = &ev

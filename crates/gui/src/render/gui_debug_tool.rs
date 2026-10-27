@@ -4,7 +4,7 @@
 //! variables tree of the selected frame.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_run_tool::toolbar_button;
 use super::gui_theme::{GuiTheme, icons};
 use super::tool_window::{ToolAction, ToolWindow};
@@ -255,8 +255,8 @@ impl ToolWindow for DebugToolWindow {
 fn render_variable_rows(
     ui: &mut egui::Ui,
     theme: &GuiTheme,
-    session: &magma::kernel::debug::DebugSession,
-    vars: &[magma::kernel::debug::Variable],
+    session: &kernel::debug::DebugSession,
+    vars: &[kernel::debug::Variable],
     depth: usize,
     actions: &mut Vec<ToolAction>,
 ) {

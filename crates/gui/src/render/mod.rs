@@ -5,12 +5,12 @@
 //! their original `super::frame` / `super::surface` / `super::gpu_atlas`
 //! paths, exactly as they did inside the kernel.
 
-pub use magma::kernel::render::{
+pub use kernel::render::{
     decorations, editor_view, frame, gpu_atlas, gutter, gutter_providers, host, row_layout,
     surface, tabs, view, view_tree,
 };
 
-pub use magma::kernel::render::CursorPaint;
+pub use kernel::render::CursorPaint;
 
 pub mod gpu_paint_callback;
 pub mod gui;

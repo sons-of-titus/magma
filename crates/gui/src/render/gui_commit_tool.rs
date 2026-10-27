@@ -12,8 +12,8 @@
 
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, RichText, Sense, Vec2};
 
-use magma::kernel::state::Editor;
-use magma::kernel::vc::VcStatus;
+use kernel::state::Editor;
+use kernel::vc::VcStatus;
 
 use super::gui_theme::{icons, GuiTheme};
 

@@ -6,8 +6,8 @@
 //! shortcuts) before these strings reach the editor's keymap.
 
 use eframe::egui;
-use magma::kernel::input::NON_INSERTABLE;
-use magma::kernel::input::event::{MouseButton, MouseEventKind};
+use kernel::input::NON_INSERTABLE;
+use kernel::input::event::{MouseButton, MouseEventKind};
 
 /// A mouse event in pixel coordinates, converted to cell coords
 /// inside the CentralPanel closure.

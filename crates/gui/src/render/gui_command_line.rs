@@ -3,7 +3,7 @@
 //! `execute_command_line`, Escape closes (shell key gate).
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_dialog::DialogAction;
 use super::gui_theme::GuiTheme;
 

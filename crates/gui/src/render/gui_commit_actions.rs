@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use magma::kernel::command::{execute_command, args::ArgValue};
-use magma::kernel::state::{Editor, MessageKind};
+use kernel::command::{execute_command, args::ArgValue};
+use kernel::state::{Editor, MessageKind};
 
 use super::gui_commit_tool::CommitAction;
 use super::gui_dialog::DialogAction;

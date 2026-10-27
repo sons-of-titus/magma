@@ -11,7 +11,7 @@ use crate::render::gui_settings_dialog::sorted_options;
 use crate::render::gui_goto_dialogs::{collect_entries, PickerEntry, PickerSource};
 use crate::render::gui_search_dialog::SearchDialog;
 use crate::render::gui_theme::GuiTheme;
-use magma::kernel::semantic::provider::{Symbol, SymbolKind};
+use kernel::semantic::provider::{Symbol, SymbolKind};
 use crate::tests::helpers::{buf_text, cursor, make_editor, make_editor_with_buffer};
 
 // ── DialogAction::SetOption ───────────────────────────────────────────────────
@@ -155,7 +155,7 @@ fn search_smart_case() {
 
 #[test]
 fn smart_case_predicate() {
-    use magma::kernel::command::builtin::search_query::SearchQuery;
+    use kernel::command::builtin::search_query::SearchQuery;
     match SearchQuery::compile("abc", false).unwrap() {
         SearchQuery::Regex(_) => {}           // lowercase ⇒ insensitive ⇒ regex path
         SearchQuery::Literal(_) => panic!("lowercase queries must compile case-insensitive"),
@@ -237,7 +237,7 @@ fn picker_lists_janet_defined_commands() {
 
 #[test]
 fn list_detailed_flags_required_args() {
-    use magma::kernel::command::args::{ArgSpec, ArgType};
+    use kernel::command::args::{ArgSpec, ArgType};
     let mut ed = make_editor();
     ed.commands.register_fn(
         "gui-test-needs-arg", "desc",
@@ -302,7 +302,7 @@ fn theme_applies_editor_colors() {
 #[test]
 fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
     use crate::render::gui_theme::icons;
-    use magma::kernel::state::FontConfig;
+    use kernel::state::FontConfig;
     use eframe::egui::epaint::text::{FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
@@ -365,7 +365,7 @@ fn every_theme_icon_glyph_is_covered_by_bundled_fonts() {
 #[test]
 fn every_sidebar_glyph_is_covered_by_bundled_fonts() {
     use crate::render::gui_sidebar::{FALLBACK_FILE, ARROW_CLOSED, ARROW_OPEN};
-    use magma::kernel::state::FontConfig;
+    use kernel::state::FontConfig;
     use eframe::egui::epaint::text::{FontId, Fonts, TextOptions};
 
     let mut fonts = Fonts::new(
@@ -400,7 +400,7 @@ fn sidebar_tree_roots_at_the_project_not_the_filesystem() {
         "src/kernel/state.rs".to_string(),
         "README.md".to_string(),
     ];
-    let tree = gui_sidebar_tree::build(&files);
+    let tree = gui_sidebar_tree::build(&files, &std::collections::HashSet::new());
 
     let top: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
     assert_eq!(top, vec!["src", "README.md"],
@@ -437,7 +437,7 @@ fn sidebar_state_resets_when_the_project_changes() {
 #[test]
 fn close_editor_session_ends_the_project_and_its_terminals() {
     use crate::render::gui_shell::close_editor_session;
-    use magma::kernel::runtime::BackgroundEvent;
+    use kernel::runtime::BackgroundEvent;
 
     let mut ed = crate::tests::helpers::make_editor();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -445,7 +445,7 @@ fn close_editor_session_ends_the_project_and_its_terminals() {
         .spawn("sh", &[], &std::env::temp_dir(), tx)
         .expect("spawn terminal");
 
-    magma::kernel::project::open_root(&mut ed, "/tmp/some-project");
+    kernel::project::open_root(&mut ed, "/tmp/some-project");
     assert!(ed.project_manager.project.root.is_some());
     assert_eq!(ed.io.terminals.sessions.len(), 1);
 

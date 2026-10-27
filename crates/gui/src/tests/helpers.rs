@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use magma::kernel::command::{self, builtin};
-use magma::kernel::state::Editor;
-use magma::kernel::storage::disk::DiskFileSystem;
+use kernel::command::{self, builtin};
+use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
 
 pub fn make_editor() -> Editor {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -55,13 +55,13 @@ pub fn acquire_janet_lock() -> std::sync::MutexGuard<'static, ()> {
 
 pub fn editor_with_background() -> (
     Editor,
-    magma::kernel::runtime::BackgroundHandle,
-    tokio::sync::mpsc::UnboundedReceiver<magma::kernel::runtime::BackgroundEvent>,
+    kernel::runtime::BackgroundHandle,
+    tokio::sync::mpsc::UnboundedReceiver<kernel::runtime::BackgroundEvent>,
 ) {
     let mut ed = make_editor();
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    let handle = magma::kernel::runtime::BackgroundHandle::new(runtime, tx);
+    let handle = kernel::runtime::BackgroundHandle::new(runtime, tx);
     ed.background = Some(handle.clone());
     (ed, handle, rx)
 }

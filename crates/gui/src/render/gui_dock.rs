@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use eframe::egui;
 
-use magma::kernel::command::args::ArgValue;
-use magma::kernel::state::{Editor, MessageKind};
+use kernel::command::args::ArgValue;
+use kernel::state::{Editor, MessageKind};
 
 use super::gui::GuiApp;
 use super::gui_breadcrumb::{BreadcrumbAction, BreadcrumbBar};
@@ -148,9 +148,9 @@ pub(crate) fn show_panels(app: &mut GuiApp, ui: &mut egui::Ui, line_h: f32) -> P
         .is_some_and(|e| e.visible)
         && app.tool_windows.active_bottom == FIND_TOOL;
     app.editor.quickfix_focus = if find_focused {
-        magma::kernel::task::QuickfixList::Search
+        kernel::task::QuickfixList::Search
     } else {
-        magma::kernel::task::QuickfixList::Problems
+        kernel::task::QuickfixList::Problems
     };
 
     // Navigation band — tabs and breadcrumb.  Registered after the top row so
@@ -245,7 +245,7 @@ pub(crate) fn apply_run_actions(
                 if let RunAction::RunNamed(name) = action {
                     args.insert("name".to_string(), ArgValue::String(name));
                 }
-                if let Err(e) = magma::kernel::command::execute_command(ed, "run-config", &args) {
+                if let Err(e) = kernel::command::execute_command(ed, "run-config", &args) {
                     ed.show_message(MessageKind::Error, e);
                 }
                 // A launch always has output worth surfacing.
@@ -255,13 +255,13 @@ pub(crate) fn apply_run_actions(
                 tool_windows.active_bottom = OUTPUT_TOOL;
             }
             RunAction::Stop => {
-                if let Err(e) = magma::kernel::command::execute_command(
+                if let Err(e) = kernel::command::execute_command(
                     ed, "stop-config", &HashMap::new()) {
                     ed.show_message(MessageKind::Error, e);
                 }
             }
             RunAction::Debug => {
-                if let Err(e) = magma::kernel::command::execute_command(
+                if let Err(e) = kernel::command::execute_command(
                     ed, "debug-config", &HashMap::new()) {
                     ed.show_message(MessageKind::Error, e);
                 } else {
@@ -274,7 +274,7 @@ pub(crate) fn apply_run_actions(
             RunAction::Select(name) => {
                 let mut args = HashMap::new();
                 args.insert("name".to_string(), ArgValue::String(name));
-                if let Err(e) = magma::kernel::command::execute_command(ed, "select-config", &args) {
+                if let Err(e) = kernel::command::execute_command(ed, "select-config", &args) {
                     ed.show_message(MessageKind::Error, e);
                 }
             }

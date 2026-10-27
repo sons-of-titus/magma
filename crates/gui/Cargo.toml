@@ -13,7 +13,7 @@ name = "magma"
 path = "src/main.rs"
 
 [dependencies]
-magma = { path = "../.." }
+kernel = { path = "../kernel" }
 scripting = { path = "../scripting", optional = true }
 logging = { path = "../logging" }
 tokio = { version = "1", features = ["full"] }

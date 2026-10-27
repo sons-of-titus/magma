@@ -4,8 +4,8 @@
 //! shell applies them at its write boundary.
 
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, RichText, Sense, Vec2};
-use magma::kernel::state::Editor;
-use magma::kernel::task::TaskStatus;
+use kernel::state::Editor;
+use kernel::task::TaskStatus;
 use super::gui_theme::{GuiTheme, icons};
 
 pub enum RunAction {

@@ -8,7 +8,7 @@ use crate::render::gui_theme::GuiTheme;
 use crate::render::gui_welcome::WelcomeAction;
 use crate::tests::helpers::make_editor;
 
-fn shell_and_editor() -> (ShellRuntime, magma::kernel::state::Editor) {
+fn shell_and_editor() -> (ShellRuntime, kernel::state::Editor) {
     let mut editor = make_editor();
     let shell = ShellRuntime::new(&mut editor);
     (shell, editor)

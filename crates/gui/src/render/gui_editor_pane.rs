@@ -9,14 +9,14 @@
 use eframe::egui::{self, Align2, FontFamily, FontId, Pos2, Rect, Vec2};
 use eframe::wgpu::TextureFormat;
 
-use magma::kernel::input::event::MouseEvent;
-use magma::kernel::input::mouse;
+use kernel::input::event::MouseEvent;
+use kernel::input::mouse;
 use crate::render::frame::{pane_scroll_state, render_frame_with, sync_viewport_scroll};
 use crate::render::CursorPaint;
 use crate::render::gpu_atlas::{build_glyph_instances, build_rect_instances, GpuGlyphAtlas};
 use crate::render::gpu_paint_callback::MagmaPaintCallback;
 use crate::render::surface::Surface;
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_input::RawMouseEvent;
 use super::gui_minimap::{Minimap, STRIP_W};
 use super::gui_render::present;
@@ -291,8 +291,8 @@ pub fn render_editor_pane(
                 continue;
             }
             if !editor_rect.contains(pos)
-                && matches!(ev.kind, magma::kernel::input::event::MouseEventKind::Click
-                    | magma::kernel::input::event::MouseEventKind::Release)
+                && matches!(ev.kind, kernel::input::event::MouseEventKind::Click
+                    | kernel::input::event::MouseEventKind::Release)
             {
                 continue;
             }
@@ -461,10 +461,10 @@ fn update_hover_card(ui: &egui::Ui, ed: &mut Editor, rect: Rect, char_w: f32, li
             let buf_id = pane.buffer_id?;
             let cell_x = ((p.x - rect.min.x) / char_w).max(0.0) as u16;
             let cell_y = ((p.y - rect.min.y) / line_h).max(0.0) as u16;
-            let offset = magma::kernel::input::mouse::resolve_click_to_offset(ed, buf_id, &pane, cell_x, cell_y)?;
+            let offset = kernel::input::mouse::resolve_click_to_offset(ed, buf_id, &pane, cell_x, cell_y)?;
             let arc = ed.buffers.get(buf_id)?;
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            let (ws, we) = magma::kernel::input::mouse::word_range_at(&buf, offset)?;
+            let (ws, we) = kernel::input::mouse::word_range_at(&buf, offset)?;
             let diag_line = buf.position_of(offset).line;
             let diag = buf.get_diagnostics().into_iter()
                 .find(|d| d.line == diag_line)
@@ -514,9 +514,9 @@ fn request_lsp_hover(ed: &Editor, buf_id: usize, offset: usize) {
     server.request("textDocument/hover", params, buf_id, revision);
 }
 
-fn build_hover_card(ed: &mut Editor, word: String, diag: Option<String>, px: f32, py: f32) -> magma::kernel::state::HoverCard {
+fn build_hover_card(ed: &mut Editor, word: String, diag: Option<String>, px: f32, py: f32) -> kernel::state::HoverCard {
     let mut lines = Vec::new();
-    let defs: Vec<(String, &magma::kernel::index::extract::IndexedSymbol)> =
+    let defs: Vec<(String, &kernel::index::extract::IndexedSymbol)> =
         ed.index.symbols_with_prefix(&word)
             .into_iter()
             .filter(|(_, sym)| sym.name == word)
@@ -533,7 +533,7 @@ fn build_hover_card(ed: &mut Editor, word: String, diag: Option<String>, px: f32
     if let Some(d) = diag {
         lines.push(d);
     }
-    magma::kernel::state::HoverCard { word, px, py, since: std::time::Instant::now(), lines }
+    kernel::state::HoverCard { word, px, py, since: std::time::Instant::now(), lines }
 }
 
 /// The hover card itself — appears after the pointer dwells on a word.
@@ -613,7 +613,7 @@ fn draw_context_menu(ui: &egui::Ui, ed: &mut Editor) {
     }
 
     if let Some(cmd) = chosen {
-        let _ = magma::kernel::command::execute_command(ed, cmd, &std::collections::HashMap::new());
+        let _ = kernel::command::execute_command(ed, cmd, &std::collections::HashMap::new());
         ed.frame_dirty = true;
     }
     if close {

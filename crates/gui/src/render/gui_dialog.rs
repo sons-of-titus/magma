@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use eframe::egui::{self, RichText};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_goto_dialogs::PickerSource;
 use super::gui_search_dialog::SearchDialog;
 use super::gui_theme::{GuiTheme, icons};
@@ -85,8 +85,8 @@ pub enum DialogAction {
 
 impl DialogAction {
     pub fn apply(self, ed: &mut Editor) {
-        use magma::kernel::command::{execute_command, args::ArgValue};
-        use magma::kernel::state::MessageKind;
+        use kernel::command::{execute_command, args::ArgValue};
+        use kernel::state::MessageKind;
         ed.frame_dirty = true;
         // Dialog-initiated commands report failure instead of discarding it —
         // a silent dialog is how users learn the editor cannot be trusted.
@@ -141,7 +141,7 @@ impl DialogAction {
                 report(ed, result);
             }
             DialogAction::ExecuteCommandLine(line) => {
-                let result = magma::kernel::command::execute_command_line(ed, &line);
+                let result = kernel::command::execute_command_line(ed, &line);
                 report(ed, result);
             }
             DialogAction::UpsertRunConfig { original, name, command, args, cwd, build_first, debuggable } => {
@@ -151,17 +151,17 @@ impl DialogAction {
                 ed.options.insert(name, value);
             }
             DialogAction::ReplaceAllInFocused { find, replace, regex } => {
-                match magma::kernel::command::builtin::search_query::replace_all(ed, &find, &replace, regex) {
-                    Ok(n) => ed.show_message(magma::kernel::state::MessageKind::Info,
+                match kernel::command::builtin::search_query::replace_all(ed, &find, &replace, regex) {
+                    Ok(n) => ed.show_message(kernel::state::MessageKind::Info,
                         format!("replaced {n} occurrences")),
-                    Err(e) => ed.show_message(magma::kernel::state::MessageKind::Error, e),
+                    Err(e) => ed.show_message(kernel::state::MessageKind::Error, e),
                 }
             }
             DialogAction::ReplaceNextInFocused { find, replace, regex } => {
-                match magma::kernel::command::builtin::search_query::replace_next(ed, &find, &replace, regex) {
+                match kernel::command::builtin::search_query::replace_next(ed, &find, &replace, regex) {
                     Ok(true) => {}
-                    Ok(false) => ed.show_message(magma::kernel::state::MessageKind::Info, "no more matches"),
-                    Err(e) => ed.show_message(magma::kernel::state::MessageKind::Error, e),
+                    Ok(false) => ed.show_message(kernel::state::MessageKind::Info, "no more matches"),
+                    Err(e) => ed.show_message(kernel::state::MessageKind::Error, e),
                 }
             }
         }
@@ -179,8 +179,8 @@ fn upsert_run_config(
     build_first: String,
     debuggable: bool,
 ) {
-    use magma::kernel::state::MessageKind;
-    let cfg = magma::kernel::run_config::RunConfig {
+    use kernel::state::MessageKind;
+    let cfg = kernel::run_config::RunConfig {
         name,
         command,
         args: args.split_whitespace().map(str::to_string).collect(),
@@ -189,7 +189,7 @@ fn upsert_run_config(
         build_before_run: if build_first.trim().is_empty() { None } else { Some(build_first.trim().to_string()) },
         debuggable,
     };
-    match magma::kernel::run_config::upsert_config(ed, original, cfg) {
+    match kernel::run_config::upsert_config(ed, original, cfg) {
         Ok(saved) => ed.show_message(MessageKind::Info, format!("Saved run configuration '{saved}'")),
         Err(e) => ed.show_message(MessageKind::Error, e),
     }
@@ -268,7 +268,7 @@ impl DialogManager {
             }
             return false;
         }
-        let _ = magma::kernel::command::execute_command(ed, "quit", &HashMap::new());
+        let _ = kernel::command::execute_command(ed, "quit", &HashMap::new());
         true
     }
 

@@ -4,7 +4,7 @@
 //! makes the saved config active.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_dialog::DialogAction;
 use super::gui_theme::GuiTheme;
 

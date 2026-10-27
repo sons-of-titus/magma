@@ -2,8 +2,8 @@
 //! styled runs, click-to-focus, and a PTY resize that follows the panel.
 
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, RichText, Sense};
-use magma::kernel::state::Editor;
-use magma::kernel::terminal::screen::{Color as TermColor, StyledLine};
+use kernel::state::Editor;
+use kernel::terminal::screen::{Color as TermColor, StyledLine};
 
 use super::gui_theme::{self, GuiTheme};
 use super::tool_window::ToolAction;

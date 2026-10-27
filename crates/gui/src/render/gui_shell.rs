@@ -4,9 +4,9 @@
 
 use eframe::egui;
 
-use magma::kernel::command::{args::ArgValue, execute_command};
-use magma::kernel::state::{Editor, MessageKind};
-use magma::kernel::workspace::WorkspaceRuntime;
+use kernel::command::{args::ArgValue, execute_command};
+use kernel::state::{Editor, MessageKind};
+use kernel::workspace::WorkspaceRuntime;
 
 use super::gui_dialog::DialogAction;
 use super::gui_sidebar_state::SidebarAction;
@@ -62,12 +62,12 @@ pub(crate) fn apply_sidebar_actions(ed: &mut Editor, actions: Vec<SidebarAction>
 /// this the welcome screen's `project.root` gate would immediately re-open
 /// the editor instead of returning to the welcome flow.
 pub(crate) fn close_editor_session(ed: &mut Editor) {
-    magma::kernel::workspace::close_editor_session(ed);
+    kernel::workspace::close_editor_session(ed);
 }
 
 /// Apply tool-window requests (navigation hits, terminal lifecycle) at the
 /// shell's write-lock boundary.
-pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {    use magma::kernel::terminal;
+pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {    use kernel::terminal;
 
     for action in actions {
         match action {
@@ -95,7 +95,7 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
                 let _ = ed.io.terminals.resize(id, cols, rows);
             }
             ToolAction::AgentSubmit(prompt) => {
-                match magma::kernel::agent::loop_::start_session(ed, &prompt) {
+                match kernel::agent::loop_::start_session(ed, &prompt) {
                     Ok(id) => {
                         ed.show_message(MessageKind::Info,
                             format!("agent session {id} started"));
@@ -115,14 +115,14 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
                 }
             }
             ToolAction::DebugEval(expr) => {
-                if let Err(e) = magma::kernel::command::execute_command_line(
+                if let Err(e) = kernel::command::execute_command_line(
                     ed, &format!("dbg-eval {expr}")) {
                     ed.show_message(MessageKind::Error, e);
                 }
             }
             ToolAction::DebugExpand(reference) => {
                 if let Some(sid) = ed.debug.active_session {
-                    magma::kernel::runtime_dap::request_variables(ed, sid, reference);
+                    kernel::runtime_dap::request_variables(ed, sid, reference);
                 }
             }
             ToolAction::WatchAdd(expr) => {
@@ -142,10 +142,10 @@ pub(crate) fn apply_tool_actions(ed: &mut Editor, actions: Vec<ToolAction>) {   
                     .find(|bp| bp.line == line)
                     .map(|bp| bp.enabled)
                     .unwrap_or(false);
-                magma::kernel::debug::set_breakpoint_enabled(ed, &file, line, !enabled);
+                kernel::debug::set_breakpoint_enabled(ed, &file, line, !enabled);
             }
             ToolAction::BreakpointRemove { file, line } => {
-                magma::kernel::debug::remove_breakpoints_at(ed, &file, line);
+                kernel::debug::remove_breakpoints_at(ed, &file, line);
             }
         }
     }
@@ -211,10 +211,10 @@ pub(crate) fn sync_theme(
 /// Drain background events delivered since the last frame.
 pub(crate) fn drain_background_events(
     ed: &mut Editor,
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<magma::kernel::runtime::BackgroundEvent>,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<kernel::runtime::BackgroundEvent>,
 ) {
     while let Ok(event) = rx.try_recv() {
-        magma::kernel::runtime::process_background_event(ed, event);
+        kernel::runtime::process_background_event(ed, event);
     }
 }
 
@@ -299,12 +299,12 @@ impl ShellRuntime {
             WelcomeAction::OpenProject(path) => {
                 let mut args = std::collections::HashMap::new();
                 args.insert("path".to_string(), ArgValue::Path(path));
-                if let Err(e) = magma::kernel::command::execute_command(ed, "open-project", &args) {
+                if let Err(e) = kernel::command::execute_command(ed, "open-project", &args) {
                     ed.show_message(MessageKind::Error, e);
                 }
             }
             WelcomeAction::RemoveRecent(path) => {
-                magma::kernel::project::remove_recent(ed, &path);
+                kernel::project::remove_recent(ed, &path);
             }
             WelcomeAction::SetTheme(name) => {
                 ed.options.insert("gui-theme".to_string(), name.to_string());
@@ -337,7 +337,7 @@ impl ShellRuntime {
             }
         let mut args = std::collections::HashMap::new();
         args.insert("path".to_string(), ArgValue::Path(path));
-        if let Err(e) = magma::kernel::command::execute_command(ed, "open-project", &args) {
+        if let Err(e) = kernel::command::execute_command(ed, "open-project", &args) {
             ed.show_message(MessageKind::Error, e);
         }
     }

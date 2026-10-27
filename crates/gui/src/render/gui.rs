@@ -16,8 +16,8 @@
 use eframe::egui;
 use tokio::sync::mpsc;
 
-use magma::kernel::runtime::BackgroundEvent;
-use magma::kernel::state::Editor;
+use kernel::runtime::BackgroundEvent;
+use kernel::state::Editor;
 
 use super::gui_dialog::DialogManager;
 use super::gui_layout::GuiLayout;
@@ -160,7 +160,7 @@ impl eframe::App for GuiApp {
             self.font_size = self.editor.font_config.size;
         }
         gui_shell::sync_theme(&mut self.theme, &mut self.theme_synced, &ctx, &mut self.editor);
-        magma::kernel::icons::sync_option(&mut self.editor);
+        kernel::icons::sync_option(&mut self.editor);
 
         // ── The welcome window is the whole primary surface ───────────────
         if !self.editor_open {

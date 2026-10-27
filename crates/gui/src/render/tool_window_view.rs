@@ -4,7 +4,7 @@
 //! Split from `tool_window` (framework) at the render boundary.
 
 use eframe::egui::{self, Align2, FontFamily, FontId, Pos2, Sense};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_theme::GuiTheme;
 use super::tool_window::{DEBUG_TOOL, DockPosition, ToolAction, ToolWindowManager};
 

@@ -6,9 +6,9 @@
 //! reveal that directory.
 
 use eframe::egui::{self, FontFamily, FontId, Sense};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
-pub use magma::kernel::project::tree::{relative_to_project, segments};
+pub use kernel::project::tree::{relative_to_project, segments};
 
 const BAR_H:     f32 = 22.0;
 const FONT_SIZE: f32 = 12.0;

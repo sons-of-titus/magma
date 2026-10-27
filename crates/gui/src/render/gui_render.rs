@@ -3,7 +3,7 @@
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Vec2};
 
 use crate::render::surface::{Cell, Surface};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 
 /// Render a `Surface` onto an egui `Rect`.
 ///

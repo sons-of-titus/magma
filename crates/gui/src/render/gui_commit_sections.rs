@@ -7,8 +7,8 @@
 
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, Rect, RichText, Sense, Vec2};
 
-use magma::kernel::state::Editor;
-use magma::kernel::vc::{FileStatus, StashEntry, VcStatus};
+use kernel::state::Editor;
+use kernel::vc::{FileStatus, StashEntry, VcStatus};
 
 use super::gui_commit_tool::{
     section_header, CommitAction, CommitPanel, CommitState, FONT_SIZE, ROW_H, SMALL,

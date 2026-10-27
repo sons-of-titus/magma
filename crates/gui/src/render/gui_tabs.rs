@@ -6,9 +6,9 @@
 //! tab is hovered or active.  Tabs can be drag-reordered.
 
 use eframe::egui::{self, FontFamily, FontId, Pos2, Rect, CornerRadius, Sense, Vec2};
-use magma::kernel::icons::IconKind;
-use magma::kernel::state::id::WindowId;
-use magma::kernel::state::Editor;
+use kernel::icons::IconKind;
+use kernel::state::id::WindowId;
+use kernel::state::Editor;
 use super::gui_theme::{GuiTheme, icons};
 use super::gui_icons;
 
@@ -39,7 +39,7 @@ impl TabAction {
             TabAction::Close(id) => {
                 // Shared with the Slint frontend: diff pairs close together,
                 // and the last tab leaves an empty editor area.
-                magma::kernel::render::tabs::close_tab(editor, id);
+                kernel::render::tabs::close_tab(editor, id);
             }
             TabAction::Reorder { from, to } => editor.view_tree.reorder(from, to),
         }

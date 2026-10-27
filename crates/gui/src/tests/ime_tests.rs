@@ -61,7 +61,7 @@ fn empty_preedit_clears_the_composition() {
 #[test]
 fn ime_commit_inserts_into_the_buffer_like_text_input() {
     let mut ed = helpers::make_editor();
-    ed.editor_mode = magma::kernel::state::EditorMode::new("insert", true);
-    magma::kernel::input::dispatch_key(&mut ed, "こんにちは");
+    ed.editor_mode = kernel::state::EditorMode::new("insert", true);
+    kernel::input::dispatch_key(&mut ed, "こんにちは");
     assert_eq!(helpers::buf_text(&ed), "こんにちは");
 }

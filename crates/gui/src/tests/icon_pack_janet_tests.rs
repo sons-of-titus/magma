@@ -2,11 +2,11 @@
 //! VS Code pack loading through the `icons/` C functions.
 
 
-use magma::kernel::icons::{self, IconKind};
+use kernel::icons::{self, IconKind};
 use scripting;
 use crate::tests::icon_pack_tests::glyph_pack;
 
-fn lookup_glyph(ed: &magma::kernel::state::Editor, name: &str) -> char {
+fn lookup_glyph(ed: &kernel::state::Editor, name: &str) -> char {
     match ed.icons.lookup(name) {
         Some(IconKind::Glyph { glyph, .. }) => *glyph,
         other => panic!("expected glyph for {name}, got {other:?}"),

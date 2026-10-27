@@ -5,23 +5,23 @@
 //! `:cn/:cp` (while it is focused) navigate them, separate from build problems.
 
 use eframe::egui::{self, FontFamily, FontId, RichText};
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use super::gui_theme::GuiTheme;
 use super::tool_window::{ToolAction, ToolWindow};
 
 fn mono(size: f32) -> FontId { FontId::new(size, FontFamily::Monospace) }
 fn prop(size: f32) -> FontId { FontId::new(size, FontFamily::Proportional) }
 
-use magma::kernel::task::QUICKFIX_MAX_RESULTS as MAX_RESULTS;
+use kernel::task::QUICKFIX_MAX_RESULTS as MAX_RESULTS;
 
 /// Parse one `--vimgrep` line: `path:line:col:text`.
-fn parse_vimgrep(line: &str) -> Option<magma::kernel::task::QuickfixEntry> {
+fn parse_vimgrep(line: &str) -> Option<kernel::task::QuickfixEntry> {
     let mut parts = line.splitn(4, ':');
     let filename = parts.next()?.to_string();
     let line_no: usize = parts.next()?.parse().ok()?;
     let col: usize = parts.next()?.parse().ok()?;
     let message = parts.next().unwrap_or("").to_string();
-    Some(magma::kernel::task::QuickfixEntry { filename, line: line_no, col, message, ..Default::default() })
+    Some(kernel::task::QuickfixEntry { filename, line: line_no, col, message, ..Default::default() })
 }
 
 /// The results renderer for a quickfix-style list (build problems or find
@@ -30,7 +30,7 @@ pub(crate) fn quickfix_rows(
     ui: &mut egui::Ui,
     editor: &Editor,
     theme: &GuiTheme,
-    kind: magma::kernel::task::QuickfixList,
+    kind: kernel::task::QuickfixList,
 ) -> Vec<ToolAction> {
     let mut actions = Vec::new();
     let (list, index) = kind.entries(editor);
@@ -118,7 +118,7 @@ impl FindInFilesToolWindow {
             let mut stdout = running.lock().unwrap_or_else(|e| e.into_inner())
                 .as_mut()
                 .and_then(|c| c.stdout.take());
-            let mut batch: Vec<magma::kernel::task::QuickfixEntry> = Vec::new();
+            let mut batch: Vec<kernel::task::QuickfixEntry> = Vec::new();
             let mut total = 0usize;
             if let Some(out) = stdout.as_mut() {
                 use std::io::BufRead;
@@ -129,21 +129,21 @@ impl FindInFilesToolWindow {
                     }
                     if total >= MAX_RESULTS { break; }
                     if batch.len() >= 100 {
-                        let _ = sender.send(magma::kernel::runtime::BackgroundEvent::Project(
-                            magma::kernel::project::Event::GrepResultsBatch {
+                        let _ = sender.send(kernel::runtime::BackgroundEvent::Project(
+                            kernel::project::Event::GrepResultsBatch {
                                 generation, entries: std::mem::take(&mut batch),
                             }));
                     }
                 }
             }
             if !batch.is_empty() {
-                let _ = sender.send(magma::kernel::runtime::BackgroundEvent::Project(
-                    magma::kernel::project::Event::GrepResultsBatch {
+                let _ = sender.send(kernel::runtime::BackgroundEvent::Project(
+                    kernel::project::Event::GrepResultsBatch {
                         generation, entries: batch,
                     }));
             }
-            let _ = sender.send(magma::kernel::runtime::BackgroundEvent::Project(
-                magma::kernel::project::Event::GrepDone { generation }));
+            let _ = sender.send(kernel::runtime::BackgroundEvent::Project(
+                kernel::project::Event::GrepDone { generation }));
             if let Ok(mut guard) = running.lock() {
                 if let Some(child) = guard.as_mut() {
                     let _ = child.wait();
@@ -196,6 +196,6 @@ impl ToolWindow for FindInFilesToolWindow {
                 .font(prop(11.0))
                 .color(theme.overlay0),
         );
-        quickfix_rows(ui, editor, theme, magma::kernel::task::QuickfixList::Search)
+        quickfix_rows(ui, editor, theme, kernel::task::QuickfixList::Search)
     }
 }

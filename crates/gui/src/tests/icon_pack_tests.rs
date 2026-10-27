@@ -2,7 +2,7 @@
 //! `icon-pack` option follower.  No Janet VM involved.
 
 
-use magma::kernel::icons::{self, IconKind, IconPack};
+use kernel::icons::{self, IconKind, IconPack};
 use crate::tests::helpers::make_editor;
 
 pub(crate) fn glyph_pack() -> IconPack {

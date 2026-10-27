@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 
 use crate::render::gui::GuiApp;
-use magma::kernel::state::mode::EditorMode;
+use kernel::state::mode::EditorMode;
 use crate::tests::helpers::make_editor;
 
 /// Counts egui repaint requests that fire immediately (delay == 0).

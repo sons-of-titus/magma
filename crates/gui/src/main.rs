@@ -1,5 +1,5 @@
 use eframe::egui;
-use magma::kernel::boot::{self, BootOptions};
+use kernel::boot::{self, BootOptions};
 use magma_gui::render::gui::GuiApp;
 #[cfg(feature = "janet")]
 use scripting;
@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rt = {
         let r = scripting::JanetRuntime::new();
         // init happens in bootstrap; construct here only
-        Some(Box::new(r) as Box<dyn magma::kernel::script_runtime::ScriptRuntime>)
+        Some(Box::new(r) as Box<dyn kernel::script_runtime::ScriptRuntime>)
     };
     #[cfg(not(feature = "janet"))]
     let rt = None;
@@ -25,8 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_gui(
-    editor: magma::kernel::state::Editor,
-    bg_receiver: tokio::sync::mpsc::UnboundedReceiver<magma::kernel::runtime::BackgroundEvent>,
+    editor: kernel::state::Editor,
+    bg_receiver: tokio::sync::mpsc::UnboundedReceiver<kernel::runtime::BackgroundEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

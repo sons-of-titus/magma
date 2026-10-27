@@ -8,18 +8,18 @@
 
 use std::collections::HashMap;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::command::execute_command;
 use crate::command::args::ArgValue;
+use crate::command::execute_command;
 use crate::event::keys;
 use crate::state::Editor;
 use crate::state::MessageKind;
 
+use super::TranscriptEntry;
 use super::context::EditorContextProvider;
 use super::llm::{self, LlmConfig, ToolCall};
-use super::types::{AgentContext, ContextProvider, Planner, PlanStep};
-use super::TranscriptEntry;
+use super::types::{AgentContext, ContextProvider, PlanStep, Planner};
 
 /// Maximum model round-trips per session.
 pub use super::MAX_TURNS;
@@ -43,11 +43,14 @@ pub fn start_session(ed: &mut Editor, prompt: &str) -> Result<u64, String> {
 
 /// Seed the chat transcript for a session.
 pub fn begin_session(ed: &mut Editor, session_id: u64, prompt: &str, ctx: &AgentContext) {
-    ed.agent.begin_messages(session_id, vec![
-        json!({ "role": "system", "content": llm::system_prompt() }),
-        json!({ "role": "user", "content": llm::context_message(ctx) }),
-        json!({ "role": "user", "content": prompt }),
-    ]);
+    ed.agent.begin_messages(
+        session_id,
+        vec![
+            json!({ "role": "system", "content": llm::system_prompt() }),
+            json!({ "role": "user", "content": llm::context_message(ctx) }),
+            json!({ "role": "user", "content": prompt }),
+        ],
+    );
 }
 
 /// Fire one model call on the background pool.  The reply (or error)
@@ -59,7 +62,9 @@ pub fn start_turn(ed: &mut Editor, session_id: u64) -> Result<(), String> {
     let Some(bg) = ed.background.clone() else {
         return Err("agent: no background runtime available".to_string());
     };
-    let messages = ed.agent.messages_of(session_id)
+    let messages = ed
+        .agent
+        .messages_of(session_id)
         .ok_or_else(|| "agent: session vanished".to_string())?;
     let sender = bg.sender.clone();
     bg.spawn_blocking(move || {
@@ -88,56 +93,75 @@ pub fn handle_reply(
 ) {
     if let Some(e) = error {
         ed.agent.fail_session(session_id, e.clone());
-        ed.events.emit_typed(keys::events::AGENT_ERROR,
+        ed.events.emit_typed(
+            keys::events::AGENT_ERROR,
             crate::event::payload::AgentErrorPayload {
                 session_id: session_id.to_string(),
                 error: e,
-            });
+            },
+        );
         return;
     }
     if !content.trim().is_empty() {
         ed.agent.note_thought(session_id, &content);
-        ed.events.emit_typed(keys::events::AGENT_THOUGHT,
+        ed.events.emit_typed(
+            keys::events::AGENT_THOUGHT,
             crate::event::payload::AgentThoughtPayload {
                 session_id: session_id.to_string(),
                 thought: content.clone(),
-            });
+            },
+        );
     }
 
     let calls: Vec<ToolCall> = serde_json::from_str(tool_calls_json).unwrap_or_default();
     if calls.is_empty() {
         // No tool calls: this was the final answer.
-        let final_text = if content.trim().is_empty() { "done".to_string() } else { content };
+        let final_text = if content.trim().is_empty() {
+            "done".to_string()
+        } else {
+            content
+        };
         ed.agent.complete_session(session_id, final_text.clone());
-        ed.events.emit_typed(keys::events::AGENT_RESULT,
+        ed.events.emit_typed(
+            keys::events::AGENT_RESULT,
             crate::event::payload::AgentResultPayload {
                 session_id: session_id.to_string(),
                 result: final_text,
-            });
+            },
+        );
         return;
     }
 
     // The user asked to stop: acknowledge instead of executing more work.
     if ed.agent.turns_left_of(session_id) == Some(0) {
-        ed.agent.complete_session(session_id, "stopped by user".to_string());
-        ed.events.emit_typed(keys::events::AGENT_RESULT,
+        ed.agent
+            .complete_session(session_id, "stopped by user".to_string());
+        ed.events.emit_typed(
+            keys::events::AGENT_RESULT,
             crate::event::payload::AgentResultPayload {
                 session_id: session_id.to_string(),
                 result: "stopped by user".to_string(),
-            });
+            },
+        );
         return;
     }
 
     let mut results: Vec<Value> = Vec::new();
     for call in &calls {
-        ed.agent.note_action(session_id, &call.name, &tool_summary(call));
-        ed.events.emit_typed(keys::events::AGENT_ACTION,
+        ed.agent
+            .note_action(session_id, &call.name, &tool_summary(call));
+        ed.events.emit_typed(
+            keys::events::AGENT_ACTION,
             crate::event::payload::AgentActionPayload {
                 session_id: session_id.to_string(),
                 command: call.name.clone(),
                 description: tool_summary(call),
-            });
+            },
+        );
         let output = execute_tool(ed, call);
+        // The UI renders tool results straight from the transcript; without
+        // this the only consumer of a tool's output is the model.
+        ed.agent.note_step_output(session_id, &output);
         results.push(json!({
             "role": "tool",
             "tool_call_id": call.id,
@@ -155,13 +179,15 @@ pub fn handle_reply(
             }
         }
         Some(_) => {
-            ed.agent.complete_session(session_id,
-                format!("stopped after {MAX_TURNS} tool turns"));
-            ed.events.emit_typed(keys::events::AGENT_RESULT,
+            ed.agent
+                .complete_session(session_id, format!("stopped after {MAX_TURNS} tool turns"));
+            ed.events.emit_typed(
+                keys::events::AGENT_RESULT,
                 crate::event::payload::AgentResultPayload {
                     session_id: session_id.to_string(),
                     result: format!("stopped after {MAX_TURNS} tool turns"),
-                });
+                },
+            );
         }
         None => {}
     }
@@ -173,10 +199,12 @@ fn tool_summary(call: &ToolCall) -> String {
     match call.name.as_str() {
         "run_editor_command" => {
             let cmd = args.get("command").and_then(Value::as_str).unwrap_or("?");
-            let rest = args.get("args")
-                .map(|a| a.to_string())
-                .unwrap_or_default();
-            if rest == "{}" { cmd.to_string() } else { format!("{cmd} {rest}") }
+            let rest = args.get("args").map(|a| a.to_string()).unwrap_or_default();
+            if rest == "{}" {
+                cmd.to_string()
+            } else {
+                format!("{cmd} {rest}")
+            }
         }
         _ => call.name.clone(),
     }
@@ -189,22 +217,35 @@ pub fn execute_tool(ed: &mut Editor, call: &ToolCall) -> String {
     match call.name.as_str() {
         "read_active_buffer" => {
             let key = ed.focused_buffer_key();
-            ed.buffers.get(key).map(|arc| {
-                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                let text = buf.slice(0, buf.len().min(65_536));
-                format!("buffer: {}\n{}", buf.name, llm::truncate_for_context(&text))
-            }).unwrap_or_else(|| "no active buffer".to_string())
+            ed.buffers
+                .get(key)
+                .map(|arc| {
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+                    let text = buf.slice(0, buf.len().min(65_536));
+                    format!("buffer: {}\n{}", buf.name, llm::truncate_for_context(&text))
+                })
+                .unwrap_or_else(|| "no active buffer".to_string())
         }
         "get_diagnostics" => {
             let key = ed.focused_buffer_key();
-            ed.buffers.get(key).map(|arc| {
-                let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                let diags: Vec<String> = buf.diagnostic_strings();
-                if diags.is_empty() { "no diagnostics".to_string() } else { diags.join("\n") }
-            }).unwrap_or_else(|| "no active buffer".to_string())
+            ed.buffers
+                .get(key)
+                .map(|arc| {
+                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+                    let diags: Vec<String> = buf.diagnostic_strings();
+                    if diags.is_empty() {
+                        "no diagnostics".to_string()
+                    } else {
+                        diags.join("\n")
+                    }
+                })
+                .unwrap_or_else(|| "no active buffer".to_string())
         }
         "list_editor_commands" => {
-            let mut lines: Vec<String> = ed.commands.list_detailed().into_iter()
+            let mut lines: Vec<String> = ed
+                .commands
+                .list_detailed()
+                .into_iter()
                 .map(|(name, desc, _has_args)| format!("{name}: {desc}"))
                 .collect();
             lines.sort();
@@ -274,10 +315,7 @@ fn run_builtin_session(
             format!("{} step(s) planned", plan.steps.len())
         };
 
-        let _ = sender.send(crate::runtime::BackgroundEvent::AgentResult {
-            session_id,
-            result,
-        });
+        let _ = sender.send(crate::runtime::BackgroundEvent::AgentResult { session_id, result });
     });
     Ok(())
 }
@@ -299,7 +337,7 @@ fn _transcript_witness(_: TranscriptEntry) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{AgentStatus, AgentManager};
+    use crate::agent::{AgentManager, AgentStatus};
 
     fn editor() -> Editor {
         let mut ed = Editor::new(Box::new(crate::storage::disk::DiskFileSystem::new()));
@@ -312,14 +350,24 @@ mod tests {
     }
 
     fn call(name: &str, arguments: &str) -> ToolCall {
-        ToolCall { id: "t1".into(), name: name.into(), arguments: arguments.into() }
+        ToolCall {
+            id: "t1".into(),
+            name: name.into(),
+            arguments: arguments.into(),
+        }
     }
 
     #[test]
     fn reply_without_calls_completes_the_session_with_the_answer() {
         let mut ed = editor();
         let sid = ed.agent.create_session("goal");
-        handle_reply(&mut ed, sid, "All done: three files changed.".into(), "[]", None);
+        handle_reply(
+            &mut ed,
+            sid,
+            "All done: three files changed.".into(),
+            "[]",
+            None,
+        );
         assert_eq!(ed.agent.status(sid), Some(&AgentStatus::Completed));
         assert_eq!(ed.agent.result(sid), Some("All done: three files changed."));
     }
@@ -337,26 +385,63 @@ mod tests {
     fn tool_calls_execute_through_the_registry_and_consume_budget() {
         let mut ed = editor();
         // open-file through the agent = the real command path.
-        let dir = std::env::temp_dir().join(format!("agent-tool-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let dir = std::env::temp_dir().join(format!(
+            "agent-tool-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("opened.rs");
         std::fs::write(&path, "fn main() {}\n").unwrap();
         let sid = ed.agent.create_session("open the file");
-        ed.agent.begin_messages(sid, vec![json!({"role": "user", "content": "go"})]);
+        ed.agent
+            .begin_messages(sid, vec![json!({"role": "user", "content": "go"})]);
 
-        let calls = vec![call("run_editor_command",
-            &format!(r#"{{"command":"open-file","args":{{"path":"{}"}}}}"#, path.to_string_lossy()))];
+        let calls = vec![call(
+            "run_editor_command",
+            &format!(
+                r#"{{"command":"open-file","args":{{"path":"{}"}}}}"#,
+                path.to_string_lossy()
+            ),
+        )];
         let calls_json = serde_json::to_string(&calls).unwrap();
         // No background runtime: the follow-up turn reports the failure but
         // the tool call itself already ran.
         handle_reply(&mut ed, sid, "Opening the file.".into(), &calls_json, None);
-        assert!(ed.buffers.iter().any(|(_, a)| {
-            a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path.to_string_lossy().as_ref())
-        }), "the agent's open-file call opened the buffer");
-        assert_eq!(ed.agent.status(sid), Some(&AgentStatus::Failed),
-            "without a background pool the next turn cannot start");
+        assert!(
+            ed.buffers.iter().any(|(_, a)| {
+                a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref()
+                    == Some(path.to_string_lossy().as_ref())
+            }),
+            "the agent's open-file call opened the buffer"
+        );
+        assert_eq!(
+            ed.agent.status(sid),
+            Some(&AgentStatus::Failed),
+            "without a background pool the next turn cannot start"
+        );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tool_output_lands_in_the_transcript_next_to_its_action() {
+        let mut ed = editor();
+        let sid = ed.agent.create_session("read the buffer");
+        let calls = vec![call("read_active_buffer", "{}")];
+        let calls_json = serde_json::to_string(&calls).unwrap();
+        handle_reply(&mut ed, sid, String::new(), &calls_json, None);
+
+        let transcript = &ed.agent.sessions[&sid].transcript;
+        assert!(
+            matches!(transcript.first(), Some(super::super::TranscriptEntry::Action { command, .. }) if command == "read_active_buffer"),
+            "action recorded: {transcript:?}"
+        );
+        assert!(
+            matches!(transcript.last(), Some(super::super::TranscriptEntry::StepOutput(text)) if text.contains("buffer: scratch")),
+            "tool output recorded: {transcript:?}"
+        );
     }
 
     #[test]
@@ -394,7 +479,10 @@ mod tests {
     fn malformed_arguments_degrade_to_empty_object() {
         let mut ed = editor();
         let out = execute_tool(&mut ed, &call("run_editor_command", "not json"));
-        assert!(out.starts_with("error:"), "missing command arg is an error, got: {out}");
+        assert!(
+            out.starts_with("error:"),
+            "missing command arg is an error, got: {out}"
+        );
     }
 
     #[test]
@@ -408,6 +496,9 @@ mod tests {
         // Transcript entries only land while running.
         mgr.complete_session(sid, "done");
         mgr.note_thought(sid, "late");
-        assert!(mgr.sessions[&sid].transcript.is_empty(), "no entries after completion");
+        assert!(
+            mgr.sessions[&sid].transcript.is_empty(),
+            "no entries after completion"
+        );
     }
 }

@@ -345,21 +345,6 @@ fn detect_then_launch_config_runs_the_default_test_config() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// Test shim for `RunConfigManager::launch_task` — private by design, so
-/// tests go through the manager with a throwaway store.
-impl RunConfigManager {
-    fn launch_config_helper(
-        &mut self,
-        cfg: RunConfig,
-        scheduler: &mut TaskScheduler,
-        bg: &BackgroundHandle,
-        root: &std::path::Path,
-    ) -> Result<u64, String> {
-        self.upsert(cfg);
-        let name = self.configs.last().unwrap().name.clone();
-        self.launch(&name, scheduler, bg, root)
-    }
-}
 
 // ── Build output → diagnostics ───────────────────────────────────────
 

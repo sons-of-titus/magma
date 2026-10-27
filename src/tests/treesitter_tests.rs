@@ -38,7 +38,6 @@ fn ts_language_set_on_valid_buffer() {
 
 #[test]
 fn scheduled_parse_is_a_noop_without_a_registered_grammar() {
-    let _lock = crate::tests::helpers::acquire_janet_lock();
     let mut ed = crate::tests::helpers::make_editor();
     let key = ed.create_buffer_from_str("x.rs", "fn a() {}");
     ed.ts_languages.insert(key, "rust".to_string());

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use magma::kernel::command::args::ArgValue;
-use magma::kernel::command::CommandResult;
+use kernel::command::args::ArgValue;
+use kernel::command::CommandResult;
 use super::ScriptRuntime;
 
 pub struct NullRuntime;
@@ -18,27 +18,27 @@ impl NullRuntime {
 }
 
 impl ScriptRuntime for NullRuntime {
-    fn init(&mut self, _editor: &mut magma::kernel::state::Editor) {}
+    fn init(&mut self, _editor: &mut kernel::state::Editor) {}
 
-    fn eval(&mut self, _editor: &mut magma::kernel::state::Editor, expr: &str) -> String {
+    fn eval(&mut self, _editor: &mut kernel::state::Editor, expr: &str) -> String {
         format!("Scripting runtime not available: {expr}")
     }
 
     fn eval_result(
         &mut self,
-        _editor: &mut magma::kernel::state::Editor,
+        _editor: &mut kernel::state::Editor,
         expr: &str,
     ) -> Result<String, String> {
         Err(format!("Scripting runtime not available: {expr}"))
     }
 
-    fn load_file(&mut self, _editor: &mut magma::kernel::state::Editor, _path: &str) -> Result<(), String> {
+    fn load_file(&mut self, _editor: &mut kernel::state::Editor, _path: &str) -> Result<(), String> {
         Err("Scripting runtime not available".to_string())
     }
 
     fn call_command(
         &mut self,
-        _editor: &mut magma::kernel::state::Editor,
+        _editor: &mut kernel::state::Editor,
         name: &str,
         _args: &HashMap<String, ArgValue>,
     ) -> CommandResult {

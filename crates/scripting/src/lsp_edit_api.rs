@@ -21,7 +21,7 @@ unsafe extern "C-unwind" fn c_lsp_apply_edit(argc: i32, argv: *mut Janet) -> Jan
                 return conv::nil();
             }
         };
-        magma::kernel::semantic::edit_apply::apply_workspace_edit(ed, &json);
+        kernel::semantic::edit_apply::apply_workspace_edit(ed, &json);
         conv::nil()
     })
 }}

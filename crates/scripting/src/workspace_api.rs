@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
-use magma::kernel::storage::WorkspaceManager;
+use kernel::event::payload::*;
+use kernel::event::keys;
+use kernel::storage::WorkspaceManager;
 
 /// (project/workspace?) → {:root "..." :members [...]} or nil
 ///
@@ -94,13 +94,13 @@ unsafe extern "C-unwind" fn c_project_set_workspace_members(argc: i32, argv: *mu
                 if ptr.is_null() { continue; }
                 std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
             } else { continue; };
-            members.push(magma::kernel::state::ProjectMember {
+            members.push(kernel::state::ProjectMember {
                 name,
                 root: PathBuf::from(root_str),
             });
         }
         let root = ed.project_manager.project.root.clone().unwrap_or_default();
-        ed.project_manager.project.workspace = Some(magma::kernel::state::Workspace { root, members });
+        ed.project_manager.project.workspace = Some(kernel::state::Workspace { root, members });
         conv::nil()
     })
 }
@@ -139,7 +139,7 @@ unsafe extern "C-unwind" fn c_project_set_current_member(argc: i32, argv: *mut J
         }
         // Load the member project state from registry or create fresh
         let member_state = ed.project_manager.projects.get(&name).cloned().unwrap_or_else(|| {
-            magma::kernel::project::Project {
+            kernel::project::Project {
                 root: Some(member_root.clone()),
                 name: Some(name.clone()),
                 ..Default::default()

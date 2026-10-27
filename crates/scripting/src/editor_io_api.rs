@@ -89,7 +89,7 @@ unsafe extern "C-unwind" fn c_editor_run_command(argc: i32, argv: *mut Janet) ->
             String::new()
         };
         let line = if rest.is_empty() { name.clone() } else { format!("{name} {rest}") };
-        match magma::kernel::command::execute_command_line(ed, &line) {
+        match kernel::command::execute_command_line(ed, &line) {
             Ok(()) => conv::nil(),
             Err(e) => conv::signal_err(&e),
         }

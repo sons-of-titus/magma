@@ -2,7 +2,7 @@
 
 use evil_janet::*;
 use super::conv;
-use magma::kernel::extension::Capability;
+use kernel::extension::Capability;
 
 /// (fs/cwd) → string
 ///

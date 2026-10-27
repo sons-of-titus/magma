@@ -3,10 +3,10 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
-pub(super) fn emit_buffer_changed(ed: &mut magma::kernel::state::Editor, key: usize) {
+pub(super) fn emit_buffer_changed(ed: &mut kernel::state::Editor, key: usize) {
     // Not a text mutation: an empty transition (same revision, no edits)
     // signals "this buffer's content should be re-examined".
     let rev = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision()).unwrap_or(0);
@@ -208,7 +208,7 @@ unsafe extern "C-unwind" fn c_buffer_offset_of_lsp_position(argc: i32, argv: *mu
         let col = conv::get_int(argc, argv, 2).unwrap_or(0).max(0) as usize;
         let offset = ed.buffers.get(key).map(|a| {
             let buf = a.lock().unwrap_or_else(|e| e.into_inner());
-            magma::kernel::semantic::edit_apply::offset_of_lsp_position(&buf, line, col)
+            kernel::semantic::edit_apply::offset_of_lsp_position(&buf, line, col)
         }).unwrap_or(0);
         conv::integer(offset as i32)
     })

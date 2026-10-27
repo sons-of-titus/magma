@@ -3,7 +3,7 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::keys;
+use kernel::event::keys;
 
 unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -12,7 +12,7 @@ unsafe extern "C-unwind" fn c_buffer_insert(argc: i32, argv: *mut Janet) -> Jane
         let text = conv::get_str(argc, argv, 2).unwrap_or_default();
         debug!("BI: buffer/insert buf={}, pos={}, text_len={}", key, pos, text.len());
         if ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).read_only).unwrap_or(false) {
-            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, magma::kernel::event::payload::BufferReadOnlyPayload {
+            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, kernel::event::payload::BufferReadOnlyPayload {
                 buffer_id: key.to_string(),
             });
             return conv::nil();
@@ -32,7 +32,7 @@ unsafe extern "C-unwind" fn c_buffer_delete(argc: i32, argv: *mut Janet) -> Jane
         let end = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
         debug!("BD: buffer/delete buf={}, start={}, end={}", key, start, end);
         if ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).read_only).unwrap_or(false) {
-            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, magma::kernel::event::payload::BufferReadOnlyPayload {
+            ed.events.emit_typed(keys::events::BUFFER_READ_ONLY, kernel::event::payload::BufferReadOnlyPayload {
                 buffer_id: key.to_string(),
             });
             return conv::nil();

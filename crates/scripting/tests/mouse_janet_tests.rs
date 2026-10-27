@@ -1,11 +1,11 @@
 use scripting;
-use magma::kernel::input::mouse;
-use magma::kernel::input::event::{MouseEvent, MouseEventKind, MouseButton};
-use magma::kernel::render::decorations::prefix_margin_width;
+use kernel::input::mouse;
+use kernel::input::event::{MouseEvent, MouseEventKind, MouseButton};
+use kernel::render::decorations::prefix_margin_width;
 #[macro_use] mod helpers;
 
 /// Compute the screen x where text content begins for a buffer in a pane.
-fn content_start_x(ed: &magma::kernel::state::Editor, buf_id: usize, pane_x: u16) -> u16 {
+fn content_start_x(ed: &kernel::state::Editor, buf_id: usize, pane_x: u16) -> u16 {
     let total_lines = ed.buffers.get(buf_id)
         .map(|a| a.lock().unwrap().line_count()).unwrap_or(1);
     let prefix_margin = prefix_margin_width(ed, buf_id);
@@ -37,7 +37,7 @@ fn text_click_moves_cursor() {
     // Enable mouse support via Janet option.
     ed.options.insert("mouse-support".to_string(), "true".to_string());
 
-    let surface = magma::kernel::render::surface::Surface::new(pane.width, pane.height);
+    let surface = kernel::render::surface::Surface::new(pane.width, pane.height);
 
     mouse::dispatch_mouse(&mut ed, &surface, &click_event);
 
@@ -67,7 +67,7 @@ fn mouse_option_gates_processing() {
         button: MouseButton::Left,
         modifiers: String::new(),
     };
-    let surface = magma::kernel::render::surface::Surface::new(pane.width, pane.height);
+    let surface = kernel::render::surface::Surface::new(pane.width, pane.height);
 
     mouse::dispatch_mouse(&mut ed, &surface, &click_event);
 
@@ -104,7 +104,7 @@ fn gutter_click_emits_event() {
         button: MouseButton::Left,
         modifiers: String::new(),
     };
-    let surface = magma::kernel::render::surface::Surface::new(pane.width, 10);
+    let surface = kernel::render::surface::Surface::new(pane.width, 10);
 
     let sub_count_before = ed.events.subscriber_count("gutter-clicked");
     mouse::dispatch_mouse(&mut ed, &surface, &click_event);
@@ -118,11 +118,11 @@ fn gutter_click_emits_event() {
 
 struct TestGutterProvider;
 
-impl magma::kernel::render::gutter::GutterProvider for TestGutterProvider {
+impl kernel::render::gutter::GutterProvider for TestGutterProvider {
     fn name(&self) -> &str { ":test" }
     fn width(&self) -> usize { 2 }
-    fn render(&self, _line: usize, _ctx: &magma::kernel::render::gutter::GutterCtx)
-        -> Option<magma::kernel::render::gutter::GutterCell>
+    fn render(&self, _line: usize, _ctx: &kernel::render::gutter::GutterCtx)
+        -> Option<kernel::render::gutter::GutterCell>
     {
         None
     }

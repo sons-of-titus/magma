@@ -4,15 +4,15 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 /// Find or create a special buffer by name, returning its slab key.
 ///
 /// The buffer is marked ephemeral on first creation.  The caller is
 /// responsible for setting read_only before and after writing.
 fn get_or_create_special(
-    ed: &mut magma::kernel::state::Editor,
+    ed: &mut kernel::state::Editor,
     name: &str,
 ) -> usize {
     for (key, arc) in &ed.buffers {
@@ -58,9 +58,9 @@ unsafe extern "C-unwind" fn c_editor_echo(argc: i32, argv: *mut Janet) -> Janet 
     with_editor(|ed| unsafe {
         let text = conv::get_str(argc, argv, 0).unwrap_or_default().to_string();
         let kind = if conv::get_str(argc, argv, 1).as_deref() == Some("error") {
-            magma::kernel::state::MessageKind::Error
+            kernel::state::MessageKind::Error
         } else {
-            magma::kernel::state::MessageKind::Info
+            kernel::state::MessageKind::Info
         };
         ed.show_message(kind, text.clone());
         let key = get_or_create_special(ed, "*Messages*");

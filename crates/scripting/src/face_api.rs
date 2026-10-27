@@ -4,9 +4,9 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::render::surface::Style;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::render::surface::Style;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 /// Look up a keyword key in a struct or table via janet_in.
 unsafe fn lookup(ds: Janet, key_name: &str) -> Janet {

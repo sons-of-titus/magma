@@ -3,9 +3,9 @@
 // are visible to the palette listing and receive the raw argument from
 // `execute_command_line` / `editor/run-command`.
 
-use magma::kernel::command::execute_command_line;
+use kernel::command::execute_command_line;
 use scripting;
-use magma::kernel::state::MessageKind;
+use kernel::state::MessageKind;
 
 #[test]
 fn janet_command_appears_in_palette_listing() {

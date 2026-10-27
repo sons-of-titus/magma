@@ -44,7 +44,7 @@ unsafe extern "C-unwind" fn c_option_get_local(argc: i32, argv: *mut Janet) -> J
         let Some(key) = conv::get_str(argc, argv, 0) else {
             return conv::nil();
         };
-        let buf_id = magma::kernel::input::focused_buffer_id(ed);
+        let buf_id = kernel::input::focused_buffer_id(ed);
         if let Some(arc) = ed.buffers.get(buf_id) {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(val) = buf.local_options.get(&key) {
@@ -66,7 +66,7 @@ unsafe extern "C-unwind" fn c_option_set_local(argc: i32, argv: *mut Janet) -> J
         let Some(value) = conv::get_str(argc, argv, 1) else {
             conv::signal_err("option/set-local requires a value")
         };
-        let buf_id = magma::kernel::input::focused_buffer_id(ed);
+        let buf_id = kernel::input::focused_buffer_id(ed);
         if let Some(arc) = ed.buffers.get_mut(buf_id) {
             arc.lock().unwrap_or_else(|e| e.into_inner()).local_options.insert(key, value);
         }

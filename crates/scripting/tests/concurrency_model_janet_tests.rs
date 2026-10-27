@@ -49,7 +49,7 @@ fn scheduler_submit_returns_positive_id() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use magma::kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -68,7 +68,7 @@ fn scheduler_submit_appears_in_list() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use magma::kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -90,7 +90,7 @@ fn submitted_work_status_is_running_or_completed() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use magma::kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -115,7 +115,7 @@ fn progress_table_has_done_and_total_keys() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use magma::kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();

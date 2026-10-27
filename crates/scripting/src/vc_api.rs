@@ -24,7 +24,7 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::vc::backends::ShellTemplateBackend;
+use kernel::vc::backends::ShellTemplateBackend;
 
 /// Read a string value by keyword key from a table or struct Janet value.
 unsafe fn dict_str(val: Janet, key: &str) -> Option<String> { unsafe {

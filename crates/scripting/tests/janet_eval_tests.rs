@@ -1,7 +1,7 @@
 // Pure-Rust tests for the Janet Eval and MShell primitives (Sprint 12).
 // Only tests that do not require the Janet VM to be initialised.
 
-use magma::kernel::command::execute_command;
+use kernel::command::execute_command;
 #[macro_use] mod helpers;
 
 // ── Command registration ──────────────────────────────────────────────────────

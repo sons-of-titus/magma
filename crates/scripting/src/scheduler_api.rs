@@ -107,7 +107,7 @@ unsafe extern "C-unwind" fn c_scheduler_progress(argc: i32, argv: *mut Janet) ->
 unsafe extern "C-unwind" fn c_scheduler_status(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let id = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as u64;
-        use magma::kernel::scheduler::WorkStatus;
+        use kernel::scheduler::WorkStatus;
         let kw = match ed.scheduler.status(id) {
             None                              => "not-found",
             Some(WorkStatus::Running)         => "running",
@@ -124,7 +124,7 @@ unsafe extern "C-unwind" fn c_scheduler_status(argc: i32, argv: *mut Janet) -> J
 /// Return all tracked work items.
 unsafe extern "C-unwind" fn c_scheduler_list(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        use magma::kernel::scheduler::WorkStatus;
+        use kernel::scheduler::WorkStatus;
         let items = ed.scheduler.list();
         let arr = janet_wrap_array(janet_array(items.len() as i32));
         for (id, name, status, progress) in items {

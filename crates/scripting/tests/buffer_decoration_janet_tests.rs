@@ -1,7 +1,7 @@
 #[macro_use] mod helpers;
 use scripting;
 
-fn make_buf(ed: &mut magma::kernel::state::Editor) -> usize {
+fn make_buf(ed: &mut kernel::state::Editor) -> usize {
     ed.create_buffer("test")
 }
 

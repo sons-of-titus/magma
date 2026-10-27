@@ -10,9 +10,9 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::semantic::language_registry::LanguageInfo;
-use magma::kernel::event::keys;
-use magma::kernel::event::payload::{
+use kernel::semantic::language_registry::LanguageInfo;
+use kernel::event::keys;
+use kernel::event::payload::{
     LanguageRegisteredPayload, LanguageLoadedPayload, LanguageUnregisteredPayload,
 };
 

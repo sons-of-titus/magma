@@ -2,16 +2,16 @@
 // Janet API tests for the Task System (Phase 4).
 
 use scripting;
-use magma::kernel::task::TaskStatus;
+use kernel::task::TaskStatus;
 
-fn setup_background_editor() -> magma::kernel::state::Editor {
-    let mut ed = magma::kernel::state::Editor::new(
-        Box::new(magma::kernel::storage::disk::DiskFileSystem::new()),
+fn setup_background_editor() -> kernel::state::Editor {
+    let mut ed = kernel::state::Editor::new(
+        Box::new(kernel::storage::disk::DiskFileSystem::new()),
     );
-    magma::kernel::command::builtin::register_builtin_commands(&mut ed);
+    kernel::command::builtin::register_builtin_commands(&mut ed);
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
-    ed.background = Some(magma::kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
+    ed.background = Some(kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
     let k = ed.create_buffer("test");
     if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(k);

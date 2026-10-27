@@ -12,7 +12,7 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::semantic::{LspLanguageProvider, TreesitterLanguageProvider};
+use kernel::semantic::{LspLanguageProvider, TreesitterLanguageProvider};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ unsafe extern "C-unwind" fn c_semantic_register_provider(argc: i32, argv: *mut J
             return conv::nil();
         };
         let provider_type = conv::get_str(argc, argv, 1).unwrap_or_else(|| "lsp".to_string());
-        let provider: Box<dyn magma::kernel::semantic::LanguageProvider> = match provider_type.as_str() {
+        let provider: Box<dyn kernel::semantic::LanguageProvider> = match provider_type.as_str() {
             "treesitter" | "ts" =>
                 Box::new(TreesitterLanguageProvider::new(lang.clone())),
             _ =>

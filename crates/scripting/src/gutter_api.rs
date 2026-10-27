@@ -10,12 +10,12 @@
 
 use evil_janet::*;
 use super::{conv, with_editor};
-use magma::kernel::render::gutter_providers::{
+use kernel::render::gutter_providers::{
     Breakpoints, Coverage, Diagnostics, Folding, GitSigns, JanetProvider, LineNumbers,
 };
-use magma::kernel::render::surface::Style;
-use magma::kernel::event::keys;
-use magma::kernel::event::payload::GutterProviderUpdatedPayload;
+use kernel::render::surface::Style;
+use kernel::event::keys;
+use kernel::event::payload::GutterProviderUpdatedPayload;
 
 // ── gutter/add-provider ───────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ unsafe extern "C-unwind" fn c_add_provider(argc: i32, argv: *mut Janet) -> Janet
         // (gutter/add-provider ":breakpoints") must render live state, not
         // an empty Janet cache.  A provider-fn (or an unknown name) stays
         // a JanetProvider fed via gutter/provider-update.
-        let provider: Box<dyn magma::kernel::render::gutter::GutterProvider> =
+        let provider: Box<dyn kernel::render::gutter::GutterProvider> =
             match (name.as_str(), fn_name.as_ref()) {
                 (":line-numbers", _) => Box::new(LineNumbers),
                 (":folding", _) => Box::new(Folding),

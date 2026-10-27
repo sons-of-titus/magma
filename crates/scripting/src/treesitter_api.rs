@@ -8,7 +8,7 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::semantic::ts_registry;
+use kernel::semantic::ts_registry;
 
 /// Parse a buffer's content with tree-sitter.
 /// Returns true if the buffer has a language set.
@@ -110,9 +110,9 @@ unsafe extern "C-unwind" fn c_ts_set_language(argc: i32, argv: *mut Janet) -> Ja
 ///
 /// (ts/highlight buf-id query-string) → [[start end scope] ...] or nil
 unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet {
-    use magma::kernel::semantic::ts_registry;
+    use kernel::semantic::ts_registry;
 
-    fn point_of(buf: &magma::kernel::text_engine::Buffer, offset: usize) -> tree_sitter::Point {
+    fn point_of(buf: &kernel::text_engine::Buffer, offset: usize) -> tree_sitter::Point {
         let (row, col) = buf.line_col_bytes(offset);
         tree_sitter::Point::new(row, col)
     }

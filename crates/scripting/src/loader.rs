@@ -2,7 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::ffi::CString;
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 use evil_janet::*;
 
 thread_local! {
@@ -81,7 +81,7 @@ pub fn init(editor: &mut Editor) {
     let failed = take_builtin_load_errors();
     if !failed.is_empty() {
         editor.show_message(
-            magma::kernel::state::MessageKind::Error,
+            kernel::state::MessageKind::Error,
             format!("builtin scripts failed to load: {}", failed.join(", ")),
         );
         for name in &failed {

@@ -8,7 +8,7 @@ use std::cell::Cell;
 #[cfg(feature = "janet")]
 use std::ffi::CString;
 
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 #[cfg(feature = "janet")]
 use evil_janet::*;
 
@@ -135,7 +135,7 @@ pub(crate) mod conv {
 /// Access the current thread's Editor from within a Janet C function
 /// callback.  Signals a clean Janet error outside any scope.
 #[cfg(feature = "janet")]
-pub(crate) fn with_editor<F: FnOnce(&mut magma::kernel::state::Editor) -> evil_janet::Janet>(
+pub(crate) fn with_editor<F: FnOnce(&mut kernel::state::Editor) -> evil_janet::Janet>(
     f: F,
 ) -> evil_janet::Janet {
     EDITOR_PTR.with(|cell| match cell.get() {
@@ -286,8 +286,6 @@ mod debug_api;
 #[cfg(feature = "janet")]
 mod toolchain_api;
 #[cfg(feature = "janet")]
-pub(crate) use debug_api::send_dap_command;
-#[cfg(feature = "janet")]
 mod scheduler_api;
 #[cfg(feature = "janet")]
 mod extension_api;
@@ -365,8 +363,8 @@ pub fn eval_result(expr: &str) -> Result<String, String> {
 pub fn call_janet_command(
     editor: &mut Editor,
     name: &str,
-    args: &std::collections::HashMap<String, magma::kernel::command::args::ArgValue>,
-) -> magma::kernel::command::CommandResult {
+    args: &std::collections::HashMap<String, kernel::command::args::ArgValue>,
+) -> kernel::command::CommandResult {
     scoped_editor(editor, || call_janet_command_scoped(name, args))
 }
 
@@ -374,8 +372,8 @@ pub fn call_janet_command(
 #[cfg(feature = "janet")]
 pub fn call_janet_command_scoped(
     name: &str,
-    args: &std::collections::HashMap<String, magma::kernel::command::args::ArgValue>,
-) -> magma::kernel::command::CommandResult {
+    args: &std::collections::HashMap<String, kernel::command::args::ArgValue>,
+) -> kernel::command::CommandResult {
     unsafe {
         let env = janet_core_env(std::ptr::null_mut());
         let mut root: Janet = std::mem::zeroed();
@@ -456,6 +454,6 @@ pub fn load_file(_path: &str) -> Result<(), String> {
 
 pub mod null_runtime;
 
-use magma::kernel::script_runtime::ScriptRuntime;
+use kernel::script_runtime::ScriptRuntime;
 
 // (re-exports already provided by the moved module declarations below)

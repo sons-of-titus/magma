@@ -6,7 +6,7 @@
 // per-keystroke cost.  The pre-fix behavior (inline word-set rebuild per
 // keystroke, full tree-sitter re-highlight per keystroke) fails these.
 
-use magma::kernel::input;
+use kernel::input;
 use scripting;
 #[macro_use] mod helpers;
 
@@ -26,7 +26,7 @@ fn typing_stays_fast_on_a_100kb_buffer() {
     }
     let _ = scripting::eval("(editor/run-command \"set-major-mode\" \"rust-mode\")");
     // Insert mode, mid-document cursor.
-    ed.editor_mode = magma::kernel::state::EditorMode::new("insert", true);
+    ed.editor_mode = kernel::state::EditorMode::new("insert", true);
     if let Some(view) = ed.view_of_buffer_mut(key) {
         view.set_cursor(body.len() / 2);
     }

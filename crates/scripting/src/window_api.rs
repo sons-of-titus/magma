@@ -3,9 +3,9 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::state::Editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::state::Editor;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 /// (window/current) → table|nil   (shows id, buffer slab key, position, size)
 unsafe extern "C-unwind" fn c_window_current(_argc: i32, _argv: *mut Janet) -> Janet {
@@ -68,7 +68,7 @@ unsafe extern "C-unwind" fn c_window_split(argc: i32, argv: *mut Janet) -> Janet
 unsafe extern "C-unwind" fn c_window_focus(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         if let Some(id) = unsafe { conv::get_int(argc, argv, 0) } {
-            let wid = magma::kernel::state::id::WindowId::from_u64(id as u64);
+            let wid = kernel::state::id::WindowId::from_u64(id as u64);
             ed.view_tree.focus(wid);
             ed.events.emit_typed(keys::events::WINDOW_FOCUSED, WindowFocusedPayload {
                 id: id.to_string(),
@@ -91,7 +91,7 @@ unsafe extern "C-unwind" fn c_window_resize(argc: i32, argv: *mut Janet) -> Jane
             } else { 0.5 }
         } else { 0.5 };
         if let Some(id) = id {
-            let wid = magma::kernel::state::id::WindowId::from_u64(id as u64);
+            let wid = kernel::state::id::WindowId::from_u64(id as u64);
             ed.view_tree.resize_weighted(wid, w_frac);
         }
         conv::nil()
@@ -105,7 +105,7 @@ unsafe extern "C-unwind" fn c_window_set_scroll_top(argc: i32, argv: *mut Janet)
         let id = conv::get_int(argc, argv, 0);
         let top = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
         let wid = id
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64))
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid {
             let buf = ed.view_tree.buffer(wid);
@@ -132,7 +132,7 @@ unsafe extern "C-unwind" fn c_window_set_scroll_left(argc: i32, argv: *mut Janet
         let id = conv::get_int(argc, argv, 0);
         let left = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
         let wid = id
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64))
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid {
             let buf = ed.view_tree.buffer(wid);
@@ -156,7 +156,7 @@ unsafe extern "C-unwind" fn c_window_scroll_left(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| unsafe {
         let arg_id = conv::get_int(argc, argv, 0);
         let wid = arg_id
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64))
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
         match wid.and_then(|wid| ed.view_tree.window(wid)) {
             Some(win) => conv::integer(win.scroll_left as i32),
@@ -171,7 +171,7 @@ unsafe extern "C-unwind" fn c_window_unpin_scroll(argc: i32, argv: *mut Janet) -
     with_editor(|ed| unsafe {
         let id = conv::get_int(argc, argv, 0);
         let wid = id
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64))
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid
             && let Some(win) = ed.view_tree.window_mut(wid) {
@@ -185,7 +185,7 @@ unsafe extern "C-unwind" fn c_window_unpin_scroll(argc: i32, argv: *mut Janet) -
 unsafe extern "C-unwind" fn c_window_buffer(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let wid = conv::get_int(argc, argv, 0)
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64));
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64));
         match wid.and_then(|id| ed.view_tree.buffer(id)) {
             Some(k) => conv::integer(k as i32),
             None => conv::nil(),
@@ -197,7 +197,7 @@ unsafe extern "C-unwind" fn c_window_buffer(argc: i32, argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_window_set_buffer(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let wid = conv::get_int(argc, argv, 0)
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64));
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64));
         let buf_key = conv::get_int(argc, argv, 1).unwrap_or(-1) as usize;
         if let Some(wid) = wid {
             ed.view_tree.set_buffer(wid, buf_key);
@@ -223,7 +223,7 @@ unsafe extern "C-unwind" fn c_window_dimensions(_argc: i32, _argv: *mut Janet) -
 
 fn resolve_window(ed: &mut Editor, arg_id: Option<i32>) -> Option<(Option<usize>, u16, u16)> {
     let wid = arg_id
-        .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64));
+        .map(|id| kernel::state::id::WindowId::from_u64(id as u64));
     let maybe = wid.and_then(|wid| ed.view_tree.window(wid).map(|w| (w.buffer_id, w.width, w.height)));
     if maybe.is_some() { return maybe; }
     ed.view_tree.focused_window()
@@ -231,9 +231,9 @@ fn resolve_window(ed: &mut Editor, arg_id: Option<i32>) -> Option<(Option<usize>
         .map(|w| (w.buffer_id, w.width, w.height))
 }
 
-fn window_scroll_state(ed: &mut Editor, buf_id: usize, win_height: u16) -> magma::kernel::render::frame::ScrollState {
+fn window_scroll_state(ed: &mut Editor, buf_id: usize, win_height: u16) -> kernel::render::frame::ScrollState {
     let visible_lines = (win_height).saturating_sub(2) as usize;
-    magma::kernel::render::frame::compute_scroll_state(ed, buf_id, visible_lines)
+    kernel::render::frame::compute_scroll_state(ed, buf_id, visible_lines)
 }
 
 /// (window/width &opt window-id) → int
@@ -292,7 +292,7 @@ unsafe extern "C-unwind" fn c_window_scroll_top(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let arg_id = conv::get_int(argc, argv, 0);
         let wid = arg_id
-            .map(|id| magma::kernel::state::id::WindowId::from_u64(id as u64))
+            .map(|id| kernel::state::id::WindowId::from_u64(id as u64))
             .or_else(|| ed.view_tree.focused_window());
         if let Some(wid) = wid
             && let Some(win) = ed.view_tree.window(wid)

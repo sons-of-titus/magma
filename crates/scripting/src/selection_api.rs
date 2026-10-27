@@ -3,9 +3,9 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::state::mode::Selection;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::state::mode::Selection;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 unsafe extern "C-unwind" fn c_selection_get(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {

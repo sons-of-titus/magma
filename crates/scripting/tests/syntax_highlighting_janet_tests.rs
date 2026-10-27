@@ -332,8 +332,8 @@ fn highlight_follows_rust_path_typing() {
         // Type " two" at the end through the editor's own input path.
         let end = ed.buffers.get(key).unwrap().lock().unwrap().len();
         ed.views.get_mut(&key).unwrap().set_cursor(end);
-        magma::kernel::input::dispatch_key(&mut ed, " ");
-        magma::kernel::input::dispatch_key(&mut ed, "t");
+        kernel::input::dispatch_key(&mut ed, " ");
+        kernel::input::dispatch_key(&mut ed, "t");
         ed.events.drain_and_dispatch();
 
         let view = ed.views.get(&key).unwrap();

@@ -5,7 +5,7 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::extension::Capability;
+use kernel::extension::Capability;
 
 /// `(net/tcp-connect host port)` → conn-id
 ///
@@ -31,7 +31,7 @@ unsafe extern "C-unwind" fn c_tcp_connect(argc: i32, argv: *mut Janet) -> Janet 
         let id = ed.io.next_net_id;
         ed.io.next_net_id += 1;
         let (write_tx, mut write_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        ed.io.net_connections.insert(id, magma::kernel::net::NetConnection {
+        ed.io.net_connections.insert(id, kernel::net::NetConnection {
             host: host.clone(), port, connected: false, write_tx: write_tx.clone(),
         });
         debug!("net/tcp-connect id={id} {host}:{port}");
@@ -43,22 +43,22 @@ unsafe extern "C-unwind" fn c_tcp_connect(argc: i32, argv: *mut Janet) -> Janet 
                 Ok(s)  => s,
                 Err(e) => {
                     debug!("tcp-error id={id} {e}");
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::TcpError { id, error: e.to_string() });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::TcpError { id, error: e.to_string() });
                     return;
                 }
             };
             debug!("tcp-connected id={id}");
-            let _ = sender.send(magma::kernel::runtime::BackgroundEvent::TcpConnected { id });
+            let _ = sender.send(kernel::runtime::BackgroundEvent::TcpConnected { id });
             let (reader, mut writer) = stream.into_split();
             let mut lines = BufReader::new(reader).lines();
             let sender_read = sender.clone();
             let read_task = tokio::spawn(async move {
                 while let Ok(Some(line)) = lines.next_line().await {
                     debug!("tcp-data id={id} len={}", line.len());
-                    let _ = sender_read.send(magma::kernel::runtime::BackgroundEvent::TcpData { id, data: line });
+                    let _ = sender_read.send(kernel::runtime::BackgroundEvent::TcpData { id, data: line });
                 }
                 debug!("tcp-closed id={id}");
-                let _ = sender_read.send(magma::kernel::runtime::BackgroundEvent::TcpClosed { id });
+                let _ = sender_read.send(kernel::runtime::BackgroundEvent::TcpClosed { id });
             });
             while let Some(msg) = write_rx.recv().await {
                 if writer.write_all(format!("{msg}\n").as_bytes()).await.is_err() {
@@ -119,7 +119,7 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
         let server_id = ed.io.next_net_id;
         ed.io.next_net_id += 1;
         let running = Arc::new(AtomicBool::new(true));
-        ed.io.net_servers.insert(server_id, magma::kernel::net::NetServer {
+        ed.io.net_servers.insert(server_id, kernel::net::NetServer {
             port,
             running: running.clone(),
             clients: std::collections::HashMap::new(),
@@ -136,7 +136,7 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
                 Ok(l)  => l,
                 Err(e) => {
                     debug!("tcp-listen bind error server_id={server_id} port={port}: {e}");
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::TcpError {
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::TcpError {
                         id: server_id, error: format!("tcp-listen: {e}"),
                     });
                     return;
@@ -155,7 +155,7 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
                         next_client_id += 1;
                         debug!("tcp-client-connected server_id={server_id} client_id={client_id} peer={peer}");
                         let (write_tx, mut write_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                        let _ = sender.send(magma::kernel::runtime::BackgroundEvent::TcpClientConnected {
+                        let _ = sender.send(kernel::runtime::BackgroundEvent::TcpClientConnected {
                             server_id, client_id, write_tx,
                         });
                         let sender_c = sender.clone();
@@ -164,12 +164,12 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
                         tokio::spawn(async move {
                             while let Ok(Some(line)) = lines.next_line().await {
                                 debug!("tcp-client-data server_id={server_id} client_id={client_id} len={}", line.len());
-                                let _ = sender_c.send(magma::kernel::runtime::BackgroundEvent::TcpClientData {
+                                let _ = sender_c.send(kernel::runtime::BackgroundEvent::TcpClientData {
                                     server_id, client_id, data: line,
                                 });
                             }
                             debug!("tcp-client-disconnected server_id={server_id} client_id={client_id}");
-                            let _ = sender_c.send(magma::kernel::runtime::BackgroundEvent::TcpClientDisconnected {
+                            let _ = sender_c.send(kernel::runtime::BackgroundEvent::TcpClientDisconnected {
                                 server_id, client_id,
                             });
                         });

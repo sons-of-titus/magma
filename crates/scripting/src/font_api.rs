@@ -3,10 +3,10 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
-fn emit_font_changed(ed: &mut magma::kernel::state::Editor) {
+fn emit_font_changed(ed: &mut kernel::state::Editor) {
     ed.font_changed = true;
     ed.events.emit_typed(keys::events::FONT_CHANGED, EmptyPayload);
 }
@@ -166,7 +166,7 @@ unsafe extern "C-unwind" fn c_editor_set_font_context(argc: i32, argv: *mut Jane
         };
         ed.font_config
             .context_overrides
-            .insert(ctx_name, magma::kernel::state::ContextFont { family, size });
+            .insert(ctx_name, kernel::state::ContextFont { family, size });
         emit_font_changed(ed);
         conv::nil()
     })

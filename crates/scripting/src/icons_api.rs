@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::icons::{IconKind, IconPack};
+use kernel::icons::{IconKind, IconPack};
 
 /// Extract one icon spec from a Janet value: a codepoint integer, or a
 /// `[codepoint [r g b]]` tuple for a colored glyph.
@@ -143,7 +143,7 @@ unsafe extern "C-unwind" fn c_load_pack(argc: i32, argv: *mut Janet) -> Janet {
         let Some(target) = conv::get_str(argc, argv, 0) else {
             conv::signal_err("icons/load-pack requires a pack name or path")
         };
-        match magma::kernel::icons::find_and_load(std::path::Path::new(&target)) {
+        match kernel::icons::find_and_load(std::path::Path::new(&target)) {
             Ok(pack) => {
                 let name = pack.name.clone();
                 ed.icons = pack;

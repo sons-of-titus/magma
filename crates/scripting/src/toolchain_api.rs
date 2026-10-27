@@ -16,7 +16,7 @@ unsafe extern "C-unwind" fn c_toolchain_find(argc: i32, argv: *mut Janet) -> Jan
         let Some(name) = conv::get_str(argc, argv, 0) else {
             return conv::nil();
         };
-        match magma::kernel::project::toolchain::find(&name) {
+        match kernel::project::toolchain::find(&name) {
             Some(path) => conv::string(&path.to_string_lossy()),
             None => conv::nil(),
         }
@@ -33,7 +33,7 @@ unsafe extern "C-unwind" fn c_toolchain_find_extended(argc: i32, argv: *mut Jane
         let Some(name) = conv::get_str(argc, argv, 0) else {
             return conv::nil();
         };
-        match magma::kernel::project::toolchain::find_extended(&name) {
+        match kernel::project::toolchain::find_extended(&name) {
             Some(path) => conv::string(&path.to_string_lossy()),
             None => conv::nil(),
         }

@@ -173,7 +173,7 @@ fn auto_detect_mode_activates_when_command_registered() {
                 .and_then(|wid| ed.view_tree.buffer(wid))
                 .unwrap_or(0);
             if let Some(arc) = ed.buffers.get(buf_id) {
-                arc.lock().unwrap().major_mode = magma::kernel::text_engine::MajorMode::Custom("zig-mode".to_string());
+                arc.lock().unwrap().major_mode = kernel::text_engine::MajorMode::Custom("zig-mode".to_string());
             }
             Ok(())
         });

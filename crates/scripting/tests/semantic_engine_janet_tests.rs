@@ -2,7 +2,7 @@
 // Janet API tests for the Semantic Engine.
 
 use scripting;
-use magma::kernel::semantic::{Symbol, SymbolKind};
+use kernel::semantic::{Symbol, SymbolKind};
 
 // ── C function registration ───────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@ fn workspace_symbols_find_indexed_declarations() {
     janet_test!(ed, {
         // A real record flows through the store the same way background
         // extraction results do.
-        let rec = magma::kernel::index::record_from_text("alpha.rs", 1,
+        let rec = kernel::index::record_from_text("alpha.rs", 1,
             "fn alpha_one() {}\nfn alpha_two() {}\nstruct Beta {}");
         ed.index.apply(rec);
         ed.index.flush().ok();

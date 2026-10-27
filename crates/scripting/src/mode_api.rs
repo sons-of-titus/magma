@@ -48,7 +48,7 @@ unsafe extern "C-unwind" fn c_editor_set_completions(argc: i32, argv: *mut Janet
         ed.completion.visible = !items.is_empty();
         ed.completion.idx = idx;
         ed.completion.items = items.into_iter()
-            .map(magma::kernel::state::completion::CompletionItem::word)
+            .map(kernel::state::completion::CompletionItem::word)
             .collect();
         conv::nil()
     })

@@ -11,7 +11,7 @@ macro_rules! janet_bg_test { ($ed:ident, $body:block) => {{
     let mut $ed = helpers::make_editor();
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
-    $ed.background = Some(magma::kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
+    $ed.background = Some(kernel::runtime::BackgroundHandle::new(runtime, bg_sender));
     scripting::init(&mut $ed);
     let _editor_scope = scripting::EditorScope::new(&mut $ed);
     $body
@@ -93,7 +93,7 @@ fn run_config_launches_the_named_config_process() {
         scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
         // Swap `cargo test` for an instant no-op so the suite never builds.
         scripting::eval(r#"(editor/run-command "select-config" "test")"#);
-        ed.project_manager.run_configs.upsert(magma::kernel::run_config::RunConfig {
+        ed.project_manager.run_configs.upsert(kernel::run_config::RunConfig {
             name: "test".to_string(),
             command: "/usr/bin/true".to_string(),
             args: vec![],
@@ -124,7 +124,7 @@ fn dbg_start_launches_the_active_run_config() {
 
         scripting::eval(&format!("(project/set-root \"{}\")", tmp.to_string_lossy()));
         scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
-        ed.project_manager.run_configs.upsert(magma::kernel::run_config::RunConfig {
+        ed.project_manager.run_configs.upsert(kernel::run_config::RunConfig {
             name: "run".to_string(),
             command: "/bin/echo".to_string(),
             args: vec!["hi".to_string()],

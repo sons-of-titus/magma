@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::keys;
-use magma::kernel::event::payload::EmptyPayload;
-use magma::kernel::project;
+use kernel::event::keys;
+use kernel::event::payload::EmptyPayload;
+use kernel::project;
 
 /// (project/recent) → [string ...]
 unsafe extern "C-unwind" fn c_project_recent(_argc: i32, _argv: *mut Janet) -> Janet {
@@ -95,7 +95,7 @@ unsafe extern "C-unwind" fn c_project_register(argc: i32, argv: *mut Janet) -> J
             Some(s) => s,
             None => return conv::nil(),
         };
-        let ps = magma::kernel::project::Project {
+        let ps = kernel::project::Project {
             root: Some(PathBuf::from(&root_str)),
             name: Some(name.clone()),
             ..Default::default()
@@ -115,7 +115,7 @@ unsafe extern "C-unwind" fn c_project_unregister(argc: i32, argv: *mut Janet) ->
         ed.project_manager.projects.remove(&name);
         if ed.project_manager.current_project.as_deref() == Some(&name) {
             ed.project_manager.current_project = None;
-            ed.project_manager.project = magma::kernel::project::Project::default();
+            ed.project_manager.project = kernel::project::Project::default();
             ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
         }
         conv::nil()

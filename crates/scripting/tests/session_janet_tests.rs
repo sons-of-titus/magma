@@ -23,8 +23,8 @@ fn open_project_restores_the_previous_session() {
         scripting::eval(&format!("(debug/add-breakpoint \"{}\" 2)", file_path));
         scripting::eval("(debug/watch-add \"len\")");
 
-        let state = magma::kernel::session::capture(&ed);
-        magma::kernel::session::save(&ed, &tmp).unwrap();
+        let state = kernel::session::capture(&ed);
+        kernel::session::save(&ed, &tmp).unwrap();
 
         // A fresh editor, same project: open-project must restore.  The
         // fresh editor has no Janet runtime, so detection runs explicitly
@@ -32,8 +32,8 @@ fn open_project_restores_the_previous_session() {
         let mut fresh = helpers::make_editor();
         let mut args = std::collections::HashMap::new();
         args.insert("path".to_string(),
-            magma::kernel::command::args::ArgValue::Path(tmp.to_string_lossy().into_owned()));
-        magma::kernel::command::execute_command(&mut fresh, "open-project", &args).unwrap();
+            kernel::command::args::ArgValue::Path(tmp.to_string_lossy().into_owned()));
+        kernel::command::execute_command(&mut fresh, "open-project", &args).unwrap();
         fresh.project_manager.detect(&tmp.to_string_lossy());
 
         let reopened: Vec<String> = fresh.buffers.iter()
@@ -74,7 +74,7 @@ fn project_switch_resets_run_configs_and_restores_the_other_session() {
         std::fs::write(&p1_marker, "fn main() {}\n").unwrap();
         scripting::eval(&format!("(editor/run-command \"open-file\" \"{}\")", p1_marker.to_string_lossy()));
         scripting::eval(&format!("(debug/add-breakpoint \"{}\" 1)", p1_marker.to_string_lossy()));
-        magma::kernel::session::save(&ed, &p1).unwrap();
+        kernel::session::save(&ed, &p1).unwrap();
 
         // Switching to project 2: project-1 state leaves the active store…
         scripting::eval(&format!("(editor/run-command \"open-project\" \"{}\")", p2.to_string_lossy()));

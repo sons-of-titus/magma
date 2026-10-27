@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use magma::kernel::command::args::ArgValue;
-use magma::kernel::command::CommandResult;
+use kernel::command::args::ArgValue;
+use kernel::command::CommandResult;
 use crate::ScriptRuntime;
 
 pub struct JanetRuntime;
@@ -21,17 +21,17 @@ impl JanetRuntime {
 }
 
 impl ScriptRuntime for JanetRuntime {
-    fn init(&mut self, editor: &mut magma::kernel::state::Editor) {
+    fn init(&mut self, editor: &mut kernel::state::Editor) {
         super::scoped_editor(editor, super::loader::init_vm);
     }
 
-    fn eval(&mut self, editor: &mut magma::kernel::state::Editor, expr: &str) -> String {
+    fn eval(&mut self, editor: &mut kernel::state::Editor, expr: &str) -> String {
         super::scoped_editor(editor, || super::eval(expr))
     }
 
     fn eval_result(
         &mut self,
-        editor: &mut magma::kernel::state::Editor,
+        editor: &mut kernel::state::Editor,
         expr: &str,
     ) -> Result<String, String> {
         super::scoped_editor(editor, || super::eval_result(expr))
@@ -39,7 +39,7 @@ impl ScriptRuntime for JanetRuntime {
 
     fn load_file(
         &mut self,
-        editor: &mut magma::kernel::state::Editor,
+        editor: &mut kernel::state::Editor,
         path: &str,
     ) -> Result<(), String> {
         super::scoped_editor(editor, || super::load_file(path))
@@ -47,26 +47,26 @@ impl ScriptRuntime for JanetRuntime {
 
     fn call_command(
         &mut self,
-        editor: &mut magma::kernel::state::Editor,
+        editor: &mut kernel::state::Editor,
         name: &str,
         args: &HashMap<String, ArgValue>,
     ) -> CommandResult {
         super::scoped_editor(editor, || super::call_janet_command_scoped(name, args))
     }
 
-    fn execute_stored_task(&mut self, editor: &mut magma::kernel::state::Editor, task_id: u64) {
+    fn execute_stored_task(&mut self, editor: &mut kernel::state::Editor, task_id: u64) {
         super::scoped_editor(editor, || super::execute_stored_task_scoped(task_id));
     }
 
     fn execute_task_complete_callback(
         &mut self,
-        editor: &mut magma::kernel::state::Editor,
+        editor: &mut kernel::state::Editor,
         task_id: u64,
     ) {
         super::scoped_editor(editor, || super::execute_task_complete_callback_scoped(task_id));
     }
 
-    fn dispatch_events(&mut self, ed: &mut magma::kernel::state::Editor) {
+    fn dispatch_events(&mut self, ed: &mut kernel::state::Editor) {
         super::scoped_editor(ed, || {
             super::with_editor(|e| {
                 e.events.drain_and_dispatch();
@@ -78,7 +78,7 @@ impl ScriptRuntime for JanetRuntime {
 
     fn send_dap_command(
         &mut self,
-        ed: &mut magma::kernel::state::Editor,
+        ed: &mut kernel::state::Editor,
         session_id: u64,
         command: &str,
         arguments: &str,

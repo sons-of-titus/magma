@@ -9,7 +9,7 @@ default = ["janet"]
 janet = ["dep:evil-janet"]
 
 [dependencies]
-magma = { path = "../.." }
+kernel = { path = "../kernel" }
 logging = { path = "../logging" }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
 serde = { version = "1", features = ["derive"] }

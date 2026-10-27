@@ -12,9 +12,9 @@ use std::cell::RefCell;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::extension::{Capability, ExtensionManifest};
-use magma::kernel::event::keys;
-use magma::kernel::event::payload::{ExtensionDeclaredPayload, ExtensionUndeclaredPayload};
+use kernel::extension::{Capability, ExtensionManifest};
+use kernel::event::keys;
+use kernel::event::payload::{ExtensionDeclaredPayload, ExtensionUndeclaredPayload};
 
 thread_local! {
     /// Execution contexts, outermost first.  Core (empty stack) is
@@ -215,7 +215,7 @@ unsafe extern "C-unwind" fn c_extension_capabilities(argc: i32, argv: *mut Janet
 }
 
 /// Build a Janet table from a manifest.
-unsafe fn manifest_to_janet(manifest: &magma::kernel::extension::ExtensionManifest) -> Janet {
+unsafe fn manifest_to_janet(manifest: &kernel::extension::ExtensionManifest) -> Janet {
     unsafe {
         let tbl = janet_wrap_table(janet_table(4));
         let t = janet_unwrap_table(tbl);

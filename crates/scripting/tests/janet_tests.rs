@@ -128,8 +128,8 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
     // The whole click path: open-project → index → sidebar click path →
     // open-file → frame drain → the file is on screen and highlighted.
     janet_test!(ed, {
-        use magma::kernel::command::{self, args::ArgValue};
-        use magma::kernel::runtime::{process_background_event, BackgroundHandle};
+        use kernel::command::{self, args::ArgValue};
+        use kernel::runtime::{process_background_event, BackgroundHandle};
 
         let rt = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

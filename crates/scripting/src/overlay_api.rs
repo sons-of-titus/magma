@@ -2,7 +2,7 @@
 
 use evil_janet::*;
 use super::{conv, with_editor};
-use magma::kernel::state::Overlay;
+use kernel::state::Overlay;
 
 /// (editor/overlay-create x y w h buf-id) → overlay-id
 ///

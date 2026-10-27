@@ -9,8 +9,8 @@
 //!   (agent/list)                  → array of {:id :prompt :status :result}
 
 use evil_janet::*;
-use magma::kernel::agent::{BuiltinPlanner, EditorContextProvider};
-use magma::kernel::agent::types::{ContextProvider, Planner};
+use kernel::agent::{BuiltinPlanner, EditorContextProvider};
+use kernel::agent::types::{ContextProvider, Planner};
 use super::conv;
 use super::with_editor;
 
@@ -26,7 +26,7 @@ unsafe extern "C-unwind" fn c_agent_ask(argc: i32, argv: *mut Janet) -> Janet {
             None => conv::signal_err("agent/ask: prompt string required"),
         };
 
-        match magma::kernel::agent::loop_::start_session(ed, &prompt) {
+        match kernel::agent::loop_::start_session(ed, &prompt) {
             Ok(session_id) => conv::integer(session_id as i32),
             Err(e) => conv::signal_err(&e),
         }
@@ -59,13 +59,13 @@ unsafe extern "C-unwind" fn c_agent_run_task(argc: i32, argv: *mut Janet) -> Jan
         bg.spawn_blocking(move || {
             let plan = BuiltinPlanner.plan(&description, &ctx);
 
-            let _ = sender.send(magma::kernel::runtime::BackgroundEvent::AgentThought {
+            let _ = sender.send(kernel::runtime::BackgroundEvent::AgentThought {
                 session_id,
                 thought: plan.rationale.clone(),
             });
 
             for step in &plan.steps {
-                let _ = sender.send(magma::kernel::runtime::BackgroundEvent::AgentAction {
+                let _ = sender.send(kernel::runtime::BackgroundEvent::AgentAction {
                     session_id,
                     command: step.command.clone(),
                     description: step.description.clone(),
@@ -78,7 +78,7 @@ unsafe extern "C-unwind" fn c_agent_run_task(argc: i32, argv: *mut Janet) -> Jan
                 format!("{} action(s) dispatched", plan.steps.len())
             };
 
-            let _ = sender.send(magma::kernel::runtime::BackgroundEvent::AgentResult {
+            let _ = sender.send(kernel::runtime::BackgroundEvent::AgentResult {
                 session_id,
                 result,
             });
@@ -94,7 +94,7 @@ unsafe extern "C-unwind" fn c_agent_run_task(argc: i32, argv: *mut Janet) -> Jan
 unsafe extern "C-unwind" fn c_agent_status(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let id = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as u64;
-        use magma::kernel::agent::AgentStatus;
+        use kernel::agent::AgentStatus;
         let kw = match ed.agent.status(id) {
             None                          => "not-found",
             Some(AgentStatus::Running)    => "running",

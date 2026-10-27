@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 /// Send+Sync wrapper for Janet function references.
 #[derive(Clone, Copy)]
@@ -169,11 +169,11 @@ unsafe extern "C-unwind" fn c_task_status(argc: i32, argv: *mut Janet) -> Janet 
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         let kw = match ed.task_scheduler.status(id) {
             None => "not-found",
-            Some(magma::kernel::task::TaskStatus::Pending)    => "pending",
-            Some(magma::kernel::task::TaskStatus::Running)    => "running",
-            Some(magma::kernel::task::TaskStatus::Completed)  => "completed",
-            Some(magma::kernel::task::TaskStatus::Failed(_))  => "failed",
-            Some(magma::kernel::task::TaskStatus::Cancelled)  => "cancelled",
+            Some(kernel::task::TaskStatus::Pending)    => "pending",
+            Some(kernel::task::TaskStatus::Running)    => "running",
+            Some(kernel::task::TaskStatus::Completed)  => "completed",
+            Some(kernel::task::TaskStatus::Failed(_))  => "failed",
+            Some(kernel::task::TaskStatus::Cancelled)  => "cancelled",
         };
         conv::keyword(kw)
     })
@@ -186,11 +186,11 @@ unsafe extern "C-unwind" fn c_task_list(_argc: i32, _argv: *mut Janet) -> Janet 
         let arr = janet_wrap_array(janet_array(count as i32));
         for task in ed.task_scheduler.tasks.values() {
             let status_kw = match &task.status {
-                magma::kernel::task::TaskStatus::Pending   => "pending",
-                magma::kernel::task::TaskStatus::Running   => "running",
-                magma::kernel::task::TaskStatus::Completed => "completed",
-                magma::kernel::task::TaskStatus::Failed(_) => "failed",
-                magma::kernel::task::TaskStatus::Cancelled => "cancelled",
+                kernel::task::TaskStatus::Pending   => "pending",
+                kernel::task::TaskStatus::Running   => "running",
+                kernel::task::TaskStatus::Completed => "completed",
+                kernel::task::TaskStatus::Failed(_) => "failed",
+                kernel::task::TaskStatus::Cancelled => "cancelled",
             };
             let tbl = janet_wrap_table(janet_table(4));
             let t = janet_unwrap_table(tbl);
@@ -235,7 +235,7 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
             ed.project_manager.detect(&root);
             if ed.project_manager.project.language.is_empty() {
                 ed.show_message(
-                    magma::kernel::state::MessageKind::Info,
+                    kernel::state::MessageKind::Info,
                     "No recognized build system here (Cargo, go, npm, Make, Python, CMake, Maven, Gradle) — create run configurations with the toolbar gear",
                 );
             }
@@ -249,7 +249,7 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
 /// Called from `JanetRuntime::execute_task_complete_callback` when a task finishes.
 /// Fires the stored callback with the task output as argument.
 pub(crate) fn execute_task_complete_callback(
-    ed: &mut magma::kernel::state::Editor,
+    ed: &mut kernel::state::Editor,
     task_id: u64,
 ) {
     let entry = {

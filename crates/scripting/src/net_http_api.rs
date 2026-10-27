@@ -3,7 +3,7 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::extension::Capability;
+use kernel::extension::Capability;
 
 unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet {
     if !super::extension_api::check_capability(&Capability::Network) {
@@ -42,11 +42,11 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::HttpError { id, error });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error });
                 }
             }
         });
@@ -81,11 +81,11 @@ unsafe extern "C-unwind" fn c_http_get(argc: i32, argv: *mut Janet) -> Janet {
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::HttpError { id, error });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error });
                 }
             }
         });
@@ -121,11 +121,11 @@ unsafe extern "C-unwind" fn c_http_post(argc: i32, argv: *mut Janet) -> Janet {
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
-                    let _ = sender.send(magma::kernel::runtime::BackgroundEvent::HttpError { id, error });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error });
                 }
             }
         });

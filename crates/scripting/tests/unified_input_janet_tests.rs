@@ -1,6 +1,6 @@
 #[macro_use] mod helpers;
 use scripting;
-use magma::kernel::input::dispatch_key;
+use kernel::input::dispatch_key;
 
 #[test]
 fn on_input_fn_starts_nil() {

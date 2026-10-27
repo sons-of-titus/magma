@@ -2,7 +2,7 @@
 // editor/echo — Janet-side transient status + durable log.
 
 use scripting;
-use magma::kernel::state::MessageKind;
+use kernel::state::MessageKind;
 
 #[test]
 fn echo_defaults_to_info_and_logs() {

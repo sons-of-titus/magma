@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::command::args::ArgValue;
+use kernel::command::args::ArgValue;
 
 /// (command/run name &opt kvs*) — execute a command with `:key value` pairs.
 unsafe extern "C-unwind" fn c_command_run(argc: i32, argv: *mut Janet) -> Janet {
@@ -21,7 +21,7 @@ unsafe extern "C-unwind" fn c_command_run(argc: i32, argv: *mut Janet) -> Janet 
             args.insert(key, ArgValue::String(value));
             i += 2;
         }
-        match magma::kernel::command::execute_command(ed, &name, &args) {
+        match kernel::command::execute_command(ed, &name, &args) {
             Ok(()) => conv::nil(),
             Err(e) => conv::signal_err(&e),
         }
@@ -109,7 +109,7 @@ pub(crate) fn invoke_janet_command(
     Ok(())
 }
 
-fn register_janet_command_wrapper(ed: &mut magma::kernel::state::Editor, name: &str) {
+fn register_janet_command_wrapper(ed: &mut kernel::state::Editor, name: &str) {
     let lookup_name = name.to_string();
     // Commands run long after registration: re-enter the context that
     // defined them so capability gates hold at invocation time.

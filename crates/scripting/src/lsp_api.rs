@@ -8,8 +8,8 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::semantic::lsp_proto;
-use magma::kernel::state::Editor;
+use kernel::semantic::lsp_proto;
+use kernel::state::Editor;
 
 // ── C Functions ───────────────────────────────────────────────────────────
 
@@ -41,10 +41,10 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
         std::thread::Builder::new()
             .name(format!("lsp-init-{language}"))
             .spawn(move || {
-                let result = magma::kernel::semantic::lsp::LspHandle::start(
+                let result = kernel::semantic::lsp::LspHandle::start(
                     &command, &args, &language, root, bg.clone()).map(std::sync::Arc::new);
-                bg.send_event(magma::kernel::runtime::BackgroundEvent::Lsp(
-                    magma::kernel::semantic::Event::Started { language, result }));
+                bg.send_event(kernel::runtime::BackgroundEvent::Lsp(
+                    kernel::semantic::Event::Started { language, result }));
             })
             .map_err(|e| debug!("lsp-init thread: {e}"))
             .ok();
@@ -145,7 +145,7 @@ unsafe extern "C-unwind" fn c_lsp_request(argc: i32, argv: *mut Janet) -> Janet 
 /// Focused buffer key and its current revision — the request context every
 /// document-scoped LSP request carries.
 fn focused_revision(ed: &Editor) -> (usize, u64) {
-    let buf_key = magma::kernel::input::focused_buffer_id(ed);
+    let buf_key = kernel::input::focused_buffer_id(ed);
     let revision = ed.buffers.get(buf_key)
         .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
         .unwrap_or(0);
@@ -159,14 +159,14 @@ unsafe fn with_server_and_doc(
     ed: &mut Editor,
     argc: i32,
     argv: *mut Janet,
-    f: impl FnOnce(&std::sync::Arc<magma::kernel::semantic::lsp::LspHandle>, usize, &std::sync::Arc<std::sync::Mutex<magma::kernel::text_engine::Buffer>>, String),
+    f: impl FnOnce(&std::sync::Arc<kernel::semantic::lsp::LspHandle>, usize, &std::sync::Arc<std::sync::Mutex<kernel::text_engine::Buffer>>, String),
 ) {
     unsafe {
         let Some(language) = conv::get_str(argc, argv, 0)else { return };
         let buf_key = if argc > 1 {
             conv::get_int(argc, argv, 1).unwrap_or(-1).max(0) as usize
         } else {
-            magma::kernel::input::focused_buffer_id(ed)
+            kernel::input::focused_buffer_id(ed)
         };
         let Some(server) = ed.lsp.get(&language).cloned() else { return };
         let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
@@ -254,7 +254,7 @@ unsafe fn request_at_cursor(
     unsafe {
         let Some(language) = conv::get_str(argc, argv, 0)else { return };
         let Some(server) = ed.lsp.get(&language).cloned() else { return };
-        let buf_key = magma::kernel::input::focused_buffer_id(ed);
+        let buf_key = kernel::input::focused_buffer_id(ed);
         let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
         let (line, character, uri) = {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());

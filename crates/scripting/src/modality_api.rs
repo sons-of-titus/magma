@@ -3,9 +3,9 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::state::mode::Selection;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::state::mode::Selection;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -32,17 +32,17 @@ unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Ja
         match name.as_str() {
             "visual"
                 if ed.selection.is_none() => {
-                    let buf_id = magma::kernel::input::focused_buffer_id(ed);
+                    let buf_id = kernel::input::focused_buffer_id(ed);
                     let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                     ed.selection = Some(Selection { anchor, kind: "char".into() });
                 }
             "visual-line" => {
-                let buf_id = magma::kernel::input::focused_buffer_id(ed);
+                let buf_id = kernel::input::focused_buffer_id(ed);
                 let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                 ed.selection = Some(Selection { anchor, kind: "line".into() });
             }
             "visual-block" => {
-                let buf_id = magma::kernel::input::focused_buffer_id(ed);
+                let buf_id = kernel::input::focused_buffer_id(ed);
                 let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
                 ed.selection = Some(Selection { anchor, kind: "block".into() });
             }

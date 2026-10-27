@@ -3,9 +3,9 @@
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
-use magma::kernel::project::Project;
+use kernel::event::payload::*;
+use kernel::event::keys;
+use kernel::project::Project;
 
 /// (project/root) → string or nil
 unsafe extern "C-unwind" fn c_project_root(_argc: i32, _argv: *mut Janet) -> Janet {
@@ -19,7 +19,7 @@ unsafe extern "C-unwind" fn c_project_root(_argc: i32, _argv: *mut Janet) -> Jan
 unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         match conv::get_str(argc, argv, 0) {
-            Some(path) => magma::kernel::project::open_root(ed, &path),
+            Some(path) => kernel::project::open_root(ed, &path),
             None => {
                 let was_active = ed.project_manager.project.root.is_some();
                 ed.project_manager.project = Project::default();
@@ -72,7 +72,7 @@ unsafe extern "C-unwind" fn c_project_files(_argc: i32, _argv: *mut Janet) -> Ja
 /// (project/index-files) → nil
 unsafe extern "C-unwind" fn c_project_index_files(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        magma::kernel::project::spawn_file_index(ed);
+        kernel::project::spawn_file_index(ed);
         conv::nil()
     })
 }
@@ -158,7 +158,7 @@ unsafe extern "C-unwind" fn c_project_build(_argc: i32, _argv: *mut Janet) -> Ja
         };
         match ed.project_manager.build(&mut ed.task_scheduler, &bg) {
             Ok(id) => {
-                magma::kernel::run_config::announce_launch(ed, id);
+                kernel::run_config::announce_launch(ed, id);
                 conv::integer(id as i32)
             }
             Err(e) => conv::signal_err(&e),
@@ -175,7 +175,7 @@ unsafe extern "C-unwind" fn c_project_test(_argc: i32, _argv: *mut Janet) -> Jan
         };
         match ed.project_manager.test(&mut ed.task_scheduler, &bg) {
             Ok(id) => {
-                magma::kernel::run_config::announce_launch(ed, id);
+                kernel::run_config::announce_launch(ed, id);
                 conv::integer(id as i32)
             }
             Err(e) => conv::signal_err(&e),
@@ -192,7 +192,7 @@ unsafe extern "C-unwind" fn c_project_run(_argc: i32, _argv: *mut Janet) -> Jane
         };
         match ed.project_manager.run(&mut ed.task_scheduler, &bg) {
             Ok(id) => {
-                magma::kernel::run_config::announce_launch(ed, id);
+                kernel::run_config::announce_launch(ed, id);
                 conv::integer(id as i32)
             }
             Err(e) => conv::signal_err(&e),

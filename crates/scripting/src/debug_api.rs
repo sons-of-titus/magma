@@ -17,13 +17,13 @@ use serde_json::json;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
-type SessionId = magma::kernel::debug::types::SessionId;
+type SessionId = kernel::debug::types::SessionId;
 
 /// Send a DAP request through the session's foreground-owned connection.
-pub(crate) fn send_dap_command(ed: &mut magma::kernel::state::Editor, session_id: SessionId, command: &str, arguments: &str) {
+pub(crate) fn send_dap_command(ed: &mut kernel::state::Editor, session_id: SessionId, command: &str, arguments: &str) {
     let Some(handle) = ed.debug.connections.get(&session_id).cloned() else { return };
     let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or(json!({}));
     handle.request(command, args);
@@ -32,8 +32,8 @@ pub(crate) fn send_dap_command(ed: &mut magma::kernel::state::Editor, session_id
 // ── C functions ───────────────────────────────────────────────────────────────
 
 /// The buffer whose path matches `file`, if one is open.
-fn buffer_for_path(ed: &mut magma::kernel::state::Editor, file: &str)
-    -> Option<std::sync::Arc<std::sync::Mutex<magma::kernel::text_engine::Buffer>>>
+fn buffer_for_path(ed: &mut kernel::state::Editor, file: &str)
+    -> Option<std::sync::Arc<std::sync::Mutex<kernel::text_engine::Buffer>>>
 {
     ed.buffers.iter()
         .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(file))
@@ -50,7 +50,7 @@ unsafe extern "C-unwind" fn c_debug_start(argc: i32, argv: *mut Janet) -> Janet 
         let launch_config: Option<serde_json::Value> =
             unsafe { conv::get_str(argc, argv, 1) }
                 .and_then(|c| serde_json::from_str(&c).ok());
-        match magma::kernel::debug::spawn_session(ed, &adapter, launch_config) {
+        match kernel::debug::spawn_session(ed, &adapter, launch_config) {
             Ok(id) => conv::integer(id as i32),
             Err(_) => conv::nil(),
         }
@@ -137,7 +137,7 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
             let offset = buf.line_start_offset(line.saturating_sub(1)).unwrap_or(0);
             buf.attach_breakpoint(bp_id, offset);
         }
-        magma::kernel::debug::sync_breakpoint_lines(ed);
+        kernel::debug::sync_breakpoint_lines(ed);
         // Notify the active debug session.
         if let Some(sid) = ed.debug.active_session {
             let args = ed.debug.set_breakpoints_args(&file);
@@ -188,7 +188,7 @@ unsafe extern "C-unwind" fn c_debug_set_enabled(argc: i32, argv: *mut Janet) -> 
         let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
         let enabled = unsafe { conv::get_bool(argc, argv, 2) }.unwrap_or(true);
         if file.is_empty() { return conv::nil(); }
-        magma::kernel::debug::set_breakpoint_enabled(ed, &file, line, enabled);
+        kernel::debug::set_breakpoint_enabled(ed, &file, line, enabled);
         conv::nil()
     })
 }

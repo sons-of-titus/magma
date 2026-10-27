@@ -3,10 +3,10 @@
 // contract details live in the per-area suites; this file proves the
 // cross-subsystem invariants hold on the integrated editor.
 
-use magma::kernel::command::{self, builtin};
-use magma::kernel::storage::disk::DiskFileSystem;
-use magma::kernel::render::surface::Surface;
-use magma::kernel::state::Editor;
+use kernel::command::{self, builtin};
+use kernel::storage::disk::DiskFileSystem;
+use kernel::render::surface::Surface;
+use kernel::state::Editor;
 #[macro_use] mod helpers;
 
 fn editor_with(content: &str) -> (Editor, usize) {
@@ -24,9 +24,9 @@ fn gate_mutation_one_path_one_revision() {
     // Typing through the input pipeline produces exactly one committed
     // transaction, one revision, one pending change, one published event.
     let (mut ed, key) = editor_with("seed");
-    ed.editor_mode = magma::kernel::state::EditorMode::new("insert", true);
+    ed.editor_mode = kernel::state::EditorMode::new("insert", true);
     let rev0 = ed.buffers.get(key).unwrap().lock().unwrap().revision();
-    magma::kernel::input::dispatch_key(&mut ed, "!");
+    kernel::input::dispatch_key(&mut ed, "!");
     // dispatch_key publishes and drains internally; the observable contract
     // is one revision and the typed text.
     let buf = ed.buffers.get(key).unwrap().lock().unwrap();
@@ -77,7 +77,7 @@ fn gate_persistence_invariant_end_to_end() {
         let buf = ed.buffers.get(key).unwrap().lock().unwrap();
         (buf.slice(0, buf.len()), buf.revision())
     };
-    magma::kernel::storage::disk::atomic_write(&path_str, &content).unwrap();
+    kernel::storage::disk::atomic_write(&path_str, &content).unwrap();
     ed.buffers.get(key).unwrap().lock().unwrap().mark_saved_at(rev);
     assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
 
@@ -95,7 +95,7 @@ fn gate_persistence_invariant_end_to_end() {
         let buf = ed.buffers.get(key).unwrap().lock().unwrap();
         (buf.slice(0, buf.len()), buf.revision())
     };
-    magma::kernel::storage::disk::atomic_write(&path_str, &content).unwrap();
+    kernel::storage::disk::atomic_write(&path_str, &content).unwrap();
     ed.buffers.get(key).unwrap().lock().unwrap().mark_saved_at(rev);
     assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "v1-stale-snapshot");
@@ -211,7 +211,7 @@ fn gate_rendering_never_copies_the_document() {
     let doc: String = (0..50_000).map(|i| format!("line-{i}\n")).collect();
     let (ed, _key) = editor_with(&doc);
     let mut surface = Surface::new(40, 8);
-    magma::kernel::render::frame::render_frame(&ed, &mut surface);
+    kernel::render::frame::render_frame(&ed, &mut surface);
     let mut seen = String::new();
     for y in 0..7 {
         for x in 0..40 {
@@ -251,13 +251,13 @@ fn typing_median(lines: usize) -> std::time::Duration {
     if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
-    ed.editor_mode = magma::kernel::state::EditorMode::new("editor", true);
+    ed.editor_mode = kernel::state::EditorMode::new("editor", true);
     ed.keymaps.push_layer("editor");
 
     let mut samples: Vec<std::time::Duration> = Vec::new();
     for i in 0..50 {
         let t = std::time::Instant::now();
-        magma::kernel::input::dispatch_key(&mut ed, &format!("{}", i % 10));
+        kernel::input::dispatch_key(&mut ed, &format!("{}", i % 10));
         samples.push(t.elapsed());
     }
     samples.sort_unstable();
@@ -266,8 +266,8 @@ fn typing_median(lines: usize) -> std::time::Duration {
 
 #[test]
 fn render_frame_cost_does_not_scale_with_document_size() {
-    use magma::kernel::render::frame::render_frame;
-    use magma::kernel::render::surface::Surface;
+    use kernel::render::frame::render_frame;
+    use kernel::render::surface::Surface;
 
     let render_median = |lines: usize| {
         let mut ed = helpers::make_editor();

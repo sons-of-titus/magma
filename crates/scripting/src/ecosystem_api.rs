@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::task::QuickfixEntry;
+use kernel::task::QuickfixEntry;
 
 // ── Module paths ──────────────────────────────────────────────────────────────
 

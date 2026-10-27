@@ -1,6 +1,6 @@
 #[macro_use] mod helpers;
 use scripting;
-use magma::kernel::state::Editor;
+use kernel::state::Editor;
 
 // ── overlay ──────────────────────────────────────────────────────────────
 

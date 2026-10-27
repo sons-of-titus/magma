@@ -6,9 +6,9 @@ use std::sync::{LazyLock, Mutex};
 use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
-use magma::kernel::extension::Capability;
+use kernel::event::payload::*;
+use kernel::event::keys;
+use kernel::extension::Capability;
 use std::collections::HashMap;
 
 /// Send+Sync wrapper for Janet function references stored for background tasks.
@@ -60,7 +60,7 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
         }
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::piped());
-        magma::kernel::util::proctree::own_process_group(&mut command);
+        kernel::util::proctree::own_process_group(&mut command);
         command.stdin(std::process::Stdio::piped());
 
         let mut child = match command.spawn() {
@@ -87,7 +87,7 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             use std::io::BufRead;
             let reader = std::io::BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
-                let _ = sender_out.send(magma::kernel::runtime::BackgroundEvent::ProcessOutput {
+                let _ = sender_out.send(kernel::runtime::BackgroundEvent::ProcessOutput {
                     id, line, stream: "stdout".to_string(),
                 });
             }
@@ -97,7 +97,7 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             use std::io::BufRead;
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
-                let _ = sender_err.send(magma::kernel::runtime::BackgroundEvent::ProcessOutput {
+                let _ = sender_err.send(kernel::runtime::BackgroundEvent::ProcessOutput {
                     id: exit_id, line, stream: "stderr".to_string(),
                 });
             }
@@ -106,7 +106,7 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
         // Spawn a wait task to detect process exit
         bg.spawn_blocking(move || {
             let exit_code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
-            let _ = sender_exit.send(magma::kernel::runtime::BackgroundEvent::ProcessExited {
+            let _ = sender_exit.send(kernel::runtime::BackgroundEvent::ProcessExited {
                 id: exit_id,
                 exit_code,
                 cmd: exit_cmd,
@@ -115,7 +115,7 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
 
         // Phase 9: register process in the work scheduler for progress tracking
         ed.scheduler.register_process(id, &full_cmd);
-        ed.io.processes.insert(id, magma::kernel::runtime::ProcessState {
+        ed.io.processes.insert(id, kernel::runtime::ProcessState {
             cmd: full_cmd,
             running: true,
             pid,
@@ -136,7 +136,7 @@ unsafe extern "C-unwind" fn c_process_kill(argc: i32, argv: *mut Janet) -> Janet
         if let Some(state) = ed.io.processes.get_mut(&id) {
             state.running = false;
             // The child owns its process group: one signal ends the tree.
-            magma::kernel::util::proctree::kill_tree(state.pid as i32);
+            kernel::util::proctree::kill_tree(state.pid as i32);
         }
         conv::nil()
     })
@@ -181,7 +181,7 @@ unsafe extern "C-unwind" fn c_process_list(_argc: i32, _argv: *mut Janet) -> Jan
 /// Execute a stored Janet function on the main thread.
 ///
 /// Called from `process_background_event` when a `TaskReady` event fires.
-pub(crate) fn execute_stored_task(ed: &mut magma::kernel::state::Editor, task_id: u64) {
+pub(crate) fn execute_stored_task(ed: &mut kernel::state::Editor, task_id: u64) {
     let entry = {
         let mut tasks = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner());
         tasks.remove(&task_id)
@@ -196,7 +196,7 @@ pub(crate) fn execute_stored_task(ed: &mut magma::kernel::state::Editor, task_id
 
 /// Run a stored task/spawn function and report its result as a `task-result`
 /// event.  Caller supplies the capability context.
-unsafe fn execute_stored_fn(ed: &mut magma::kernel::state::Editor, task_id: u64, fn_ref: Janet) {
+unsafe fn execute_stored_fn(ed: &mut kernel::state::Editor, task_id: u64, fn_ref: Janet) {
     unsafe {
         let func = janet_unwrap_function(fn_ref);
         let args = [janet_wrap_nil()];
@@ -282,10 +282,10 @@ unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
         let sender = bg.sender.clone();
         bg.spawn(async move {
             tokio::task::yield_now().await;
-            let _ = sender.send(magma::kernel::runtime::BackgroundEvent::TaskReady { id });
+            let _ = sender.send(kernel::runtime::BackgroundEvent::TaskReady { id });
         });
 
-        ed.io.tasks.insert(id, magma::kernel::runtime::TaskState {
+        ed.io.tasks.insert(id, kernel::runtime::TaskState {
             running: true,
         });
 

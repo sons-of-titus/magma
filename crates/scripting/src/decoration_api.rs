@@ -2,8 +2,8 @@
 
 use evil_janet::*;
 use super::{conv, with_editor};
-use magma::kernel::event::payload::*;
-use magma::kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::event::keys;
 
 /// (buffer/decor-set-inline buf layer line col text face)
 unsafe extern "C-unwind" fn c_decor_set_inline(argc: i32, argv: *mut Janet) -> Janet {
@@ -113,7 +113,7 @@ unsafe extern "C-unwind" fn c_decor_get(argc: i32, argv: *mut Janet) -> Janet {
         };
         let arr = janet_array(decorations.len() as i32);
         for d in decorations {
-            use magma::kernel::text_engine::Decoration;
+            use kernel::text_engine::Decoration;
             let tbl = janet_table(5);
             match d {
                 Decoration::InlineText { line, col, text, face } => {

@@ -47,7 +47,7 @@ unsafe extern "C-unwind" fn c_editor_theme(argc: i32, argv: *mut Janet) -> Janet
 
 unsafe extern "C-unwind" fn c_editor_cursor(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let buf_id = magma::kernel::input::focused_buffer_id(ed);
+        let buf_id = kernel::input::focused_buffer_id(ed);
         match ed.view_of_buffer(buf_id) {
             Some(view) => conv::integer(view.cursor_offset() as i32),
             None => conv::integer(0),
@@ -57,7 +57,7 @@ unsafe extern "C-unwind" fn c_editor_cursor(_argc: i32, _argv: *mut Janet) -> Ja
 
 unsafe extern "C-unwind" fn c_editor_focused_buffer(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let id = magma::kernel::input::focused_buffer_id(ed);
+        let id = kernel::input::focused_buffer_id(ed);
         conv::integer(id as i32)
     })
 }

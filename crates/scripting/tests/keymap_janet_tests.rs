@@ -1,8 +1,8 @@
 #[macro_use] mod helpers;
-use magma::kernel::command::builtin;
-use magma::kernel::storage::disk::DiskFileSystem;
-use magma::kernel::keymap::KeymapManager;
-use magma::kernel::state::Editor;
+use kernel::command::builtin;
+use kernel::storage::disk::DiskFileSystem;
+use kernel::keymap::KeymapManager;
+use kernel::state::Editor;
 use scripting;
 
 /// Create an editor with a clean keymap state after Janet init.

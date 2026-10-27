@@ -135,28 +135,28 @@ fn gutter_click_breakpoint_stores_one_based_line() {
         if let Some(view) = ed.view_of_buffer_mut(key) {
             view.set_cursor(0);
         }
-        magma::kernel::render::frame::sync_viewport_scroll(&mut ed);
+        kernel::render::frame::sync_viewport_scroll(&mut ed);
 
         // A real gutter click on the :breakpoints column, resolved through
         // dispatch_mouse exactly like the GUI does.  Providers start after
         // the prefix margin; the breakpoints column is first, width 2.
         let pane = ed.view_tree.panes()[0].clone();
-        let click = magma::kernel::input::event::MouseEvent {
-            kind: magma::kernel::input::event::MouseEventKind::Click,
+        let click = kernel::input::event::MouseEvent {
+            kind: kernel::input::event::MouseEventKind::Click,
             x: pane.x + 1,
             y: pane.y + 4, // viewport row 4 → 0-based line 4
-            button: magma::kernel::input::event::MouseButton::Left,
+            button: kernel::input::event::MouseButton::Left,
             modifiers: String::new(),
         };
-        let surface = magma::kernel::render::surface::Surface::new(pane.width, pane.height);
-        magma::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
+        let surface = kernel::render::surface::Surface::new(pane.width, pane.height);
+        kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
 
         let bps = ed.debug.breakpoints_for("/tmp/bp_gutter.rs");
         assert_eq!(bps.len(), 1, "gutter click should add one breakpoint");
         assert_eq!(bps[0].line, 5, "click on 0-based line 4 stores 1-based line 5");
 
         // Clicking the same row again toggles it off.
-        magma::kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
+        kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
         assert!(ed.debug.breakpoints_for("/tmp/bp_gutter.rs").is_empty());
     });
 }

@@ -2,9 +2,9 @@
 #![allow(dead_code, unused_imports, unused_variables)]
 
 use std::collections::HashMap;
-use magma::kernel::text_engine::Buffer;
-use magma::kernel::state::id::{BufferId, WindowId, CommandId, SubscriptionId, HookId, MarkId};
-use magma::kernel::event::EventData;
+use kernel::text_engine::Buffer;
+use kernel::state::id::{BufferId, WindowId, CommandId, SubscriptionId, HookId, MarkId};
+use kernel::event::EventData;
 
 /// A marshalled value from Janet to Rust.
 pub enum JanetArg {

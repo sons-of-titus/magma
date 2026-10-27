@@ -18,7 +18,7 @@ const GUI_RESERVED_NORMAL: &[&str] = &[
     "ctrl-shift-l", // theme toggle
 ];
 
-fn enter_normal_mode(ed: &mut magma::kernel::state::Editor) {
+fn enter_normal_mode(ed: &mut kernel::state::Editor) {
     ed.keymaps.push_layer("editor");
 }
 

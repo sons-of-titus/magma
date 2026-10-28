@@ -793,25 +793,26 @@ export component AppWindow inherits Window {
         close => { root.dialog-visible = false; }
     }
 
-    // ── Hover card ───────────────────────────────────────────────────────
+    // ── Hover card / completion popup / quickfix menu ────────────────────
+    // These coordinates are editor-view-relative (the shell computes them
+    // from cell metrics); editor-pane.absolute-position converts them to
+    // window coordinates so the popups track the caret.
     if root.hover-visible : HoverCard {
-        hover-x: root.hover-x;
-        hover-y: root.hover-y;
+        hover-x: editor-pane.absolute-position.x + root.hover-x;
+        hover-y: editor-pane.absolute-position.y + root.hover-y;
         hover-lines: root.hover-lines;
     }
 
-    // ── Completion popup ─────────────────────────────────────────────────
     if root.completion-visible : CompletionPopup {
-        completion-x: root.completion-x;
-        completion-y: root.completion-y;
+        completion-x: editor-pane.absolute-position.x + root.completion-x;
+        completion-y: editor-pane.absolute-position.y + root.completion-y;
         completion-items: root.completion-items;
         completion-selected: root.completion-selected;
     }
 
-    // ── Quickfix menu ────────────────────────────────────────────────────
     if root.quickfix-visible : QuickfixMenu {
-        quickfix-x: root.quickfix-x;
-        quickfix-y: root.quickfix-y;
+        quickfix-x: editor-pane.absolute-position.x + root.quickfix-x;
+        quickfix-y: editor-pane.absolute-position.y + root.quickfix-y;
         quickfix-items: root.quickfix-items;
         quickfix-selected: root.quickfix-selected;
     }

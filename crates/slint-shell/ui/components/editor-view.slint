@@ -34,7 +34,9 @@ export component EditorView inherits Rectangle {
         width: 100%;
         height: 100%;
         image-fit: fill;
-        image-rendering: smooth;
+        // The pane is blitted at device resolution; nearest-neighbour keeps
+        // glyph texels crisp instead of smearing them on resample.
+        image-rendering: pixelated;
     }
 
     if root.gutter-visible : Image {
@@ -44,7 +46,7 @@ export component EditorView inherits Rectangle {
         height: 100%;
         source: root.gutter;
         image-fit: fill;
-        image-rendering: smooth;
+        image-rendering: pixelated;
     }
 
     if root.minimap-visible : Image {

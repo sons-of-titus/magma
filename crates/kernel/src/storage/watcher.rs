@@ -1,8 +1,8 @@
 //! Async file watcher — uses the `notify` crate (inotify / FSEvents) to detect
 //! on-disk changes and forward them as `BackgroundEvent::FileChanged`.
 
-use std::collections::HashSet;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -20,6 +20,11 @@ pub struct FileWatcher {
     watched: Arc<Mutex<HashSet<String>>>,
     /// Project roots watched recursively (canonicalized, no trailing slash).
     project_roots: Arc<Mutex<HashSet<String>>>,
+    /// Input path → canonical path.  `maintain` re-checks every open buffer
+    /// at the frame-timer cadence; canonicalize is several syscalls per
+    /// call, so stable paths must not re-hit the filesystem (profiled at
+    /// ~10% of main-thread time while idle).
+    canon_cache: Mutex<HashMap<String, PathBuf>>,
 }
 
 impl FileWatcher {
@@ -86,7 +91,23 @@ impl FileWatcher {
             _watcher: watcher,
             watched,
             project_roots,
+            canon_cache: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Canonicalize `path` through the cache; `None` results (missing files)
+    /// are never cached so a recreated path canonicalizes normally.
+    fn canonical(&self, path: &str) -> Option<PathBuf> {
+        if let Ok(cache) = self.canon_cache.lock()
+            && let Some(cached) = cache.get(path)
+        {
+            return Some(cached.clone());
+        }
+        let canonical = std::fs::canonicalize(path).ok()?;
+        if let Ok(mut cache) = self.canon_cache.lock() {
+            cache.insert(path.to_string(), canonical.clone());
+        }
+        Some(canonical)
     }
 
     /// Watch a project root recursively: any create/modify/remove underneath
@@ -111,9 +132,8 @@ impl FileWatcher {
 
     /// Start watching a file path. Only watches canonical paths to avoid duplicates.
     pub fn watch(&mut self, path: &str) {
-        let canonical = match std::fs::canonicalize(path) {
-            Ok(p) => p,
-            Err(_) => Path::new(path).to_path_buf(),
+        let Some(canonical) = self.canonical(path) else {
+            return;
         };
         let path_str = canonical.to_string_lossy().to_string();
 
@@ -132,9 +152,8 @@ impl FileWatcher {
 
     /// Stop watching a file path.
     pub fn unwatch(&mut self, path: &str) {
-        let canonical = match std::fs::canonicalize(path) {
-            Ok(p) => p,
-            Err(_) => Path::new(path).to_path_buf(),
+        let Some(canonical) = self.canonical(path) else {
+            return;
         };
         let path_str = canonical.to_string_lossy().to_string();
 
@@ -144,9 +163,8 @@ impl FileWatcher {
 
     /// Check if a path is being watched.
     pub fn is_watched(&self, path: &str) -> bool {
-        let canonical = match std::fs::canonicalize(path) {
-            Ok(p) => p,
-            Err(_) => Path::new(path).to_path_buf(),
+        let Some(canonical) = self.canonical(path) else {
+            return false;
         };
         let path_str = canonical.to_string_lossy().to_string();
         let w = self.watched.lock().unwrap_or_else(|e| e.into_inner());

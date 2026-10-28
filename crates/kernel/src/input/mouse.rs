@@ -49,6 +49,10 @@ fn dispatch_click(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
     ed.mouse_state.last_click = Some((now, event.x, event.y));
     ed.mouse_state.click_count = count;
 
+    // Any click is an implicit popup dismissal — and must precede the cursor
+    // move, or a later accept would insert at the freshly clicked offset.
+    crate::completion::dismiss(ed);
+
     // Store press state.
     ed.mouse_state.pressed = true;
     ed.mouse_state.button = event.button.clone();

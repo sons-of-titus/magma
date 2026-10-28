@@ -14,12 +14,16 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use crate::completion_lsp::request_lsp_completion;
 use crate::state::Editor;
 use crate::state::completion::{CompletionItem, WordCache};
 
 /// Minimum typed prefix for the automatic popup (ctrl-space triggers at 1).
 const AUTO_TRIGGER_PREFIX: usize = 2;
-const MAX_ITEMS: usize = 50;
+pub(crate) const MAX_ITEMS: usize = 50;
+/// Rows the popup overlay can show at once; the list scrolls in a window
+/// around the selection.
+pub const POPUP_ROWS: usize = 10;
 /// Buffers up to this size build their word set inline on the foreground;
 /// larger ones go to the background pool.  The limit stays tiny: every
 /// keystroke changes the revision, so anything scanned inline re-scans on
@@ -256,135 +260,25 @@ pub fn trigger(editor: &mut Editor) {
     editor.completion.visible = true;
 }
 
-/// Ask the attached language server for completions at the cursor.  The
-/// response event carries the buffer + revision; the merge on arrival
-/// discards results for superseded keystrokes.
-fn request_lsp_completion(editor: &Editor, buf_id: usize, prefix: &str) -> bool {
-    if prefix.is_empty() {
-        return false;
-    }
-    let Some(lang) = editor.lsp.language_for_buffer(buf_id) else {
-        return false;
-    };
-    let Some(server) = editor.lsp.get(&lang) else {
-        return false;
-    };
-    let Some(arc) = editor.buffers.get(buf_id) else {
-        return false;
-    };
-    let (uri, position, revision) = {
-        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let uri = match buf.path.as_deref() {
-            Some(p) => format!("file://{p}"),
-            None => return false,
-        };
-        let cursor = editor
-            .view_of_buffer(buf_id)
-            .map(|v| v.cursor.offset)
-            .unwrap_or(0);
-        (uri, buf.lsp_position(cursor.min(buf.len())), buf.revision())
-    };
-    let params = serde_json::json!({
-        "textDocument": { "uri": uri },
-        "position": { "line": position.0, "character": position.1 },
-    });
-    server.request("textDocument/completion", params, buf_id, revision);
-    true
-}
-
-/// LSP `CompletionItemKind` → popup tag.
-fn lsp_kind_name(kind: u64) -> &'static str {
-    match kind {
-        1 => "text",
-        2 => "method",
-        3 => "fn",
-        4 => "ctor",
-        5 => "field",
-        6 => "var",
-        7 => "class",
-        8 => "iface",
-        9 => "mod",
-        10 => "prop",
-        13 => "enum",
-        14 => "kw",
-        15 => "snip",
-        20 => "member",
-        21 => "const",
-        22 => "struct",
-        25 => "tparam",
-        _ => "",
-    }
-}
-
-/// Parse a `textDocument/completion` result (array or CompletionList)
-/// into popup items.
-pub fn parse_lsp_completion_items(json: &str) -> Vec<CompletionItem> {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
-        return Vec::new();
-    };
-    let arr = v
-        .as_array()
-        .cloned()
-        .or_else(|| v.get("items").and_then(|i| i.as_array()).cloned())
-        .unwrap_or_default();
-    arr.iter()
-        .filter_map(|item| {
-            let label = item.get("label")?.as_str()?.to_string();
-            let insert = item
-                .get("insertText")
-                .and_then(|t| t.as_str())
-                .unwrap_or(&label)
-                .to_string();
-            Some(CompletionItem {
-                label,
-                insert,
-                kind: item
-                    .get("kind")
-                    .and_then(|k| k.as_u64())
-                    .map(lsp_kind_name)
-                    .unwrap_or_default()
-                    .to_string(),
-                detail: item
-                    .get("detail")
-                    .and_then(|d| d.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-            })
-        })
-        .collect()
-}
-
-/// Fold server completions (already prefix-filtered by the caller) into the
-/// visible popup: server items keep their order and lead; word/index items
-/// that the server also returned are dropped as duplicates.
-pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
-    if !editor.completion.visible || items.is_empty() {
-        return;
-    }
-    let prefix = editor.completion.prefix.clone();
-    let mut merged: Vec<CompletionItem> = items
-        .into_iter()
-        .filter(|i| i.label.starts_with(prefix.as_str()) && i.label != prefix)
-        .collect();
-    for existing in editor.completion.items.drain(..) {
-        if !merged.iter().any(|i| i.label == existing.label) {
-            merged.push(existing);
-        }
-        if merged.len() >= MAX_ITEMS {
-            break;
-        }
-    }
-    merged.truncate(MAX_ITEMS);
-    editor.completion.items = merged;
-    editor.completion.idx = 0;
-}
-
-/// The automatic popup: only after a word prefix long enough to be useful.
 pub fn auto_trigger_if_word(editor: &mut Editor, key: &str) {
     let word_char = key.chars().count() == 1 && key.chars().next().is_some_and(is_word_char);
     if word_char && word_prefix_len(editor) >= AUTO_TRIGGER_PREFIX {
         trigger(editor);
     }
+}
+
+/// Display-cell width of a completion row — byte length miscounts
+/// multibyte labels and misplaces the popup's right edge.
+pub(crate) fn row_cells(editor: &Editor, label: &str, kind: &str) -> usize {
+    let widths = &editor.font_config.glyph_widths;
+    let text = if kind.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label} {kind}")
+    };
+    text.chars()
+        .map(|c| crate::render::frame::cell_width(c, widths))
+        .sum()
 }
 
 pub fn next(editor: &mut Editor) {
@@ -432,6 +326,15 @@ pub fn accept(editor: &mut Editor) {
     dismiss(editor);
 }
 
+/// The visible scrolling window of the popup list: the selection always
+/// stays in view as `idx` moves, and the window clamps at both ends.
+/// Returns the index of the first visible item plus the slice to render.
+pub fn popup_window(items: &[CompletionItem], idx: usize) -> (usize, &[CompletionItem]) {
+    let max_start = items.len().saturating_sub(POPUP_ROWS);
+    let start = idx.checked_sub(POPUP_ROWS - 1).unwrap_or(0).min(max_start);
+    (start, &items[start..(start + POPUP_ROWS).min(items.len())])
+}
+
 pub fn dismiss(editor: &mut Editor) {
     editor.completion.visible = false;
     editor.completion.items.clear();
@@ -471,6 +374,39 @@ mod tests {
             !prefix_hit,
             "without a background pool the big-buffer path serves no candidates yet"
         );
+    }
+
+    #[test]
+    fn popup_window_keeps_the_selection_visible_past_the_first_page() {
+        let items: Vec<CompletionItem> = (0..25)
+            .map(|i| CompletionItem::word(format!("sym{i}")))
+            .collect();
+        // Inside the first page the window sits at the top.
+        let (start, window) = popup_window(&items, 3);
+        assert_eq!(start, 0);
+        assert_eq!(window.len(), 10);
+        // Past the first page the window scrolls with the selection.
+        let (start, window) = popup_window(&items, 12);
+        assert_eq!(start, 3);
+        assert_eq!(window[8].label, "sym11");
+        assert_eq!(window.last().unwrap().label, "sym12");
+        // The tail clamps: the window is the last POPUP_ROWS entries.
+        let (start, window) = popup_window(&items, 24);
+        assert_eq!(start, 15);
+        assert_eq!(window.last().unwrap().label, "sym24");
+        // Wrap to the top recenters at zero.
+        assert_eq!(popup_window(&items, 0).0, 0);
+    }
+
+    #[test]
+    fn popup_window_handles_short_lists() {
+        let items: Vec<CompletionItem> = (0..3)
+            .map(|i| CompletionItem::word(format!("s{i}")))
+            .collect();
+        let (start, window) = popup_window(&items, 2);
+        assert_eq!(start, 0);
+        assert_eq!(window.len(), 3);
+        assert_eq!(popup_window(&[], 0), (0, &[][..]));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 /// One completion candidate.  `label` is what the popup shows; `insert` is
 /// what accept types (LSP `insertText` when the server provides one, the
 /// label otherwise); `kind`/`detail` are display metadata.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompletionItem {
     pub label: String,
     pub kind: String,

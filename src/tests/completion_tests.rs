@@ -267,7 +267,8 @@ fn stale_background_word_results_are_discarded() {
 
 // ── LSP-driven completion ────────────────────────────────────────────
 
-use crate::kernel::completion::{accept, dismiss, merge_lsp_items, parse_lsp_completion_items};
+use crate::kernel::completion::{accept, dismiss};
+use crate::kernel::completion_lsp::{merge_lsp_items, parse_lsp_completion_items};
 use crate::kernel::state::completion::CompletionItem;
 
 #[test]
@@ -330,7 +331,9 @@ fn lsp_items_lead_the_popup_and_drop_duplicates() {
         1,
         "word duplicate dropped"
     );
-    assert_eq!(ed.completion.idx, 0);
+    // The user's highlighted word ("done") survives the merge, so the
+    // selection follows it instead of being yanked back to the top.
+    assert_eq!(ed.completion.idx, 1);
     dismiss(&mut ed);
 }
 

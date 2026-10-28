@@ -31,6 +31,7 @@ pub mod vc;
 pub use clipboard;
 pub use net;
 pub mod completion;
+pub mod completion_lsp;
 pub mod snippet;
 pub mod terminal;
 pub use util;

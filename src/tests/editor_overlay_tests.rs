@@ -5,8 +5,6 @@
 //! of the pane texture, blame margin geometry, fold-aware decoration
 //! rows, and the line-selection span.
 
-use crate::kernel::render::surface::Surface;
-
 // ── Overlay cursor policy: the native completion popup ──────────────────────
 
 fn popup_probe_editor() -> crate::kernel::state::Editor {
@@ -48,7 +46,6 @@ fn overlay_cursor_policy_leaves_the_completion_popup_out_of_the_grid() {
     use crate::kernel::render::CursorPaint;
     use crate::kernel::render::frame::render_frame_with;
     let ed = popup_probe_editor();
-    let mut surface = crate::kernel::render::surface::Surface::new(20, 8);
     // Pane defaults are 80x24; the popup stamps its last visible rows, so
     // the surface must cover the whole pane for the probe to see it.
     let mut surface = crate::kernel::render::surface::Surface::new(80, 24);

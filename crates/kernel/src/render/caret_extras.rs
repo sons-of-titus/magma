@@ -204,7 +204,6 @@ pub fn render_indent_guides(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::disk::DiskFileSystem;
     use id::BufferId;
 
     fn buf(text: &str) -> Buffer {

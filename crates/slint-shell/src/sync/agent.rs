@@ -18,6 +18,17 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     app.set_agent_running(projection::agent_running(ed));
     app.set_agent_turns_left(projection::agent_turns_left(ed, state.agent_active));
     app.set_agent_dock_width(state.agent_dock_width);
+    app.set_agent_phase(projection::agent_phase(ed, state.agent_active).into());
+    app.set_agent_phase_detail(projection::agent_phase_detail(ed, state.agent_active).into());
+    app.set_agent_approval_summary(
+        projection::agent_approval_summary(ed, state.agent_active).into(),
+    );
+    app.set_agent_files(ModelRc::new(VecModel::from(
+        projection::agent_files(ed, state.agent_active)
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<slint::SharedString>>(),
+    )));
     app.set_agent_configured(kernel::agent::llm::LlmConfig::is_configured(&ed.options));
     app.set_agent_providers(ModelRc::new(VecModel::from(
         kernel::agent::llm::PROVIDER_NAMES

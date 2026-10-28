@@ -8,11 +8,11 @@
 //!   (agent/result id)             → string or nil
 //!   (agent/list)                  → array of {:id :prompt :status :result}
 
-use evil_janet::*;
-use kernel::agent::{BuiltinPlanner, EditorContextProvider};
-use kernel::agent::types::{ContextProvider, Planner};
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
+use kernel::agent::types::{ContextProvider, Planner};
+use kernel::agent::{BuiltinPlanner, EditorContextProvider};
 
 /// (agent/ask prompt) → session-id
 ///
@@ -78,10 +78,8 @@ unsafe extern "C-unwind" fn c_agent_run_task(argc: i32, argv: *mut Janet) -> Jan
                 format!("{} action(s) dispatched", plan.steps.len())
             };
 
-            let _ = sender.send(kernel::runtime::BackgroundEvent::AgentResult {
-                session_id,
-                result,
-            });
+            let _ =
+                sender.send(kernel::runtime::BackgroundEvent::AgentResult { session_id, result });
         });
 
         conv::integer(session_id as i32)
@@ -90,16 +88,18 @@ unsafe extern "C-unwind" fn c_agent_run_task(argc: i32, argv: *mut Janet) -> Jan
 
 /// (agent/status id) → keyword
 ///
-/// Return `:running`, `:completed`, `:failed`, or `:not-found`.
+/// Return `:running`, `:waiting-approval`, `:completed`, `:failed`, or
+/// `:not-found`.
 unsafe extern "C-unwind" fn c_agent_status(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let id = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as u64;
         use kernel::agent::AgentStatus;
         let kw = match ed.agent.status(id) {
-            None                          => "not-found",
-            Some(AgentStatus::Running)    => "running",
-            Some(AgentStatus::Completed)  => "completed",
-            Some(AgentStatus::Failed)     => "failed",
+            None => "not-found",
+            Some(AgentStatus::Running) => "running",
+            Some(AgentStatus::WaitingApproval) => "waiting-approval",
+            Some(AgentStatus::Completed) => "completed",
+            Some(AgentStatus::Failed) => "failed",
         };
         conv::keyword(kw)
     })
@@ -128,10 +128,12 @@ unsafe extern "C-unwind" fn c_agent_list(_argc: i32, _argv: *mut Janet) -> Janet
         for s in sessions {
             let tbl = janet_wrap_table(janet_table(4));
             let t = janet_unwrap_table(tbl);
-            janet_table_put(t, conv::keyword("id"),     conv::integer(s.id as i32));
+            janet_table_put(t, conv::keyword("id"), conv::integer(s.id as i32));
             janet_table_put(t, conv::keyword("prompt"), conv::string(&s.prompt));
             janet_table_put(t, conv::keyword("status"), conv::keyword(s.status.as_str()));
-            let result_val = s.result.as_deref()
+            let result_val = s
+                .result
+                .as_deref()
                 .map(conv::string)
                 .unwrap_or_else(conv::nil);
             janet_table_put(t, conv::keyword("result"), result_val);
@@ -146,27 +148,34 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"agent/ask".as_ptr() as *const _,
             cfun: Some(c_agent_ask as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Submit an agent query; returns session-id; results arrive as agent-* events".as_ptr() as *const _,
+            documentation:
+                c"Submit an agent query; returns session-id; results arrive as agent-* events"
+                    .as_ptr() as *const _,
         },
         JanetReg {
             name: c"agent/run-task".as_ptr() as *const _,
             cfun: Some(c_agent_run_task as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Submit a structured task description; returns session-id".as_ptr() as *const _,
+            documentation: c"Submit a structured task description; returns session-id".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"agent/status".as_ptr() as *const _,
             cfun: Some(c_agent_status as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return :running :completed :failed or :not-found for a session".as_ptr() as *const _,
+            documentation: c"Return :running :completed :failed or :not-found for a session"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"agent/result".as_ptr() as *const _,
             cfun: Some(c_agent_result as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return the result string for a completed agent session, or nil".as_ptr() as *const _,
+            documentation: c"Return the result string for a completed agent session, or nil"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"agent/list".as_ptr() as *const _,
             cfun: Some(c_agent_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return an array of {:id :prompt :status :result} for all agent sessions".as_ptr() as *const _,
+            documentation:
+                c"Return an array of {:id :prompt :status :result} for all agent sessions".as_ptr()
+                    as *const _,
         },
     ]
 }

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::EventData;
+use std::collections::HashMap;
 
 macro_rules! event_payload {
     ($name:ident { $($field:ident $(: $key:expr)?),+ $(,)? }) => {
@@ -43,7 +43,11 @@ event_payload!(BufferChangedPayload {
     edits,
 });
 event_payload!(BufferClosedPayload { buffer_id });
-event_payload!(BufferCreatedPayload { buffer_id, name, path });
+event_payload!(BufferCreatedPayload {
+    buffer_id,
+    name,
+    path
+});
 event_payload!(BufferFocusedPayload { buffer_id });
 event_payload!(BufferMessageAppendedPayload { buffer_id, text });
 event_payload!(BufferReadOnlyPayload { buffer_id });
@@ -53,10 +57,17 @@ event_payload!(EvalResultPayload { value, error });
 event_payload!(FaceChangedPayload { face });
 event_payload!(FileChangedPayload { path, kind });
 event_payload!(FileErrorPayload { path, error });
-event_payload!(FileIndexedPayload { project_name, count });
+event_payload!(FileIndexedPayload {
+    project_name,
+    count
+});
 event_payload!(FileLoadedPayload { path, content });
 event_payload!(FileSavedPayload { path });
-event_payload!(FinderResultsPayload { buffer_id, count, pattern });
+event_payload!(FinderResultsPayload {
+    buffer_id,
+    count,
+    pattern
+});
 event_payload!(GutterClickedPayload { column, line, buf });
 event_payload!(GutterProviderUpdatedPayload { provider, buffer });
 event_payload!(HelpShownPayload { buffer_id });
@@ -65,25 +76,64 @@ event_payload!(HttpResponsePayload { id, status, body });
 event_payload!(LspCodeActionsPayload { path, actions });
 event_payload!(LspCompletionItemsPayload { path, items });
 event_payload!(LspCompletionPayload { path, items });
-event_payload!(LspDefinitionPayload { path, uri, start_line, end_line, start_col, end_col });
-event_payload!(LspDiagnosticsPayload { buffer_id, path, count, items });
+event_payload!(LspDefinitionPayload {
+    path,
+    uri,
+    start_line,
+    end_line,
+    start_col,
+    end_col
+});
+event_payload!(LspDiagnosticsPayload {
+    buffer_id,
+    path,
+    count,
+    items
+});
 event_payload!(LspHoverPayload { path, contents });
-event_payload!(LspProgressPayload { token, message, percentage });
+event_payload!(LspProgressPayload {
+    token,
+    message,
+    percentage
+});
 event_payload!(LspRenameResultPayload { path, edit });
-event_payload!(LspResponsePayload { path, method, result });
+event_payload!(LspResponsePayload {
+    path,
+    method,
+    result
+});
 event_payload!(MajorModeChangedPayload { mode, buffer_id });
 event_payload!(ModeChangedPayload { from, to });
 event_payload!(ProcessExitPayload { id, exit_code, cmd });
 event_payload!(ProcessOutputPayload { id, line, stream });
-event_payload!(ProjectMemberFocusedPayload { name, root, project_name });
+event_payload!(ProjectMemberFocusedPayload {
+    name,
+    root,
+    project_name
+});
 event_payload!(ProjectOpenedPayload { root, name });
 event_payload!(TaskResultPayload { id, value, error });
 event_payload!(TaskStartedPayload { id, name });
-event_payload!(TaskCompletedPayload { id, name, exit_code, duration_ms });
+event_payload!(TaskCompletedPayload {
+    id,
+    name,
+    exit_code,
+    duration_ms
+});
 event_payload!(TaskFailedPayload { id, name, error });
-event_payload!(TcpClientConnectedPayload { server_id, client_id });
-event_payload!(TcpClientDataPayload { server_id, client_id, data });
-event_payload!(TcpClientDisconnectedPayload { server_id, client_id });
+event_payload!(TcpClientConnectedPayload {
+    server_id,
+    client_id
+});
+event_payload!(TcpClientDataPayload {
+    server_id,
+    client_id,
+    data
+});
+event_payload!(TcpClientDisconnectedPayload {
+    server_id,
+    client_id
+});
 event_payload!(TcpClosedPayload { id });
 event_payload!(TcpConnectedPayload { id });
 event_payload!(TcpDataPayload { id, data });
@@ -92,26 +142,72 @@ event_payload!(WarningEmittedPayload { buffer_id, text });
 event_payload!(WindowFocusedPayload { id, buffer });
 event_payload!(DebugBreakpointChangedPayload { file, line, action });
 event_payload!(DebugEvaluateResultPayload { session_id, result });
-event_payload!(DebugOutputPayload { session_id, category, output });
+event_payload!(DebugOutputPayload {
+    session_id,
+    category,
+    output
+});
 event_payload!(DebugSessionEndedPayload { session_id });
-event_payload!(DebugSessionStartedPayload { session_id, adapter });
-event_payload!(DebugStoppedPayload { session_id, reason, thread_id });
+event_payload!(DebugSessionStartedPayload {
+    session_id,
+    adapter
+});
+event_payload!(DebugStoppedPayload {
+    session_id,
+    reason,
+    thread_id
+});
 event_payload!(WorkspaceSavedPayload { path, buffer_count });
 event_payload!(WorkspaceRestoredPayload { path, buffer_count });
 event_payload!(WorkspaceSessionSavedPayload { name, buffer_count });
 event_payload!(WorkspaceSessionLoadedPayload { name, buffer_count });
-event_payload!(SchedulerWorkProgressPayload { id, name, done, total });
+event_payload!(SchedulerWorkProgressPayload {
+    id,
+    name,
+    done,
+    total
+});
 event_payload!(SchedulerWorkCompletedPayload { id, name });
 event_payload!(SchedulerWorkFailedPayload { id, name, error });
 event_payload!(ExtensionDeclaredPayload { name, version });
 event_payload!(ExtensionUndeclaredPayload { name });
-event_payload!(AgentThoughtPayload { session_id, thought });
-event_payload!(AgentActionPayload { session_id, command, description });
+event_payload!(AgentThoughtPayload {
+    session_id,
+    thought
+});
+event_payload!(AgentActionPayload {
+    session_id,
+    command,
+    description
+});
 event_payload!(AgentResultPayload { session_id, result });
 event_payload!(AgentErrorPayload { session_id, error });
+event_payload!(AgentApprovalPayload {
+    session_id,
+    tool,
+    summary
+});
 event_payload!(LanguageRegisteredPayload { name });
 event_payload!(LanguageLoadedPayload { name });
 event_payload!(LanguageUnregisteredPayload { name });
-event_payload!(MouseClickedPayload { buf, line, col, button, x, y });
-event_payload!(MouseDraggedPayload { buf, start_line, start_col, end_line, end_col });
-event_payload!(TextClickedPayload { buf, line, col, button });
+event_payload!(MouseClickedPayload {
+    buf,
+    line,
+    col,
+    button,
+    x,
+    y
+});
+event_payload!(MouseDraggedPayload {
+    buf,
+    start_line,
+    start_col,
+    end_line,
+    end_col
+});
+event_payload!(TextClickedPayload {
+    buf,
+    line,
+    col,
+    button
+});

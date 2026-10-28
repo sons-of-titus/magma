@@ -82,7 +82,11 @@ impl EventBus {
         self.subscribers
             .entry(event_name.to_string())
             .or_default()
-            .push(Subscription { id, handler: Box::new(handler), oneshot: false });
+            .push(Subscription {
+                id,
+                handler: Box::new(handler),
+                oneshot: false,
+            });
         id
     }
 
@@ -95,7 +99,11 @@ impl EventBus {
         self.subscribers
             .entry(event_name.to_string())
             .or_default()
-            .push(Subscription { id, handler: Box::new(handler), oneshot: true });
+            .push(Subscription {
+                id,
+                handler: Box::new(handler),
+                oneshot: true,
+            });
         id
     }
 
@@ -155,12 +163,18 @@ impl EventBus {
     }
 
     pub fn dispatch_all(&mut self, event: &Event) {
-        debug!("DA: event={}, hooks_before={}", event.name, self.hooks.len());
+        debug!(
+            "DA: event={}, hooks_before={}",
+            event.name,
+            self.hooks.len()
+        );
         self.dispatching.push(event.name.clone());
-        let data = self.run_hooks(&event.name, HookPhase::Before, &event.data)
+        let data = self
+            .run_hooks(&event.name, HookPhase::Before, &event.data)
             .unwrap_or_else(|| event.data.clone());
 
-        let data = self.run_hooks(&event.name, HookPhase::Transform, &data)
+        let data = self
+            .run_hooks(&event.name, HookPhase::Transform, &data)
             .unwrap_or(data);
 
         if let Some(subs) = self.subscribers.get(&event.name) {
@@ -175,9 +189,10 @@ impl EventBus {
                 }
             }
             if !to_remove.is_empty()
-                && let Some(subs) = self.subscribers.get_mut(&event.name) {
-                    subs.retain(|s| !to_remove.contains(&s.id));
-                }
+                && let Some(subs) = self.subscribers.get_mut(&event.name)
+            {
+                subs.retain(|s| !to_remove.contains(&s.id));
+            }
         }
 
         self.run_hooks(&event.name, HookPhase::After, &data);
@@ -185,13 +200,20 @@ impl EventBus {
         debug!("DA: event={} complete", event.name);
     }
 
-    fn run_hooks(&mut self, event_name: &str, phase: HookPhase, data: &EventData) -> Option<EventData> {
+    fn run_hooks(
+        &mut self,
+        event_name: &str,
+        phase: HookPhase,
+        data: &EventData,
+    ) -> Option<EventData> {
         let mut current = data.clone();
         for hook in &self.hooks {
-            if hook.phase == phase && hook.event_name == event_name
-                && let Some(new_data) = (hook.handler)(&current) {
-                    current = new_data;
-                }
+            if hook.phase == phase
+                && hook.event_name == event_name
+                && let Some(new_data) = (hook.handler)(&current)
+            {
+                current = new_data;
+            }
         }
         Some(current)
     }
@@ -212,7 +234,8 @@ impl EventBus {
     }
 
     pub fn list_events(&self) -> Vec<(String, usize)> {
-        self.subscribers.iter()
+        self.subscribers
+            .iter()
             .map(|(name, subs)| (name.clone(), subs.len()))
             .collect()
     }

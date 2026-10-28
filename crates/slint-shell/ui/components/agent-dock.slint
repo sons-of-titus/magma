@@ -1,22 +1,48 @@
 import { Theme } from "../theme.slint";
 import { ScrollView } from "std-widgets.slint";
-import { ToolWindowHeader, Field, Picker } from "controls.slint";
+import { ToolWindowHeader, Field, Picker, StatusDot } from "controls.slint";
 import { ToolbarIcon as IconButton } from "button.slint";
 
 // One transcript row, projected from the kernel session.
 export struct AgentEntry {
     kind: string,      // user | thought | action | output | result | error
-    text: string,
+    text: string,      // prompt / prose / description / folded output
     detail: string,    // action: the tool/command name
-    status: string,    // action: running | ok | error | planned
+    status: string,    // action: running | ok | error | declined | pending | planned
+    elapsed: string,   // action: step duration once finished, else ""
     expanded: bool,
     idx: int,          // transcript index for expansion callbacks; -1 otherwise
 }
 
 export struct AgentSessionChip {
     id: int,
-    status: string,    // running | completed | failed
+    title: string,     // prompt prefix, for telling sessions apart
+    status: string,    // running | waiting-approval | completed | failed
     selected: bool,
+}
+
+// Status glyph + color shared by the timeline rows and the session chips.
+component StatusGlyph inherits Text {
+    in property <string> status;
+    width: 13px;
+    font-size: 11px;
+    vertical-alignment: center;
+    horizontal-alignment: center;
+    text: root.status == "ok" ? "✓"
+        : root.status == "error" ? "✕"
+        : root.status == "declined" ? "⊘"
+        : root.status == "running" ? "●"
+        : root.status == "pending" ? "⏸"
+        : root.status == "failed" ? "✕"
+        : root.status == "waiting-approval" ? "⏸"
+        : root.status == "completed" ? "✓"
+        : "○";
+    color: root.status == "ok" || root.status == "completed" ? Theme.success
+        : root.status == "error" || root.status == "failed" ? Theme.danger
+        : root.status == "declined" ? Theme.warning
+        : root.status == "running" ? Theme.accent
+        : root.status == "pending" || root.status == "waiting-approval" ? Theme.warning
+        : Theme.text-faint;
 }
 
 component EntryRow inherits Rectangle {
@@ -26,14 +52,14 @@ component EntryRow inherits Rectangle {
     VerticalLayout {
         spacing: 4px;
 
-        // ── User prompt: quiet filled block ─────────────────────────────
+        // ── User prompt: quiet filled block with an accent spine ────────
         if entry.kind == "user" : Rectangle {
-            height: user-text.preferred-height + 14px;
+            height: user-text.preferred-height + 16px;
             border-radius: Theme.radius;
             background: Theme.fill-muted;
 
             HorizontalLayout {
-                padding: 7px;
+                padding: 8px;
                 spacing: 8px;
 
                 Rectangle { width: 3px; border-radius: 2px; background: Theme.accent; }
@@ -52,7 +78,7 @@ component EntryRow inherits Rectangle {
         if entry.kind == "thought" : HorizontalLayout {
             spacing: 8px;
             Text {
-                width: 14px;
+                width: 13px;
                 text: "✦";
                 color: Theme.text-faint;
                 font-size: Theme.font-small;
@@ -67,7 +93,7 @@ component EntryRow inherits Rectangle {
             }
         }
 
-        // ── Tool call card: status glyph, name, summary, expandable output
+        // ── Tool call card: status glyph, command, summary, folded output
         if entry.kind == "action" : VerticalLayout {
             spacing: 4px;
 
@@ -76,7 +102,7 @@ component EntryRow inherits Rectangle {
                 border-radius: Theme.radius;
                 background: action-touch.has-hover ? Theme.fill-muted : Theme.surface;
                 border-width: 1px;
-                border-color: Theme.border;
+                border-color: entry.status == "pending" ? Theme.warning : Theme.border;
 
                 HorizontalLayout {
                     padding-left: 8px;
@@ -86,25 +112,14 @@ component EntryRow inherits Rectangle {
 
                     Text {
                         width: entry.expanded ? 12px : 10px;
-                        text: entry.expanded ? "▾" : (entry.status == "ok" || entry.status == "error" ? "▸" : "");
+                        text: entry.expanded ? "▾"
+                            : (entry.text != "" ? "▸" : "");
                         color: Theme.text-faint;
                         font-size: 10px;
                         vertical-alignment: center;
                     }
 
-                    Text {
-                        width: 13px;
-                        text: entry.status == "ok" ? "✓"
-                            : entry.status == "error" ? "✕"
-                            : entry.status == "running" ? "●"
-                            : "○";
-                        color: entry.status == "ok" ? Theme.success
-                            : entry.status == "error" ? Theme.danger
-                            : entry.status == "running" ? Theme.accent
-                            : Theme.text-faint;
-                        font-size: 11px;
-                        vertical-alignment: center;
-                    }
+                    StatusGlyph { status: entry.status; }
 
                     Text {
                         width: detail-text.preferred-width + 2px;
@@ -125,9 +140,29 @@ component EntryRow inherits Rectangle {
                         overflow: elide;
                     }
 
+                    if entry.elapsed != "" : Text {
+                        text: entry.elapsed;
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        font-family: Theme.font-mono;
+                        vertical-alignment: center;
+                    }
+
                     if entry.status == "running" : Text {
                         text: "running";
                         color: Theme.accent;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if entry.status == "pending" : Text {
+                        text: "needs approval";
+                        color: Theme.warning;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if entry.status == "declined" : Text {
+                        text: "declined";
+                        color: Theme.warning;
                         font-size: 10px;
                         vertical-alignment: center;
                     }
@@ -140,7 +175,7 @@ component EntryRow inherits Rectangle {
                 }
 
                 action-touch := TouchArea {
-                    enabled: entry.status == "ok" || entry.status == "error";
+                    enabled: entry.text != "" && entry.status != "running" && entry.status != "pending";
                     mouse-cursor: pointer;
                     clicked => { root.toggle(entry.idx); }
                 }
@@ -168,7 +203,7 @@ component EntryRow inherits Rectangle {
             }
         }
 
-        // ── Standalone output block (legacy shape) ───────────────────────
+        // ── Standalone output block (stray step output, older shape) ─────
         if entry.kind == "output" : Rectangle {
             height: solo-text.preferred-height + 12px;
             border-radius: Theme.radius;
@@ -190,21 +225,29 @@ component EntryRow inherits Rectangle {
         }
 
         // ── Final result ─────────────────────────────────────────────────
-        if entry.kind == "result" : HorizontalLayout {
-            spacing: 8px;
-            Text {
-                width: 14px;
-                text: "✓";
-                color: Theme.success;
-                font-size: Theme.font-small;
-                vertical-alignment: top;
-            }
-            Text {
-                text: entry.text;
-                color: Theme.text-primary;
-                font-size: Theme.font-ui;
-                wrap: word-wrap;
-                vertical-alignment: top;
+        if entry.kind == "result" : Rectangle {
+            height: result-text.preferred-height + 16px;
+            border-radius: Theme.radius;
+            background: Theme.success.transparentize(0.92);
+
+            HorizontalLayout {
+                padding: 8px;
+                spacing: 8px;
+
+                Text {
+                    width: 13px;
+                    text: "✓";
+                    color: Theme.success;
+                    font-size: 11px;
+                    vertical-alignment: top;
+                }
+                result-text := Text {
+                    text: entry.text;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
             }
         }
 
@@ -242,38 +285,90 @@ component SessionChip inherits Rectangle {
     in property <AgentSessionChip> chip;
     callback selected(int);
 
-    height: 20px;
-    width: chip-label.preferred-width + 22px;
+    height: 22px;
+    width: chip-label.preferred-width + 30px;
     border-radius: Theme.radius-pill;
     background: chip.selected ? Theme.fill : (chip-touch.has-hover ? Theme.fill-muted : transparent);
     border-width: 1px;
     border-color: chip.selected ? Theme.border : transparent;
 
     HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 5px;
+        padding-left: 9px;
+        padding-right: 9px;
+        spacing: 6px;
         alignment: center;
 
-        Text {
-            text: chip.status == "running" ? "●" : chip.status == "failed" ? "✕" : "✓";
-            color: chip.status == "running" ? Theme.accent
-                : chip.status == "failed" ? Theme.danger
-                : Theme.success;
+        StatusGlyph {
+            status: chip.status;
+            width: 9px;
             font-size: 9px;
-            vertical-alignment: center;
         }
         chip-label := Text {
-            text: "Session " + chip.id;
+            text: chip.title;
             color: chip.selected ? Theme.text-primary : Theme.text-muted;
             font-size: 10px;
             vertical-alignment: center;
+            overflow: elide;
         }
     }
 
     chip-touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.selected(chip.id); }
+    }
+}
+
+// Suggestion chip on the empty state: one click stages the prompt.
+component Suggestion inherits Rectangle {
+    in property <string> label;
+    callback picked(string);
+
+    height: 24px;
+    width: sug-text.preferred-width + 20px;
+    border-radius: Theme.radius-pill;
+    background: sug-touch.has-hover ? Theme.fill : Theme.fill-muted;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    sug-text := Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    sug-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(root.label); }
+    }
+}
+
+// File chip in the context strip: click opens the file in the editor.
+component FileChip inherits Rectangle {
+    in property <string> path;
+    callback open(string);
+
+    height: 20px;
+    min-width: file-text.preferred-width + 20px;
+    max-width: 240px;
+    border-radius: Theme.radius;
+    background: file-touch.has-hover ? Theme.fill : Theme.fill-muted;
+
+    file-text := Text {
+        x: 8px;
+        text: root.path;
+        color: Theme.text-secondary;
+        font-family: Theme.font-mono;
+        font-size: 10px;
+        vertical-alignment: center;
+        overflow: elide;
+        width: parent.width - 12px;
+    }
+
+    file-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(root.path); }
     }
 }
 
@@ -289,13 +384,21 @@ export component AgentDock inherits Rectangle {
     in-out property <string> model;
     in-out property <string> prompt;
     in property <int> entry-count: 0;
+    in property <string> phase: "ready";
+    in property <string> phase-detail: "";
+    in property <string> approval-summary: "";
+    in property <[string]> files;
     in property <int> turns-left: 0;
+    in property <int> turns-total: 12;
 
     // ── Callbacks ────────────────────────────────────────────────────────
     callback submit();
     callback stop();
+    callback approve();
+    callback decline();
     callback select-session(int);
     callback toggle-expanded(int);
+    callback open-file(string);
     callback provider-changed(string);
     callback open-settings();
 
@@ -304,6 +407,7 @@ export component AgentDock inherits Rectangle {
 
     // Auto-scroll: follow the tail while the user sits near the bottom.
     property <bool> follow: true;
+    property <bool> context-open: true;
 
     function reveal-latest() {
         scroll.content-y = scroll.content-height - feed.preferred-height;
@@ -321,15 +425,11 @@ export component AgentDock inherits Rectangle {
                 horizontal-stretch: 1;
                 title: "Agent";
                 glyph: "\u{EC20}";
-                status-text: root.running
-                    ? "working · " + root.turns-left + " turns left"
-                    : root.sessions.length > 0
-                        ? root.sessions[root.sessions.length - 1].status
-                        : root.configured ? "ready" : "not configured";
-                status-tint: root.running ? Theme.accent
-                    : root.sessions.length > 0 && root.sessions[root.sessions.length - 1].status == "failed"
-                        ? Theme.danger
-                    : root.sessions.length > 0 ? Theme.success
+                status-text: root.phase-detail != "" ? root.phase-detail : root.phase;
+                status-tint: root.phase == "working" ? Theme.accent
+                    : root.phase == "waiting-approval" ? Theme.warning
+                    : root.phase == "failed" ? Theme.danger
+                    : root.phase == "completed" || root.phase == "stopped" ? Theme.success
                     : root.configured ? Theme.success : Theme.text-faint;
             }
 
@@ -342,7 +442,7 @@ export component AgentDock inherits Rectangle {
 
         // ── Session chips (only when there is history) ───────────────────
         if root.sessions.length > 1 : Rectangle {
-            height: 28px;
+            height: 30px;
 
             Rectangle {
                 y: parent.height - 1px;
@@ -403,6 +503,113 @@ export component AgentDock inherits Rectangle {
             }
         }
 
+        // ── Approval card: the parked action, first-class ────────────────
+        if root.approval-summary != "" : Rectangle {
+            background: Theme.warning.transparentize(0.93);
+
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.warning;
+            }
+            Rectangle {
+                y: 0;
+                height: 1px;
+                background: Theme.warning;
+            }
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        width: 13px;
+                        text: "⏸";
+                        color: Theme.warning;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "The agent wants to run a command";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-ui;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    height: summary-text.preferred-height + 14px;
+                    border-radius: Theme.radius;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    summary-text := Text {
+                        x: 8px;
+                        y: 7px;
+                        width: parent.width - 16px;
+                        text: root.approval-summary;
+                        color: Theme.text-primary;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                        vertical-alignment: top;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        width: decline-text.preferred-width + 24px;
+                        height: 24px;
+                        border-radius: Theme.radius;
+                        background: decline-touch.has-hover ? Theme.danger.transparentize(0.85) : transparent;
+                        border-width: 1px;
+                        border-color: Theme.danger;
+                        decline-text := Text {
+                            text: "Decline";
+                            color: Theme.danger;
+                            font-size: Theme.font-small;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        decline-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.decline(); }
+                        }
+                    }
+
+                    Rectangle {
+                        width: approve-text.preferred-width + 24px;
+                        height: 24px;
+                        border-radius: Theme.radius;
+                        background: approve-touch.has-hover ? Theme.success.darker(0.15) : Theme.success;
+                        approve-text := Text {
+                            text: "Approve";
+                            color: white;
+                            font-size: Theme.font-small;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        approve-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.approve(); }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Transcript ───────────────────────────────────────────────────
         Rectangle {
             horizontal-stretch: 1;
@@ -420,7 +627,7 @@ export component AgentDock inherits Rectangle {
                     if root.entry-count == 0 : VerticalLayout {
                         alignment: start;
                         spacing: 6px;
-                        padding-top: 40px;
+                        padding-top: 32px;
                         Text {
                             text: "\u{EC20}";
                             color: Theme.text-faint;
@@ -438,11 +645,37 @@ export component AgentDock inherits Rectangle {
                         Text {
                             width: root.width - 48px;
                             x: 24px;
-                            text: "It can read the active buffer, inspect diagnostics, and run editor commands — each step is shown below.";
+                            text: "It can read the active buffer, inspect diagnostics, and run editor commands. Mutating commands pause for your approval.";
                             color: Theme.text-faint;
                             font-size: Theme.font-small;
                             wrap: word-wrap;
                             horizontal-alignment: center;
+                        }
+
+                        VerticalLayout {
+                            padding-top: 12px;
+                            spacing: 6px;
+                            alignment: start;
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 6px;
+                                Suggestion {
+                                    label: "Explain the active buffer";
+                                    picked(l) => { root.prompt = l; }
+                                }
+                                Suggestion {
+                                    label: "Fix the diagnostics in this file";
+                                    picked(l) => { root.prompt = l; }
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 6px;
+                                Suggestion {
+                                    label: "Run the build and summarize failures";
+                                    picked(l) => { root.prompt = l; }
+                                }
+                            }
                         }
                     }
 
@@ -485,6 +718,53 @@ export component AgentDock inherits Rectangle {
             }
         }
 
+        // ── Context strip: files the agent touched ───────────────────────
+        if root.files.length > 0 && root.context-open : Rectangle {
+            background: Theme.chrome;
+
+            Rectangle {
+                y: 0;
+                height: 1px;
+                background: Theme.border;
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    Text {
+                        text: "Files opened";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.files.length;
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    alignment: start;
+                    for path in root.files : FileChip {
+                        path: path;
+                        open(p) => { root.open-file(p); }
+                    }
+                }
+            }
+        }
+
         // ── Composer ─────────────────────────────────────────────────────
         Rectangle {
             background: Theme.chrome;
@@ -499,21 +779,75 @@ export component AgentDock inherits Rectangle {
                 padding: 8px;
                 spacing: 6px;
 
-                HorizontalLayout {
-                    spacing: 6px;
+                // Multiline prompt: Enter submits, Shift+Enter breaks.
+                Rectangle {
+                    height: min(prompt-input.preferred-height + 14px, 118px);
+                    border-radius: Theme.radius;
+                    border-width: 1px;
+                    border-color: prompt-input.has-focus ? Theme.accent : Theme.border;
+                    background: Theme.surface;
 
-                    Field {
-                        horizontal-stretch: 1;
-                        placeholder: "Ask the agent…";
+                    prompt-input := TextInput {
+                        x: 8px;
+                        y: 7px;
+                        width: parent.width - 16px;
                         text <=> root.prompt;
-                        accepted => {
-                            root.follow = true;
-                            root.submit();
+                        color: Theme.text-primary;
+                        font-size: Theme.font-ui;
+                        wrap: word-wrap;
+                        single-line: false;
+
+                        key-pressed(e) => {
+                            if e.text == "\n" && !e.modifiers.shift {
+                                root.follow = true;
+                                root.submit();
+                                accept
+                            } else {
+                                reject
+                            }
                         }
                     }
 
+                    if root.prompt == "" : Text {
+                        x: 8px;
+                        y: 7px;
+                        text: "Ask the agent…  (Enter to send, Shift+Enter for a new line)";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-small;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Picker {
+                        choices: root.providers;
+                        current-value <=> root.provider;
+                        min-w: 92px;
+                        changed(v) => { root.provider-changed(v); }
+                    }
+
+                    Picker {
+                        choices: root.models;
+                        current-value <=> root.model;
+                        min-w: 120px;
+                        horizontal-stretch: 1;
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    // Turn budget: quiet numeric readout next to the action.
+                    Text {
+                        text: root.turns-left + "/" + root.turns-total;
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        font-family: Theme.font-mono;
+                        vertical-alignment: center;
+                    }
+
                     Rectangle {
-                        width: root.running ? 74px : 60px;
+                        width: root.running ? 74px : 64px;
                         height: Theme.control-height;
                         border-radius: Theme.radius;
                         background: root.running
@@ -547,25 +881,6 @@ export component AgentDock inherits Rectangle {
                                 root.submit();
                             }
                         }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: start;
-
-                    Picker {
-                        choices: root.providers;
-                        current-value <=> root.provider;
-                        min-width: 96px;
-                        changed(v) => { root.provider-changed(v); }
-                    }
-
-                    Picker {
-                        choices: root.models;
-                        current-value <=> root.model;
-                        min-width: 130px;
-                        horizontal-stretch: 1;
                     }
                 }
             }

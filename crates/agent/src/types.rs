@@ -1,6 +1,7 @@
 //! Agent state model and core data types (editor-independent).
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Maximum model round-trips per session.
 pub const MAX_TURNS: u8 = 12;
@@ -9,6 +10,9 @@ pub const MAX_TURNS: u8 = 12;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentStatus {
     Running,
+    /// A tool call needs the user's approval before it executes; the session
+    /// resumes (or declines) through the same loop.
+    WaitingApproval,
     Completed,
     Failed,
 }
@@ -17,6 +21,7 @@ impl AgentStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             AgentStatus::Running => "running",
+            AgentStatus::WaitingApproval => "waiting-approval",
             AgentStatus::Completed => "completed",
             AgentStatus::Failed => "failed",
         }
@@ -25,7 +30,15 @@ impl AgentStatus {
 
 /// One entry in a session's transcript — what the agent panel renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TranscriptEntry {
+pub struct TranscriptEntry {
+    /// Milliseconds since the session started; lets the UI show per-step
+    /// elapsed time without wall-clock assumptions.
+    pub at_ms: u64,
+    pub kind: EntryKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryKind {
     /// A reasoning/plan step.
     Thought(String),
     /// A command the agent dispatched.
@@ -35,6 +48,17 @@ pub enum TranscriptEntry {
     },
     /// The outcome of a foreground-executed step.
     StepOutput(String),
+}
+
+/// A tool call parked until the user approves or declines it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingApproval {
+    pub call_id: String,
+    pub tool: String,
+    /// The call's raw arguments JSON, replayed verbatim on approval.
+    pub arguments: String,
+    /// What will run, as a single human-readable line.
+    pub summary: String,
 }
 
 /// State for a single agent session.
@@ -50,6 +74,14 @@ pub struct AgentSession {
     pub messages: Vec<serde_json::Value>,
     /// Remaining model turns before the loop must stop.
     pub turns_left: u8,
+    /// When the session started; drives elapsed-time displays.
+    pub created: Instant,
+    /// The tool call awaiting approval, while status is `WaitingApproval`.
+    pub pending: Option<PendingApproval>,
+    /// Tool calls parked behind the pending one, to run after it resolves.
+    pub queued_calls: Vec<crate::llm::ToolCall>,
+    /// File paths the agent opened through editor commands, in order.
+    pub files: Vec<String>,
 }
 
 /// Tracks all active and completed agent sessions.
@@ -79,6 +111,10 @@ impl AgentManager {
                 transcript: Vec::new(),
                 messages: Vec::new(),
                 turns_left: MAX_TURNS,
+                created: Instant::now(),
+                pending: None,
+                queued_calls: Vec::new(),
+                files: Vec::new(),
             },
         );
         id
@@ -127,22 +163,26 @@ impl AgentManager {
             .unwrap_or(false)
     }
 
-    pub fn note_transcript(&mut self, id: u64, entry: TranscriptEntry) {
+    pub fn note_transcript(&mut self, id: u64, kind: EntryKind) {
         if let Some(s) = self.sessions.get_mut(&id)
-            && s.status == AgentStatus::Running
+            && matches!(
+                s.status,
+                AgentStatus::Running | AgentStatus::WaitingApproval
+            )
         {
-            s.transcript.push(entry);
+            let at_ms = s.created.elapsed().as_millis() as u64;
+            s.transcript.push(TranscriptEntry { at_ms, kind });
         }
     }
 
     pub fn note_thought(&mut self, id: u64, thought: &str) {
-        self.note_transcript(id, TranscriptEntry::Thought(thought.to_string()));
+        self.note_transcript(id, EntryKind::Thought(thought.to_string()));
     }
 
     pub fn note_action(&mut self, id: u64, command: &str, description: &str) {
         self.note_transcript(
             id,
-            TranscriptEntry::Action {
+            EntryKind::Action {
                 command: command.to_string(),
                 description: description.to_string(),
             },
@@ -150,7 +190,77 @@ impl AgentManager {
     }
 
     pub fn note_step_output(&mut self, id: u64, output: &str) {
-        self.note_transcript(id, TranscriptEntry::StepOutput(output.to_string()));
+        self.note_transcript(id, EntryKind::StepOutput(output.to_string()));
+    }
+
+    // ── Approval gate ──────────────────────────────────────────────────
+
+    /// Park `call` for user approval, keeping `queued` (the calls after it)
+    /// for when the decision lands.  Returns false when the session is not
+    /// in a state that can be parked.
+    pub fn park_for_approval(
+        &mut self,
+        id: u64,
+        call: crate::llm::ToolCall,
+        summary: String,
+        queued: Vec<crate::llm::ToolCall>,
+    ) -> bool {
+        match self.sessions.get_mut(&id) {
+            Some(s) if s.status == AgentStatus::Running && s.pending.is_none() => {
+                s.pending = Some(PendingApproval {
+                    call_id: call.id.clone(),
+                    tool: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                    summary,
+                });
+                s.queued_calls = queued;
+                s.status = AgentStatus::WaitingApproval;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The call awaiting approval, if any.
+    pub fn approval_of(&self, id: u64) -> Option<&PendingApproval> {
+        self.sessions.get(&id).and_then(|s| s.pending.as_ref())
+    }
+
+    /// Most recent session with a decision pending, if any.
+    pub fn any_pending(&self) -> Option<u64> {
+        self.sessions
+            .values()
+            .filter(|s| s.pending.is_some())
+            .map(|s| s.id)
+            .max()
+    }
+
+    /// Resolve the pending call: back to `Running` with the queued calls
+    /// handed to the caller.  Returns false when nothing was parked.
+    pub fn take_approval(&mut self, id: u64) -> Option<Vec<crate::llm::ToolCall>> {
+        let s = self.sessions.get_mut(&id)?;
+        s.pending.take()?;
+        s.status = AgentStatus::Running;
+        Some(std::mem::take(&mut s.queued_calls))
+    }
+
+    // ── File tracking ──────────────────────────────────────────────────
+
+    /// Record a file path the agent touched, deduplicated, order kept.
+    pub fn record_file(&mut self, id: u64, path: &str) {
+        if let Some(s) = self.sessions.get_mut(&id) {
+            let canonical = path.trim().to_string();
+            if !canonical.is_empty() && !s.files.iter().any(|f| f == &canonical) {
+                s.files.push(canonical);
+            }
+        }
+    }
+
+    /// Elapsed milliseconds for a live or finished session.
+    pub fn elapsed_ms(&self, id: u64) -> Option<u64> {
+        self.sessions
+            .get(&id)
+            .map(|s| s.created.elapsed().as_millis() as u64)
     }
 
     pub fn complete_session(&mut self, id: u64, result: impl Into<String>) {
@@ -314,8 +424,68 @@ mod tests {
     #[test]
     fn agent_status_as_str() {
         assert_eq!(AgentStatus::Running.as_str(), "running");
+        assert_eq!(AgentStatus::WaitingApproval.as_str(), "waiting-approval");
         assert_eq!(AgentStatus::Completed.as_str(), "completed");
         assert_eq!(AgentStatus::Failed.as_str(), "failed");
+    }
+
+    #[test]
+    fn approval_park_and_take_round_trip() {
+        let mut mgr = AgentManager::new();
+        let sid = mgr.create_session("x");
+        let call = crate::llm::ToolCall {
+            id: "c1".into(),
+            name: "run_editor_command".into(),
+            arguments: r#"{"command":"shell-command"}"#.into(),
+        };
+        let queued = vec![call.clone()];
+        assert!(mgr.park_for_approval(sid, call, "shell-command".into(), queued));
+        assert_eq!(mgr.status(sid), Some(&AgentStatus::WaitingApproval));
+        assert_eq!(mgr.approval_of(sid).unwrap().tool, "run_editor_command");
+        assert_eq!(mgr.any_pending(), Some(sid));
+        // Transcript still lands while waiting (the action entry precedes).
+        mgr.note_thought(sid, "mid-flight");
+        assert_eq!(mgr.sessions[&sid].transcript.len(), 1);
+        let queued = mgr.take_approval(sid).unwrap();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(mgr.status(sid), Some(&AgentStatus::Running));
+        assert!(mgr.approval_of(sid).is_none());
+        assert_eq!(mgr.any_pending(), None);
+    }
+
+    #[test]
+    fn park_rejected_when_not_running() {
+        let mut mgr = AgentManager::new();
+        let sid = mgr.create_session("x");
+        mgr.complete_session(sid, "done");
+        let call = crate::llm::ToolCall {
+            id: "c1".into(),
+            name: "run_editor_command".into(),
+            arguments: "{}".into(),
+        };
+        assert!(!mgr.park_for_approval(sid, call, "x".into(), Vec::new()));
+    }
+
+    #[test]
+    fn transcript_entries_carry_session_elapsed_time() {
+        let mut mgr = AgentManager::new();
+        let sid = mgr.create_session("x");
+        mgr.note_thought(sid, "thinking");
+        mgr.note_action(sid, "open-file", "open it");
+        let entries = &mgr.sessions[&sid].transcript;
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].at_ms <= entries[1].at_ms);
+    }
+
+    #[test]
+    fn record_file_deduplicates_in_order() {
+        let mut mgr = AgentManager::new();
+        let sid = mgr.create_session("x");
+        mgr.record_file(sid, "src/a.rs");
+        mgr.record_file(sid, "src/b.rs");
+        mgr.record_file(sid, "src/a.rs");
+        mgr.record_file(sid, "  ");
+        assert_eq!(mgr.sessions[&sid].files, vec!["src/a.rs", "src/b.rs"]);
     }
 
     #[test]

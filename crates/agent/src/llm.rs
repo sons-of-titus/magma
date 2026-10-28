@@ -223,9 +223,11 @@ pub fn system_prompt() -> String {
      what the result was. Prefer run_editor_command with real editor \
      commands (open-file, save-buffer, shell-command, make, run-config, vc, \
      find-files, keyword-context, goto-line, …); use list_editor_commands to \
-     discover more. Never fabricate results: if a tool call fails, say so \
-     and try a different approach. When the goal is met, answer with a \
-     short summary and call no more tools."
+     discover more. Mutating commands require the user's approval: the \
+     session pauses until they decide, and a declined action reports back \
+     to you — never assume it ran. Never fabricate results: if a tool call \
+     fails, say so and try a different approach. When the goal is met, \
+     answer with a short summary and call no more tools."
         .to_string()
 }
 

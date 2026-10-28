@@ -1,8 +1,10 @@
+use crate::{EventBus, HookPhase};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::{EventBus, HookPhase};
 
-fn bus() -> EventBus { EventBus::new() }
+fn bus() -> EventBus {
+    EventBus::new()
+}
 
 #[test]
 fn subscriber_receives_emitted_event() {
@@ -23,7 +25,10 @@ fn subscriber_does_not_receive_different_event() {
     let mut b = bus();
     let received = Arc::new(Mutex::new(false));
     let r = received.clone();
-    b.on("other-event", move |_| { *r.lock().unwrap() = true; None });
+    b.on("other-event", move |_| {
+        *r.lock().unwrap() = true;
+        None
+    });
     b.emit("test-event", HashMap::new());
     b.drain_and_dispatch();
     assert!(!*received.lock().unwrap());
@@ -34,7 +39,10 @@ fn oneshot_fires_once_then_is_removed() {
     let mut b = bus();
     let count = Arc::new(Mutex::new(0u32));
     let c = count.clone();
-    b.once("tick", move |_| { *c.lock().unwrap() += 1; None });
+    b.once("tick", move |_| {
+        *c.lock().unwrap() += 1;
+        None
+    });
 
     b.emit("tick", HashMap::new());
     b.drain_and_dispatch();
@@ -119,7 +127,6 @@ fn event_data_passes_through_correctly() {
     b.drain_and_dispatch();
     assert_eq!(&*val.lock().unwrap(), "Magma");
 }
-
 
 // Re-entrancy (a handler emitting the event it is handling) is only
 // reachable through the editor's bus, because subscribers get no bus

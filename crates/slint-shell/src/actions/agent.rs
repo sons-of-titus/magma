@@ -113,6 +113,45 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_agent_approve(move || {
+            let mut s = state.borrow_mut();
+            if !kernel::agent::loop_::resolve_approval(&mut s.editor, true) {
+                s.message = "no agent action is waiting for approval".into();
+            }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_agent_decline(move || {
+            let mut s = state.borrow_mut();
+            if !kernel::agent::loop_::resolve_approval(&mut s.editor, false) {
+                s.message = "no agent action is waiting for approval".into();
+            }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_agent_open_file(move |path| {
+            let mut s = state.borrow_mut();
+            let mut args = std::collections::HashMap::new();
+            args.insert(
+                "path".to_string(),
+                kernel::command::args::ArgValue::Path(path.to_string()),
+            );
+            match kernel::command::execute_command(&mut s.editor, "open-file", &args) {
+                Ok(()) => s.message.clear(),
+                Err(e) => s.message = e,
+            }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_agent_open_settings(move || {
             let mut s = state.borrow_mut();
             settings::open(&weak, &mut s, settings::CATEGORY_AGENT);

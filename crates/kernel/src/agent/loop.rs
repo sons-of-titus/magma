@@ -146,19 +146,41 @@ pub fn handle_reply(
         return;
     }
 
+    process_calls(ed, session_id, calls);
+}
+
+/// Execute a batch of tool calls, suspending before any that need the
+/// user's approval.  When the whole batch has run (or the session parked),
+/// `finish_batch` closes the turn for whatever actually executed.
+fn process_calls(ed: &mut Editor, session_id: u64, calls: Vec<ToolCall>) {
     let mut results: Vec<Value> = Vec::new();
-    for call in &calls {
-        ed.agent
-            .note_action(session_id, &call.name, &tool_summary(call));
+    for (i, call) in calls.iter().enumerate() {
+        let summary = tool_summary(call);
+        ed.agent.note_action(session_id, &call.name, &summary);
         ed.events.emit_typed(
             keys::events::AGENT_ACTION,
             crate::event::payload::AgentActionPayload {
                 session_id: session_id.to_string(),
                 command: call.name.clone(),
-                description: tool_summary(call),
+                description: summary.clone(),
             },
         );
+        if requires_approval(call) {
+            let queued: Vec<ToolCall> = calls[i + 1..].to_vec();
+            ed.agent
+                .park_for_approval(session_id, call.clone(), summary.clone(), queued);
+            ed.events.emit_typed(
+                keys::events::AGENT_APPROVAL,
+                crate::event::payload::AgentApprovalPayload {
+                    session_id: session_id.to_string(),
+                    tool: call.name.clone(),
+                    summary,
+                },
+            );
+            return;
+        }
         let output = execute_tool(ed, call);
+        record_side_effects(ed, session_id, call);
         // The UI renders tool results straight from the transcript; without
         // this the only consumer of a tool's output is the model.
         ed.agent.note_step_output(session_id, &output);
@@ -168,6 +190,12 @@ pub fn handle_reply(
             "content": llm::truncate_for_context(&output),
         }));
     }
+    finish_batch(ed, session_id, results);
+}
+
+/// Feed executed results back to the model and start the next turn,
+/// honoring the turn budget.
+fn finish_batch(ed: &mut Editor, session_id: u64, results: Vec<Value>) {
     ed.agent.append_messages(session_id, results);
 
     // Budget: each executed batch consumes one turn.
@@ -190,6 +218,91 @@ pub fn handle_reply(
             );
         }
         None => {}
+    }
+}
+
+/// Resolve the session's pending approval: `true` executes the parked call,
+/// `false` reports the decline to the model.  Either way the rest of the
+/// parked batch continues.
+pub fn resolve_approval(ed: &mut Editor, approve: bool) -> bool {
+    let Some(session_id) = ed.agent.any_pending() else {
+        return false;
+    };
+    let Some(pending) = ed.agent.approval_of(session_id).cloned() else {
+        return false;
+    };
+    let queued = ed.agent.take_approval(session_id).unwrap_or_default();
+
+    let content = if approve {
+        let call = ToolCall {
+            id: pending.call_id.clone(),
+            name: pending.tool.clone(),
+            arguments: pending.arguments.clone(),
+        };
+        let output = execute_tool(ed, &call);
+        record_side_effects(ed, session_id, &call);
+        ed.agent.note_step_output(session_id, &output);
+        llm::truncate_for_context(&output)
+    } else {
+        let declined = "user declined this action".to_string();
+        ed.agent.note_step_output(session_id, &declined);
+        declined
+    };
+
+    let results = vec![json!({
+        "role": "tool",
+        "tool_call_id": pending.call_id,
+        "content": content,
+    })];
+
+    if queued.is_empty() {
+        finish_batch(ed, session_id, results);
+    } else {
+        ed.agent.append_messages(session_id, results);
+        process_calls(ed, session_id, queued);
+    }
+    true
+}
+
+/// The read-only commands the agent may run without asking.  Everything
+/// else dispatched through `run_editor_command` — file writes, shell
+/// commands, VC mutations — parks the session until the user approves.
+const APPROVAL_EXEMPT_COMMANDS: &[&str] = &[
+    "get-diagnostics",
+    "list-commands",
+    "describe-mode",
+    "buffer-info",
+    "vc-status",
+    "project-info",
+];
+
+fn requires_approval(call: &ToolCall) -> bool {
+    if call.name != "run_editor_command" {
+        return false;
+    }
+    let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
+    match args.get("command").and_then(Value::as_str) {
+        Some(cmd) => !APPROVAL_EXEMPT_COMMANDS.contains(&cmd),
+        None => true,
+    }
+}
+
+/// Track observable side effects of an executed call for the session's
+/// file list (the context panel's "files" chips).
+fn record_side_effects(ed: &mut Editor, session_id: u64, call: &ToolCall) {
+    if call.name != "run_editor_command" {
+        return;
+    }
+    let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
+    let command = args.get("command").and_then(Value::as_str).unwrap_or("");
+    if command == "open-file" {
+        if let Some(path) = args
+            .get("args")
+            .and_then(|a| a.get("path"))
+            .and_then(Value::as_str)
+        {
+            ed.agent.record_file(session_id, path);
+        }
     }
 }
 
@@ -337,6 +450,7 @@ fn _transcript_witness(_: TranscriptEntry) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::EntryKind;
     use crate::agent::{AgentManager, AgentStatus};
 
     fn editor() -> Editor {
@@ -384,7 +498,8 @@ mod tests {
     #[test]
     fn tool_calls_execute_through_the_registry_and_consume_budget() {
         let mut ed = editor();
-        // open-file through the agent = the real command path.
+        // open-file through the agent = the real command path, but it must
+        // be approved first — the session parks until the user decides.
         let dir = std::env::temp_dir().join(format!(
             "agent-tool-{}",
             std::time::SystemTime::now()
@@ -407,15 +522,32 @@ mod tests {
             ),
         )];
         let calls_json = serde_json::to_string(&calls).unwrap();
-        // No background runtime: the follow-up turn reports the failure but
-        // the tool call itself already ran.
         handle_reply(&mut ed, sid, "Opening the file.".into(), &calls_json, None);
+        assert_eq!(
+            ed.agent.status(sid),
+            Some(&AgentStatus::WaitingApproval),
+            "mutating commands park the session"
+        );
+        assert!(
+            !ed.buffers.iter().any(|(_, a)| {
+                a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref()
+                    == Some(path.to_string_lossy().as_ref())
+            }),
+            "nothing executes before approval"
+        );
+
+        assert!(resolve_approval(&mut ed, true));
         assert!(
             ed.buffers.iter().any(|(_, a)| {
                 a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref()
                     == Some(path.to_string_lossy().as_ref())
             }),
-            "the agent's open-file call opened the buffer"
+            "the approved call opened the buffer"
+        );
+        assert_eq!(
+            ed.agent.sessions[&sid].files,
+            vec![path.to_string_lossy().to_string()],
+            "the session tracked the touched file"
         );
         assert_eq!(
             ed.agent.status(sid),
@@ -423,6 +555,69 @@ mod tests {
             "without a background pool the next turn cannot start"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn declining_a_call_reports_it_to_the_model_and_continues() {
+        let mut ed = editor();
+        let sid = ed.agent.create_session("run something");
+        ed.agent
+            .begin_messages(sid, vec![json!({"role": "user", "content": "go"})]);
+        let calls = vec![call(
+            "run_editor_command",
+            r#"{"command":"shell-command","args":{"command":"rm -rf /"}}"#,
+        )];
+        let calls_json = serde_json::to_string(&calls).unwrap();
+        handle_reply(&mut ed, sid, String::new(), &calls_json, None);
+        assert_eq!(ed.agent.status(sid), Some(&AgentStatus::WaitingApproval));
+
+        assert!(resolve_approval(&mut ed, false));
+        let transcript = &ed.agent.sessions[&sid].transcript;
+        assert!(
+            transcript
+                .iter()
+                .any(|e| matches!(&e.kind, EntryKind::StepOutput(t) if t.contains("declined"))),
+            "the decline lands in the transcript: {transcript:?}"
+        );
+        assert_eq!(ed.agent.approval_of(sid), None);
+    }
+
+    #[test]
+    fn read_only_commands_run_without_approval() {
+        let mut ed = editor();
+        let sid = ed.agent.create_session("check diagnostics");
+        let calls = vec![call(
+            "run_editor_command",
+            r#"{"command":"get-diagnostics"}"#,
+        )];
+        let calls_json = serde_json::to_string(&calls).unwrap();
+        handle_reply(&mut ed, sid, String::new(), &calls_json, None);
+        assert_ne!(
+            ed.agent.status(sid),
+            Some(&AgentStatus::WaitingApproval),
+            "exempt commands never park the session"
+        );
+    }
+
+    #[test]
+    fn calls_queued_behind_an_approval_run_after_it() {
+        let mut ed = editor();
+        let sid = ed.agent.create_session("open then read");
+        ed.agent
+            .begin_messages(sid, vec![json!({"role": "user", "content": "go"})]);
+        let calls = vec![
+            call("run_editor_command", r#"{"command":"get-diagnostics"}"#),
+            call("read_active_buffer", "{}"),
+        ];
+        // No approval in this mix — both run in order, output follows each.
+        let calls_json = serde_json::to_string(&calls).unwrap();
+        handle_reply(&mut ed, sid, String::new(), &calls_json, None);
+        let transcript = &ed.agent.sessions[&sid].transcript;
+        let outputs = transcript
+            .iter()
+            .filter(|e| matches!(e.kind, EntryKind::StepOutput(_)))
+            .count();
+        assert_eq!(outputs, 2, "one output per executed call: {transcript:?}");
     }
 
     #[test]
@@ -435,11 +630,11 @@ mod tests {
 
         let transcript = &ed.agent.sessions[&sid].transcript;
         assert!(
-            matches!(transcript.first(), Some(super::super::TranscriptEntry::Action { command, .. }) if command == "read_active_buffer"),
+            matches!(&transcript.first().map(|e| &e.kind), Some(EntryKind::Action { command, .. }) if command == "read_active_buffer"),
             "action recorded: {transcript:?}"
         );
         assert!(
-            matches!(transcript.last(), Some(super::super::TranscriptEntry::StepOutput(text)) if text.contains("buffer: scratch")),
+            matches!(&transcript.last().map(|e| &e.kind), Some(EntryKind::StepOutput(text)) if text.contains("buffer: scratch")),
             "tool output recorded: {transcript:?}"
         );
     }

@@ -1622,7 +1622,9 @@ Recognised kinds: `"thought"`, `"action"`, `"result"`, `"error"`.
 ### `(agent/status id)` → keyword
 
 Return the status of agent session `id`:
-`:running`, `:completed`, `:failed`, or `:not-found`.
+`:running`, `:waiting-approval`, `:completed`, `:failed`, or `:not-found`.
+A `:waiting-approval` session has parked a mutating command until the user
+approves or declines it in the Agent tool window.
 
 ### `(agent/result id)` → string or nil
 

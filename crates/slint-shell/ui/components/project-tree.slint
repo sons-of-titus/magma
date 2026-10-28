@@ -1,5 +1,5 @@
 import { Theme } from "../theme.slint";
-import { ScrollView } from "std-widgets.slint";
+import { ListView } from "std-widgets.slint";
 
 export struct TreeItem {
     name: string,
@@ -133,22 +133,24 @@ export component ProjectTree inherits Rectangle {
             }
         }
 
-        ScrollView {
-            VerticalLayout {
-                for row in root.rows : TreeRow {
-                    item: row;
-                    selected: row.path == root.selected-path;
-                    activated => { root.activated(row.path); }
-                }
-
-                if root.rows.length == 0 : Text {
-                    text: root.empty-message;
-                    color: Theme.text-faint;
-                    font-size: Theme.font-small;
-                    horizontal-alignment: center;
-                    wrap: word-wrap;
-                }
+        // ListView, not ScrollView+for: a plain loop instantiates every file
+        // row of the repo, and the scene re-walks them on every keystroke's
+        // repaint (profiled at ~40% of main-thread time while typing).
+        ListView {
+            for row in root.rows : TreeRow {
+                item: row;
+                selected: row.path == root.selected-path;
+                activated => { root.activated(row.path); }
             }
+        }
+
+        if root.rows.length == 0 : Text {
+            text: root.empty-message;
+            color: Theme.text-faint;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            height: 40px;
         }
     }
 }

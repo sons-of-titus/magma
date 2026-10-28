@@ -1,3 +1,7 @@
+// Shared helpers for the scripting integration-test targets: not every
+// target links every helper, so dead-code is expected here.
+#![allow(dead_code)]
+
 use kernel::command::{self, builtin};
 use kernel::state::Editor;
 use kernel::storage::disk::DiskFileSystem;

@@ -203,9 +203,9 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
             // The popup is the primary consumer: merge server items in
             // (they lead, duplicates drop).  The event stays available
             // to Janet observers.
-            let parsed = crate::completion::parse_lsp_completion_items(&items);
+            let parsed = crate::completion_lsp::parse_lsp_completion_items(&items);
             if !parsed.is_empty() {
-                crate::completion::merge_lsp_items(ed, parsed);
+                crate::completion_lsp::merge_lsp_items(ed, parsed);
             }
             ed.events.emit_typed(
                 keys::events::LSP_COMPLETION_ITEMS,

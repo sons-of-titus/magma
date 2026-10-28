@@ -334,7 +334,6 @@ mod mouse {
         }
         {
             let state = Rc::clone(&state);
-            let weak = app.as_weak();
             app.on_mouse_scrolled(move |x, y, dx, dy, ctrl, shift, alt, _meta| {
                 let mut s = state.borrow_mut();
                 let (cell_x, cell_y) = cell_xy(&s, x, y);
@@ -384,9 +383,10 @@ mod mouse {
                     let dummy_surface = kernel::render::surface::Surface::new(1, 1);
                     kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
                 }
-                // Coalesce with any further wheel events; the frame timer redraws.
+                // Coalesce with further wheel events: trackpads deliver 60–120
+                // events/s and a synchronous pane blit per event stalls the
+                // UI thread.  The frame timer redraws within one tick.
                 s.editor.frame_dirty = true;
-                refresh(&weak, &mut s);
             });
         }
     }

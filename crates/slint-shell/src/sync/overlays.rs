@@ -3,6 +3,48 @@
 
 use crate::{AppState, AppWindow, pane};
 
+/// Logical (x, y) of the focused pane's caret in editor-view coordinates.
+/// The header row and gutter offset the origin, and horizontal scroll pans
+/// the column — the same math the kernel render pass uses to stamp the caret.
+/// Cell dims are passed by value: callers hold `&mut state.editor`.
+fn cursor_anchor(ed: &kernel::state::Editor, cell_w: u32, cell_h: u32) -> (f32, f32) {
+    let Some(pane) = ed
+        .view_tree
+        .focused_window()
+        .and_then(|wid| ed.view_tree.window(wid))
+    else {
+        return (0.0, 0.0);
+    };
+    let buf_id = pane.buffer_id.unwrap_or(0);
+    let visible_rows = (pane.height as usize).max(1);
+    let st = kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows);
+    let header_rows = usize::from(ed.buffers.get(buf_id).is_some_and(|a| {
+        a.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .header_line
+            .is_some()
+    }));
+    let total_lines = ed
+        .buffers
+        .get(buf_id)
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
+        .unwrap_or(1);
+    let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
+    let scroll_left = kernel::render::frame::pane_scroll_left(pane, buf_id);
+    let x = (gutter + st.cursor_col.saturating_sub(scroll_left)) as f32 * cell_w as f32;
+    let y = (header_rows as f32 + st.cursor_vis_row as f32) * cell_h as f32;
+    (x, y)
+}
+
+fn hash_values(values: &[u64]) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for v in values {
+        h ^= *v;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
 pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     let ed = &mut state.editor;
     // ── Hover card sync ────────────────────────────────────────────────────
@@ -122,7 +164,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             app.set_hover_y(card.py as f32 + 20.0);
             let lines: Vec<slint::SharedString> =
                 card.lines.iter().map(|l| l.as_str().into()).collect();
-            app.set_hover_lines(slint::ModelRc::new(slint::VecModel::from(lines)));
+            state.m_hover_lines.set(lines, |m| app.set_hover_lines(m));
         }
     }
 
@@ -131,54 +173,19 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         let show = ed.completion.visible && !ed.completion.items.is_empty();
         app.set_completion_visible(show);
         if show {
-            // position at cursor (rough: use focused pane cursor)
-            let focused_pane = ed
-                .view_tree
-                .focused_window()
-                .and_then(|wid| ed.view_tree.window(wid).cloned());
-            let (cx, cy) = if let Some(pane) = &focused_pane {
-                let buf_id = pane.buffer_id.unwrap_or(0);
-                let visible_rows = pane.height as usize;
-                let st =
-                    kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
-                let header_rows = if ed
-                    .buffers
-                    .get(buf_id)
-                    .map(|a| {
-                        a.lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .header_line
-                            .is_some()
-                    })
-                    .unwrap_or(false)
-                {
-                    1
-                } else {
-                    0
-                };
-                let total_lines = ed
-                    .buffers
-                    .get(buf_id)
-                    .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
-                    .unwrap_or(1);
-                let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
-                let x = (gutter as f32 + st.cursor_col as f32) * state.cell_w as f32;
-                let y = (header_rows as f32 + st.cursor_vis_row as f32) * state.cell_h as f32;
-                (x, y)
-            } else {
-                (0.0, 0.0)
-            };
+            let (cx, cy) = cursor_anchor(ed, state.cell_w, state.cell_h);
             app.set_completion_x(cx);
             app.set_completion_y(cy + state.cell_h as f32);
-            let items: Vec<slint::SharedString> = ed
-                .completion
-                .items
-                .iter()
-                .take(10)
-                .map(|i| i.label.as_str().into())
-                .collect();
-            app.set_completion_items(slint::ModelRc::new(slint::VecModel::from(items)));
-            app.set_completion_selected(ed.completion.idx as i32);
+            // The overlay shows a scrolling window of the item list so
+            // keyboard navigation stays visible past the first page.
+            let (start, window) =
+                kernel::completion::popup_window(&ed.completion.items, ed.completion.idx);
+            let items: Vec<slint::SharedString> =
+                window.iter().map(|i| i.label.as_str().into()).collect();
+            state
+                .m_completion_items
+                .set(items, |m| app.set_completion_items(m));
+            app.set_completion_selected((ed.completion.idx - start) as i32);
         }
     }
 
@@ -198,47 +205,13 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                 .take(12)
                 .map(|a| a.title.as_str().into())
                 .collect();
-            app.set_quickfix_items(slint::ModelRc::new(slint::VecModel::from(items)));
+            state
+                .m_quickfix_items
+                .set(items, |m| app.set_quickfix_items(m));
             app.set_quickfix_selected(menu.idx as i32);
-            // position at cursor
-            let focused_pane = ed
-                .view_tree
-                .focused_window()
-                .and_then(|wid| ed.view_tree.window(wid).cloned());
-            let (qx, qy) = if let Some(pane) = &focused_pane {
-                let buf_id = pane.buffer_id.unwrap_or(0);
-                let visible_rows = pane.height as usize;
-                let st =
-                    kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
-                let header_rows = if ed
-                    .buffers
-                    .get(buf_id)
-                    .map(|a| {
-                        a.lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .header_line
-                            .is_some()
-                    })
-                    .unwrap_or(false)
-                {
-                    1
-                } else {
-                    0
-                };
-                let total_lines = ed
-                    .buffers
-                    .get(buf_id)
-                    .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
-                    .unwrap_or(1);
-                let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
-                let x = (gutter as f32 + st.cursor_col as f32) * state.cell_w as f32;
-                let y = (header_rows as f32 + st.cursor_vis_row as f32) * state.cell_h as f32;
-                (x, y + state.cell_h as f32)
-            } else {
-                (0.0, 0.0)
-            };
+            let (qx, qy) = cursor_anchor(ed, state.cell_w, state.cell_h);
             app.set_quickfix_x(qx);
-            app.set_quickfix_y(qy);
+            app.set_quickfix_y(qy + state.cell_h as f32);
         }
     }
 
@@ -249,67 +222,44 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     {
         let enabled = ed.options.get("minimap-enabled").map(|v| v.as_str()) == Some("true");
         app.set_minimap_visible(enabled);
-        if enabled {
-            let focused_pane = ed
+        if enabled
+            && let Some(pane) = ed
                 .view_tree
                 .focused_window()
-                .and_then(|wid| ed.view_tree.window(wid).cloned());
-            if let Some(pane) = &focused_pane
-                && let Some(buf_id) = pane.buffer_id
-            {
-                let visible_rows = pane.height as usize;
-                let scroll_top =
-                    kernel::render::frame::pane_scroll_top(ed, pane, buf_id, visible_rows.max(1));
-                let img = pane::blit_minimap(
-                    ed,
-                    buf_id,
-                    pane::MINIMAP_W,
-                    pane.height as u32 * state.cell_h,
-                    scroll_top,
-                    visible_rows,
-                );
+                .and_then(|wid| ed.view_tree.window(wid))
+            && let Some(buf_id) = pane.buffer_id
+        {
+            let visible_rows = pane.height as usize;
+            let scroll_top =
+                kernel::render::frame::pane_scroll_top(ed, pane, buf_id, visible_rows.max(1));
+            let revision = ed
+                .buffers
+                .get(buf_id)
+                .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
+                .unwrap_or(0);
+            // The Image element is logical; blit at device resolution so the
+            // map is not resampled on high-DPI displays.
+            let ppx = state.atlas_ppx.max(1.0);
+            let width = (pane::MINIMAP_W as f32 * ppx).round() as u32;
+            let height = ((pane.height as u32 * state.cell_h) as f32 * ppx).round() as u32;
+            let sig = hash_values(&[
+                buf_id as u64,
+                revision,
+                scroll_top as u64,
+                visible_rows as u64,
+                width as u64,
+                height as u64,
+            ]);
+            if sig != state.minimap_sig {
+                let img = pane::blit_minimap(ed, buf_id, width, height, scroll_top, visible_rows);
                 app.set_minimap(img);
+                state.minimap_sig = sig;
             }
         }
     }
     // ── Cursor position for IME overlay ────────────────────────────────────
     {
-        let focused_pane = ed
-            .view_tree
-            .focused_window()
-            .and_then(|wid| ed.view_tree.window(wid).cloned());
-        let (cx, cy) = if let Some(pane) = &focused_pane {
-            let buf_id = pane.buffer_id.unwrap_or(0);
-            let visible_rows = pane.height as usize;
-            let st =
-                kernel::render::frame::pane_scroll_state(ed, pane, buf_id, visible_rows.max(1));
-            let header_rows = if ed
-                .buffers
-                .get(buf_id)
-                .map(|a| {
-                    a.lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .header_line
-                        .is_some()
-                })
-                .unwrap_or(false)
-            {
-                1
-            } else {
-                0
-            };
-            let total_lines = ed
-                .buffers
-                .get(buf_id)
-                .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
-                .unwrap_or(1);
-            let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
-            let x = (gutter as f32 + st.cursor_col as f32) * state.cell_w as f32;
-            let y = (header_rows as f32 + st.cursor_vis_row as f32) * state.cell_h as f32;
-            (x, y)
-        } else {
-            (0.0, 0.0)
-        };
+        let (cx, cy) = cursor_anchor(ed, state.cell_w, state.cell_h);
         app.set_cursor_x(cx);
         app.set_cursor_y(cy);
     }

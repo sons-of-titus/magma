@@ -19,7 +19,7 @@ mod theme;
 mod tokyo_night;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -109,6 +109,23 @@ struct AppState {
     wheel_y: f32,
     wheel_x: f32,
     welcome_visible: bool,
+    /// Signature gates so idle refreshes skip re-blitting textures.
+    minimap_sig: u64,
+    terminal_sig: u64,
+    /// Decoded file-type icons, keyed by SVG path.
+    icon_images: HashMap<String, slint::Image>,
+    m_tabs: sync::ModelGate<TabItem>,
+    m_tree: sync::ModelGate<TreeItem>,
+    m_crumbs: sync::ModelGate<slint::SharedString>,
+    m_find_rows: sync::ModelGate<FindRow>,
+    m_problems: sync::ModelGate<ProblemRow>,
+    m_recents: sync::ModelGate<slint::SharedString>,
+    m_sessions: sync::ModelGate<slint::SharedString>,
+    m_git_history: sync::ModelGate<GitHistoryRow>,
+    m_menu: sync::ModelGate<MenuItem>,
+    m_hover_lines: sync::ModelGate<slint::SharedString>,
+    m_completion_items: sync::ModelGate<slint::SharedString>,
+    m_quickfix_items: sync::ModelGate<slint::SharedString>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -219,6 +236,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wheel_y: 0.0,
         wheel_x: 0.0,
         welcome_visible: false,
+        minimap_sig: 0,
+        terminal_sig: 0,
+        icon_images: HashMap::new(),
+        m_tabs: sync::ModelGate::new(),
+        m_tree: sync::ModelGate::new(),
+        m_crumbs: sync::ModelGate::new(),
+        m_find_rows: sync::ModelGate::new(),
+        m_problems: sync::ModelGate::new(),
+        m_recents: sync::ModelGate::new(),
+        m_sessions: sync::ModelGate::new(),
+        m_git_history: sync::ModelGate::new(),
+        m_menu: sync::ModelGate::new(),
+        m_hover_lines: sync::ModelGate::new(),
+        m_completion_items: sync::ModelGate::new(),
+        m_quickfix_items: sync::ModelGate::new(),
     }));
 
     let app = AppWindow::new()?;

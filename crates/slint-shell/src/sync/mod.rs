@@ -8,6 +8,7 @@ mod agent;
 mod db;
 mod overlays;
 mod render;
+mod terminal;
 mod tool_windows;
 
 use std::time::Duration;
@@ -26,6 +27,27 @@ use kernel::render::tabs;
 use kernel::state::Editor;
 
 const STATUS_TTL: Duration = Duration::from_secs(6);
+
+/// Re-projects a model-valued property only when the row data actually
+/// changed: replacing the model every refresh dirties Slint's scene graph
+/// and forces a full re-layout even when nothing moved.
+pub(crate) struct ModelGate<T> {
+    last: Vec<T>,
+}
+
+impl<T: PartialEq + Clone + 'static> ModelGate<T> {
+    pub(crate) fn new() -> Self {
+        ModelGate { last: Vec::new() }
+    }
+
+    pub(crate) fn set(&mut self, next: Vec<T>, set: impl FnOnce(ModelRc<T>)) {
+        if self.last == next {
+            return;
+        }
+        self.last = next.clone();
+        set(ModelRc::new(VecModel::from(next)));
+    }
+}
 
 /// Editor grid from the actual laid-out pane, so the image, the surface, and
 /// click hit-testing all agree with what is on screen.  Before the first
@@ -149,7 +171,9 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         state.gutter_sig = 0;
     }
     sync_viewport_scroll(ed);
-    render_frame_with(ed, &mut state.surface, CursorPaint::Stamp { visible: true });
+    // The caret is stamped into the grid; the completion popup is a native
+    // overlay widget, so it must not also be baked into the pane texture.
+    render_frame_with(ed, &mut state.surface, CursorPaint::Overlay);
     render::sync_pane_images(&app, state, ppx);
     let ed = &mut state.editor;
     let focused = ed.view_tree.focused_window();
@@ -167,8 +191,17 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
                 ),
                 Some(kernel::icons::IconKind::Svg { path }) => {
                     let p = path.to_string_lossy().into_owned();
-                    let img =
-                        slint::Image::load_from_path(std::path::Path::new(&p)).unwrap_or_default();
+                    // Decoding an SVG per refresh is pure waste; icon paths
+                    // repeat every frame, so cache the decoded image.
+                    let img = match state.icon_images.get(&p) {
+                        Some(img) => img.clone(),
+                        None => {
+                            let img = slint::Image::load_from_path(std::path::Path::new(&p))
+                                .unwrap_or_default();
+                            state.icon_images.insert(p.clone(), img.clone());
+                            img
+                        }
+                    };
                     (
                         String::new(),
                         slint::Color::from_rgb_u8(166, 173, 200),
@@ -194,7 +227,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             }
         })
         .collect();
-    app.set_tabs(ModelRc::new(VecModel::from(tab_models)));
+    state.m_tabs.set(tab_models, |m| app.set_tabs(m));
 
     app.set_active_rail(state.rail);
     app.set_sidebar_open(state.sidebar_open);
@@ -205,7 +238,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         .into_iter()
         .map(Into::into)
         .collect();
-    app.set_breadcrumbs(ModelRc::new(VecModel::from(crumbs)));
+    state.m_crumbs.set(crumbs, |m| app.set_breadcrumbs(m));
 
     let (file, modified) = projection::focused_file(ed);
     app.set_status_file(file.as_str().into());
@@ -232,111 +265,28 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         .into(),
     );
     app.set_terminal_text(projection::terminal_text(ed).into());
-    // terminal sessions
-    {
-        let sessions: Vec<slint::SharedString> = ed
-            .io
-            .terminals
-            .sessions
-            .iter()
-            .map(|s| s.title.as_str().into())
-            .collect();
-        app.set_terminal_sessions(slint::ModelRc::new(slint::VecModel::from(sessions)));
-        let active = ed
-            .io
-            .terminals
-            .focused
-            .and_then(|fid| ed.io.terminals.sessions.iter().position(|s| s.id == fid))
-            .unwrap_or(0) as i32;
-        app.set_terminal_active(active);
-    }
-    // terminal image (styled, device resolution)
-    {
-        let session_count = ed.io.terminals.sessions.len();
-        let (term_cols, term_rows) =
-            pane::terminal_grid_size(logical_w, session_count, state.cell_w, state.cell_h);
-        let term_id = ed
-            .io
-            .terminals
-            .focused
-            .or_else(|| ed.io.terminals.sessions.first().map(|s| s.id));
-        if state.bottom == 0
-            && let Some(id) = term_id
-        {
-            if state.terminal_grid != (id, term_cols, term_rows) {
-                if let Err(e) = ed
-                    .io
-                    .terminals
-                    .resize(id, term_cols as u16, term_rows as u16)
-                {
-                    state.message = e;
-                }
-                state.terminal_grid = (id, term_cols, term_rows);
-            }
-            if let Some(sess) = ed.io.terminals.get(id) {
-                let total = sess.screen.line_count();
-                let visible = term_rows as usize;
-                let max_scroll = total.saturating_sub(visible);
-                if state.terminal_scroll > max_scroll {
-                    state.terminal_scroll = max_scroll;
-                }
-                let start = total
-                    .saturating_sub(visible)
-                    .saturating_sub(state.terminal_scroll);
-                let count = visible.min(total - start);
-                let lines: Vec<_> = (start..start + count)
-                    .map(|i| sess.screen.styled_line(i))
-                    .collect();
-                let cursor = if ed.io.terminals.focused == Some(id) && sess.screen.cursor_visible()
-                {
-                    let line =
-                        sess.screen.scrollback_len() + sess.screen.cursor_screen_row() as usize;
-                    line.checked_sub(start)
-                        .filter(|row| *row < count)
-                        .map(|row| (row, sess.screen.cursor_col() as usize))
-                } else {
-                    None
-                };
-                let terminal_palette = theme::palette(&state.theme_name).terminal;
-                let (cell_w, cell_h) = pane::cell_size(state.cell_w, state.cell_h, ppx);
-                let (rgba, tw, th) = pane::blit_terminal_rgba(
-                    &lines,
-                    &state.atlas,
-                    term_cols,
-                    term_rows,
-                    cell_w,
-                    cell_h,
-                    &terminal_palette,
-                    cursor,
-                );
-                let mut buffer =
-                    slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(tw.max(1), th.max(1));
-                let dst = buffer.make_mut_bytes();
-                let n = dst.len().min(rgba.len());
-                dst[..n].copy_from_slice(&rgba[..n]);
-                app.set_terminal_image(slint::Image::from_rgba8(buffer));
-            }
-        } else if state.bottom == 0 {
-            app.set_terminal_image(slint::Image::default());
-        }
-    }
-    app.set_find_rows(ModelRc::new(VecModel::from(projection::find_rows(ed))));
+    state.m_find_rows.set(projection::find_rows(ed), |m| {
+        app.set_find_rows(m);
+    });
     let (output_title, output_text) = projection::output(ed);
     app.set_output_title(output_title.as_str().into());
     app.set_output_text(output_text.as_str().into());
-    app.set_problems(slint::ModelRc::new(slint::VecModel::from(
-        projection::problem_rows(ed),
-    )));
+    state.m_problems.set(projection::problem_rows(ed), |m| {
+        app.set_problems(m);
+    });
     app.set_dock_height(state.bottom_height);
     app.set_output_follow(state.output_follow);
-    app.set_git_history(ModelRc::new(VecModel::from(state.git_history.clone())));
+    state.m_git_history.set(state.git_history.clone(), |m| {
+        app.set_git_history(m);
+    });
     app.set_status_mode(projection::status_mode(ed).as_str().into());
-    app.set_recents(ModelRc::new(VecModel::from(
+    state.m_recents.set(
         projection::recent_projects(ed)
             .into_iter()
             .map(Into::into)
             .collect::<Vec<slint::SharedString>>(),
-    )));
+        |m| app.set_recents(m),
+    );
     let now_welcome = ed.project_manager.project.root.is_none();
     if now_welcome != state.welcome_visible {
         state.welcome_visible = now_welcome;
@@ -364,15 +314,18 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
 
     app.set_menu_visible(state.menu_visible);
     app.set_menu_x(state.menu_x);
-    let items = state
-        .menu_title
-        .map(projection::menu_items)
-        .map(|items| ModelRc::new(VecModel::from(items)))
-        .unwrap_or_else(|| ModelRc::new(VecModel::from(Vec::new())));
-    app.set_menu_items(items);
+    let items = match state.menu_title {
+        Some(title) => projection::menu_items(title),
+        None => Vec::new(),
+    };
+    state.m_menu.set(items, |m| app.set_menu_items(m));
+    terminal::sync(&app, state, logical_w, ppx);
     overlays::sync(&app, state);
 
     state.rendered_revision = revision_of(&state.editor);
+    // Input callbacks refresh synchronously; without this the frame timer
+    // would run the whole pipeline a second time ≤20 ms later.
+    state.editor.frame_dirty = false;
 }
 
 /// Commit tool window: repository identity, grouped changes, busy and error
@@ -433,6 +386,6 @@ fn sync_tree(app: &AppWindow, state: &mut AppState) {
     } else {
         Vec::new()
     };
-    app.set_tree(ModelRc::new(VecModel::from(rows)));
+    state.m_tree.set(rows, |m| app.set_tree(m));
     app.set_selected_path(projection::current_path(&state.editor).into());
 }

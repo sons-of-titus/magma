@@ -160,3 +160,21 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.winit]
 opt-level = 3
+# The editor's CPU render loop (surface blit, glyph atlas, row layout) lives
+# in these crates.  At dev opt-level 0 the per-keystroke pane blit is 10-50x
+# slower than optimized code and dominates typing/scrolling latency, so they
+# must build optimized even in debug builds.
+[profile.dev.package.kernel]
+opt-level = 3
+[profile.dev.package.magma-slint]
+opt-level = 3
+[profile.dev.package.text]
+opt-level = 3
+[profile.dev.package.row_layout]
+opt-level = 3
+[profile.dev.package.gpu]
+opt-level = 3
+[profile.dev.package.surface]
+opt-level = 3
+[profile.dev.package.vt]
+opt-level = 3

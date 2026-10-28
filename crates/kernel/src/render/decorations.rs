@@ -2,10 +2,12 @@
 //!
 //! Called from `render_frame` after all text and highlights have been drawn.
 
+use crate::render::editor_view::VisibleRow;
 use crate::render::host::RenderHost;
+use crate::render::row_layout::RowLayout;
 use crate::render::surface::{Style, Surface};
 use crate::state::Editor;
-use crate::text_engine::{Buffer, Decoration};
+use crate::text_engine::Decoration;
 
 /// Compute the width of the widest `LinePrefix` decoration across all layers
 /// for the given buffer view.  Returns 0 when no prefix decorations exist.
@@ -25,15 +27,22 @@ pub fn prefix_margin_width(editor: &dyn RenderHost, buf_id: usize) -> usize {
         .unwrap_or(0)
 }
 
+/// Display row holding buffer `line`, or `None` when the line is scrolled
+/// out or collapsed inside a fold (only a fold's first line keeps its
+/// decorations).  Rows are viewport-bounded, so the scan is bounded by the
+/// viewport height, never the document.
+fn locate_row(rows: &[VisibleRow], line: usize) -> Option<usize> {
+    rows.iter().position(|r| r.line == line)
+}
+
 /// Render all decoration layers for the focused buffer.
 #[allow(clippy::too_many_arguments)]
 pub fn render_decorations(
     editor: &Editor,
     buf_id: usize,
-    buf: &Buffer,
     surface: &mut Surface,
-    scroll_top: usize,
-    visible_lines: usize,
+    rows: &[VisibleRow],
+    row_layouts: &[std::sync::Arc<RowLayout>],
     prefix_margin: usize,
     gutter_width: usize,
     content_x: u16,
@@ -48,6 +57,10 @@ pub fn render_decorations(
         return;
     }
 
+    // The prefix margin occupies surface columns [area.x, area.x +
+    // prefix_cols), i.e. everything left of the gutter providers.
+    let prefix_x = content_x.saturating_sub(gutter_width as u16);
+
     // Collect sorted layer names for deterministic render order.
     let mut layer_names: Vec<&str> = view.decoration_layers.keys().map(|s| s.as_str()).collect();
     layer_names.sort_unstable();
@@ -60,12 +73,11 @@ pub fn render_decorations(
         for decor in layer {
             match decor {
                 Decoration::LinePrefix { line, text, face } => {
-                    if *line < scroll_top || *line >= scroll_top + visible_lines {
+                    let Some(row_idx) = locate_row(rows, *line) else {
                         continue;
-                    }
-                    let surf_row = row_offset + (*line - scroll_top) as u16;
+                    };
+                    let surf_row = row_offset + row_idx as u16;
                     let style = editor.resolve_face_style(face);
-                    let prefix_x = gutter_width as u16;
                     let max_len = prefix_margin.min(text.chars().count());
                     let drawn: String = text.chars().take(max_len).collect();
                     surface.set_text(prefix_x, surf_row, &drawn, style);
@@ -76,13 +88,13 @@ pub fn render_decorations(
                     text,
                     face,
                 } => {
-                    if *line < scroll_top || *line >= scroll_top + visible_lines {
+                    let Some(row_idx) = locate_row(rows, *line) else {
                         continue;
-                    }
+                    };
                     if *col < scroll_left {
                         continue;
                     }
-                    let surf_row = row_offset + (*line - scroll_top) as u16;
+                    let surf_row = row_offset + row_idx as u16;
                     let sx = content_x + (*col - scroll_left) as u16;
                     if sx >= surface.width {
                         continue;
@@ -93,17 +105,21 @@ pub fn render_decorations(
                     surface.set_text(sx, surf_row, &drawn, style);
                 }
                 Decoration::EndOfLine { line, text, face } => {
-                    if *line < scroll_top || *line >= scroll_top + visible_lines {
+                    let Some(row_idx) = locate_row(rows, *line) else {
                         continue;
-                    }
-                    let surf_row = row_offset + (*line - scroll_top) as u16;
-                    let line_text = buf.line(*line).unwrap_or_default();
-                    let end_col = line_text.chars().count();
+                    };
+                    let surf_row = row_offset + row_idx as u16;
+                    // End column in display cells from the row layout — a
+                    // char count misplaces the annotation under tabs and
+                    // wide glyphs.
+                    let end_col = row_layouts
+                        .get(row_idx)
+                        .map(|l| l.cells())
+                        .unwrap_or_default();
                     if end_col < scroll_left {
                         continue;
                     }
-                    let eol_col = content_x as usize + (end_col - scroll_left);
-                    let sx = (eol_col + 1) as u16;
+                    let sx = content_x + (end_col - scroll_left + 1) as u16;
                     if sx >= surface.width {
                         continue;
                     }

@@ -21,6 +21,8 @@ pub struct VisibleRow {
     pub end: usize,
     pub text: String,
     pub fold: bool,
+    /// Absolute buffer line of the row's first line.
+    pub line: usize,
 }
 
 /// Build the visible rows for a viewport, including fold collapsing.
@@ -52,6 +54,7 @@ pub fn build_visible_rows(
                 end: line_end,
                 text: format!("--- {} lines folded ---", folded),
                 fold: true,
+                line: abs_line,
             });
             abs_line += folded;
         } else {
@@ -60,6 +63,7 @@ pub fn build_visible_rows(
                 end: line_end,
                 text: buf.slice(line_start, line_end),
                 fold: false,
+                line: abs_line,
             });
             abs_line += 1;
         }
@@ -208,12 +212,12 @@ impl View for EditorView {
             build_visible_rows(&*buf, folds, scroll_top, visible_lines, total_lines);
 
         let mut display_row = 0usize;
-        let mut abs_line = scroll_top;
         for row in &rows {
             let line_start = row.start;
             let line_text = row.text.as_str();
             let surf_row = row_offset + display_row as u16;
             let is_fold_start = row.fold;
+            let abs_line = row.line;
 
             // ── Render gutter providers ───────────────────────────────────
             if !editor.gutter.providers.is_empty() {
@@ -282,10 +286,6 @@ impl View for EditorView {
                 }
             }
             display_row += 1;
-            if !is_fold_start {
-                abs_line += 1;
-            }
-            let _ = abs_line;
         }
 
         // ── Pass 2: highlights + visual selection ─────────────────────────
@@ -371,10 +371,9 @@ impl View for EditorView {
         render_decorations(
             editor,
             buf_id,
-            &buf,
             surface,
-            scroll_top,
-            visible_lines,
+            &rows,
+            &row_layouts,
             prefix_margin,
             gutter_width,
             content_x,
@@ -384,9 +383,12 @@ impl View for EditorView {
 
         // ── Cursor + multi-cursor + completion popup (focused pane only) ──
         // A frontend that paints its own caret passes `CursorPaint::Skip` so
-        // the grid never double-draws.
+        // the grid never double-draws; `Overlay` stamps the caret but leaves
+        // the popup to the frontend's native widget.
         let stamps = matches!(ctx.cursor, CursorPaint::Stamp { .. });
-        if is_focused && matches!(ctx.cursor, CursorPaint::Stamp { visible: true }) {
+        let stamp_caret = matches!(ctx.cursor, CursorPaint::Stamp { visible: true })
+            || ctx.cursor == CursorPaint::Overlay;
+        if is_focused && stamp_caret {
             if let Some(vis_row) = cursor_vis_row
                 && vis_row < visible_lines
                 && cursor_col >= scroll_left
@@ -499,7 +501,7 @@ fn render_insert_completion_popup(
         .completion
         .items
         .iter()
-        .map(|i| i.label.len() + i.kind.len() + 1)
+        .map(|i| crate::completion::row_cells(editor, &i.label, &i.kind))
         .max()
         .unwrap_or(20)
         .min(60);

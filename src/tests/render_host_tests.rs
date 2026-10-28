@@ -278,5 +278,6 @@ fn build_visible_rows_extracts_lines_without_editor() {
         end: 0,
         text: String::new(),
         fold: false,
+        line: 0,
     };
 }

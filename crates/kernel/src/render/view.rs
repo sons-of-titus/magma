@@ -39,8 +39,12 @@ pub struct RenderCtx<'a> {
 /// headless renderer keeps stamping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorPaint {
-    /// Stamp the caret (and the completion popup) into the character grid.
+    /// Stamp the caret and the completion popup into the character grid —
+    /// the headless default.
     Stamp { visible: bool },
+    /// Stamp the caret; the frontend draws the completion popup as a native
+    /// overlay, so the in-grid popup stays out of the texture.
+    Overlay,
     /// Leave cursor overlays out of the grid.
     Skip,
 }

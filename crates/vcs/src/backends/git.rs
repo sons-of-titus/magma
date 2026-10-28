@@ -1,7 +1,9 @@
 //! Git backend.
 
-use super::parsers::{parse_branch_lines, parse_porcelain_z, parse_stash_lines};
-use crate::{BranchInfo, StashEntry, VcBackend, VcStatus, run_cmd, run_cmd_stdin};
+use super::parsers::{
+    parse_branch_lines, parse_porcelain_blame, parse_porcelain_z, parse_stash_lines,
+};
+use crate::{BlameLine, BranchInfo, StashEntry, VcBackend, VcStatus, run_cmd, run_cmd_stdin};
 use std::path::{Path, PathBuf};
 
 pub struct GitBackend;
@@ -95,8 +97,11 @@ impl VcBackend for GitBackend {
         run_cmd(root, "git", &["push"])
     }
 
-    fn blame(&self, root: &Path, file: &str) -> Result<String, String> {
-        run_cmd(root, "git", &["blame", "--", file])
+    fn blame(&self, root: &Path, file: &str) -> Result<Vec<BlameLine>, String> {
+        // Porcelain only: the default format's metadata is prose (author
+        // names contain spaces and parens) and cannot be split reliably.
+        let raw = run_cmd(root, "git", &["blame", "--porcelain", "--", file])?;
+        Ok(parse_porcelain_blame(&raw))
     }
 
     fn list_branches(&self, root: &Path) -> Result<Vec<BranchInfo>, String> {

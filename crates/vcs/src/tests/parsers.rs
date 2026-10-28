@@ -1,4 +1,8 @@
-use crate::backends::{parse_branch_lines, parse_porcelain_z, parse_stash_lines, split_hunks};
+use crate::backends::{
+    parse_branch_lines, parse_porcelain_blame, parse_porcelain_z, parse_stash_lines, short_date,
+    split_hunks,
+};
+use crate::{BlameLine, parse_blame_tsv, serialize_blame};
 
 #[test]
 fn porcelain_z_handles_renames_and_unicode() {
@@ -116,4 +120,111 @@ fn hunks_without_diff_header_only_carry_their_own_body() {
     let patches = split_hunks(diff);
     assert_eq!(patches.len(), 1);
     assert!(patches[0].starts_with("@@"));
+}
+
+// ── Blame ────────────────────────────────────────────────────────────────────
+
+/// Two commits; the second block reuses the first commit's sha, so its
+/// author/date must come from the metadata cache (porcelain only emits
+/// metadata on a commit's first block).
+const PORCELAIN: &str = concat!(
+    "830f5911abcdefabcdefabcdefabcdefabcdef 1 1 2\n",
+    "author Mohamed Abdellahi\n",
+    "author-mail <m@catosystems.dev>\n",
+    "author-time 1792886400\n",
+    "author-tz +0200\n",
+    "committer Mohamed Abdellahi\n",
+    "committer-mail m@catosystems.dev\n",
+    "committer-time 1792886400\n",
+    "committer-tz +0200\n",
+    "summary feat: add workspace skeleton\n",
+    "boundary\n",
+    "\tline one\n",
+    "\tline two\n",
+    "5543b0bbef2bfefefeaa0b0bbef2bfefefeaa0b0 2 3 1\n",
+    "author Alice\n",
+    "author-mail a@x.dev\n",
+    "author-time 1692886400\n",
+    "author-tz +0100\n",
+    "summary fix: later change\n",
+    "\tline three\n",
+    "830f5911abcdefabcdefabcdefabcdefabcdef 2 4 1\n",
+    "\tline two (moved)\n",
+);
+
+#[test]
+fn porcelain_blame_parses_every_content_line_in_order() {
+    let blame = parse_porcelain_blame(PORCELAIN);
+    assert_eq!(
+        blame.len(),
+        4,
+        "one record per tab-prefixed line: {blame:?}"
+    );
+    assert_eq!(blame[0].author, "Mohamed Abdellahi");
+    assert_eq!(blame[1].author, "Mohamed Abdellahi");
+    assert_eq!(blame[2].author, "Alice");
+    // The last block repeats commit #1 with no metadata — cache hit.
+    assert_eq!(blame[3].author, "Mohamed Abdellahi");
+    assert_eq!(blame[3].date, blame[0].date);
+    assert_eq!(blame[0].commit.len(), 8, "short hashes for display");
+}
+
+#[test]
+fn porcelain_blame_dates_are_short_utc_dates() {
+    let blame = parse_porcelain_blame(PORCELAIN);
+    assert_eq!(blame[0].date, "2026-10-25");
+    assert_eq!(blame[2].date, "2023-08-24");
+}
+
+#[test]
+fn short_date_handles_epoch_and_leap_day() {
+    assert_eq!(short_date(0), "1970-01-01");
+    // 2024-02-29 00:00 UTC = 1709164800.
+    assert_eq!(short_date(1_709_164_800), "2024-02-29");
+}
+
+#[test]
+fn blame_tsv_round_trips_through_the_run_op_channel() {
+    let lines = vec![
+        BlameLine {
+            commit: "abc12345".into(),
+            author: "Alice".into(),
+            date: "2026-10-25".into(),
+        },
+        BlameLine {
+            commit: "def67890".into(),
+            author: String::new(),
+            date: String::new(),
+        },
+    ];
+    let parsed = parse_blame_tsv(&serialize_blame(&lines));
+    assert_eq!(parsed, lines);
+}
+
+#[test]
+fn blame_annotation_prefers_author_and_date_and_falls_back_to_commit() {
+    let full = BlameLine {
+        commit: "abc".into(),
+        author: "Alice".into(),
+        date: "2026-10-25".into(),
+    };
+    assert_eq!(full.annotation(), "Alice 2026-10-25");
+    let no_date = BlameLine {
+        commit: "abc".into(),
+        author: "Alice".into(),
+        date: String::new(),
+    };
+    assert_eq!(no_date.annotation(), "Alice");
+    let no_author = BlameLine {
+        commit: "abc".into(),
+        author: String::new(),
+        date: "2026-10-25".into(),
+    };
+    assert_eq!(no_author.annotation(), "2026-10-25");
+    let bare = BlameLine {
+        commit: "abc".into(),
+        author: String::new(),
+        date: String::new(),
+    };
+    assert_eq!(bare.annotation(), "abc");
 }

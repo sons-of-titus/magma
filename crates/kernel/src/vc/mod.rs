@@ -10,8 +10,8 @@ pub mod ops;
 
 pub use ops::{DiffData, DiffView, HiddenPane};
 pub use vcs::{
-    BranchInfo, Event, FileStatus, StashEntry, VcBackend, VcRemoteOp, VcStatus, run_cmd,
-    run_cmd_stdin, run_op, status_for_root,
+    BlameLine, BranchInfo, Event, FileStatus, StashEntry, VcBackend, VcRemoteOp, VcStatus,
+    parse_blame_tsv, run_cmd, run_cmd_stdin, run_op, serialize_blame, status_for_root,
 };
 
 use std::path::{Path, PathBuf};
@@ -44,6 +44,9 @@ pub struct VcState {
     pub branches: Vec<String>,
     /// Saved stashes, as last listed.
     pub stashes: Vec<StashEntry>,
+    /// Bumped on every blame toggle/re-run; in-flight jobs carry the value
+    /// they were spawned with and are dropped when it no longer matches.
+    pub blame_gen: u64,
 }
 
 impl std::fmt::Debug for VcState {
@@ -80,6 +83,7 @@ impl VcState {
             diff_view: None,
             branches: Vec::new(),
             stashes: Vec::new(),
+            blame_gen: 0,
         }
     }
 

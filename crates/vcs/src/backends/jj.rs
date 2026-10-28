@@ -1,6 +1,6 @@
 //! Jujutsu backend.
 
-use crate::{FileStatus, VcBackend, VcStatus, run_cmd};
+use crate::{BlameLine, FileStatus, VcBackend, VcStatus, run_cmd};
 use std::path::{Path, PathBuf};
 
 pub struct JjBackend;
@@ -106,7 +106,21 @@ impl VcBackend for JjBackend {
         run_cmd(root, "jj", &["git", "push"])
     }
 
-    fn blame(&self, root: &Path, file: &str) -> Result<String, String> {
-        run_cmd(root, "jj", &["file", "annotate", "--", file])
+    fn blame(&self, root: &Path, file: &str) -> Result<Vec<BlameLine>, String> {
+        // jj's annotate layout varies across releases; the change prefix and
+        // author lead every row, so those two tokens are the attribution.
+        let raw = run_cmd(root, "jj", &["file", "annotate", "--", file])?;
+        Ok(raw
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let mut it = l.split_whitespace();
+                BlameLine {
+                    commit: it.next().unwrap_or("").to_string(),
+                    author: it.next().unwrap_or("").to_string(),
+                    date: String::new(),
+                }
+            })
+            .collect())
     }
 }

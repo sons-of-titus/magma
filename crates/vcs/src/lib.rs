@@ -64,6 +64,52 @@ pub struct StashEntry {
     pub message: String,
 }
 
+/// Per-line blame attribution for one file line, in file order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlameLine {
+    /// Backend-specific short commit identifier (display only).
+    pub commit: String,
+    pub author: String,
+    /// Short date (`YYYY-MM-DD`) when the backend provides one, else empty.
+    pub date: String,
+}
+
+impl BlameLine {
+    /// The one-line annotation rendered in the editor's prefix margin.
+    pub fn annotation(&self) -> String {
+        match (self.author.as_str(), self.date.as_str()) {
+            ("", "") => self.commit.clone(),
+            ("", d) => d.to_string(),
+            (a, "") => a.to_string(),
+            (a, d) => format!("{a} {d}"),
+        }
+    }
+}
+
+/// Serialize blame lines through the textual `run_op` channel: one
+/// `commit\tauthor\tdate` record per line.
+pub fn serialize_blame(lines: &[BlameLine]) -> String {
+    lines
+        .iter()
+        .map(|l| format!("{}\t{}\t{}", l.commit, l.author, l.date))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Inverse of [`serialize_blame`].
+pub fn parse_blame_tsv(raw: &str) -> Vec<BlameLine> {
+    raw.lines()
+        .map(|l| {
+            let mut it = l.splitn(3, '\t');
+            BlameLine {
+                commit: it.next().unwrap_or("").to_string(),
+                author: it.next().unwrap_or("").to_string(),
+                date: it.next().unwrap_or("").to_string(),
+            }
+        })
+        .collect()
+}
+
 /// One version-control backend. All methods receive the **repo root** directory.
 pub trait VcBackend: Send + Sync {
     fn name(&self) -> &str;
@@ -95,7 +141,9 @@ pub trait VcBackend: Send + Sync {
 
     fn commit(&self, root: &Path, message: &str) -> Result<(), String>;
     fn push(&self, root: &Path) -> Result<String, String>;
-    fn blame(&self, root: &Path, file: &str) -> Result<String, String>;
+    /// Per-line blame for `file`; structured so the editor never parses
+    /// backend prose.
+    fn blame(&self, root: &Path, file: &str) -> Result<Vec<BlameLine>, String>;
 
     // ── Branch / hunk / stash / amend surface (F-23) ─────────────────────
     // Default: unsupported.  Backends implement the slices they can.

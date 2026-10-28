@@ -281,10 +281,6 @@ pub fn init_vm() {
         include_str!("../../../builtins/lsp_inlay.janet"),
     );
     load_builtin(
-        "builtins/git_blame.janet",
-        include_str!("../../../builtins/git_blame.janet"),
-    );
-    load_builtin(
         "builtins/lsp_diag_eol.janet",
         include_str!("../../../builtins/lsp_diag_eol.janet"),
     );

@@ -13,6 +13,9 @@ mod svn;
 pub use git::GitBackend;
 pub use hg::HgBackend;
 pub use jj::JjBackend;
-pub use parsers::{parse_branch_lines, parse_porcelain_z, parse_stash_lines, split_hunks};
+pub use parsers::{
+    parse_branch_lines, parse_porcelain_blame, parse_porcelain_z, parse_stash_lines, short_date,
+    split_hunks,
+};
 pub use shell_template::ShellTemplateBackend;
 pub use svn::SvnBackend;

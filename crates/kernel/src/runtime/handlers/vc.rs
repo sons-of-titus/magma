@@ -51,5 +51,16 @@ fn handle_vc_event(ed: &mut Editor, event: crate::vc::Event) {
             Ok(data) => crate::command::builtin::vc_diff::open_diff(ed, &path, data),
             Err(e) => ed.show_message(crate::state::MessageKind::Error, e),
         },
+        Event::BlameReady {
+            buf_id,
+            generation,
+            result,
+        } => {
+            if let Err(e) =
+                crate::command::builtin::vc_blame::apply_blame(ed, buf_id, generation, result)
+            {
+                ed.show_message(crate::state::MessageKind::Error, e);
+            }
+        }
     }
 }

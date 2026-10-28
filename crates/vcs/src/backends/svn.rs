@@ -1,6 +1,6 @@
 //! Subversion backend.
 
-use crate::{FileStatus, VcBackend, VcStatus, run_cmd};
+use crate::{BlameLine, FileStatus, VcBackend, VcStatus, run_cmd};
 use std::path::{Path, PathBuf};
 
 pub struct SvnBackend;
@@ -115,7 +115,25 @@ impl VcBackend for SvnBackend {
         Ok("svn commits are sent to the server immediately; no separate push step".into())
     }
 
-    fn blame(&self, root: &Path, file: &str) -> Result<String, String> {
-        run_cmd(root, "svn", &["blame", file])
+    fn blame(&self, root: &Path, file: &str) -> Result<Vec<BlameLine>, String> {
+        // `svn blame` rows are `REV AUTHOR ...code`; the code text may hold
+        // anything, so only the first two tokens are attributed.
+        let raw = run_cmd(root, "svn", &["blame", file])?;
+        Ok(raw
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let mut it = l.split_whitespace();
+                BlameLine {
+                    commit: it
+                        .next()
+                        .unwrap_or("")
+                        .trim_start_matches([' ', 'r'])
+                        .to_string(),
+                    author: it.next().unwrap_or("").to_string(),
+                    date: String::new(),
+                }
+            })
+            .collect())
     }
 }

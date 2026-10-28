@@ -1,6 +1,6 @@
 //! Mercurial backend.
 
-use crate::{FileStatus, VcBackend, VcStatus, run_cmd};
+use crate::{BlameLine, FileStatus, VcBackend, VcStatus, run_cmd};
 use std::path::{Path, PathBuf};
 
 pub struct HgBackend;
@@ -108,7 +108,30 @@ impl VcBackend for HgBackend {
         run_cmd(root, "hg", &["push"])
     }
 
-    fn blame(&self, root: &Path, file: &str) -> Result<String, String> {
-        run_cmd(root, "hg", &["blame", "-u", "-l", "--", file])
+    fn blame(&self, root: &Path, file: &str) -> Result<Vec<BlameLine>, String> {
+        // A template gives field-separated records; the default prose format
+        // is unparseable (dates and user names contain spaces).
+        let raw = run_cmd(
+            root,
+            "hg",
+            &[
+                "blame",
+                "-T",
+                "{author}\t{date|shortdate}\t{rev}\n",
+                "--",
+                file,
+            ],
+        )?;
+        Ok(raw
+            .lines()
+            .map(|l| {
+                let mut it = l.splitn(3, '\t');
+                BlameLine {
+                    author: it.next().unwrap_or("").trim().to_string(),
+                    date: it.next().unwrap_or("").trim().to_string(),
+                    commit: it.next().unwrap_or("").trim().to_string(),
+                }
+            })
+            .collect())
     }
 }

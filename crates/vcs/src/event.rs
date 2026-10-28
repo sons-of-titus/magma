@@ -34,6 +34,14 @@ pub enum Event {
         path: String,
         result: Result<DiffData, String>,
     },
+    /// Per-line blame for one buffer finished.  The foreground applies it
+    /// only when the buffer's blame generation still matches, so a stale
+    /// run can never repaint a view the user already toggled.
+    BlameReady {
+        buf_id: usize,
+        generation: u64,
+        result: Result<String, String>,
+    },
 }
 
 #[cfg(test)]

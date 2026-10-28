@@ -19,6 +19,7 @@ mod run_config_cmds;
 mod search;
 pub mod search_query;
 pub(crate) mod vc_actions;
+pub mod vc_blame;
 pub mod vc_diff;
 pub mod vc_hunks;
 pub(crate) mod vc_ops;

@@ -1,6 +1,6 @@
 //! Backend whose operations are shell-command templates registered at runtime.
 
-use crate::{FileStatus, VcBackend, VcStatus};
+use crate::{BlameLine, FileStatus, VcBackend, VcStatus};
 use std::path::{Path, PathBuf};
 
 /// A backend whose operations are specified as shell-command template strings.
@@ -192,11 +192,26 @@ impl VcBackend for ShellTemplateBackend {
         self.run_tmpl(tmpl, root, None, None, None)
     }
 
-    fn blame(&self, root: &Path, file: &str) -> Result<String, String> {
+    fn blame(&self, root: &Path, file: &str) -> Result<Vec<BlameLine>, String> {
+        // A configured template backend owns its own format: each output row
+        // is taken as one line's attribution verbatim (first two whitespace
+        // tokens: commit, author).
         let tmpl = self
             .blame_cmd
             .as_deref()
             .ok_or_else(|| format!("{}: no blame-cmd", self.name))?;
-        self.run_tmpl(tmpl, root, Some(file), None, None)
+        let raw = self.run_tmpl(tmpl, root, Some(file), None, None)?;
+        Ok(raw
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let mut it = l.split_whitespace();
+                BlameLine {
+                    commit: it.next().unwrap_or("").to_string(),
+                    author: it.next().unwrap_or("").to_string(),
+                    date: String::new(),
+                }
+            })
+            .collect())
     }
 }

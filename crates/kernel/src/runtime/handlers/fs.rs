@@ -104,6 +104,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 FileSavedPayload { path: path.clone() },
             );
             crate::debug::resync_after_save(ed, &path);
+            crate::command::builtin::vc_blame::refresh_blame_after_save(ed, &path);
             ed.show_message(crate::state::MessageKind::Info, "saved");
         }
         BackgroundEvent::SaveFailed { buf_key, error } => {

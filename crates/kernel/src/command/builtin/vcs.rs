@@ -110,7 +110,7 @@ pub(super) fn register(editor: &mut Editor) {
         "vc-blame",
         "Annotate the current file with per-line blame as editor decorations",
         vec![],
-        |editor, _args| vc_blame(editor),
+        |editor, _args| super::vc_blame::vc_blame(editor),
     );
 
     cmds.register_fn(
@@ -140,61 +140,6 @@ enum VcShow {
     Push,
 }
 
-/// Annotate the current buffer with per-line blame information rendered as
-/// `LinePrefix` text decorations (F-24).  Toggles: a second invocation
-/// clears the layer.
-pub(crate) fn vc_blame(editor: &mut Editor) -> CommandResult {
-    let buf_id = get_current_buffer_id(editor);
-    let path = editor
-        .buffers
-        .get(buf_id)
-        .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())
-        .ok_or_else(|| "current buffer has no file path".to_string())?;
-
-    let dir = vc_working_dir(editor);
-    let (backend_idx, root) = match editor.vc.detect_for(&dir) {
-        Some(v) => v,
-        None => return Err("No version-control repository found".to_string()),
-    };
-    editor.vc.active_backend = Some(backend_idx);
-    editor.vc.active_backend_name = Some(editor.vc.backends[backend_idx].name().to_string());
-    editor.vc.repo_root = Some(root.clone());
-
-    let backend = editor.vc.active_backend_name.clone().unwrap();
-    // Toggle off if already annotated.
-    let already = editor
-        .view_of_buffer(buf_id)
-        .map(|v| v.decor_count_layer("vc-blame") > 0)
-        .unwrap_or(false);
-    if already {
-        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-            view.decor_clear_layer("vc-blame");
-        }
-        editor.frame_dirty = true;
-        return Ok(());
-    }
-
-    let output = crate::vc::run_op(&root, &backend, &crate::vc::VcRemoteOp::Blame(path))?;
-    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-        view.decor_clear_layer("vc-blame");
-    }
-    for (i, line) in output.lines().enumerate() {
-        let annotation = line
-            .split('\t')
-            .next()
-            .unwrap_or(line)
-            .trim_end()
-            .to_string();
-        if annotation.is_empty() {
-            continue;
-        }
-        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-            view.decor_set_prefix("vc-blame", i, annotation, "comment-face".to_string());
-        }
-    }
-    editor.frame_dirty = true;
-    Ok(())
-}
 /// Launch the configured merge tool (git mergetool) to resolve conflicts.
 pub(crate) fn vc_merge_tool(editor: &mut Editor, path: Option<String>) -> CommandResult {
     let dir = vc_working_dir(editor);

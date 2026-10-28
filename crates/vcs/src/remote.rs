@@ -102,7 +102,7 @@ pub fn run_op(root: &Path, backend_name: &str, op: &VcRemoteOp) -> Result<String
         VcRemoteOp::Diff(file) => backend.diff(root, file.as_deref()),
         VcRemoteOp::Log => backend.log(root, 30),
         VcRemoteOp::Push => backend.push(root),
-        VcRemoteOp::Blame(path) => backend.blame(root, path),
+        VcRemoteOp::Blame(path) => Ok(crate::serialize_blame(&backend.blame(root, path)?)),
         VcRemoteOp::Commit(message) => backend.commit(root, message).map(|_| String::new()),
         VcRemoteOp::StagePatch(patch) => backend.stage_patch(root, patch).map(|_| String::new()),
         VcRemoteOp::DiscardPatch(patch) => {

@@ -138,7 +138,6 @@ enum VcShow {
     Diff(Option<String>),
     Log,
     Push,
-    Blame(String),
 }
 
 /// Annotate the current buffer with per-line blame information rendered as
@@ -296,7 +295,7 @@ pub(crate) fn vc_refresh(editor: &mut Editor) -> CommandResult {
     Ok(())
 }
 
-/// Show output (diff, log, push result, blame) in a read-only buffer.  A
+/// Show output (diff, log, push result) in a read-only buffer.  A
 /// single file's diff opens the side-by-side view (per-hunk actions); the
 /// whole-tree diff stays a plain read-only view.
 fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
@@ -305,7 +304,6 @@ fn vc_show(editor: &mut Editor, show: VcShow) -> CommandResult {
         VcShow::Diff(None) => ("*vc-diff-all*", crate::vc::VcRemoteOp::Diff(None)),
         VcShow::Log => ("*vc-log*", crate::vc::VcRemoteOp::Log),
         VcShow::Push => ("*vc-push*", crate::vc::VcRemoteOp::Push),
-        VcShow::Blame(path) => ("*vc-blame*", crate::vc::VcRemoteOp::Blame(path)),
     };
     vc_spawn_op(editor, remote, Some(name), false)
 }

@@ -1,7 +1,7 @@
 //! Overlay sync for the refresh pass: hover card, completion, quickfix,
 //! minimap, breadcrumb option, dialog chrome, and the IME cursor anchor.
 
-use crate::{AppState, AppWindow, pane, projection};
+use crate::{AppState, AppWindow, pane};
 
 pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     let ed = &mut state.editor;

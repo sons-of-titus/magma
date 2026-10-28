@@ -1,4 +1,4 @@
-use crate::theme::{Palette, Rgb, Syntax, TerminalPalette};
+use crate::theme::{Palette, Syntax, TerminalPalette};
 
 pub fn palette(name: &str) -> Palette {
     match name {

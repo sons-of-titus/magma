@@ -35,6 +35,42 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_dock_resized(move |delta| {
+            let mut s = state.borrow_mut();
+            s.bottom_height = (s.bottom_height + delta).clamp(120.0, 560.0);
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_dock_resize_reset(move || {
+            let mut s = state.borrow_mut();
+            s.bottom_height = 240.0;
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_output_clear(move || {
+            let mut s = state.borrow_mut();
+            s.editor.last_task = None;
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_output_toggle_follow(move || {
+            let mut s = state.borrow_mut();
+            s.output_follow = !s.output_follow;
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_close_bottom(move || {
             let mut s = state.borrow_mut();
             s.bottom = -1;

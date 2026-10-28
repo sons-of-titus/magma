@@ -7,14 +7,8 @@ use kernel::render::surface::{Style, Surface};
 
 use crate::{AppState, AppWindow, pane};
 
-pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, ppx: f32) {
+pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, _ppx: f32) {
     let ed = &mut state.editor;
-    let focused_key = ed.focused_buffer_key();
-    let is_image = ed
-        .buffers
-        .get(focused_key)
-        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).image.is_some())
-        .unwrap_or(false);
 
     // Only re-blit and re-upload when the grid actually changed: status,
     // tabs, terminal output and other chrome updates do not touch it.

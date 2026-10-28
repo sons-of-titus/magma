@@ -1,10 +1,19 @@
 import { Theme } from "../theme.slint";
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Button } from "button.slint";
+import { Button, ToolbarIcon } from "button.slint";
+import { EmptyState } from "tool-window.slint";
 
 export struct FindRow {
     title: string,
     detail: string,
+    path: string,
+    line: int,
+}
+
+export struct ProblemRow {
+    severity: string,   // error | warning | info
+    message: string,
+    location: string,   // "file:line:col", already formatted
     path: string,
     line: int,
 }
@@ -16,39 +25,15 @@ export struct GitHistoryRow {
     message: string,
 }
 
-component HeaderAction inherits Rectangle {
-    in property <string> glyph;
-    in property <bool> danger: false;
-    in property <length> glyph-size: Theme.font-ui;
-    callback clicked();
-
-    width: 24px;
-    height: 22px;
-    border-radius: Theme.radius;
-    background: touch.has-hover ? (danger ? Theme.danger : Theme.fill-muted) : transparent;
-
-    Text {
-        text: root.glyph;
-        color: touch.has-hover ? Theme.text-primary : Theme.text-muted;
-        font-size: root.glyph-size;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
 component DockButton inherits Rectangle {
     in property <string> glyph;
     in property <string> label;
+    in property <int> count: -1;
     in property <bool> active: false;
     callback clicked();
 
-    width: label-text.preferred-width + 34px;
     height: 22px;
+    width: label-text.preferred-width + 30px + (root.count >= 0 ? 30px : 0px);
     border-radius: Theme.radius;
     background: active ? Theme.fill : (touch.has-hover ? Theme.fill-muted : transparent);
 
@@ -63,11 +48,28 @@ component DockButton inherits Rectangle {
     }
 
     label-text := Text {
-        x: 26px;
+        x: 25px;
         text: root.label;
         color: root.active ? Theme.text-primary : Theme.text-muted;
         font-size: Theme.font-small;
         vertical-alignment: center;
+    }
+
+    if root.count >= 0 : Rectangle {
+        x: label-text.x + label-text.preferred-width + 6px;
+        y: (root.height - 14px) / 2;
+        width: 24px;
+        height: 14px;
+        border-radius: 7px;
+        background: root.active ? Theme.fill-strong : Theme.fill-muted;
+        count-text := Text {
+            text: root.count;
+            color: Theme.text-muted;
+            font-size: 9px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
 
     touch := TouchArea {
@@ -78,6 +80,8 @@ component DockButton inherits Rectangle {
 
 export component BottomBar inherits Rectangle {
     in property <int> active: 0;
+    in property <int> problems-count: 0;
+    in property <int> terminal-count: 0;
     callback toggle(int);
 
     height: 26px;
@@ -98,20 +102,28 @@ export component BottomBar inherits Rectangle {
         DockButton {
             glyph: "\u{EA85}";
             label: "Terminal";
+            count: root.terminal-count > 0 ? root.terminal-count : -1;
             active: root.active == 0;
             clicked => { root.toggle(0); }
-        }
-        DockButton {
-            glyph: "\u{EA6D}";
-            label: "Find";
-            active: root.active == 1;
-            clicked => { root.toggle(1); }
         }
         DockButton {
             glyph: "\u{F0279}";
             label: "Output";
             active: root.active == 2;
             clicked => { root.toggle(2); }
+        }
+        DockButton {
+            glyph: "\u{EA6B}";
+            label: "Problems";
+            count: root.problems-count;
+            active: root.active == 4;
+            clicked => { root.toggle(4); }
+        }
+        DockButton {
+            glyph: "\u{EA6D}";
+            label: "Find";
+            active: root.active == 1;
+            clicked => { root.toggle(1); }
         }
         DockButton {
             glyph: "\u{F062C}";
@@ -223,22 +235,12 @@ export component TerminalView inherits Rectangle {
         }
     }
 
-    if sessions.length == 0 : Text {
-        width: 100%;
-        height: 100%;
-        text: "No terminal session. Start one to use the shell.";
-        color: Theme.text-faint;
-        font-size: Theme.font-small;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    if sessions.length == 0 : Button {
-        label: "Start Terminal";
-        width: 130px;
-        x: (root.width - 130px) / 2;
-        y: root.height / 2 + 18px;
-        primary: true;
-        clicked => { root.new-session(); }
+    if sessions.length == 0 : EmptyState {
+        glyph: "\u{EA85}";
+        title: "No terminal session";
+        detail: "Start one to use the shell.";
+        action-label: "Start Terminal";
+        action => { root.new-session(); }
     }
 
     if image.width > 0 : Image {
@@ -280,14 +282,10 @@ export component FindView inherits Rectangle {
 
     background: Theme.surface;
 
-    if rows.length == 0 : Text {
-        width: 100%;
-        height: 100%;
-        text: "No results. Run a build or search to fill this list.";
-        color: Theme.text-faint;
-        font-size: Theme.font-small;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    if rows.length == 0 : EmptyState {
+        glyph: "\u{EA6D}";
+        title: "No results";
+        detail: "Run a search to fill this list.";
     }
 
     ListView {
@@ -301,9 +299,11 @@ export component FindView inherits Rectangle {
                 color: Theme.text-secondary;
                 font-size: Theme.font-small;
                 vertical-alignment: center;
+                width: root.width * 0.4;
+                overflow: elide;
             }
             Text {
-                x: 300px;
+                x: root.width * 0.4 + 12px;
                 text: row.detail;
                 color: Theme.warning;
                 font-size: Theme.font-small;
@@ -320,90 +320,144 @@ export component FindView inherits Rectangle {
     }
 }
 
-export component OutputView inherits Rectangle {
-    in property <string> title;
-    in property <string> text;
-    in property <[FindRow]> rows;
+export component ProblemsView inherits Rectangle {
+    in property <[ProblemRow]> rows;
     callback open(string, int);
 
     background: Theme.surface;
 
-    if text == "" && rows.length == 0 : Text {
-        width: 100%;
-        height: 100%;
-        text: "No task output yet. Run, build, or test to fill this panel.";
-        color: Theme.text-faint;
-        font-size: Theme.font-small;
-        horizontal-alignment: left;
-        vertical-alignment: center;
+    if rows.length == 0 : EmptyState {
+        glyph: "\u{EA6B}";
+        title: "No problems";
+        detail: "Diagnostics from the language server and build tools land here.";
     }
 
-    HorizontalLayout {
-        if root.text != "" : ScrollView {
-            horizontal-stretch: 1;
-            vertical-stretch: 1;
+    ListView {
+        for row[i] in root.rows : Rectangle {
+            height: 22px;
+            background: touch.has-hover ? Theme.fill-muted : transparent;
+
             Text {
-                text: root.text;
-                color: Theme.text-secondary;
+                x: 10px;
+                width: 14px;
+                text: row.severity == "warning" ? "▲"
+                    : row.severity == "info" ? "ⓘ"
+                    : "✕";
+                color: row.severity == "warning" ? Theme.warning
+                    : row.severity == "info" ? Theme.accent
+                    : Theme.danger;
                 font-size: 11px;
-                wrap: no-wrap;
-                horizontal-alignment: left;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                x: 30px;
+                text: row.message;
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+                width: Math.max(80px, root.width - Math.min(360px, row-location.preferred-width + 46px));
+            }
+
+            row-location := Text {
+                x: root.width - self.preferred-width - 12px;
+                text: row.location;
+                color: Theme.text-faint;
+                font-family: Theme.font-mono;
+                font-size: 10px;
+                vertical-alignment: center;
+                overflow: elide;
+                width: Math.min(340px, root.width * 0.4);
+            }
+
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.open(row.path, row.line); }
+            }
+        }
+    }
+}
+
+export component OutputView inherits Rectangle {
+    in property <string> title;
+    in property <string> text;
+    in property <bool> follow: true;
+    callback clear();
+    callback toggle-follow();
+
+    background: Theme.surface;
+    property <length> header-h: title == "" ? 0px : 28px;
+
+    if title == "" && text == "" : EmptyState {
+        glyph: "\u{F0279}";
+        title: "No task output yet";
+        detail: "Run, build, or test to fill this panel.";
+    }
+
+    // ── Task header: name, clear, follow ─────────────────────────────────
+    if title != "" : Rectangle {
+        y: 0;
+        height: 28px;
+        background: Theme.chrome;
+
+        Rectangle {
+            y: parent.height - 1px;
+            height: 1px;
+            background: Theme.border;
+        }
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 6px;
+            spacing: 6px;
+            alignment: start;
+
+            Text {
+                text: root.title;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            ToolbarIcon {
+                y: (parent.height - self.height) / 2;
+                glyph: root.follow ? "↓" : "⏸";
+                tint: root.follow ? Theme.accent : Theme.text-muted;
+                clicked => { root.toggle-follow(); }
+            }
+            ToolbarIcon {
+                y: (parent.height - self.height) / 2;
+                glyph: "∅";
+                clicked => { root.clear(); }
+            }
+        }
+    }
+
+    ScrollView {
+        y: root.header-h;
+        height: root.height - root.header-h;
+        width: 100%;
+
+        changed content-height => {
+            if root.follow && self.content-height > self.height {
+                self.content-y = self.content-height - self.height;
             }
         }
 
-        if rows.length > 0 : Rectangle {
-            horizontal-stretch: 1;
-            background: Theme.surface-panel;
-
-            VerticalLayout {
-                Rectangle {
-                    height: 18px;
-                    Text {
-                        x: 8px;
-                        text: "PROBLEMS";
-                        color: Theme.text-faint;
-                        font-size: 10px;
-                        font-weight: 600;
-                        vertical-alignment: center;
-                    }
-                }
-
-                ListView {
-                    for row[i] in root.rows : Rectangle {
-                        height: 20px;
-                        background: touch.has-hover ? Theme.fill-muted : transparent;
-
-                        Text {
-                            x: 8px;
-                            text: "⚠";
-                            color: Theme.danger;
-                            font-size: Theme.font-small;
-                            vertical-alignment: center;
-                        }
-                        Text {
-                            x: 28px;
-                            text: row.title;
-                            color: Theme.text-primary;
-                            font-size: Theme.font-small;
-                            vertical-alignment: center;
-                        }
-                        Text {
-                            x: 220px;
-                            text: row.detail;
-                            color: Theme.warning;
-                            font-size: Theme.font-small;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            width: parent.width - self.x - 8px;
-                        }
-
-                        touch := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.open(row.path, row.line); }
-                        }
-                    }
-                }
-            }
+        Text {
+            x: 8px;
+            width: parent.width - 16px;
+            text: root.text;
+            color: Theme.text-secondary;
+            font-size: 11px;
+            font-family: Theme.font-mono;
+            wrap: no-wrap;
+            horizontal-alignment: left;
         }
     }
 }
@@ -412,14 +466,10 @@ export component HistoryView inherits Rectangle {
     in property <[GitHistoryRow]> rows;
     background: Theme.surface;
 
-    if rows.length == 0 : Text {
-        width: 100%;
-        height: 100%;
-        text: "No history. Open a repository to see commits.";
-        color: Theme.text-faint;
-        font-size: Theme.font-small;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    if rows.length == 0 : EmptyState {
+        glyph: "\u{F062C}";
+        title: "No history";
+        detail: "Open a repository to see commits.";
     }
 
     ListView {
@@ -433,6 +483,7 @@ export component HistoryView inherits Rectangle {
                 text: row.hash;
                 color: Theme.accent;
                 font-size: Theme.font-small;
+                font-family: Theme.font-mono;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -471,6 +522,7 @@ export component HistoryView inherits Rectangle {
 
 export component BottomDock inherits Rectangle {
     in property <int> tool: 0;
+    in property <length> dock-height: 240px;
     in property <string> title;
     in property <string> terminal-text;
     in property <image> terminal-image;
@@ -479,26 +531,57 @@ export component BottomDock inherits Rectangle {
     in property <[FindRow]> find-rows;
     in property <string> output-title;
     in property <string> output-text;
-    in property <[FindRow]> output-rows;
+    in property <bool> output-follow: true;
+    in property <[ProblemRow]> problems;
     in property <[GitHistoryRow]> git-history;
 
     callback close();
+    callback resized(length);
+    callback resize-reset();
     callback terminal-new();
     callback terminal-focus(int);
     callback terminal-close(int);
     callback terminal-scroll(length);
     callback find-open(string, int);
+    callback output-clear();
+    callback output-toggle-follow();
 
-    height: 200px;
+    height: root.dock-height;
     background: Theme.surface-panel;
 
+    // ── Resize handle: drag the top edge, double-click restores ─────────
+    Rectangle {
+        y: 0;
+        height: 5px;
+        background: resize-touch.has-hover || resize-touch.pressed
+            ? Theme.accent.transparentize(0.55) : transparent;
+
+        resize-touch := TouchArea {
+            mouse-cursor: ns-resize;
+            changed pressed-y => {
+                if self.pressed {
+                    root.resized(self.pressed-y - self.mouse-y);
+                }
+            }
+            double-clicked => { root.resize-reset(); }
+        }
+
+        Rectangle {
+            y: parent.height - 1px;
+            height: 1px;
+            background: Theme.border;
+        }
+    }
+
     VerticalLayout {
+        padding-top: 4px;
+
+        // ── Contextual header: active tool + its actions ─────────────────
         Rectangle {
             height: 26px;
-            background: Theme.surface-panel;
 
             Text {
-                x: 8px;
+                x: 10px;
                 text: root.title;
                 color: Theme.text-muted;
                 font-size: Theme.font-small;
@@ -506,20 +589,29 @@ export component BottomDock inherits Rectangle {
                 vertical-alignment: center;
             }
 
-            if root.tool == 0 : HeaderAction {
-                x: root.width - 52px;
-                y: 2px;
-                glyph: "+";
-                glyph-size: Theme.font-icon;
-                clicked => { root.terminal-new(); }
-            }
+            HorizontalLayout {
+                padding-right: 6px;
+                spacing: 2px;
+                alignment: end;
 
-            HeaderAction {
-                x: root.width - 28px;
-                y: 2px;
-                glyph: "×";
-                danger: true;
-                clicked => { root.close(); }
+                if root.tool == 0 : ToolbarIcon {
+                    y: 2px;
+                    glyph: "+";
+                    tint: Theme.text-muted;
+                    clicked => { root.terminal-new(); }
+                }
+                if root.tool == 2 && root.output-title != "" : ToolbarIcon {
+                    y: 2px;
+                    glyph: "∅";
+                    clicked => { root.output-clear(); }
+                }
+
+                ToolbarIcon {
+                    y: 2px;
+                    glyph: "×";
+                    tint: Theme.text-muted;
+                    clicked => { root.close(); }
+                }
             }
 
             Rectangle {
@@ -546,11 +638,16 @@ export component BottomDock inherits Rectangle {
         if tool == 2 : OutputView {
             title: root.output-title;
             text: root.output-text;
-            rows: root.output-rows;
-            open(path, line) => { root.find-open(path, line); }
+            follow: root.output-follow;
+            clear => { root.output-clear(); }
+            toggle-follow => { root.output-toggle-follow(); }
         }
         if tool == 3 : HistoryView {
             rows: root.git-history;
+        }
+        if tool == 4 : ProblemsView {
+            rows: root.problems;
+            open(path, line) => { root.find-open(path, line); }
         }
     }
 }

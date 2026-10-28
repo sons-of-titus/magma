@@ -21,7 +21,6 @@ use crate::pane;
 use crate::{AppState, AppWindow, TabItem, logical_size, projection, theme};
 use kernel::project::tree::{build, collect_dirs};
 use kernel::render::CursorPaint;
-use kernel::render::surface::{Style, Surface};
 use kernel::render::tabs;
 use kernel::state::Editor;
 
@@ -65,8 +64,6 @@ pub(crate) fn revision_of(editor: &Editor) -> u64 {
         .map(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).revision())
         .sum()
 }
-
-pub(crate) use render::sync_pane_images;
 
 pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let Some(app) = weak.upgrade() else { return };
@@ -152,7 +149,6 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     }
     sync_viewport_scroll(ed);
     render_frame_with(ed, &mut state.surface, CursorPaint::Stamp { visible: true });
-    drop(ed);
     render::sync_pane_images(&app, state, ppx);
     let ed = &mut state.editor;
     let focused = ed.view_tree.focused_window();
@@ -221,12 +217,15 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     app.set_pane_message(projection::pane_message(ed).as_str().into());
 
     app.set_bottom_tool(state.bottom);
+    app.set_bottom_problems_count(ed.quickfix_list.len() as i32);
+    app.set_bottom_terminal_count(ed.io.terminals.sessions.len() as i32);
     app.set_bottom_title(
         match state.bottom {
             0 => "Terminal",
             1 => "Find in Files",
             2 => "Output",
             3 => "Git History",
+            4 => "Problems",
             _ => "",
         }
         .into(),
@@ -324,9 +323,11 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let (output_title, output_text) = projection::output(ed);
     app.set_output_title(output_title.as_str().into());
     app.set_output_text(output_text.as_str().into());
-    app.set_output_rows(slint::ModelRc::new(slint::VecModel::from(
-        projection::output_rows(ed),
+    app.set_problems(slint::ModelRc::new(slint::VecModel::from(
+        projection::problem_rows(ed),
     )));
+    app.set_dock_height(state.bottom_height);
+    app.set_output_follow(state.output_follow);
     app.set_git_history(ModelRc::new(VecModel::from(state.git_history.clone())));
     app.set_status_mode(projection::status_mode(ed).as_str().into());
     app.set_recents(ModelRc::new(VecModel::from(
@@ -336,7 +337,6 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             .collect::<Vec<slint::SharedString>>(),
     )));
     let now_welcome = ed.project_manager.project.root.is_none();
-    drop(ed);
     if now_welcome != state.welcome_visible {
         state.welcome_visible = now_welcome;
         if now_welcome {

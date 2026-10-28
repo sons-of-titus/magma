@@ -12,7 +12,7 @@ import { DebuggerPanel } from "components/debugger-panel.slint";
 import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
 import { StatusBar } from "components/status-bar.slint";
 import { EditorView } from "components/editor-view.slint";
-import { BottomBar, BottomDock, FindRow, GitHistoryRow } from "components/bottom-dock.slint";
+import { BottomBar, BottomDock, FindRow, GitHistoryRow, ProblemRow } from "components/bottom-dock.slint";
 import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.slint";
 import { Welcome } from "components/welcome.slint";
 import { SettingsView, SettingsRow } from "views/settings-view.slint";
@@ -97,7 +97,11 @@ export component AppWindow inherits Window {
     in property <[FindRow]> find-rows;
     in property <string> output-title;
     in property <string> output-text;
-    in property <[FindRow]> output-rows;
+    in property <[ProblemRow]> problems;
+    in property <int> bottom-problems-count: 0;
+    in property <int> bottom-terminal-count: 0;
+    in property <length> dock-height: 240px;
+    in property <bool> output-follow: true;
     in property <[GitHistoryRow]> git-history;
     in property <string> bottom-title;
 
@@ -111,6 +115,10 @@ export component AppWindow inherits Window {
     in property <length> agent-dock-width: 380px;
     in-out property <string> agent-prompt;
     in property <bool> agent-running;
+    in property <string> agent-phase: "ready";
+    in property <string> agent-phase-detail: "";
+    in property <string> agent-approval-summary: "";
+    in property <[string]> agent-files;
     in property <[string]> agent-models;
     in-out property <string> agent-provider: "openai";
     in-out property <string> agent-model: "gpt-4o-mini";
@@ -207,6 +215,10 @@ export component AppWindow inherits Window {
     callback commit();
     callback toggle-bottom(int);
     callback close-bottom();
+    callback dock-resized(length);
+    callback dock-resize-reset();
+    callback output-clear();
+    callback output-toggle-follow();
     callback terminal-new();
     callback terminal-focus(int);
     callback terminal-close(int);
@@ -225,6 +237,9 @@ export component AppWindow inherits Window {
     callback agent-stop();
     callback agent-select-session(int);
     callback agent-toggle-expanded(int);
+    callback agent-approve();
+    callback agent-decline();
+    callback agent-open-file(string);
     callback agent-provider-changed(string);
     callback agent-open-settings();
     callback agent-resized(length);
@@ -465,8 +480,15 @@ export component AppWindow inherits Window {
                 turns-left: root.agent-turns-left;
                 prompt <=> root.agent-prompt;
                 entry-count: root.agent-entries.length;
+                phase: root.agent-phase;
+                phase-detail: root.agent-phase-detail;
+                approval-summary: root.agent-approval-summary;
+                files: root.agent-files;
                 submit => { root.agent-submit(); }
                 stop => { root.agent-stop(); }
+                approve => { root.agent-approve(); }
+                decline => { root.agent-decline(); }
+                open-file(p) => { root.agent-open-file(p); }
                 select-session(id) => { root.agent-select-session(id); }
                 toggle-expanded(idx) => { root.agent-toggle-expanded(idx); }
                 provider-changed(v) => { root.agent-provider-changed(v); }
@@ -482,6 +504,7 @@ export component AppWindow inherits Window {
         // ── Bottom dock + bar ────────────────────────────────────────────
         if root.bottom-tool >= 0 : BottomDock {
             tool: root.bottom-tool;
+            dock-height: root.dock-height;
             title: root.bottom-title;
             terminal-text: root.terminal-text;
             terminal-image: root.terminal-image;
@@ -490,18 +513,25 @@ export component AppWindow inherits Window {
             find-rows: root.find-rows;
             output-title: root.output-title;
             output-text: root.output-text;
-            output-rows: root.output-rows;
+            output-follow: root.output-follow;
+            problems: root.problems;
             git-history: root.git-history;
             close => { root.close-bottom(); }
+            resized(d) => { root.dock-resized(d); }
+            resize-reset => { root.dock-resize-reset(); }
             terminal-new => { root.terminal-new(); }
             terminal-focus(i) => { root.terminal-focus(i); }
             terminal-close(i) => { root.terminal-close(i); }
             terminal-scroll(d) => { root.terminal-scroll(d); }
             find-open(path, line) => { root.find-open(path, line); }
+            output-clear => { root.output-clear(); }
+            output-toggle-follow => { root.output-toggle-follow(); }
         }
 
         BottomBar {
             active: root.bottom-tool;
+            problems-count: root.bottom-problems-count;
+            terminal-count: root.bottom-terminal-count;
             toggle(i) => { root.toggle-bottom(i); }
         }
 

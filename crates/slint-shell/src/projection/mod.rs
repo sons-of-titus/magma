@@ -8,7 +8,8 @@ mod debug_view;
 mod settings;
 
 pub use agent::{
-    active_session_id, agent_entries, agent_running, agent_session_chips, agent_turns_left,
+    active_session_id, agent_approval_summary, agent_entries, agent_files, agent_phase,
+    agent_phase_detail, agent_running, agent_session_chips, agent_turns_left,
 };
 pub use debug_view::snapshot as debug_snapshot;
 pub use settings::settings_rows;
@@ -18,7 +19,7 @@ use std::collections::HashSet;
 use kernel::project::tree::{FileNode, relative_to_project, segments, visible_rows};
 use kernel::state::{Editor, MessageKind};
 
-use crate::{ChangeRow, FindRow, MenuItem, TreeItem};
+use crate::{FindRow, MenuItem, ProblemRow, TreeItem};
 
 pub fn focused_key(ed: &Editor) -> Option<usize> {
     ed.view_tree
@@ -286,17 +287,15 @@ pub fn output(ed: &Editor) -> (String, String) {
     }
 }
 
-pub fn output_rows(ed: &Editor) -> Vec<FindRow> {
+pub fn problem_rows(ed: &Editor) -> Vec<ProblemRow> {
     ed.quickfix_list
         .iter()
-        .map(|entry| {
-            let short = entry.filename.rsplit('/').next().unwrap_or(&entry.filename);
-            FindRow {
-                title: format!("{}:{}  {}", short, entry.line, entry.message.trim_end()).into(),
-                detail: entry.message.clone().into(),
-                path: entry.filename.clone().into(),
-                line: entry.line as i32,
-            }
+        .map(|entry| ProblemRow {
+            severity: entry.severity.as_str().into(),
+            message: entry.message.trim_end().to_string().into(),
+            location: format!("{}:{}:{}", entry.filename, entry.line, entry.col).into(),
+            path: entry.filename.clone().into(),
+            line: entry.line as i32,
         })
         .collect()
 }
@@ -308,58 +307,6 @@ pub fn running_session(ed: &Editor) -> Option<u64> {
         .filter(|s| s.status == kernel::agent::AgentStatus::Running)
         .max_by_key(|s| s.id)
         .map(|s| s.id)
-}
-
-pub fn changes(ed: &Editor) -> Vec<ChangeRow> {
-    let Some(status) = &ed.vc.last_status else {
-        return Vec::new();
-    };
-    let mut rows = Vec::new();
-    for file in &status.staged {
-        rows.push(change_row(file, true, "staged"));
-    }
-    for file in &status.unstaged {
-        rows.push(change_row(file, false, "unstaged"));
-    }
-    for path in &status.untracked {
-        rows.push(ChangeRow {
-            path: path.clone().into(),
-            name: short_name(path).into(),
-            dir: dir_of(path).into(),
-            code: "?".into(),
-            kind: "untracked".into(),
-            staged: false,
-        });
-    }
-    for path in &status.conflicts {
-        rows.push(ChangeRow {
-            path: path.clone().into(),
-            name: short_name(path).into(),
-            dir: dir_of(path).into(),
-            code: "!".into(),
-            kind: "conflict".into(),
-            staged: false,
-        });
-    }
-    rows
-}
-
-fn change_row(file: &kernel::vc::FileStatus, staged: bool, kind: &str) -> ChangeRow {
-    ChangeRow {
-        path: file.path.clone().into(),
-        name: short_name(&file.path).into(),
-        dir: dir_of(&file.path).into(),
-        code: file.code.to_string().into(),
-        kind: kind.into(),
-        staged,
-    }
-}
-
-fn dir_of(path: &str) -> String {
-    match path.rfind('/') {
-        Some(i) => path[..i].to_string(),
-        None => String::new(),
-    }
 }
 
 pub fn recent_projects(ed: &Editor) -> Vec<String> {

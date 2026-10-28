@@ -17,7 +17,6 @@ use crate::{AppState, AppWindow, pane, sync::refresh};
 // (raw custom options).
 pub(super) const CATEGORY_APPEARANCE: i32 = 0;
 pub(super) const CATEGORY_AGENT: i32 = 3;
-pub(super) const CATEGORY_ADVANCED: i32 = 4;
 
 pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {

@@ -31,8 +31,6 @@ use kernel::workspace::{self, WorkspaceRuntime};
 use scripting;
 slint::include_modules!();
 
-const STATUS_TTL: Duration = Duration::from_secs(6);
-
 struct AppState {
     editor: Editor,
     bg_receiver: tokio::sync::mpsc::UnboundedReceiver<BackgroundEvent>,
@@ -55,6 +53,10 @@ struct AppState {
     tree_root: Option<PathBuf>,
     rail: i32,
     sidebar_open: bool,
+    /// Bottom dock height; the top-edge drag handle edits it.
+    bottom_height: f32,
+    /// Output pane follows the newest lines as they land.
+    output_follow: bool,
     /// Per-tool dock widths (project, commit, debug); the drag handle edits
     /// the active one.
     sidebar_widths: [f32; 3],
@@ -168,6 +170,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_root: None,
         rail: 0,
         sidebar_open: true,
+        bottom_height: 240.0,
+        output_follow: true,
         sidebar_widths: [240.0, 300.0, 420.0],
         debug_expanded: HashSet::new(),
         debug_scope_seen: None,

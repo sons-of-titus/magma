@@ -39,11 +39,13 @@ unsafe extern "C-unwind" fn c_overlay_create(argc: i32, argv: *mut Janet) -> Jan
 ///
 /// Remove the overlay with the given ID.  No-op if the ID does not exist.
 unsafe extern "C-unwind" fn c_overlay_destroy(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        ed.overlays.retain(|o| o.id != id);
-        conv::nil()
-    })
+    unsafe {
+        with_editor(|ed| {
+            let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+            ed.overlays.retain(|o| o.id != id);
+            conv::nil()
+        })
+    }
 }
 
 /// (editor/overlay-move id x y)
@@ -51,16 +53,18 @@ unsafe extern "C-unwind" fn c_overlay_destroy(argc: i32, argv: *mut Janet) -> Ja
 /// Move the overlay with the given ID to a new position.  No-op if the ID
 /// does not exist.
 unsafe extern "C-unwind" fn c_overlay_move(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let x = conv::get_int(argc, argv, 1).unwrap_or(0) as u16;
-        let y = conv::get_int(argc, argv, 2).unwrap_or(0) as u16;
-        if let Some(ov) = ed.overlays.iter_mut().find(|o| o.id == id) {
-            ov.x = x;
-            ov.y = y;
-        }
-        conv::nil()
-    })
+    unsafe {
+        with_editor(|ed| {
+            let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+            let x = conv::get_int(argc, argv, 1).unwrap_or(0) as u16;
+            let y = conv::get_int(argc, argv, 2).unwrap_or(0) as u16;
+            if let Some(ov) = ed.overlays.iter_mut().find(|o| o.id == id) {
+                ov.x = x;
+                ov.y = y;
+            }
+            conv::nil()
+        })
+    }
 }
 
 /// (editor/overlay-list) → [{:id n :x n :y n :width n :height n :z-order n} …]

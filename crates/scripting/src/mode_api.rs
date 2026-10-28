@@ -6,33 +6,35 @@ use evil_janet::*;
 
 /// Extract a Vec<String> from a Janet array or tuple of strings/keywords.
 unsafe fn janet_string_array(v: Janet) -> Vec<String> {
-    let n = if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
-        (&*janet_unwrap_array(v)).count
-    } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
-        (&*janet_tuple_head(janet_unwrap_tuple(v))).length
-    } else {
-        return Vec::new();
-    };
-    let mut out = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        let elem = if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
-            (&*janet_unwrap_array(v)).data.add(i as usize).read()
+    unsafe {
+        let n = if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
+            (&*janet_unwrap_array(v)).count
+        } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
+            (&*janet_tuple_head(janet_unwrap_tuple(v))).length
         } else {
-            janet_unwrap_tuple(v).add(i as usize).read()
+            return Vec::new();
         };
-        if janet_checktype(elem, JanetType_JANET_STRING) != 0
-            || janet_checktype(elem, JanetType_JANET_KEYWORD) != 0
-        {
-            let ptr = janet_unwrap_string(elem);
-            if !ptr.is_null() {
-                let s = std::ffi::CStr::from_ptr(ptr as *const i8)
-                    .to_string_lossy()
-                    .into_owned();
-                out.push(s);
+        let mut out = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let elem = if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
+                (&*janet_unwrap_array(v)).data.add(i as usize).read()
+            } else {
+                janet_unwrap_tuple(v).add(i as usize).read()
+            };
+            if janet_checktype(elem, JanetType_JANET_STRING) != 0
+                || janet_checktype(elem, JanetType_JANET_KEYWORD) != 0
+            {
+                let ptr = janet_unwrap_string(elem);
+                if !ptr.is_null() {
+                    let s = std::ffi::CStr::from_ptr(ptr as *const i8)
+                        .to_string_lossy()
+                        .into_owned();
+                    out.push(s);
+                }
             }
         }
+        out
     }
-    out
 }
 
 /// (editor/set-completions items &opt idx) → nil

@@ -36,9 +36,11 @@ unsafe fn call_in_registration_context(
     fn_val: Janet,
     arg: Janet,
 ) {
-    super::extension_api::with_context(ctx, || {
-        call_janet_fn_with_arg(fn_val, arg);
-    });
+    unsafe {
+        super::extension_api::with_context(ctx, || {
+            call_janet_fn_with_arg(fn_val, arg);
+        });
+    }
 }
 
 /// Call a Janet function with one argument outside any active fiber.

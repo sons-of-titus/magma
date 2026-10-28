@@ -20,44 +20,48 @@ use kernel::render::surface::Style;
 // ── gutter/add-provider ───────────────────────────────────────────────────────
 
 unsafe extern "C-unwind" fn c_add_provider(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        let Some(name) = conv::get_str(argc, argv, 0) else {
-            conv::signal_err("gutter/add-provider: name required")
-        };
-        let fn_name = conv::get_str(argc, argv, 1);
-        // Built-in names resolve to their native providers — a bare
-        // (gutter/add-provider ":breakpoints") must render live state, not
-        // an empty Janet cache.  A provider-fn (or an unknown name) stays
-        // a JanetProvider fed via gutter/provider-update.
-        let provider: Box<dyn kernel::render::gutter::GutterProvider> =
-            match (name.as_str(), fn_name.as_ref()) {
-                (":line-numbers", _) => Box::new(LineNumbers),
-                (":folding", _) => Box::new(Folding),
-                (":git-signs", None) => Box::new(GitSigns),
-                (":diagnostics", None) => Box::new(Diagnostics),
-                (":breakpoints", None) => Box::new(Breakpoints),
-                (":exec-line", None) => Box::new(ExecLine),
-                (":coverage", None) => Box::new(Coverage),
-                _ => Box::new(JanetProvider {
-                    provider_name: name,
-                    fn_name,
-                }),
+    unsafe {
+        with_editor(|ed| {
+            let Some(name) = conv::get_str(argc, argv, 0) else {
+                conv::signal_err("gutter/add-provider: name required")
             };
-        ed.gutter.add_provider(provider);
-        conv::nil()
-    })
+            let fn_name = conv::get_str(argc, argv, 1);
+            // Built-in names resolve to their native providers — a bare
+            // (gutter/add-provider ":breakpoints") must render live state, not
+            // an empty Janet cache.  A provider-fn (or an unknown name) stays
+            // a JanetProvider fed via gutter/provider-update.
+            let provider: Box<dyn kernel::render::gutter::GutterProvider> =
+                match (name.as_str(), fn_name.as_ref()) {
+                    (":line-numbers", _) => Box::new(LineNumbers),
+                    (":folding", _) => Box::new(Folding),
+                    (":git-signs", None) => Box::new(GitSigns),
+                    (":diagnostics", None) => Box::new(Diagnostics),
+                    (":breakpoints", None) => Box::new(Breakpoints),
+                    (":exec-line", None) => Box::new(ExecLine),
+                    (":coverage", None) => Box::new(Coverage),
+                    _ => Box::new(JanetProvider {
+                        provider_name: name,
+                        fn_name,
+                    }),
+                };
+            ed.gutter.add_provider(provider);
+            conv::nil()
+        })
+    }
 }
 
 // ── gutter/remove-provider ────────────────────────────────────────────────────
 
 unsafe extern "C-unwind" fn c_remove_provider(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        let Some(name) = conv::get_str(argc, argv, 0) else {
-            conv::signal_err("gutter/remove-provider: name required")
-        };
-        ed.gutter.remove_provider(&name);
-        conv::nil()
-    })
+    unsafe {
+        with_editor(|ed| {
+            let Some(name) = conv::get_str(argc, argv, 0) else {
+                conv::signal_err("gutter/remove-provider: name required")
+            };
+            ed.gutter.remove_provider(&name);
+            conv::nil()
+        })
+    }
 }
 
 // ── gutter/provider-update ────────────────────────────────────────────────────
@@ -152,15 +156,17 @@ unsafe extern "C-unwind" fn c_provider_list(_argc: i32, _argv: *mut Janet) -> Ja
 // ── gutter/set-fold-icons ─────────────────────────────────────────────────────
 
 unsafe extern "C-unwind" fn c_set_fold_icons(argc: i32, argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        let open = conv::get_str(argc, argv, 0).unwrap_or_else(|| "▾".to_string());
-        let closed = conv::get_str(argc, argv, 1).unwrap_or_else(|| "▸".to_string());
-        let face = conv::get_str(argc, argv, 2).unwrap_or_else(|| "fold-face".to_string());
-        ed.gutter.fold_icons.open = open;
-        ed.gutter.fold_icons.closed = closed;
-        ed.gutter.fold_icons.face = face;
-        conv::nil()
-    })
+    unsafe {
+        with_editor(|ed| {
+            let open = conv::get_str(argc, argv, 0).unwrap_or_else(|| "▾".to_string());
+            let closed = conv::get_str(argc, argv, 1).unwrap_or_else(|| "▸".to_string());
+            let face = conv::get_str(argc, argv, 2).unwrap_or_else(|| "fold-face".to_string());
+            ed.gutter.fold_icons.open = open;
+            ed.gutter.fold_icons.closed = closed;
+            ed.gutter.fold_icons.face = face;
+            conv::nil()
+        })
+    }
 }
 
 // ── gutter/set-line-number-format ─────────────────────────────────────────────

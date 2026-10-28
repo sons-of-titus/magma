@@ -30,28 +30,30 @@ unsafe fn len_seq(seq: Janet) -> i32 {
 }
 
 unsafe fn parse_highlight_val(v: Janet) -> (usize, usize, String) {
-    let start = janet_unwrap_integer(index_seq(v, 0)) as usize;
-    let end = janet_unwrap_integer(index_seq(v, 1)) as usize;
-    let face = if len_seq(v) >= 3 {
-        let fv = index_seq(v, 2);
-        if janet_checktype(fv, JanetType_JANET_STRING) != 0
-            || janet_checktype(fv, JanetType_JANET_KEYWORD) != 0
-        {
-            let ptr = janet_unwrap_string(fv);
-            if ptr.is_null() {
-                "highlight".to_string()
+    unsafe {
+        let start = janet_unwrap_integer(index_seq(v, 0)) as usize;
+        let end = janet_unwrap_integer(index_seq(v, 1)) as usize;
+        let face = if len_seq(v) >= 3 {
+            let fv = index_seq(v, 2);
+            if janet_checktype(fv, JanetType_JANET_STRING) != 0
+                || janet_checktype(fv, JanetType_JANET_KEYWORD) != 0
+            {
+                let ptr = janet_unwrap_string(fv);
+                if ptr.is_null() {
+                    "highlight".to_string()
+                } else {
+                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                        .to_string_lossy()
+                        .into_owned()
+                }
             } else {
-                std::ffi::CStr::from_ptr(ptr as *const i8)
-                    .to_string_lossy()
-                    .into_owned()
+                "highlight".to_string()
             }
         } else {
             "highlight".to_string()
-        }
-    } else {
-        "highlight".to_string()
-    };
-    (start, end, face)
+        };
+        (start, end, face)
+    }
 }
 
 unsafe fn parse_highlight_ranges(
@@ -59,18 +61,20 @@ unsafe fn parse_highlight_ranges(
     argv: *mut Janet,
     arg_idx: i32,
 ) -> Vec<(usize, usize, String)> {
-    if argc <= arg_idx {
-        return Vec::new();
+    unsafe {
+        if argc <= arg_idx {
+            return Vec::new();
+        }
+        let outer = argv.add(arg_idx as usize).read();
+        let n = len_seq(outer);
+        let mut ranges = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let inner = index_seq(outer, i);
+            let t = parse_highlight_val(inner);
+            ranges.push(t);
+        }
+        ranges
     }
-    let outer = argv.add(arg_idx as usize).read();
-    let n = len_seq(outer);
-    let mut ranges = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        let inner = index_seq(outer, i);
-        let t = parse_highlight_val(inner);
-        ranges.push(t);
-    }
-    ranges
 }
 
 unsafe extern "C-unwind" fn c_buffer_set_highlights(argc: i32, argv: *mut Janet) -> Janet {

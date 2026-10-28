@@ -10,88 +10,98 @@ use kernel::render::surface::Style;
 
 /// Look up a keyword key in a struct or table via janet_in.
 unsafe fn lookup(ds: Janet, key_name: &str) -> Janet {
-    janet_in(ds, conv::keyword(key_name))
+    unsafe { janet_in(ds, conv::keyword(key_name)) }
 }
 
 /// Extract an RGB triple from a Janet array or tuple value.
 unsafe fn rgb_from_val(v: Janet) -> Option<(u8, u8, u8)> {
-    if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
-        let arr = &*janet_unwrap_array(v);
-        if arr.count < 3 {
-            return None;
+    unsafe {
+        if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
+            let arr = &*janet_unwrap_array(v);
+            if arr.count < 3 {
+                return None;
+            }
+            let r = janet_unwrap_integer(arr.data.add(0).read()) as u8;
+            let g = janet_unwrap_integer(arr.data.add(1).read()) as u8;
+            let b = janet_unwrap_integer(arr.data.add(2).read()) as u8;
+            Some((r, g, b))
+        } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
+            let tup = janet_unwrap_tuple(v);
+            let head = &*janet_tuple_head(tup);
+            if head.length < 3 {
+                return None;
+            }
+            let r = janet_unwrap_integer(tup.add(0).read()) as u8;
+            let g = janet_unwrap_integer(tup.add(1).read()) as u8;
+            let b = janet_unwrap_integer(tup.add(2).read()) as u8;
+            Some((r, g, b))
+        } else {
+            None
         }
-        let r = janet_unwrap_integer(arr.data.add(0).read()) as u8;
-        let g = janet_unwrap_integer(arr.data.add(1).read()) as u8;
-        let b = janet_unwrap_integer(arr.data.add(2).read()) as u8;
-        Some((r, g, b))
-    } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
-        let tup = janet_unwrap_tuple(v);
-        let head = &*janet_tuple_head(tup);
-        if head.length < 3 {
-            return None;
-        }
-        let r = janet_unwrap_integer(tup.add(0).read()) as u8;
-        let g = janet_unwrap_integer(tup.add(1).read()) as u8;
-        let b = janet_unwrap_integer(tup.add(2).read()) as u8;
-        Some((r, g, b))
-    } else {
-        None
     }
 }
 
 unsafe fn arr_from_ds(ds: Janet, key: &str) -> Option<(u8, u8, u8)> {
-    let v = lookup(ds, key);
-    rgb_from_val(v)
+    unsafe {
+        let v = lookup(ds, key);
+        rgb_from_val(v)
+    }
 }
 
 unsafe fn bool_from_ds(ds: Janet, key: &str) -> Option<bool> {
-    let v = lookup(ds, key);
-    if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 {
-        return None;
+    unsafe {
+        let v = lookup(ds, key);
+        if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 {
+            return None;
+        }
+        Some(janet_unwrap_boolean(v) != 0)
     }
-    Some(janet_unwrap_boolean(v) != 0)
 }
 
 unsafe fn parse_style(v: Janet) -> Style {
-    let is_ds = janet_checktype(v, JanetType_JANET_STRUCT) != 0
-        || janet_checktype(v, JanetType_JANET_TABLE) != 0;
-    if !is_ds {
-        return Style::default();
-    }
-    let default = Style::default();
-    Style {
-        fg: arr_from_ds(v, "fg").unwrap_or(default.fg),
-        bg: arr_from_ds(v, "bg").unwrap_or(default.bg),
-        bold: bool_from_ds(v, "bold").unwrap_or(default.bold),
-        italic: bool_from_ds(v, "italic").unwrap_or(default.italic),
-        underline: bool_from_ds(v, "underline").unwrap_or(default.underline),
-        strikethrough: bool_from_ds(v, "strikethrough").unwrap_or(default.strikethrough),
-        dim: bool_from_ds(v, "dim").unwrap_or(default.dim),
+    unsafe {
+        let is_ds = janet_checktype(v, JanetType_JANET_STRUCT) != 0
+            || janet_checktype(v, JanetType_JANET_TABLE) != 0;
+        if !is_ds {
+            return Style::default();
+        }
+        let default = Style::default();
+        Style {
+            fg: arr_from_ds(v, "fg").unwrap_or(default.fg),
+            bg: arr_from_ds(v, "bg").unwrap_or(default.bg),
+            bold: bool_from_ds(v, "bold").unwrap_or(default.bold),
+            italic: bool_from_ds(v, "italic").unwrap_or(default.italic),
+            underline: bool_from_ds(v, "underline").unwrap_or(default.underline),
+            strikethrough: bool_from_ds(v, "strikethrough").unwrap_or(default.strikethrough),
+            dim: bool_from_ds(v, "dim").unwrap_or(default.dim),
+        }
     }
 }
 
 unsafe fn style_to_table(s: &Style) -> Janet {
-    let fg_arr = janet_array(3);
-    janet_array_push(fg_arr, conv::integer(s.fg.0 as i32));
-    janet_array_push(fg_arr, conv::integer(s.fg.1 as i32));
-    janet_array_push(fg_arr, conv::integer(s.fg.2 as i32));
-    let bg_arr = janet_array(3);
-    janet_array_push(bg_arr, conv::integer(s.bg.0 as i32));
-    janet_array_push(bg_arr, conv::integer(s.bg.1 as i32));
-    janet_array_push(bg_arr, conv::integer(s.bg.2 as i32));
-    let tbl = janet_table(7);
-    janet_table_put(tbl, conv::keyword("fg"), janet_wrap_array(fg_arr));
-    janet_table_put(tbl, conv::keyword("bg"), janet_wrap_array(bg_arr));
-    janet_table_put(tbl, conv::keyword("bold"), conv::boolean(s.bold));
-    janet_table_put(tbl, conv::keyword("italic"), conv::boolean(s.italic));
-    janet_table_put(tbl, conv::keyword("underline"), conv::boolean(s.underline));
-    janet_table_put(
-        tbl,
-        conv::keyword("strikethrough"),
-        conv::boolean(s.strikethrough),
-    );
-    janet_table_put(tbl, conv::keyword("dim"), conv::boolean(s.dim));
-    janet_wrap_table(tbl)
+    unsafe {
+        let fg_arr = janet_array(3);
+        janet_array_push(fg_arr, conv::integer(s.fg.0 as i32));
+        janet_array_push(fg_arr, conv::integer(s.fg.1 as i32));
+        janet_array_push(fg_arr, conv::integer(s.fg.2 as i32));
+        let bg_arr = janet_array(3);
+        janet_array_push(bg_arr, conv::integer(s.bg.0 as i32));
+        janet_array_push(bg_arr, conv::integer(s.bg.1 as i32));
+        janet_array_push(bg_arr, conv::integer(s.bg.2 as i32));
+        let tbl = janet_table(7);
+        janet_table_put(tbl, conv::keyword("fg"), janet_wrap_array(fg_arr));
+        janet_table_put(tbl, conv::keyword("bg"), janet_wrap_array(bg_arr));
+        janet_table_put(tbl, conv::keyword("bold"), conv::boolean(s.bold));
+        janet_table_put(tbl, conv::keyword("italic"), conv::boolean(s.italic));
+        janet_table_put(tbl, conv::keyword("underline"), conv::boolean(s.underline));
+        janet_table_put(
+            tbl,
+            conv::keyword("strikethrough"),
+            conv::boolean(s.strikethrough),
+        );
+        janet_table_put(tbl, conv::keyword("dim"), conv::boolean(s.dim));
+        janet_wrap_table(tbl)
+    }
 }
 
 /// (editor/define-face name {:fg [r g b] :bg [r g b] :bold bool :italic bool

@@ -238,7 +238,6 @@ fn load_system_font(family: &str) -> Option<Vec<u8>> {
                     fontdb::Source::SharedFile(_, data) => {
                         return Some(data.as_ref().as_ref().to_vec());
                     }
-                    _ => {}
                 }
             }
         }

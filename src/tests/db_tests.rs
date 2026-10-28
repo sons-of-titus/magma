@@ -307,7 +307,7 @@ fn cancel_without_connection_reports_cleanly() {
 fn console_opens_a_sql_mode_buffer_in_the_editor() {
     let mut ed = editor();
     execute_command(&mut ed, "db-console", &args(&[])).unwrap();
-    let (name, mode) = ed
+    let (_name, mode) = ed
         .buffers
         .iter()
         .map(|(_, a)| {

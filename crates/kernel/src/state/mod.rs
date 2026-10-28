@@ -393,18 +393,13 @@ impl Editor {
             let buf_id = crate::input::focused_buffer_id(self);
             if let Some(arc) = self.buffers.get(buf_id) {
                 let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+                // Line lookup through the line index — the old prefix-scan
+                // form copied the whole document on every painted frame.
                 let a_line = sel.anchor;
-                let c_line = buf.slice(0, cursor).chars().filter(|&c| c == '\n').count();
+                let c_line = buf.position_of(cursor.min(buf.len())).line;
                 let (first, last) = (a_line.min(c_line), a_line.max(c_line));
                 let start = buf.line_start_offset(first).unwrap_or(0);
-                let end = buf
-                    .line_start_offset(last)
-                    .map(|o| {
-                        let text = buf.slice(o, buf.len());
-                        let line_text = text.split('\n').next().unwrap_or("");
-                        o + line_text.len() + 1
-                    })
-                    .unwrap_or(buf.len());
+                let end = buf.line_start_offset(last + 1).unwrap_or(buf.len());
                 return Some((start, end.min(buf.len())));
             }
         }

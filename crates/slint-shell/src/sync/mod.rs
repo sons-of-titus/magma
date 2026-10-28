@@ -5,6 +5,7 @@
 //! (hover/completion/quickfix/minimap) so each surface owns its sync.
 
 mod agent;
+mod db;
 mod overlays;
 mod render;
 mod tool_windows;
@@ -359,6 +360,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     agent::sync(&app, state);
     tool_windows::sync_commit(&app, &mut state.editor, &state.message);
     tool_windows::sync_debug(&app, state);
+    db::sync(&app, state);
 
     app.set_menu_visible(state.menu_visible);
     app.set_menu_x(state.menu_x);

@@ -4,12 +4,17 @@
 //! the shell's `refresh` a straight assignment pass.
 
 mod agent;
+mod db;
 mod debug_view;
 mod settings;
 
 pub use agent::{
     active_session_id, agent_approval_summary, agent_entries, agent_files, agent_phase,
     agent_phase_detail, agent_running, agent_session_chips, agent_turns_left,
+};
+pub use db::{
+    db_active_source_name, db_columns, db_connected_label, db_elapsed, db_row_count, db_rows,
+    db_sources, db_status, db_tree,
 };
 pub use debug_view::snapshot as debug_snapshot;
 pub use settings::settings_rows;

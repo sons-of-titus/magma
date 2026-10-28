@@ -6,6 +6,7 @@
 //! editor input, docks, the agent tool window, and dialogs/settings.
 
 mod agent;
+mod db;
 mod debug;
 mod dock;
 mod editor;
@@ -19,6 +20,7 @@ use crate::AppState;
 pub(crate) fn install(app: &crate::AppWindow, state: Rc<RefCell<AppState>>) {
     editor::install(&app, Rc::clone(&state));
     dock::install(&app, Rc::clone(&state));
+    db::install(&app, Rc::clone(&state));
     debug::install(&app, Rc::clone(&state));
     agent::install(&app, Rc::clone(&state));
     settings::install(&app, Rc::clone(&state));

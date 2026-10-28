@@ -9,6 +9,8 @@ import { Breadcrumb } from "components/breadcrumb.slint";
 import { ProjectTree, TreeItem } from "components/project-tree.slint";
 import { CommitPanel, ChangeRow } from "components/commit-panel.slint";
 import { DebuggerPanel } from "components/debugger-panel.slint";
+import { DatabasePanel, DbTreeRow, DbColumn, DbRow, FormButton as DialogButton } from "components/database-panel.slint";
+import { Field } from "components/controls.slint";
 import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
 import { StatusBar } from "components/status-bar.slint";
 import { EditorView } from "components/editor-view.slint";
@@ -50,6 +52,25 @@ export component AppWindow inherits Window {
     // ── Left dock ────────────────────────────────────────────────────────
     in property <int> active-rail: 0;
     in property <bool> sidebar-open: true;
+    in property <bool> db-open: false;
+    in property <length> db-height: 340px;
+    in property <[string]> db-sources;
+    in property <string> db-active-source;
+    in property <bool> db-connected: false;
+    in property <string> db-connected-label;
+    in property <bool> db-busy: false;
+    in property <bool> db-form-open: false;
+    in-out property <string> db-form-name;
+    in-out property <string> db-form-path;
+    in property <string> db-form-note;
+    in property <[DbTreeRow]> db-tree;
+    in property <[DbColumn]> db-columns;
+    in property <[DbRow]> db-rows;
+    in property <string> db-status;
+    in property <bool> db-status-error: false;
+    in property <bool> db-truncated: false;
+    in property <string> db-row-count;
+    in property <string> db-elapsed;
     in property <length> sidebar-width: 300px;
     in property <[TreeItem]> tree;
     in property <string> tree-title: "Project";
@@ -204,6 +225,20 @@ export component AppWindow inherits Window {
     callback tab-closed(int);
     callback tree-clicked(string);
     callback rail-selected(int);
+    callback db-toggle();
+    callback db-resized(length);
+    callback db-open-console();
+    callback db-source-changed(string);
+    callback db-connect-toggle();
+    callback db-refresh-schema();
+    callback db-form-opened();
+    callback db-form-cancelled();
+    callback db-source-created(string, string);
+    callback db-test-connection(string, string);
+    callback db-toggle-table(int);
+    callback db-table-opened(int);
+    callback db-run-query();
+    callback db-cancel-query();
     callback sidebar-refresh();
     callback sidebar-collapse();
     callback sidebar-resized(length);
@@ -453,8 +488,8 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Drag handle: resize the agent dock between editor and dock.
-            if root.agent-open : Rectangle {
+            // Drag handle: resize the right tool column (Agent, Database).
+            if root.agent-open || root.db-open : Rectangle {
                 width: 5px;
                 TouchArea {
                     mouse-cursor: ew-resize;
@@ -495,9 +530,75 @@ export component AppWindow inherits Window {
                 open-settings => { root.agent-open-settings(); }
             }
 
+            // Vertical handle between the Agent dock and the Database tool.
+            if root.agent-open && root.db-open : Rectangle {
+                height: 5px;
+                TouchArea {
+                    mouse-cursor: ns-resize;
+                    moved => {
+                        root.db-resized(self.pressed-y - self.mouse-y);
+                    }
+                }
+            }
+
+            if root.db-open && root.agent-open : DatabasePanel {
+                height: root.db-height;
+                width: root.agent-dock-width;
+                sources: root.db-sources;
+                active-source: root.db-active-source;
+                connected: root.db-connected;
+                connected-label: root.db-connected-label;
+                busy: root.db-busy;
+                tree: root.db-tree;
+                columns: root.db-columns;
+                rows: root.db-rows;
+                status: root.db-status;
+                status-error: root.db-status-error;
+                truncated: root.db-truncated;
+                row-count: root.db-row-count;
+                elapsed: root.db-elapsed;
+                source-changed(v) => { root.db-source-changed(v); }
+                connect-toggle => { root.db-connect-toggle(); }
+                refresh => { root.db-refresh-schema(); }
+                form-opened => { root.db-form-opened(); }
+                open-console => { root.db-open-console(); }
+                toggle-table(i) => { root.db-toggle-table(i); }
+                table-opened(i) => { root.db-table-opened(i); }
+                run => { root.db-run-query(); }
+                cancel-query => { root.db-cancel-query(); }
+            }
+            if root.db-open && !root.agent-open : DatabasePanel {
+                vertical-stretch: 1;
+                width: root.agent-dock-width;
+                sources: root.db-sources;
+                active-source: root.db-active-source;
+                connected: root.db-connected;
+                connected-label: root.db-connected-label;
+                busy: root.db-busy;
+                tree: root.db-tree;
+                columns: root.db-columns;
+                rows: root.db-rows;
+                status: root.db-status;
+                status-error: root.db-status-error;
+                truncated: root.db-truncated;
+                row-count: root.db-row-count;
+                elapsed: root.db-elapsed;
+                source-changed(v) => { root.db-source-changed(v); }
+                connect-toggle => { root.db-connect-toggle(); }
+                refresh => { root.db-refresh-schema(); }
+                form-opened => { root.db-form-opened(); }
+                open-console => { root.db-open-console(); }
+                toggle-table(i) => { root.db-toggle-table(i); }
+                table-opened(i) => { root.db-table-opened(i); }
+                run => { root.db-run-query(); }
+                cancel-query => { root.db-cancel-query(); }
+            }
+
             RightRail {
-                open: root.agent-open;
-                toggled => { root.agent-toggle(); }
+                agent-open: root.agent-open;
+                db-open: root.db-open;
+                agent-toggled => { root.agent-toggle(); }
+                db-toggled => { root.db-toggle(); }
             }
         }
 
@@ -606,6 +707,82 @@ export component AppWindow inherits Window {
         apply-agent-settings => { root.apply-agent-settings(); }
         close => { root.settings-visible = false; }
         command(cmd) => { root.command(cmd); }
+    }
+
+    // ── Database connection dialog ───────────────────────────────────────
+    if root.db-form-open : Rectangle {
+        background: #00000066;
+
+        // Backdrop click dismisses, like the other dialogs.
+        TouchArea { clicked => { root.db-form-cancelled(); } }
+
+        Rectangle {
+            width: 400px;
+            height: dlg.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Theme.chrome;
+            border-radius: Theme.radius-pill;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 18px;
+            drop-shadow-color: #00000077;
+            drop-shadow-offset-y: 6px;
+
+            dlg := VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: "New Database Connection";
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.db-form-note;
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        width: 160px;
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 3px;
+                    Text { text: "Name"; color: Theme.text-faint; font-size: 10px; font-weight: 600; }
+                    Field {
+                        placeholder: "e.g. app-db";
+                        text <=> root.db-form-name;
+                        accepted => { root.db-source-created(root.db-form-name, root.db-form-path); }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 3px;
+                    Text { text: "SQLite database file"; color: Theme.text-faint; font-size: 10px; font-weight: 600; }
+                    Field {
+                        placeholder: "/path/to/database.sqlite";
+                        text <=> root.db-form-path;
+                        accepted => { root.db-source-created(root.db-form-name, root.db-form-path); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    DialogButton { label: "Test"; clicked => { root.db-test-connection(root.db-form-name, root.db-form-path); } }
+                    DialogButton { label: "Add and Connect"; primary: true;
+                        clicked => { root.db-source-created(root.db-form-name, root.db-form-path); } }
+                    DialogButton { label: "Cancel"; clicked => { root.db-form-cancelled(); } }
+                }
+            }
+        }
     }
 
     // ── Dialog overlay ───────────────────────────────────────────────────

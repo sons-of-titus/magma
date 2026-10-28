@@ -6,10 +6,14 @@
 //! every other frontend uses.
 
 mod actions;
+mod catppuccin;
+mod dracula;
 mod input;
 mod new_palettes;
+mod noctis;
 mod palettes;
 mod pane;
+mod tokyo_night;
 mod projection;
 mod sync;
 mod theme;
@@ -61,6 +65,12 @@ struct AppState {
     /// the active one.
     sidebar_widths: [f32; 3],
     /// DAP variablesReferences the user opened in the variables tree.
+    /// The Database tool window on the right, beneath the Agent dock.
+    db_open: bool,
+    db_height: f32,
+    db_form_open: bool,
+    db_form_note: String,
+    db_expanded: HashSet<usize>,
     debug_expanded: HashSet<i64>,
     /// The scope reference those expansions belong to; a new stop resets.
     debug_scope_seen: Option<i64>,
@@ -173,6 +183,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bottom_height: 240.0,
         output_follow: true,
         sidebar_widths: [240.0, 300.0, 420.0],
+        db_open: false,
+        db_height: 340.0,
+        db_form_open: false,
+        db_form_note: String::new(),
+        db_expanded: HashSet::new(),
         debug_expanded: HashSet::new(),
         debug_scope_seen: None,
         debug_ref_slots: Vec::new(),

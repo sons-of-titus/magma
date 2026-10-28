@@ -72,8 +72,10 @@ export component ToolRail inherits Rectangle {
 }
 
 export component RightRail inherits Rectangle {
-    in property <bool> open: false;
-    callback toggled();
+    in property <bool> agent-open: false;
+    in property <bool> db-open: false;
+    callback agent-toggled();
+    callback db-toggled();
 
     width: Theme.rail-width;
     background: Theme.chrome;
@@ -86,8 +88,14 @@ export component RightRail inherits Rectangle {
         RailButton {
             glyph: "\u{EC20}";
             name: "Agent";
-            active: root.open;
-            clicked => { root.toggled(); }
+            active: root.agent-open;
+            clicked => { root.agent-toggled(); }
+        }
+        RailButton {
+            glyph: "\u{E64D}";
+            name: "Database";
+            active: root.db-open;
+            clicked => { root.db-toggled(); }
         }
     }
 }

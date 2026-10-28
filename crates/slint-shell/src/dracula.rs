@@ -1,0 +1,107 @@
+use crate::theme::{Palette, Syntax, TerminalPalette};
+
+pub fn palette(name: &str) -> Option<Palette> {
+    match name {
+        "dracula" | "dracula-classic" => Some(dark()),
+        "alucard" | "dracula-light" => Some(light()),
+        _ => None,
+    }
+}
+
+fn dark() -> Palette {
+    let ansi = [
+        (33, 34, 44), (255, 85, 85), (80, 250, 123), (241, 250, 140),
+        (189, 147, 249), (255, 121, 198), (139, 233, 253), (248, 248, 242),
+        (98, 114, 164), (255, 110, 110), (105, 255, 148), (255, 255, 165),
+        (214, 172, 255), (255, 146, 223), (164, 255, 255), (255, 255, 255),
+    ];
+    Palette {
+        chrome: (33, 34, 44),
+        surface_panel: (52, 55, 70),
+        surface: (40, 42, 54),
+        fill_muted: (68, 71, 90),
+        fill: (66, 68, 80),
+        fill_strong: (98, 114, 164),
+        text_faint: (98, 114, 164),
+        text_muted: (130, 136, 160),
+        text_secondary: (190, 192, 204),
+        text_primary: (248, 248, 242),
+        accent: (189, 147, 249),
+        danger: (255, 85, 85),
+        success: (80, 250, 123),
+        accent_muted: (214, 172, 255),
+        warning: (255, 184, 108),
+        border: (68, 71, 90),
+        tab_active: (44, 45, 58),
+        tab_hover: (38, 39, 50),
+        selection: (68, 71, 90),
+        syntax: Syntax {
+            keyword: (255, 121, 198),
+            string: (241, 250, 140),
+            comment: (98, 114, 164),
+            type_: (139, 233, 253),
+            function: (80, 250, 123),
+            variable: (248, 248, 242),
+            constant: (255, 184, 108),
+            operator: (248, 248, 242),
+            punctuation: (248, 248, 242),
+            error: (255, 85, 85),
+            warning: (255, 184, 108),
+        },
+        terminal: TerminalPalette {
+            fg: (248, 248, 242),
+            bg: (40, 42, 54),
+            cursor: (248, 248, 242),
+            ansi,
+        },
+    }
+}
+
+fn light() -> Palette {
+    let ansi = [
+        (255, 251, 235), (203, 58, 42), (20, 113, 10), (132, 110, 21),
+        (100, 74, 201), (163, 20, 77), (3, 106, 150), (31, 31, 31),
+        (108, 102, 75), (215, 76, 61), (25, 141, 12), (158, 132, 26),
+        (120, 98, 208), (191, 24, 90), (4, 127, 180), (44, 43, 49),
+    ];
+    Palette {
+        chrome: (222, 220, 207),
+        surface_panel: (236, 233, 223),
+        surface: (255, 251, 235),
+        fill_muted: (239, 237, 220),
+        fill: (222, 220, 207),
+        fill_strong: (206, 204, 192),
+        text_faint: (108, 102, 75),
+        text_muted: (120, 114, 90),
+        text_secondary: (70, 66, 50),
+        text_primary: (31, 31, 31),
+        accent: (100, 74, 201),
+        danger: (203, 58, 42),
+        success: (20, 113, 10),
+        accent_muted: (120, 98, 208),
+        warning: (163, 77, 20),
+        border: (222, 220, 207),
+        tab_active: (255, 251, 235),
+        tab_hover: (239, 237, 220),
+        selection: (207, 207, 222),
+        syntax: Syntax {
+            keyword: (163, 20, 77),
+            string: (132, 110, 21),
+            comment: (108, 102, 75),
+            type_: (3, 106, 150),
+            function: (20, 113, 10),
+            variable: (31, 31, 31),
+            constant: (163, 77, 20),
+            operator: (31, 31, 31),
+            punctuation: (31, 31, 31),
+            error: (203, 58, 42),
+            warning: (163, 77, 20),
+        },
+        terminal: TerminalPalette {
+            fg: (31, 31, 31),
+            bg: (255, 251, 235),
+            cursor: (31, 31, 31),
+            ansi,
+        },
+    }
+}

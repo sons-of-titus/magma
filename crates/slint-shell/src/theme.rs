@@ -61,12 +61,22 @@ pub struct TerminalPalette {
 }
 
 pub fn palette(name: &str) -> Palette {
-    match name {
-        "monokai" | "monokai-dark" | "ayu-dark" | "ayu" | "ayu-light" => {
-            crate::new_palettes::palette(name)
-        }
-        _ => crate::palettes::palette(name),
+    if let Some(p) = crate::noctis::palette(name) {
+        return p;
     }
+    if let Some(p) = crate::dracula::palette(name) {
+        return p;
+    }
+    if let Some(p) = crate::tokyo_night::palette(name) {
+        return p;
+    }
+    if let Some(p) = crate::catppuccin::palette(name) {
+        return p;
+    }
+    if matches!(name, "monokai" | "monokai-dark" | "ayu-dark" | "ayu" | "ayu-light") {
+        return crate::new_palettes::palette(name);
+    }
+    crate::palettes::palette(name)
 }
 
 pub fn apply_slint(app: &AppWindow, p: &Palette, mono_family: &str) {

@@ -135,8 +135,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 "toggle-theme" => {
                     let next = match s.theme_name.as_str() {
                         "intellij-dark" => "intellij-light",
-                        "intellij-light" => "mocha",
-                        "mocha" => "latte",
+                        "intellij-light" => "catppuccin-mocha",
+                        "mocha" | "catppuccin-mocha" => "catppuccin-latte",
+                        "latte" | "catppuccin-latte" => "monokai",
                         _ => "intellij-dark",
                     };
                     s.editor.options.insert("gui-theme".into(), next.into());

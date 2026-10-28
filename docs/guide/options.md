@@ -13,7 +13,7 @@ project (`project/option-set`).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `gui-theme` | enum `intellij-dark`/`intellij-light`/`mocha`/`latte`/`monokai`/`ayu-dark`/`ayu-light` | `intellij-dark` | Chrome palette: IntelliJ dark/light, Catppuccin mocha/latte, Monokai, or Ayu dark/light |
+| `gui-theme` | enum (28 variants) | `intellij-dark` | Chrome palette: IntelliJ, Catppuccin, Monokai, Ayu, Dracula, Tokyo Night, or Noctis variants |
 | `breadcrumb-enabled` | bool | `true` | Show the path breadcrumb under the tab bar |
 | `minimap-enabled` | bool | `false` | Show the code minimap instead of the scrollbar |
 

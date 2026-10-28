@@ -164,15 +164,9 @@ fn handle_dap_event(ed: &mut Editor, event: crate::debug::Event) {
 /// Exactly one of the `Started`/`initialized` handlers calls this per
 /// session.
 fn configure_adapter(ed: &mut Editor, session_id: u64) {
-    crate::debug::sync_breakpoint_lines(ed);
     let files: Vec<String> = ed.debug.breakpoints.keys().cloned().collect();
     for file in files {
-        crate::script_runtime::send_dap_command(
-            ed,
-            session_id,
-            "setBreakpoints",
-            &ed.debug.set_breakpoints_args(&file),
-        );
+        crate::debug::send_set_breakpoints(ed, session_id, &file);
     }
     crate::script_runtime::send_dap_command(ed, session_id, "configurationDone", "{}");
 }

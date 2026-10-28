@@ -171,11 +171,9 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
             let offset = buf.line_start_offset(line.saturating_sub(1)).unwrap_or(0);
             buf.attach_breakpoint(bp_id, offset);
         }
-        kernel::debug::sync_breakpoint_lines(ed);
         // Notify the active debug session.
         if let Some(sid) = ed.debug.active_session {
-            let args = ed.debug.set_breakpoints_args(&file);
-            send_dap_command(ed, sid, "setBreakpoints", &args);
+            kernel::debug::send_set_breakpoints(ed, sid, &file);
         }
         ed.events.emit_typed(
             keys::events::DEBUG_BREAKPOINT_CHANGED,
@@ -206,8 +204,7 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
         }
         // The :breakpoints GutterProvider reads live from ed.debug.breakpoints.
         if let Some(sid) = ed.debug.active_session {
-            let args = ed.debug.set_breakpoints_args(&file);
-            send_dap_command(ed, sid, "setBreakpoints", &args);
+            kernel::debug::send_set_breakpoints(ed, sid, &file);
         }
         ed.events.emit_typed(
             keys::events::DEBUG_BREAKPOINT_CHANGED,

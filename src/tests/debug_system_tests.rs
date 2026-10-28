@@ -556,6 +556,9 @@ fn set_breakpoints_response_marks_manager_breakpoints_verified() {
     use crate::kernel::runtime_dap::apply_dap_command_result;
     let mut ed = crate::tests::helpers::make_editor();
     ed.debug.add_breakpoint("/p/main.rs".into(), 4);
+    // The response carries lines but not the file; verification only
+    // applies when the send was recorded in the pending queue.
+    ed.debug.pending_bp_files.push((1, "/p/main.rs".into()));
     apply_dap_command_result(
         &mut ed,
         1,

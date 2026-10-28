@@ -29,6 +29,10 @@ pub struct DebugManager {
     pub connections: HashMap<SessionId, std::sync::Arc<dap_client::DapHandle>>,
     /// Watch expressions evaluated whenever the session stops.
     pub watches: Vec<String>,
+    /// `setBreakpoints` requests awaiting their adapter response, in send
+    /// order.  The DAP response echoes lines but not the file, so this
+    /// queue is the only way to verify the right file's breakpoints.
+    pub pending_bp_files: Vec<(SessionId, String)>,
     next_session_id: SessionId,
     next_bp_id: u64,
 }
@@ -41,6 +45,7 @@ impl DebugManager {
             breakpoints: HashMap::new(),
             connections: HashMap::new(),
             watches: Vec::new(),
+            pending_bp_files: Vec::new(),
             next_session_id: 1,
             next_bp_id: 1,
         }
@@ -202,6 +207,16 @@ pub fn sync_breakpoint_lines(ed: &mut crate::state::Editor) {
     }
 }
 
+/// Send `setBreakpoints` for one file and record the target: the DAP
+/// response does not echo the file, so the pending queue is what lets the
+/// response verify exactly the file that was sent.
+pub fn send_set_breakpoints(ed: &mut crate::state::Editor, sid: SessionId, file: &str) {
+    sync_breakpoint_lines(ed);
+    let args = ed.debug.set_breakpoints_args(file);
+    ed.debug.pending_bp_files.push((sid, file.to_string()));
+    crate::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
+}
+
 /// Enable or disable breakpoints at a location and resync the adapter.
 pub fn set_breakpoint_enabled(
     ed: &mut crate::state::Editor,
@@ -210,10 +225,8 @@ pub fn set_breakpoint_enabled(
     enabled: bool,
 ) {
     ed.debug.set_enabled(file, line, enabled);
-    sync_breakpoint_lines(ed);
     if let Some(sid) = ed.debug.active_session {
-        let args = ed.debug.set_breakpoints_args(file);
-        crate::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
+        send_set_breakpoints(ed, sid, file);
     }
 }
 
@@ -238,13 +251,15 @@ pub fn toggle_breakpoint_at(ed: &mut crate::state::Editor, file: &str, line: usi
         .map(|(_, a)| a.clone())
     {
         let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let offset = buf.line_start_offset(line.saturating_sub(1)).unwrap_or(0);
-        buf.attach_breakpoint(bp_id, offset);
+        // A line past EOF has no anchor position; without the buffer the
+        // breakpoint keeps its absolute line instead of silently re-anchoring
+        // to offset 0 (and then "moving" to line 1 after edits).
+        if let Some(offset) = buf.line_start_offset(line.saturating_sub(1)) {
+            buf.attach_breakpoint(bp_id, offset);
+        }
     }
-    sync_breakpoint_lines(ed);
     if let Some(sid) = ed.debug.active_session {
-        let args = ed.debug.set_breakpoints_args(file);
-        crate::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
+        send_set_breakpoints(ed, sid, file);
     }
     ed.events.emit_typed(
         crate::event::keys::events::DEBUG_BREAKPOINT_CHANGED,
@@ -271,8 +286,7 @@ pub fn remove_breakpoints_at(ed: &mut crate::state::Editor, file: &str, line: us
         }
     }
     if let Some(sid) = ed.debug.active_session {
-        let args = ed.debug.set_breakpoints_args(file);
-        crate::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
+        send_set_breakpoints(ed, sid, file);
     }
     ed.events.emit_typed(
         crate::event::keys::events::DEBUG_BREAKPOINT_CHANGED,
@@ -325,9 +339,7 @@ pub fn resync_after_save(ed: &mut crate::state::Editor, path: &str) {
     if ed.debug.active_session.is_none() || !ed.debug.breakpoints.contains_key(path) {
         return;
     }
-    sync_breakpoint_lines(ed);
     if let Some(sid) = ed.debug.active_session {
-        let args = ed.debug.set_breakpoints_args(path);
-        crate::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
+        send_set_breakpoints(ed, sid, path);
     }
 }

@@ -196,12 +196,20 @@ pub fn apply_dap_command_result(
                 session.set_verified_breakpoints(verified.clone());
             }
             // The manager's own breakpoints drive the gutter and the Debug
-            // panel — mirror what the adapter confirmed onto them, matched
-            // by line (the response does not carry the file).
-            for (is_verified, line) in &verified {
-                for bp in ed.debug.breakpoints.values_mut().flatten() {
-                    if bp.line == *line {
-                        bp.verified = *is_verified;
+            // panel — mirror what the adapter confirmed onto the file this
+            // request was sent for (the response carries only lines).
+            let target = ed
+                .debug
+                .pending_bp_files
+                .iter()
+                .position(|(sid, _)| *sid == session_id)
+                .map(|i| ed.debug.pending_bp_files.remove(i).1);
+            if let Some(file) = target {
+                for (is_verified, line) in &verified {
+                    for bp in ed.debug.breakpoints.get_mut(&file).into_iter().flatten() {
+                        if bp.line == *line {
+                            bp.verified = *is_verified;
+                        }
                     }
                 }
             }

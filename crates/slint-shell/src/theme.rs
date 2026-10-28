@@ -73,7 +73,10 @@ pub fn palette(name: &str) -> Palette {
     if let Some(p) = crate::catppuccin::palette(name) {
         return p;
     }
-    if matches!(name, "monokai" | "monokai-dark" | "ayu-dark" | "ayu" | "ayu-light") {
+    if matches!(
+        name,
+        "monokai" | "monokai-dark" | "ayu-dark" | "ayu" | "ayu-light"
+    ) {
         return crate::new_palettes::palette(name);
     }
     crate::palettes::palette(name)

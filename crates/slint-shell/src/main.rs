@@ -13,10 +13,10 @@ mod new_palettes;
 mod noctis;
 mod palettes;
 mod pane;
-mod tokyo_night;
 mod projection;
 mod sync;
 mod theme;
+mod tokyo_night;
 
 use std::cell::RefCell;
 use std::collections::HashSet;

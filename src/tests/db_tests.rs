@@ -416,5 +416,10 @@ fn connect_demo(ed: &mut Editor, path: &std::path::Path) {
     )
     .unwrap();
     let id = ed.db.active.unwrap();
-    execute_command(ed, "db-connect", &args(&[("source", ArgValue::Integer(id as i64))])).unwrap();
+    execute_command(
+        ed,
+        "db-connect",
+        &args(&[("source", ArgValue::Integer(id as i64))]),
+    )
+    .unwrap();
 }

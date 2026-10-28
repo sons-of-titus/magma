@@ -311,18 +311,34 @@ impl Buffer {
 
     /// Undo one group; returns the cursor offset to restore.
     pub fn undo(&mut self) -> Option<usize> {
+        self.undo_with_txns().map(|(offset, _)| offset)
+    }
+
+    /// Undo one group; returns the cursor offset plus, in apply order, the
+    /// transactions that were committed — views use them to transform
+    /// byte-range state (highlights) instead of letting it go stale.
+    pub fn undo_with_txns(&mut self) -> Option<(usize, Vec<EditTransaction>)> {
         let (start, end, restore) = self.undo.undo_step()?;
+        let mut applied = Vec::new();
         for i in (start..=end).rev() {
             let inverse = self.undo.entry(i).txn.invert(TransactionOrigin::Undo);
-            let _ = self.commit(inverse, restore, restore);
+            if let Some(txn) = self.commit(inverse, restore, restore) {
+                applied.push(txn);
+            }
         }
         self.undo.finish_undo(start);
-        Some(restore)
+        Some((restore, applied))
     }
 
     /// Redo one group; returns the cursor offset to restore.
     pub fn redo(&mut self) -> Option<usize> {
+        self.redo_with_txns().map(|(offset, _)| offset)
+    }
+
+    /// Redo one group; see [`Buffer::undo_with_txns`].
+    pub fn redo_with_txns(&mut self) -> Option<(usize, Vec<EditTransaction>)> {
         let (start, end, restore) = self.undo.redo_step()?;
+        let mut applied = Vec::new();
         for i in start..=end {
             let edits: Vec<crate::edit::Edit> = self
                 .undo
@@ -336,10 +352,12 @@ impl Buffer {
                 TransactionBuilder::new().with_origin(TransactionOrigin::Redo),
                 TransactionBuilder::push,
             );
-            let _ = self.commit(builder, restore, restore);
+            if let Some(txn) = self.commit(builder, restore, restore) {
+                applied.push(txn);
+            }
         }
         self.undo.finish_redo(end);
-        Some(restore)
+        Some((restore, applied))
     }
 
     pub fn can_undo(&self) -> bool {

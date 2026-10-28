@@ -60,6 +60,44 @@ impl BufferView {
         self.set_cursor(anchor.offset);
     }
 
+    /// Map a pre-transaction byte range to post-transaction coordinates.
+    /// Ranges overlapping an edit are dropped — a search hit inside deleted
+    /// text no longer exists — and ranges after an edit shift by the delta,
+    /// the same anchor arithmetic the cursor uses.
+    fn transform_range(txn: &EditTransaction, range: (usize, usize)) -> Option<(usize, usize)> {
+        let (mut s, mut e) = range;
+        // Edits are ascending and disjoint (§A.3), so the first edit at or
+        // after the range settles it.
+        for ce in &txn.edits {
+            let (start, end) = (ce.edit.range.start, ce.edit.range.end);
+            if e <= start {
+                break;
+            }
+            let delta = ce.edit.inserted_text.len() as i64 - (end - start) as i64;
+            if s >= end {
+                s = (s as i64 + delta).max(0) as usize;
+                e = (e as i64 + delta).max(0) as usize;
+            } else {
+                return None;
+            }
+        }
+        Some((s.min(e), e.max(s)))
+    }
+
+    fn transform_highlights(&mut self, txn: &EditTransaction) {
+        let map = |v: &Vec<(usize, usize, String)>| -> Vec<(usize, usize, String)> {
+            v.iter()
+                .filter_map(|(a, b, f)| {
+                    Self::transform_range(txn, (*a, *b)).map(|(a, b)| (a, b, f.clone()))
+                })
+                .collect()
+        };
+        self.highlights = map(&self.highlights);
+        for layer in self.highlight_layers.values_mut() {
+            *layer = map(layer);
+        }
+    }
+
     // ── Content mutations (delegate to Buffer, cursor transforms) ──
 
     pub fn insert(&mut self, offset: usize, text: &str) {
@@ -73,6 +111,7 @@ impl BufferView {
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
+            self.transform_highlights(&txn);
         }
     }
 
@@ -89,6 +128,7 @@ impl BufferView {
         };
         if let Some(txn) = &txn {
             self.cursor_through(txn);
+            self.transform_highlights(txn);
         }
         txn
     }
@@ -101,6 +141,7 @@ impl BufferView {
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
+            self.transform_highlights(&txn);
         }
     }
 
@@ -112,16 +153,20 @@ impl BufferView {
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
+            self.transform_highlights(&txn);
         }
     }
 
     pub fn undo(&mut self) -> bool {
         let restored = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
-            buf.undo()
+            buf.undo_with_txns()
         };
         match restored {
-            Some(offset) => {
+            Some((offset, txns)) => {
+                for txn in &txns {
+                    self.transform_highlights(txn);
+                }
                 self.set_cursor(offset);
                 true
             }
@@ -132,10 +177,13 @@ impl BufferView {
     pub fn redo(&mut self) -> bool {
         let restored = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
-            buf.redo()
+            buf.redo_with_txns()
         };
         match restored {
-            Some(offset) => {
+            Some((offset, txns)) => {
+                for txn in &txns {
+                    self.transform_highlights(txn);
+                }
                 self.set_cursor(offset);
                 true
             }

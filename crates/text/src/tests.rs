@@ -202,3 +202,60 @@ fn line_retrieval() {
     assert_eq!(buf.line(2), Some("third".to_string()));
     assert_eq!(buf.line(3), None);
 }
+
+// ── Highlight ranges survive edits (search hits track the text) ──────
+
+#[test]
+fn insert_before_a_highlight_shifts_it() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "search".into())]);
+    view.insert(0, "XX");
+    assert_eq!(view.highlights, vec![(8, 12, "search".into())]);
+}
+
+#[test]
+fn insert_at_the_highlight_start_pushes_the_range_right() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "search".into())]);
+    view.insert(6, ">>");
+    assert_eq!(view.highlights, vec![(8, 12, "search".into())]);
+}
+
+#[test]
+fn deleting_a_highlighted_range_drops_it() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "search".into())]);
+    view.delete(6, 10);
+    assert!(view.highlights.is_empty());
+}
+
+#[test]
+fn delete_before_a_highlight_shifts_it_left() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "search".into())]);
+    view.delete(0, 2);
+    assert_eq!(view.highlights, vec![(4, 8, "search".into())]);
+}
+
+#[test]
+fn undo_transforms_highlights_back() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "search".into())]);
+    view.insert(0, "XX");
+    assert_eq!(view.highlights[0].0, 8);
+    assert!(view.undo());
+    assert_eq!(view.highlights, vec![(6, 10, "search".into())]);
+    assert!(view.redo());
+    assert_eq!(view.highlights, vec![(8, 12, "search".into())]);
+}
+
+#[test]
+fn highlight_layers_transform_with_the_flat_list() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights_layer("semantic", vec![(6, 10, "sel".into())]);
+    view.delete(0, 2);
+    assert_eq!(
+        view.highlight_layers.get("semantic").map(|v| v.as_slice()),
+        Some(&[(4, 8, "sel".to_string())][..])
+    );
+}

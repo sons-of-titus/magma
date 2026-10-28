@@ -42,6 +42,9 @@ export component AppWindow inherits Window {
     in property <bool> gutter-visible: false;
     in property <length> gutter-width: 0px;
     in property <length> cursor-x: 0px;
+    in property <length> cursor-height: 20px;
+    in property <bool> caret-visible: false;
+    in property <color> caret-color;
     in property <length> cursor-y: 0px;
     in property <[string]> breadcrumbs;
     in property <bool> breadcrumb-enabled: true;
@@ -459,6 +462,9 @@ export component AppWindow inherits Window {
                     gutter-width: root.gutter-width;
                     cursor-x: root.cursor-x;
                     cursor-y: root.cursor-y;
+                    cursor-height: root.cursor-height;
+                    caret-visible: root.caret-visible;
+                    caret-color: root.caret-color;
                     key(text, ctrl, shift, alt, meta) => {
                         root.key(text, ctrl, shift, alt, meta);
                     }

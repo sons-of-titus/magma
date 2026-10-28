@@ -10,7 +10,7 @@ pub mod editor_view;
 pub mod gutter;
 pub mod gutter_providers;
 pub mod highlight_pass;
-pub use gpu::gpu_atlas;
+pub use gpu::{gpu_atlas, shapes};
 pub use row_layout;
 pub mod decorations;
 pub mod tabs;

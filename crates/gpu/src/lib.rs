@@ -7,6 +7,7 @@ mod tests;
 
 pub mod gpu_atlas;
 pub mod gpu_rasterizer;
+pub mod shapes;
 
 pub use gpu_atlas::{
     ATLAS_CELL_H, ATLAS_CELL_W, ATLAS_CHARS, ATLAS_COLS, GlyphInstance, GlyphUv, GpuGlyphAtlas,

@@ -10,6 +10,9 @@ export component EditorView inherits Rectangle {
     in property <length> gutter-width: 0px;
     in property <length> cursor-x: 0px;
     in property <length> cursor-y: 0px;
+    in property <length> cursor-height: 20px;
+    in property <bool> caret-visible: false;
+    in property <color> caret-color: Theme.accent;
 
     out property <length> view-width: self.width;
     out property <length> view-height: self.height;
@@ -66,10 +69,23 @@ export component EditorView inherits Rectangle {
         vertical-alignment: center;
     }
 
+    // Thin caret, drawn as an overlay: a grid-stamped caret can only color
+    // whole cells, which paints over the character under it.
+    Rectangle {
+        x: root.cursor-x;
+        y: root.cursor-y;
+        width: 2px;
+        height: root.cursor-height;
+        visible: root.caret-visible;
+        background: root.caret-color;
+    }
+
     touch := TouchArea {
         width: 100%;
         height: 100%;
-        mouse-cursor: text;
+        // Text I-beam over the text area; the gutter is for markers and line
+        // numbers, so the pointer reverts to the default arrow there.
+        mouse-cursor: self.mouse-x < root.gutter-width ? MouseCursor.default : MouseCursor.text;
 
         moved => {
             if (self.pressed) {

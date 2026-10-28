@@ -39,7 +39,7 @@
 # Clear inlay hints before each save to avoid stale positions.
 (event/on "buffer-before-save"
   (fn [data]
-    (let [buf (get data :buffer-id nil)]
+    (let [buf (scan-number (get data :buffer-id nil))]
       (when (not (nil? buf))
         (buffer/decor-clear-layer buf "lsp-inlay")))))
 

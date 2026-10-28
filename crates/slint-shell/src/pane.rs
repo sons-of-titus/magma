@@ -111,7 +111,10 @@ pub fn blit_rgba(
             // Control chars are row terminators, not visible glyphs; painting
             // them through the box fallback would leave a marker at every
             // line end.  Missing visible glyphs (CJK, icons) still get the box.
-            let glyph = if cell.ch == ' ' || cell.ch.is_control() {
+            // Breakpoint discs are drawn by geometry: the font glyphs vary in
+            // size and clip flat at the cell edges.
+            let disc = matches!(cell.ch, '\u{25CF}' | '\u{25CB}');
+            let glyph = if disc || cell.ch == ' ' || cell.ch.is_control() {
                 None
             } else {
                 atlas
@@ -124,6 +127,28 @@ pub fn blit_rgba(
             for py in 0..cell_h {
                 let row = (cy as u32 * cell_h + py) * w + x0;
                 let out = &mut dst[(row * 4) as usize..((row + cell_w) * 4) as usize];
+                if disc {
+                    let filled = cell.ch == '\u{25CF}';
+                    for (px, o) in out.chunks_exact_mut(4).enumerate() {
+                        let a = kernel::render::shapes::disc_alpha(
+                            px as u32, py, cell_w, cell_h, filled,
+                        );
+                        // SAFETY: `o` is a 4-byte chunk from chunks_exact_mut(4).
+                        unsafe {
+                            if a == 0 {
+                                *o.get_unchecked_mut(0) = br;
+                                *o.get_unchecked_mut(1) = bg;
+                                *o.get_unchecked_mut(2) = bb;
+                            } else {
+                                *o.get_unchecked_mut(0) = blend(fr, br, a);
+                                *o.get_unchecked_mut(1) = blend(fg, bg, a);
+                                *o.get_unchecked_mut(2) = blend(fb, bb, a);
+                            }
+                            *o.get_unchecked_mut(3) = 255;
+                        }
+                    }
+                    continue;
+                }
                 let Some(uv) = glyph else {
                     // SAFETY: out has cell_w*4 bytes.
                     unsafe {

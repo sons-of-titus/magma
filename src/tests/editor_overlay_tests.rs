@@ -45,8 +45,8 @@ fn popup_stamped(surface: &crate::kernel::render::surface::Surface) -> bool {
 fn overlay_cursor_policy_leaves_the_completion_popup_out_of_the_grid() {
     // The Slint shell draws the popup as a native overlay; baking it into
     // the pane texture as well rendered it twice.
-    use crate::kernel::render::frame::render_frame_with;
     use crate::kernel::render::CursorPaint;
+    use crate::kernel::render::frame::render_frame_with;
     let ed = popup_probe_editor();
     let mut surface = crate::kernel::render::surface::Surface::new(20, 8);
     // Pane defaults are 80x24; the popup stamps its last visible rows, so
@@ -67,8 +67,8 @@ fn overlay_cursor_policy_leaves_the_completion_popup_out_of_the_grid() {
 
 #[test]
 fn overlay_cursor_policy_still_stamps_the_caret() {
-    use crate::kernel::render::frame::render_frame_with;
     use crate::kernel::render::CursorPaint;
+    use crate::kernel::render::frame::render_frame_with;
     let mut ed = popup_probe_editor();
     ed.completion.visible = false;
     ed.completion.items.clear();
@@ -92,16 +92,19 @@ fn overlay_cursor_policy_still_stamps_the_caret() {
 fn blame_prefix_decorations_render_in_the_margin_left_of_the_gutter() {
     // The regression: the prefix was drawn at surface column gutter_width —
     // on top of the text — instead of the reserved margin at area.x.
-    use crate::kernel::render::frame::render_frame_with;
     use crate::kernel::render::CursorPaint;
+    use crate::kernel::render::frame::render_frame_with;
     let mut ed = crate::tests::helpers::make_editor();
     let key = ed.create_buffer_from_str("blamed", "one\ntwo\nthree\n");
     if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
-    ed.view_of_buffer_mut(key)
-        .unwrap()
-        .decor_set_prefix("vc-blame", 1, String::from("Alice 2026-10-25"), "comment-face".to_string());
+    ed.view_of_buffer_mut(key).unwrap().decor_set_prefix(
+        "vc-blame",
+        1,
+        String::from("Alice 2026-10-25"),
+        "comment-face".to_string(),
+    );
 
     let mut surface = crate::kernel::render::surface::Surface::new(40, 6);
     render_frame_with(&ed, &mut surface, CursorPaint::Overlay);
@@ -112,13 +115,16 @@ fn blame_prefix_decorations_render_in_the_margin_left_of_the_gutter() {
     // The line's own text is intact one gutter past the margin
     // (prefix_margin 16 chars + 1 separator ⇒ content at column 17).
     let text = surface.cell(17, 1).unwrap();
-    assert_eq!(text.ch, 't', "the margin reservation leaves the text intact");
+    assert_eq!(
+        text.ch, 't',
+        "the margin reservation leaves the text intact"
+    );
 }
 
 #[test]
 fn decorations_track_fold_compression() {
-    use crate::kernel::render::frame::render_frame_with;
     use crate::kernel::render::CursorPaint;
+    use crate::kernel::render::frame::render_frame_with;
     let mut ed = crate::tests::helpers::make_editor();
     //           0   4   8   14  19
     let key = ed.create_buffer_from_str("folded", "one\ntwo\nthree\nfour\nfive\n");
@@ -127,14 +133,21 @@ fn decorations_track_fold_compression() {
     }
     // Fold lines 1..=2 (offsets 4..14): "four" moves from display row 3 to 2.
     ed.view_of_buffer_mut(key).unwrap().add_fold(4, 14);
-    ed.view_of_buffer_mut(key)
-        .unwrap()
-        .decor_set_prefix("vc-blame", 3, String::from("Bob"), "comment-face".to_string());
+    ed.view_of_buffer_mut(key).unwrap().decor_set_prefix(
+        "vc-blame",
+        3,
+        String::from("Bob"),
+        "comment-face".to_string(),
+    );
 
     let mut surface = crate::kernel::render::surface::Surface::new(40, 6);
     render_frame_with(&ed, &mut surface, CursorPaint::Overlay);
 
-    assert_eq!(surface.cell(0, 2).unwrap().ch, 'B', "prefix follows the folded row");
+    assert_eq!(
+        surface.cell(0, 2).unwrap().ch,
+        'B',
+        "prefix follows the folded row"
+    );
     assert_ne!(
         surface.cell(0, 3).unwrap().ch,
         'B',
@@ -155,14 +168,23 @@ fn linewise_selection_matches_the_brute_force_span() {
     if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
-    let arc = ed.buffers.get(key).unwrap();
-    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-    let line_start = |l: usize| buf.line_start_offset(l).unwrap_or(buf.len());
+    // Line-kind anchors are line indices (the contract the renderer has
+    // always used); the spans are byte offsets.  Precompute the starts
+    // under the lock, then drop the guard: selection_range locks the same
+    // mutex.
+    let (len, starts) = {
+        let buf = ed.buffers.get(key).unwrap();
+        let buf = buf.lock().unwrap_or_else(|e| e.into_inner());
+        let line_start = |l: usize| buf.line_start_offset(l).unwrap_or(buf.len());
+        let starts: Vec<usize> = (0..=201).map(line_start).collect();
+        (buf.len(), starts)
+    };
+    let line_start = |l: usize| starts[l.min(200)].min(len);
 
     for cursor_line in [0usize, 1, 57, 150, 199] {
         let cursor = line_start(cursor_line);
         for anchor_line in [0usize, 57, 199] {
-            ed.selection = Some(Selection::line(line_start(anchor_line)));
+            ed.selection = Some(Selection::line(anchor_line));
             let got = ed.selection_range(cursor).unwrap();
             let first = anchor_line.min(cursor_line);
             let last = anchor_line.max(cursor_line);

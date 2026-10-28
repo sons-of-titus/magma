@@ -93,7 +93,10 @@ impl GutterRegistry {
     pub fn provider_width(provider: &dyn GutterProvider, line_count: usize) -> usize {
         let w = provider.width();
         if w == 0 {
-            (line_count.max(1).ilog10() as usize + 1).max(2) + 1
+            // Digits + two cells of breathing room: a gutter flush against
+            // the text reads cramped, and markers like the breakpoint disc
+            // need the margin to sit centered.
+            (line_count.max(1).ilog10() as usize + 1).max(2) + 3
         } else {
             w
         }

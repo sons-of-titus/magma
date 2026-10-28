@@ -445,42 +445,44 @@ impl View for EditorView {
                 };
                 surface.set_cell(sx, sy, final_ch, Some(final_style));
             }
+        }
 
-            if editor.multi_cursor.active {
-                let tab_w = int_option(editor, "tab-width", 4);
-                for ec in &editor.multi_cursor.extra_cursors {
-                    let ec_off = ec.pos.min(buf.len());
-                    let ec_line = buf
-                        .position_of(ec_off)
-                        .line
-                        .min(total_lines.saturating_sub(1));
-                    let Some(ec_vis) = ec_line.checked_sub(scroll_top) else {
-                        continue;
-                    };
-                    if ec_vis < visible_lines {
-                        let ec_line_start = buf.line_start_offset(ec_line).unwrap_or(0);
-                        let ec_line_end = buf.line_start_offset(ec_line + 1).unwrap_or(buf.len());
-                        let ec_col = crate::text_engine::text_layout::cell_column(
-                            &buf.slice(ec_line_start, ec_line_end),
-                            ec_off.saturating_sub(ec_line_start),
-                            tab_w,
-                            &editor.font_config.glyph_widths,
+        // Extra-cursor marks are grid content, not caret policy: they must
+        // survive `Skip` so a frontend with its own caret keeps them.
+        if is_focused && editor.multi_cursor.active {
+            let tab_w = int_option(editor, "tab-width", 4);
+            for ec in &editor.multi_cursor.extra_cursors {
+                let ec_off = ec.pos.min(buf.len());
+                let ec_line = buf
+                    .position_of(ec_off)
+                    .line
+                    .min(total_lines.saturating_sub(1));
+                let Some(ec_vis) = ec_line.checked_sub(scroll_top) else {
+                    continue;
+                };
+                if ec_vis < visible_lines {
+                    let ec_line_start = buf.line_start_offset(ec_line).unwrap_or(0);
+                    let ec_line_end = buf.line_start_offset(ec_line + 1).unwrap_or(buf.len());
+                    let ec_col = crate::text_engine::text_layout::cell_column(
+                        &buf.slice(ec_line_start, ec_line_end),
+                        ec_off.saturating_sub(ec_line_start),
+                        tab_w,
+                        &editor.font_config.glyph_widths,
+                    );
+                    if ec_col >= scroll_left && ec_col - scroll_left < content_cols {
+                        surface.set_cell(
+                            content_x + (ec_col - scroll_left) as u16,
+                            row_offset + ec_vis as u16,
+                            '▌',
+                            None,
                         );
-                        if ec_col >= scroll_left && ec_col - scroll_left < content_cols {
-                            surface.set_cell(
-                                content_x + (ec_col - scroll_left) as u16,
-                                row_offset + ec_vis as u16,
-                                '▌',
-                                None,
-                            );
-                        }
                     }
                 }
             }
+        }
 
-            if stamps {
-                render_insert_completion_popup(editor, surface, row_offset, visible_lines);
-            }
+        if is_focused && stamps {
+            render_insert_completion_popup(editor, surface, row_offset, visible_lines);
         }
     }
 }

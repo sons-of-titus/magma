@@ -71,6 +71,7 @@ test_pairs!(
 );
 
 mod dap_event_tests;
+mod editor_overlay_tests;
 mod index_event_tests;
 mod lsp_event_tests;
 mod memory_budget_tests;

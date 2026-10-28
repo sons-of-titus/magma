@@ -171,9 +171,9 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         state.gutter_sig = 0;
     }
     sync_viewport_scroll(ed);
-    // The caret is stamped into the grid; the completion popup is a native
-    // overlay widget, so it must not also be baked into the pane texture.
-    render_frame_with(ed, &mut state.surface, CursorPaint::Overlay);
+    // Caret and completion popup are native overlays (a grid-stamped caret
+    // can only color whole cells); the kernel draws neither.
+    render_frame_with(ed, &mut state.surface, CursorPaint::Skip);
     render::sync_pane_images(&app, state, ppx);
     let ed = &mut state.editor;
     let focused = ed.view_tree.focused_window();

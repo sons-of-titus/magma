@@ -7,6 +7,14 @@ use kernel::render::surface::{Style, Surface};
 
 use crate::{AppState, AppWindow, pane};
 
+/// Intrinsic size of a blitted buffer in logical pixels.  The image elements
+/// are drawn at exactly this size: stretching them to the view spreads the
+/// leftover sub-cell strip over every row, and then the caret anchor
+/// (row × cell) stops landing on the text it belongs to.
+fn logical(px: u32, ppx: f32) -> f32 {
+    px as f32 / ppx.max(1.0)
+}
+
 pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, _ppx: f32) {
     let ed = &mut state.editor;
 
@@ -44,6 +52,8 @@ pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, _ppx: f32)
             let n = dst.len().min(rgba.len());
             dst[..n].copy_from_slice(&rgba[..n]);
             app.set_pane(slint::Image::from_rgba8(buffer));
+            app.set_pane_width(logical(w, state.atlas_ppx));
+            app.set_pane_height(logical(h, state.atlas_ppx));
             state.image_pane_key = key;
         }
         // No gutter overlay for image buffers.
@@ -133,7 +143,11 @@ pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, _ppx: f32)
         }
 
         app.set_gutter_visible(gutter_cols > 0);
-        app.set_gutter_width((gutter_cols as f32) * (state.cell_w as f32));
+        // The gutter image is laid out at device-true cell units; the width
+        // and the caret's column anchor must use the same units or a
+        // non-integral `cell_w × ppx` splits them apart.
+        let (row_w, _) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
+        app.set_gutter_width((gutter_cols as f32) * row_w);
 
         // Now compute pane signature (after blanking) and re-blit if changed.
         let sig = pane::surface_signature(&state.surface);
@@ -151,6 +165,8 @@ pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, _ppx: f32)
             let n = dst.len().min(rgba.len());
             dst[..n].copy_from_slice(&rgba[..n]);
             app.set_pane(slint::Image::from_rgba8(buffer));
+            app.set_pane_width(logical(pw, state.atlas_ppx));
+            app.set_pane_height(logical(ph, state.atlas_ppx));
             state.surface_sig = sig;
         }
     }

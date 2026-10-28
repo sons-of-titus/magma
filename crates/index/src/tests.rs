@@ -226,26 +226,36 @@ fn stats_default_to_zero() {
 fn event_payloads_carry_the_walk_and_record() {
     let indexed = Event::ProjectIndexed {
         project_name: "demo".into(),
+        generation: 3,
         files: vec!["src/main.rs".into()],
         ignored_files: vec![],
+        done: true,
     };
     match indexed.clone() {
         Event::ProjectIndexed {
             project_name,
+            generation,
             files,
             ignored_files: _,
+            done,
         } => {
             assert_eq!(project_name, "demo");
+            assert_eq!(generation, 3);
+            assert!(done);
             assert_eq!(files, vec!["src/main.rs".to_string()]);
         }
         _ => panic!("wrong variant"),
     }
 
-    let rec = record_from_text("src/main.rs", 7, "fn main() {}\n");
-    match Event::RecordArrived(rec) {
-        Event::RecordArrived(rec) => {
-            assert_eq!(rec.path, "src/main.rs");
-            assert_eq!(rec.symbols.len(), 1);
+    let arrived = Event::RecordArrived {
+        generation: 0,
+        record: record_from_text("src/main.rs", 7, "fn main() {}\n"),
+    };
+    match arrived {
+        Event::RecordArrived { generation, record } => {
+            assert_eq!(generation, 0);
+            assert_eq!(record.path, "src/main.rs");
+            assert_eq!(record.symbols.len(), 1);
         }
         _ => panic!("wrong variant"),
     }

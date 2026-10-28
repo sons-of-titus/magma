@@ -2,6 +2,7 @@
 
 pub mod mode;
 pub mod persist;
+pub mod secrets;
 pub mod views;
 pub use font;
 pub mod completion;
@@ -185,6 +186,9 @@ pub struct Editor {
     /// Snapshot of the most recently finished task: (name, combined output).
     /// The output panel renders this; `quickfix_list` carries the errors.
     pub last_task: Option<(String, String)>,
+    /// Buffers still queued for the async session restore of the active
+    /// project; the GUI's progress strip drains it as buffers land.
+    pub session_restore_pending: usize,
     /// Quick-fix picker over server code actions (None while closed).
     pub quickfix_menu: Option<crate::state::overlay::QuickfixMenu>,
 
@@ -294,6 +298,7 @@ impl Editor {
             input_consumed: false,
             status_message: None,
             last_task: None,
+            session_restore_pending: 0,
             quickfix_menu: None,
             module_paths: {
                 let home = std::env::var("HOME").unwrap_or_default();

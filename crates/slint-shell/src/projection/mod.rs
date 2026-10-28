@@ -24,7 +24,7 @@ use std::collections::HashSet;
 use kernel::project::tree::{FileNode, relative_to_project, segments, visible_rows};
 use kernel::state::{Editor, MessageKind};
 
-use crate::{FindRow, MenuItem, ProblemRow, TreeItem};
+use crate::{FindRow, MenuItem, ProblemRow, ProgressTask, TreeItem};
 
 pub fn focused_key(ed: &Editor) -> Option<usize> {
     ed.view_tree
@@ -92,11 +92,49 @@ pub fn status_message(ed: &Editor, fallback: &str, ttl: std::time::Duration) -> 
 }
 
 pub fn pane_message(ed: &Editor) -> String {
-    if focused_key(ed).is_none() {
-        "No buffer open. Use File › Open Folder…".to_string()
-    } else {
-        String::new()
+    if focused_key(ed).is_some() {
+        return String::new();
     }
+    // While the async open is still delivering, the empty pane is a state in
+    // progress, not a dead end — say so instead of suggesting the dialog.
+    if ed.project_manager.project.indexing || ed.session_restore_pending > 0 {
+        "Opening project…".to_string()
+    } else {
+        "No buffer open. Use File › Open Folder…".to_string()
+    }
+}
+
+/// The async-open pipeline as user-visible chips, in the order the stages
+/// run.  Only stages with live kernel state appear — no synthetic progress.
+pub fn progress_tasks(ed: &Editor) -> Vec<ProgressTask> {
+    let proj = &ed.project_manager.project;
+    let mut tasks = Vec::new();
+    if proj.indexing {
+        tasks.push(ProgressTask {
+            label: "Scanning project files".into(),
+            detail: format!("{} found", proj.files.len()).into(),
+        });
+    }
+    let pending = ed.index.stats().pending;
+    if pending > 0 {
+        tasks.push(ProgressTask {
+            label: "Indexing symbols".into(),
+            detail: format!("{pending} left").into(),
+        });
+    }
+    if ed.session_restore_pending > 0 {
+        tasks.push(ProgressTask {
+            label: "Restoring session".into(),
+            detail: format!("{} buffers", ed.session_restore_pending).into(),
+        });
+    }
+    if proj.detecting_tasks {
+        tasks.push(ProgressTask {
+            label: "Detecting build tasks".into(),
+            detail: "".into(),
+        });
+    }
+    tasks
 }
 
 pub fn tree_rows(ed: &Editor, nodes: &[FileNode], expanded: &HashSet<String>) -> Vec<TreeItem> {

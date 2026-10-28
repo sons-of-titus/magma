@@ -6,8 +6,11 @@ use crate::{AppState, AppWindow, pane};
 /// Logical (x, y) of the focused pane's caret in editor-view coordinates.
 /// The header row and gutter offset the origin, and horizontal scroll pans
 /// the column — the same math the kernel render pass uses to stamp the caret.
-/// Cell dims are passed by value: callers hold `&mut state.editor`.
-fn cursor_anchor(ed: &kernel::state::Editor, cell_w: u32, cell_h: u32) -> (f32, f32) {
+/// `row_w`/`row_h` are the device-true logical cell units from
+/// [`pane::logical_cell`]: the blitted image lays rows out at
+/// `round(cell × ppx) / ppx`, so anchoring on the raw integer grid drifts a
+/// fraction of a pixel per row until the caret visibly leaves its line.
+fn cursor_anchor(ed: &kernel::state::Editor, row_w: f32, row_h: f32) -> (f32, f32) {
     let Some(pane) = ed
         .view_tree
         .focused_window()
@@ -31,8 +34,8 @@ fn cursor_anchor(ed: &kernel::state::Editor, cell_w: u32, cell_h: u32) -> (f32, 
         .unwrap_or(1);
     let gutter = kernel::render::frame::gutter_cols(ed, buf_id, total_lines);
     let scroll_left = kernel::render::frame::pane_scroll_left(pane, buf_id);
-    let x = (gutter + st.cursor_col.saturating_sub(scroll_left)) as f32 * cell_w as f32;
-    let y = (header_rows as f32 + st.cursor_vis_row as f32) * cell_h as f32;
+    let x = (gutter + st.cursor_col.saturating_sub(scroll_left)) as f32 * row_w;
+    let y = (header_rows as f32 + st.cursor_vis_row as f32) * row_h;
     (x, y)
 }
 
@@ -173,9 +176,10 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         let show = ed.completion.visible && !ed.completion.items.is_empty();
         app.set_completion_visible(show);
         if show {
-            let (cx, cy) = cursor_anchor(ed, state.cell_w, state.cell_h);
+            let (row_w, row_h) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
+            let (cx, cy) = cursor_anchor(ed, row_w, row_h);
             app.set_completion_x(cx);
-            app.set_completion_y(cy + state.cell_h as f32);
+            app.set_completion_y(cy + row_h);
             // The overlay shows a scrolling window of the item list so
             // keyboard navigation stays visible past the first page.
             let (start, window) =
@@ -209,9 +213,10 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                 .m_quickfix_items
                 .set(items, |m| app.set_quickfix_items(m));
             app.set_quickfix_selected(menu.idx as i32);
-            let (qx, qy) = cursor_anchor(ed, state.cell_w, state.cell_h);
+            let (row_w, row_h) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
+            let (qx, qy) = cursor_anchor(ed, row_w, row_h);
             app.set_quickfix_x(qx);
-            app.set_quickfix_y(qy + state.cell_h as f32);
+            app.set_quickfix_y(qy + row_h);
         }
     }
 
@@ -257,10 +262,21 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             }
         }
     }
-    // ── Cursor position for IME overlay ────────────────────────────────────
+    // ── Cursor position for IME overlay + thin caret overlay ──────────────
     {
-        let (cx, cy) = cursor_anchor(ed, state.cell_w, state.cell_h);
+        let focused = ed.view_tree.focused_window().is_some();
+        let (row_w, row_h) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
+        let (cx, cy) = cursor_anchor(ed, row_w, row_h);
         app.set_cursor_x(cx);
-        app.set_cursor_y(cy);
+        // The cell's top leading is empty: glyphs hang from a baseline at the
+        // row's ascent, so the beam starts at the cap line or it reads as
+        // sitting above the text.  Both the inset and the beam height are
+        // measured from the atlas pixels (sync's atlas-rebuild pass), so the
+        // beam covers exactly the capital's ink span — no more, no less.
+        app.set_cursor_y(cy + state.caret_inset);
+        app.set_cursor_height(state.caret_height.max(1.0));
+        app.set_caret_visible(focused);
+        let (cr, cg, cb) = ed.theme_color("cursor");
+        app.set_caret_color(slint::Color::from_rgb_u8(cr, cg, cb));
     }
 }

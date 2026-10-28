@@ -30,6 +30,10 @@ pub struct Boot {
     pub runtime: Arc<tokio::runtime::Runtime>,
     pub background: BackgroundHandle,
     pub bg_receiver: mpsc::UnboundedReceiver<BackgroundEvent>,
+    /// The project to reopen, when `reopen_last_project` is set.  Deliberately
+    /// *not* opened here: the frontend executes `open-project` once its shell
+    /// exists, so window creation never waits on project initialization.
+    pub reopen_project: Option<String>,
 }
 
 pub fn bootstrap(
@@ -44,6 +48,9 @@ pub fn bootstrap(
         editor.marks.insert(m.name, m.byte_offset);
     }
     editor.project_manager.recent_projects = persist::load_recent_projects();
+    // Before Janet init: the user's init.janet can still override, while UI
+    // changes made later win and get written back.
+    persist::load_settings(&mut editor);
 
     let runtime = Arc::new(tokio::runtime::Runtime::new()?);
     let (bg_sender, bg_receiver) = mpsc::unbounded_channel();
@@ -77,26 +84,21 @@ pub fn bootstrap(
     }
 
     // Reopen the last project in interactive mode: JetBrains restores the
-    // working set rather than dropping you on a blank scratch buffer.
-    if options.reopen_last_project
-        && let Some(path) =
-            persist::most_recent_existing_project(&editor.project_manager.recent_projects)
-    {
-        let mut args = std::collections::HashMap::new();
-        args.insert(
-            "path".to_string(),
-            crate::command::args::ArgValue::Path(path),
-        );
-        if let Err(e) = crate::command::execute_command(&mut editor, "open-project", &args) {
-            warn!("Could not reopen last project: {e}");
-        }
-    }
+    // working set rather than dropping you on a blank scratch buffer.  The
+    // path is only resolved here — the frontend opens it after its shell is
+    // up, keeping first frame independent of project initialization.
+    let reopen_project = if options.reopen_last_project {
+        persist::most_recent_existing_project(&editor.project_manager.recent_projects)
+    } else {
+        None
+    };
 
     Ok(Boot {
         editor,
         runtime,
         background,
         bg_receiver,
+        reopen_project,
     })
 }
 

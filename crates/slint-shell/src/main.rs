@@ -42,6 +42,11 @@ struct AppState {
     atlas_ppx: f32,
     cell_w: u32,
     cell_h: u32,
+    /// Empty leading above the glyphs in a row; the caret starts below it.
+    caret_inset: f32,
+    /// Beam height in logical px: cap line to baseline, measured from the
+    /// atlas like `caret_inset` so the beam ends where the ink ends.
+    caret_height: f32,
     surface: Surface,
     terminal_grid: (usize, u32, u32),
     surface_sig: u64,
@@ -76,8 +81,9 @@ struct AppState {
     debug_scope_seen: Option<i64>,
     /// Slot table from the last debug sync: UI row ids → DAP ids.
     debug_ref_slots: Vec<i64>,
-    /// Renders wait for the window's real size once; the pre-map stub sizes
-    /// would otherwise derive a viewport scroll that never unwinds.
+    /// Chrome syncs from the first frame; only the editor surface waits for
+    /// the window's real size — the pre-map stub sizes would otherwise
+    /// derive a viewport scroll that never unwinds.
     window_ready: bool,
     last_logical_width: f32,
     theme_name: String,
@@ -119,6 +125,7 @@ struct AppState {
     m_crumbs: sync::ModelGate<slint::SharedString>,
     m_find_rows: sync::ModelGate<FindRow>,
     m_problems: sync::ModelGate<ProblemRow>,
+    m_progress: sync::ModelGate<ProgressTask>,
     m_recents: sync::ModelGate<slint::SharedString>,
     m_sessions: sync::ModelGate<slint::SharedString>,
     m_git_history: sync::ModelGate<GitHistoryRow>,
@@ -129,6 +136,7 @@ struct AppState {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = boot_clock();
     slint::BackendSelector::new().select()?;
     // Register the bundled Symbols Nerd Font so icon-pack glyphs render.
     {
@@ -153,6 +161,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         rt,
     )?;
+    logging::info!(
+        "milestone: editor bootstrapped at {:?}",
+        boot_clock().elapsed()
+    );
 
     let mut editor = boot.editor;
     if editor.font_config.loaded_fonts.is_empty() {
@@ -168,11 +180,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(bytes) = editor.font_config.primary_font() {
         atlas.rasterize(bytes, editor.font_config.size);
     }
-    let (init_cell_w, init_cell_h) = editor
+    let (init_cell_w, init_cell_h, init_caret_inset, init_caret_height) = editor
         .font_config
         .primary_font()
-        .map(|b| pane::measure_cell(b, editor.font_config.size))
-        .unwrap_or((7, 17));
+        .map(|b| {
+            let (w, h) = pane::measure_cell(b, editor.font_config.size);
+            let (inset, beam) = pane::caret_metrics_fallback(b, editor.font_config.size);
+            (w, h, inset, beam)
+        })
+        .unwrap_or((7, 17, 0.0, 17.0));
 
     let workspace = WorkspaceRuntime::new(&editor);
     let state = Rc::new(RefCell::new(AppState {
@@ -182,6 +198,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         atlas_ppx: 0.0,
         cell_w: init_cell_w,
         cell_h: init_cell_h,
+        caret_inset: init_caret_inset,
+        caret_height: init_caret_height,
         surface: Surface::new(1, 1),
         terminal_grid: (0, 0, 0),
         surface_sig: 0,
@@ -244,6 +262,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         m_crumbs: sync::ModelGate::new(),
         m_find_rows: sync::ModelGate::new(),
         m_problems: sync::ModelGate::new(),
+        m_progress: sync::ModelGate::new(),
         m_recents: sync::ModelGate::new(),
         m_sessions: sync::ModelGate::new(),
         m_git_history: sync::ModelGate::new(),
@@ -254,8 +273,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     let app = AppWindow::new()?;
+    logging::info!(
+        "milestone: window created at {:?}",
+        boot_clock().elapsed()
+    );
 
     actions::install(&app, Rc::clone(&state));
+
+    // Persisted font choices go on before the first refresh so the first
+    // frame already renders with them.
+    {
+        let mut s = state.borrow_mut();
+        actions::fonts::restore_persisted_fonts(&app.as_weak(), &mut s);
+    }
+
+    // The project opens only after the window exists.  `open-project` now
+    // establishes context synchronously and pushes the walk, session
+    // restore, and task detection onto the pool, so nothing here can stall
+    // the first frame.
+    if let Some(path) = boot.reopen_project {
+        let mut args = HashMap::new();
+        args.insert(
+            "path".to_string(),
+            kernel::command::args::ArgValue::Path(path),
+        );
+        if let Err(e) =
+            kernel::command::execute_command(&mut state.borrow_mut().editor, "open-project", &args)
+        {
+            logging::warn!("Could not reopen last project: {e}");
+        }
+    }
 
     sync::refresh(&app.as_weak(), &mut state.borrow_mut());
 
@@ -271,11 +318,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 };
                 let s = &mut *s;
+                // `quit`/`force-quit`/`save-and-quit` only set the flag — the
+                // persist that the window-close path gets must happen here too.
+                if !s.editor.running {
+                    workspace::persist_session(&s.editor);
+                    workspace::close_editor_session(&mut s.editor);
+                    let _ = slint::quit_event_loop();
+                    return;
+                }
                 s.workspace.maintain(&mut s.editor);
                 let mut changed = false;
+                // Budgeted drain: a burst of loaded session buffers or walk
+                // batches must not turn one tick into a long callback — the
+                // rest continue next tick.
+                let drain_deadline = std::time::Instant::now() + Duration::from_millis(4);
                 while let Ok(event) = s.bg_receiver.try_recv() {
                     process_background_event(&mut s.editor, event);
                     changed = true;
+                    if std::time::Instant::now() >= drain_deadline {
+                        break;
+                    }
                 }
                 if changed {
                     s.editor.frame_dirty = true;
@@ -310,6 +372,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(state);
     boot::shutdown(boot.runtime);
     Ok(())
+}
+
+/// Process-start anchor for startup-milestone timing logs.
+fn boot_clock() -> std::time::Instant {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *START.get_or_init(std::time::Instant::now)
 }
 
 fn logical_size(app: &AppWindow) -> (f32, f32) {

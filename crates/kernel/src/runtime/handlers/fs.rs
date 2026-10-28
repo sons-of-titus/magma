@@ -105,6 +105,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             );
             crate::debug::resync_after_save(ed, &path);
             crate::command::builtin::vc_blame::refresh_blame_after_save(ed, &path);
+            crate::index::reindex_saved_file(ed, &path);
             if let Some(buf) = ed
                 .buffers
                 .iter()

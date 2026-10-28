@@ -247,12 +247,18 @@ unsafe extern "C-unwind" fn c_task_output(argc: i32, argv: *mut Janet) -> Janet 
 /// (task/detect-project root) → nil
 ///
 /// Auto-detects project type from marker files in `root` and seeds the
-/// project's run configurations.  An unrecognized folder says so instead of
+/// project's run configurations.  Detection and config loading run on the
+/// background pool — the call returns before the language is known, and the
+/// result lands as a `TasksDetected` event (dropped when the project has
+/// changed in the meantime).  An unrecognized folder says so instead of
 /// failing silently later.
 unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let root = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
-        if !root.is_empty() {
+        if root.is_empty() {
+            return conv::nil();
+        }
+        let Some(bg) = ed.background.clone() else {
             ed.project_manager.detect(&root);
             if ed.project_manager.project.language.is_empty() {
                 ed.show_message(
@@ -260,7 +266,25 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
                     "No recognized build system here (Cargo, go, npm, Make, Python, CMake, Maven, Gradle) — create run configurations with the toolbar gear",
                 );
             }
-        }
+            return conv::nil();
+        };
+        let generation = ed.project_manager.project.generation;
+        let sender = bg.sender.clone();
+        ed.project_manager.project.detecting_tasks = true;
+        // Coalesced: a rapid re-open supersedes detection still queued.
+        bg.spawn_on(kernel::runtime::Lane::Maintenance, Some("task-detect"), move || {
+            let path = std::path::Path::new(&root);
+            let language = kernel::project::detect::detect_language(path);
+            let mut configs = kernel::run_config::RunConfigManager::default();
+            if let Some(lang) = language {
+                configs.load_or_defaults(path, lang);
+            }
+            let _ = sender.send(kernel::runtime::BackgroundEvent::TasksDetected {
+                generation,
+                language: language.map(str::to_string),
+                configs,
+            });
+        });
         conv::nil()
     })
 }

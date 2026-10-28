@@ -128,6 +128,9 @@ pub fn apply_editor(ed: &mut Editor, p: &Palette) {
     // The execution line reads as an accent band — clearly not the text
     // selection, which stays accent-solid via selection-bg.
     set("exec-line-bg", blend(p.accent, p.surface, 0.22));
+    // Caret follows the chrome accent so it reads as part of the UI, not
+    // as a separate colour.
+    set("cursor", p.accent);
     set("exec-line-fg", p.accent);
     set("selection-bg", p.accent);
     set(

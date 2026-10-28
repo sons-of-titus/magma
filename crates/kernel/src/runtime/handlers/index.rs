@@ -19,34 +19,61 @@ fn handle_index_event(ed: &mut Editor, event: crate::index::Event) {
     match event {
         Event::ProjectIndexed {
             project_name,
+            generation,
             files,
             ignored_files,
+            done,
         } => {
+            // A batch from a superseded open or walk describes a tree that
+            // no longer exists — drop it instead of overwriting the current
+            // project's list.
+            if ed.project_manager.current_project.as_deref() != Some(&project_name)
+                || generation != ed.project_manager.project.generation
+            {
+                return;
+            }
             if let Some(proj) = ed.project_manager.projects.get_mut(&project_name) {
                 proj.files = files.clone();
                 proj.ignored_files = ignored_files.iter().cloned().collect();
                 proj.files_epoch += 1;
                 proj.file_index_dirty = false;
+                proj.indexing = !done;
             }
-            if ed.project_manager.current_project.as_deref() == Some(&project_name) {
-                ed.project_manager.project.files = files.clone();
-                ed.project_manager.project.ignored_files = ignored_files.iter().cloned().collect();
-                ed.project_manager.project.files_epoch += 1;
-                ed.project_manager.project.file_index_dirty = false;
+            {
+                let proj = &mut ed.project_manager.project;
+                proj.files = files.clone();
+                proj.ignored_files = ignored_files.iter().cloned().collect();
+                proj.files_epoch += 1;
+                proj.file_index_dirty = false;
+                proj.indexing = !done;
+            }
+            if done {
                 ed.project_manager
                     .sync_to_project_graph(&mut ed.semantic.project_graph);
-                crate::index::reconcile_project_index(ed, &files);
+                crate::index::reconcile_project_index(ed, &files, generation);
+                ed.events.emit_typed(
+                    keys::events::FILE_INDEXED,
+                    FileIndexedPayload {
+                        project_name,
+                        count: files.len().to_string(),
+                    },
+                );
             }
-            ed.events.emit_typed(
-                keys::events::FILE_INDEXED,
-                FileIndexedPayload {
-                    project_name,
-                    count: files.len().to_string(),
-                },
-            );
         }
-        Event::RecordArrived(rec) => {
-            ed.index.apply(rec);
+        Event::RecordArrived { generation, record } => {
+            if generation != ed.project_manager.project.generation {
+                return;
+            }
+            ed.index.apply(record);
+        }
+        Event::RecordSkipped { generation } => {
+            if generation != ed.project_manager.project.generation {
+                return;
+            }
+            ed.index.note_skipped();
+        }
+        Event::StampScan { generation, stamps } => {
+            crate::index::apply_stamp_scan(ed, generation, stamps);
         }
     }
 }

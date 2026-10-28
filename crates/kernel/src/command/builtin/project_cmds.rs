@@ -22,6 +22,7 @@ pub(super) fn register(editor: &mut Editor) {
             crate::command::args::ArgType::Path,
         )],
         |editor, args| {
+            let started = std::time::Instant::now();
             let path = args
                 .get("path")
                 .and_then(|a| a.as_string())
@@ -33,13 +34,20 @@ pub(super) fn register(editor: &mut Editor) {
             // Switching projects snapshots the outgoing session first, so
             // each project reopens exactly as it was left.
             crate::session::save_if_project(editor);
+            // Shell first: the context swap is in-memory; the file walk,
+            // session restore, and task detection all continue in the
+            // background and land as generation-stamped events.
             crate::project::open_root(editor, &path);
             crate::project::spawn_file_index(editor);
-            crate::session::restore(editor, std::path::Path::new(&path));
+            crate::session::restore_async(editor, std::path::Path::new(&path));
             // An active project implies a live session: reopening from the
             // welcome window must re-arm `running`, which a prior quit left
             // off and would otherwise bounce the editor straight back.
             editor.running = true;
+            info!(
+                "open-project: context ready in {:?} — walk and session continue in background",
+                started.elapsed()
+            );
             Ok(())
         },
     );

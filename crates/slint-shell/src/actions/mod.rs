@@ -10,6 +10,7 @@ mod db;
 mod debug;
 mod dock;
 mod editor;
+pub(crate) mod fonts;
 mod settings;
 
 use std::cell::RefCell;

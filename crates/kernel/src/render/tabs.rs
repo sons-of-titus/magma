@@ -69,7 +69,8 @@ pub fn collect_tabs(editor: &Editor) -> Vec<TabModel> {
 
 /// Close a tab.  A pane belonging to the side-by-side diff closes the whole
 /// pair; closing the last tab leaves an empty editor area rather than
-/// resurrecting a scratch buffer.
+/// resurrecting a scratch buffer.  The session flushes here so a closed tab
+/// stays closed even if the app never exits cleanly.
 pub fn close_tab(editor: &mut Editor, id: WindowId) {
     if let Some(view) = &editor.vc.diff_view
         && (view.left == id || view.right == id)
@@ -82,4 +83,5 @@ pub fn close_tab(editor: &mut Editor, id: WindowId) {
     if was_last && let Some(win) = editor.view_tree.focused_window_mut() {
         win.buffer_id = None;
     }
+    crate::session::save_if_project(editor);
 }

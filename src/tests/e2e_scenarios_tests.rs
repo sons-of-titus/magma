@@ -88,9 +88,11 @@ fn s1_open_project_restores_the_previous_session() {
     ed.debug.add_breakpoint(path.clone(), 2);
     session::save_if_project(&ed);
 
-    let (mut fresh, _bg2, _rx2) = editor_with_background();
+    let (mut fresh, _bg2, mut rx2) = editor_with_background();
     open_project(&mut fresh, &root);
-
+    // Restore is asynchronous now: the session file loads on the pool and
+    // the buffer lands as an event.
+    pump(&mut rx2, &mut fresh, 10);
     assert!(fresh.buffers.iter().any(|(_, a)| a.lock().unwrap().path.as_deref() == Some(path.as_str())),
         "the file reopens");
     let key2 = fresh.buffers.iter()

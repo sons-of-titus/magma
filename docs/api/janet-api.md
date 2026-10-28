@@ -1117,6 +1117,13 @@ Run a zero-arg Janet function as a background task. Result arrives via `task-res
 
 Cancel a background task.
 
+### `(task/detect-project root)` → nil
+
+Detect the project language from marker files at `root` and seed the
+project's run configurations.  Runs in the background: the call returns
+immediately and the detected language and configurations apply when ready
+(and are discarded if the active project changed in the meantime).
+
 ---
 
 ## ts/ — Tree-sitter Integration

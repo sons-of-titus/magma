@@ -82,7 +82,9 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
         _ => {
             // Advanced: every option that the registry does not know about.
             let registered = |n: &str| {
-                OPTION_SPECS.iter().any(|s| s.name == n) || n.starts_with("agent.api-key")
+                OPTION_SPECS.iter().any(|s| s.name == n)
+                    || n.starts_with("agent.api-key")
+                    || n.starts_with("font.")
             };
             let mut names: Vec<&String> = ed.options.keys().filter(|n| !registered(n)).collect();
             names.sort();

@@ -22,11 +22,12 @@ use crate::state::Editor;
 use extract::IndexedSymbol;
 
 /// Reconcile the persistent symbol index with a fresh project walk: keep
-/// only surviving paths, then re-extract the files whose size/mtime stamps
-/// no longer match their record.  Extraction runs chunked on the blocking
-/// pool; records land as `index::Event::RecordArrived` and merge on the foreground.
-pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
-    use std::time::UNIX_EPOCH;
+/// only surviving paths, then scan the walk's files for re-extraction.  The
+/// size/mtime stamp scan runs on the blocking pool (one `stat` per file —
+/// thousands on a large project); stamps come back as
+/// `index::Event::StampScan` and [`apply_stamp_scan`] does the foreground
+/// diff and chunked extraction.
+pub fn reconcile_project_index(ed: &mut Editor, files: &[String], generation: u64) {
     let Some(root) = ed.project_manager.project.root.clone() else {
         return;
     };
@@ -34,26 +35,49 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
     let keep: std::collections::HashSet<String> = files.iter().cloned().collect();
     ed.index.retain_paths(&keep);
 
-    let stale: Vec<String> = files
-        .iter()
-        .filter(|rel| {
-            let abs = root.join(rel.as_str());
-            match std::fs::metadata(&abs) {
-                Ok(meta) => {
-                    let mtime = meta
-                        .modified()
-                        .ok()
-                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0);
-                    !ed.index.is_current(rel, meta.len(), mtime)
-                }
-                Err(_) => false,
-            }
-        })
-        .cloned()
-        .collect();
+    let Some(bg) = ed.background.clone() else {
+        return;
+    };
+    let rels: Vec<String> = files.to_vec();
+    let sender = bg.sender.clone();
+    // Coalesced: a newer walk supersedes a scan still queued from the
+    // previous one.
+    bg.spawn_on(crate::runtime::Lane::Indexing, Some("index-scan"), move || {
+        use std::time::UNIX_EPOCH;
+        let stamps: Vec<(String, u64, u64)> = rels
+            .iter()
+            .filter_map(|rel| {
+                let meta = std::fs::metadata(root.join(rel)).ok()?;
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                Some((rel.clone(), meta.len(), mtime))
+            })
+            .collect();
+        let _ = sender.send(BackgroundEvent::Index(crate::index::Event::StampScan {
+            generation,
+            stamps,
+        }));
+    });
+}
 
+/// Foreground half of the reconcile: diff a scan's stamps against the store
+/// and enqueue extraction for stale files.  Scans from a superseded project
+/// generation are dropped.
+pub fn apply_stamp_scan(ed: &mut Editor, generation: u64, stamps: Vec<(String, u64, u64)>) {
+    use std::time::UNIX_EPOCH;
+
+    if generation != ed.project_manager.project.generation {
+        return;
+    }
+    let stale: Vec<String> = stamps
+        .into_iter()
+        .filter(|(rel, size, mtime)| !ed.index.is_current(rel, *size, *mtime))
+        .map(|(rel, _, _)| rel)
+        .collect();
     if stale.is_empty() {
         return;
     }
@@ -61,40 +85,95 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String]) {
         return;
     };
     ed.index.note_pending(stale.len());
+    let root = ed.project_manager.project.root.clone().unwrap_or_default();
     for chunk in stale.chunks(64) {
         let chunk = chunk.to_vec();
         let root = root.clone();
         let sender = bg.sender.clone();
-        // Lane P2, coalesced per reconcile round: a newer walk supersedes
-        // extraction jobs still queued from the previous one.
-        bg.spawn_on(
-            crate::runtime::Lane::Indexing,
-            Some("index-reconcile"),
-            move || {
-                for rel in chunk {
-                    let abs = root.join(&rel);
-                    let Ok(meta) = std::fs::metadata(&abs) else {
-                        continue;
-                    };
-                    // Non-UTF8 files (binaries, exotic encodings) are skipped:
-                    // the index is a source index.
-                    let Ok(text) = std::fs::read_to_string(&abs) else {
-                        continue;
-                    };
-                    let mtime = meta
-                        .modified()
-                        .ok()
-                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0);
-                    let rec = crate::index::record_from_text(&rel, mtime, &text);
+        // Lane P2, deliberately uncoalesced: coalescing is keyed, so a key
+        // shared by every chunk would let all but the newest skip itself and
+        // strand its files' queue slots forever.  Repeat extraction is
+        // idempotent — `apply` dedups by content hash — and a later
+        // generation's handler drops the results.
+        bg.spawn_on(crate::runtime::Lane::Indexing, None, move || {
+            for rel in chunk {
+                let abs = root.join(&rel);
+                let Ok(meta) = std::fs::metadata(&abs) else {
                     let _ = sender.send(BackgroundEvent::Index(
-                        crate::index::Event::RecordArrived(rec),
+                        crate::index::Event::RecordSkipped { generation },
                     ));
-                }
-            },
-        );
+                    continue;
+                };
+                // Non-UTF8 files (binaries, exotic encodings) carry no
+                // symbols — the index is a source index — but their queue
+                // slot must still drain.
+                let Ok(text) = std::fs::read_to_string(&abs) else {
+                    let _ = sender.send(BackgroundEvent::Index(
+                        crate::index::Event::RecordSkipped { generation },
+                    ));
+                    continue;
+                };
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let rec = crate::index::record_from_text(&rel, mtime, &text);
+                let _ = sender.send(BackgroundEvent::Index(
+                    crate::index::Event::RecordArrived { generation, record: rec },
+                ));
+            }
+        });
     }
+}
+
+/// Re-extract one saved file's symbols off the save path — O(file), no
+/// project walk.  The existing generation guards and hash-deduped `apply`
+/// make repeat saves free; files outside the project are ignored (their
+/// discovery still flows through the watcher-driven walk).
+pub fn reindex_saved_file(ed: &mut Editor, path: &str) {
+    let Some(root) = ed.project_manager.project.root.clone() else {
+        return;
+    };
+    let Ok(root) = std::fs::canonicalize(&root) else {
+        return;
+    };
+    let Ok(abs) = std::fs::canonicalize(path) else {
+        return;
+    };
+    let Some(rel) = abs.strip_prefix(&root).ok().and_then(|p| p.to_str()) else {
+        return;
+    };
+    let Some(bg) = ed.background.clone() else {
+        return;
+    };
+    let generation = ed.project_manager.project.generation;
+    ed.index.note_pending(1);
+    let sender = bg.sender.clone();
+    let abs = abs.to_string_lossy().into_owned();
+    let rel = rel.to_string();
+    // Coalesced: a burst of saves leaves only the newest extraction queued.
+    bg.spawn_on(crate::runtime::Lane::Indexing, Some("index-save"), move || {
+        let Ok(meta) = std::fs::metadata(&abs) else {
+            return;
+        };
+        // Non-UTF8 files are skipped: the index is a source index.
+        let Ok(text) = std::fs::read_to_string(&abs) else {
+            return;
+        };
+        use std::time::UNIX_EPOCH;
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let record = crate::index::record_from_text(&rel, mtime, &text);
+        let _ = sender.send(BackgroundEvent::Index(
+            crate::index::Event::RecordArrived { generation, record },
+        ));
+    });
 }
 
 #[derive(Debug, Default)]
@@ -160,6 +239,18 @@ impl IndexStore {
 
     pub fn note_pending(&mut self, n: usize) {
         self.pending += n;
+    }
+
+    /// Drain one queue slot for a counted file that produced no record.
+    pub fn note_skipped(&mut self) {
+        self.pending = self.pending.saturating_sub(1);
+    }
+
+    /// Drop all outstanding extraction slots.  A generation bump invalidates
+    /// them: their arrivals will be dropped as stale, so they must not keep
+    /// the reported queue depth above zero.
+    pub fn clear_pending(&mut self) {
+        self.pending = 0;
     }
 
     /// All symbols whose name starts with `prefix` — workspace symbol

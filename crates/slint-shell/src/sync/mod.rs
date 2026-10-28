@@ -10,6 +10,7 @@ mod overlays;
 mod render;
 mod terminal;
 mod tool_windows;
+mod tree;
 
 use std::time::Duration;
 
@@ -17,16 +18,18 @@ use slint::ComponentHandle;
 use slint::{ModelRc, VecModel};
 
 use kernel::render::frame::{render_frame_with, sync_viewport_scroll};
-use std::collections::HashSet;
 
 use crate::pane;
 use crate::{AppState, AppWindow, TabItem, logical_size, projection, theme};
-use kernel::project::tree::{build, collect_dirs};
 use kernel::render::CursorPaint;
 use kernel::render::tabs;
 use kernel::state::Editor;
 
 const STATUS_TTL: Duration = Duration::from_secs(6);
+
+/// The milestone log fires on the first stabilized layout only; welcome
+/// transitions re-arm the gate and would otherwise log a second "first".
+static FIRST_FRAME_LOGGED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 
 /// Re-projects a model-valued property only when the row data actually
 /// changed: replacing the model every refresh dirties Slint's scene graph
@@ -90,17 +93,27 @@ pub(crate) fn revision_of(editor: &Editor) -> u64 {
 
 pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let Some(app) = weak.upgrade() else { return };
-    if !state.window_ready {
-        // Window geometry is noisy before the first real layout (stubs of
-        // 0, 480, then the true size within three frames).  Rendering from a
-        // stub would derive a viewport scroll that never unwinds, so wait
-        // until the size stops changing.
+    // Window geometry is noisy before the first real layout (stubs of 0,
+    // 480, then the true size within three frames).  Chrome keeps syncing —
+    // the window must never show an empty half-drawn shell — but the editor
+    // surface waits for a stable size: rendering from a stub would derive a
+    // viewport scroll that never unwinds, and painting before the layout
+    // lands is what makes the pane cover only part of the window.
+    let mut viewport_ready = state.window_ready;
+    if !viewport_ready {
         let (lw, _) = logical_size(&app);
         if lw < 200.0 || (lw - state.last_logical_width).abs() >= 1.0 {
             state.last_logical_width = lw;
-            return;
+        } else {
+            state.window_ready = true;
+            viewport_ready = true;
+            if FIRST_FRAME_LOGGED.set(()).is_ok() {
+                logging::info!(
+                    "milestone: first useful frame at {:?}",
+                    crate::boot_clock().elapsed()
+                );
+            }
         }
-        state.window_ready = true;
     }
 
     // `:vc` asks for the Version Control tool window; reveal it before the
@@ -132,6 +145,9 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             let (cw, ch) = pane::measure_cell(bytes, state.editor.font_config.size);
             state.cell_w = cw.max(1);
             state.cell_h = ch.max(1);
+            let (inset, beam) = pane::caret_metrics_fallback(bytes, state.editor.font_config.size);
+            state.caret_inset = inset;
+            state.caret_height = beam;
         }
     }
     let atlas_rebuilt = font_changed || (ppx - state.atlas_ppx).abs() > 0.001;
@@ -149,6 +165,13 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
             );
         }
         state.atlas_ppx = ppx;
+        // The caret beam is the capital's ink span, measured from the
+        // freshly rasterized pixels rather than trusted from font metrics,
+        // which the device-scale rasterizer can quantize away from.
+        if let Some((top, bottom)) = pane::atlas_ink_span_px(&state.atlas) {
+            state.caret_inset = top as f32 / ppx;
+            state.caret_height = (bottom - top + 1) as f32 / ppx;
+        }
         // The grid did not change, but every glyph pixel did.
         state.surface_sig = 0;
         state.gutter_sig = 0;
@@ -158,23 +181,33 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     app.set_app_font_name(state.app_font_name.as_str().into());
     app.set_app_font_size(state.app_font_size);
     kernel::icons::sync_option(&mut state.editor);
-    sync_tree(&app, state);
+    tree::sync_tree(&app, state);
 
     let ed = &mut state.editor;
     let (logical_w, _) = logical_size(&app);
-    let (cols, rows) = editor_grid(&app, state.cell_w, state.cell_h);
-    if state.surface.width != cols as u16 || state.surface.height != rows as u16 {
-        state.surface.resize(cols as u16, rows as u16);
-        ed.view_tree.resize(cols as u16, rows as u16);
-        state.rendered_revision = u64::MAX;
-        state.surface_sig = 0;
-        state.gutter_sig = 0;
+    if viewport_ready {
+        let (cols, rows) = editor_grid(&app, state.cell_w, state.cell_h);
+        if state.surface.width != cols as u16 || state.surface.height != rows as u16 {
+            state.surface.resize(cols as u16, rows as u16);
+            ed.view_tree.resize(cols as u16, rows as u16);
+            state.rendered_revision = u64::MAX;
+            state.surface_sig = 0;
+            state.gutter_sig = 0;
+        }
+        sync_viewport_scroll(ed);
+        // Caret and completion popup are native overlays (a grid-stamped
+        // caret can only color whole cells); the kernel draws neither.
+        render_frame_with(ed, &mut state.surface, CursorPaint::Skip);
+        render::sync_pane_images(&app, state, ppx);
+    } else {
+        // Hold the pane blank until the layout is honest — a surface sized
+        // from stub geometry would paint only part of the view.
+        app.set_pane(slint::Image::default());
+        app.set_pane_width(0.0);
+        app.set_pane_height(0.0);
+        app.set_gutter_visible(false);
+        app.set_gutter(slint::Image::default());
     }
-    sync_viewport_scroll(ed);
-    // Caret and completion popup are native overlays (a grid-stamped caret
-    // can only color whole cells); the kernel draws neither.
-    render_frame_with(ed, &mut state.surface, CursorPaint::Skip);
-    render::sync_pane_images(&app, state, ppx);
     let ed = &mut state.editor;
     let focused = ed.view_tree.focused_window();
     let tab_models: Vec<TabItem> = tabs::collect_tabs(ed)
@@ -248,6 +281,11 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let (message, error) = projection::status_message(ed, &state.message, STATUS_TTL);
     app.set_status_message(message.as_str().into());
     app.set_status_error(error);
+    // The async-open pipeline shows on the bottom progress strip; nothing
+    // here invents progress the kernel is not reporting.
+    state
+        .m_progress
+        .set(projection::progress_tasks(ed), |m| app.set_progress_tasks(m));
     app.set_pane_message(projection::pane_message(ed).as_str().into());
 
     app.set_bottom_tool(state.bottom);
@@ -304,6 +342,10 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
                     )));
             }
         }
+        // The window just changed size; re-arm the stabilization gate so the
+        // pane renders from the new layout, never from the one being replaced.
+        state.window_ready = false;
+        state.last_logical_width = 0.0;
     }
     app.set_show_welcome(now_welcome);
 
@@ -319,8 +361,10 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         None => Vec::new(),
     };
     state.m_menu.set(items, |m| app.set_menu_items(m));
-    terminal::sync(&app, state, logical_w, ppx);
-    overlays::sync(&app, state);
+    if viewport_ready {
+        terminal::sync(&app, state, logical_w, ppx);
+        overlays::sync(&app, state);
+    }
 
     state.rendered_revision = revision_of(&state.editor);
     // Input callbacks refresh synchronously; without this the frame timer
@@ -346,46 +390,3 @@ fn sync_theme(app: &AppWindow, state: &mut AppState) {
     state.theme_name = name;
 }
 
-fn sync_tree(app: &AppWindow, state: &mut AppState) {
-    let project = &state.editor.project_manager.project;
-    let root = project.root.clone();
-    if state.tree_epoch != project.files_epoch || state.tree_root != root {
-        state.tree_epoch = project.files_epoch;
-        state.tree_root = root;
-        let mut all: Vec<String> = project.files.clone();
-        all.extend(project.ignored_files.iter().cloned());
-        let ignored: HashSet<String> = project.ignored_files.clone();
-        state.tree_nodes = build(&all, &ignored);
-        state.dirs.clear();
-        collect_dirs(&state.tree_nodes, &mut state.dirs);
-        state.expanded.clear();
-        for node in &state.tree_nodes {
-            if node.is_dir {
-                state.expanded.insert(node.path.clone());
-            }
-        }
-    }
-
-    let (title, empty) = match state.rail {
-        1 => ("Commit", ""),
-        2 => ("Debugger", ""),
-        _ => (
-            "Project",
-            if state.tree_nodes.is_empty() {
-                "No project open. Use File › Open Folder…"
-            } else {
-                "No matching files"
-            },
-        ),
-    };
-    app.set_tree_title(title.into());
-    app.set_tree_empty(empty.into());
-
-    let rows = if state.rail == 0 {
-        projection::tree_rows(&state.editor, &state.tree_nodes, &state.expanded)
-    } else {
-        Vec::new()
-    };
-    state.m_tree.set(rows, |m| app.set_tree(m));
-    app.set_selected_path(projection::current_path(&state.editor).into());
-}

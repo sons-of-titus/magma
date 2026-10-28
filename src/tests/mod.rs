@@ -76,6 +76,7 @@ mod index_event_tests;
 mod lsp_event_tests;
 mod memory_budget_tests;
 mod project_event_tests;
+mod project_open_tests;
 mod render_host_tests;
 mod task_event_tests;
 mod vc_event_tests;

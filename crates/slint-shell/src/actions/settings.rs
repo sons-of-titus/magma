@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use kernel::command::execute_command;
+use kernel::state::persist;
 use slint::ComponentHandle;
 
-use crate::{AppState, AppWindow, pane, sync::refresh};
+use super::fonts::{FontChanges, apply_fonts, collect_available_fonts};
+use crate::{AppState, AppWindow, sync::refresh};
 
 // Settings information architecture.  Categories beyond the option
 // registry's own are the Agent page (provider, key, model) and Advanced
@@ -74,6 +76,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 s.editor.options.insert("agent.model".into(), model);
                 changed = true;
             }
+            if changed {
+                persist::save_settings(&s.editor);
+            }
             s.message =
                 if changed && kernel::agent::llm::LlmConfig::is_configured(&s.editor.options) {
                     "agent settings saved".into()
@@ -92,6 +97,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         app.on_set_option(move |name, value| {
             let mut s = state.borrow_mut();
             s.editor.options.insert(name.to_string(), value.to_string());
+            persist::save_settings(&s.editor);
             // Chrome-relevant options need the shell to re-read them.
             if name == "gui-theme" {
                 s.theme_name.clear();
@@ -118,6 +124,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             } else {
                 s.editor.options.remove(&name.to_string());
             }
+            persist::save_settings(&s.editor);
             s.settings_rows_dirty = true;
             refresh(&weak, &mut s);
         });
@@ -132,6 +139,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             }
             let mut s = state.borrow_mut();
             s.editor.options.insert(name, value.to_string());
+            persist::save_settings(&s.editor);
             s.settings_rows_dirty = true;
             refresh(&weak, &mut s);
         });
@@ -165,104 +173,6 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             refresh(&weak, &mut s);
         });
     }
-}
-
-/// Font settings shared by the settings page rows (applied on change) and
-/// the legacy apply-font-settings callback.
-pub(super) struct FontChanges {
-    pub app_font_name: String,
-    pub app_font_size: f32,
-    pub editor_font_name: String,
-    pub editor_font_size: f32,
-    pub ligatures: bool,
-}
-
-pub(super) fn apply_fonts(weak: &slint::Weak<AppWindow>, s: &mut AppState, f: FontChanges) {
-    s.app_font_name = f.app_font_name.clone();
-    s.app_font_size = f.app_font_size;
-    if let Some(a) = weak.upgrade() {
-        let g = a.global::<crate::Theme>();
-        g.set_font_ui(f.app_font_size);
-        g.set_font_small((f.app_font_size - 1.0).max(8.0));
-        a.set_app_font_name(s.app_font_name.clone().into());
-        a.set_app_font_size(f.app_font_size);
-    }
-
-    if !f.editor_font_name.trim().is_empty() {
-        if !s
-            .editor
-            .font_config
-            .loaded_fonts
-            .contains_key(&f.editor_font_name)
-        {
-            if let Some(bytes) = load_system_font(&f.editor_font_name) {
-                s.editor
-                    .font_config
-                    .loaded_fonts
-                    .insert(f.editor_font_name.clone(), bytes);
-            }
-        }
-        s.editor.font_config.family = f.editor_font_name;
-    }
-    s.editor.font_config.size = f.editor_font_size;
-    s.editor.font_config.ligatures = f.ligatures;
-    s.editor.font_changed = true;
-
-    if let Some(bytes) = s.editor.font_config.primary_font().map(|b| b.clone()) {
-        let (cw, ch) = pane::measure_cell(&bytes, f.editor_font_size);
-        s.cell_w = cw.max(1);
-        s.cell_h = ch.max(1);
-    }
-
-    s.editor.frame_dirty = true;
-    refresh(weak, s);
-}
-
-fn load_system_font(family: &str) -> Option<Vec<u8>> {
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-    for face in db.faces() {
-        if face.families.iter().any(|(n, _)| n == family) {
-            if let Some((src, _)) = db.face_source(face.id) {
-                match src {
-                    fontdb::Source::File(path) => {
-                        if let Ok(bytes) = std::fs::read(path)
-                            && bytes.len() > 1000
-                        {
-                            return Some(bytes);
-                        }
-                    }
-                    fontdb::Source::Binary(data) => {
-                        return Some(data.as_ref().as_ref().to_vec());
-                    }
-                    fontdb::Source::SharedFile(_, data) => {
-                        return Some(data.as_ref().as_ref().to_vec());
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-pub(super) fn collect_available_fonts(
-    editor: &kernel::state::Editor,
-    app_font_name: &str,
-) -> Vec<String> {
-    let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-    for face in db.faces() {
-        if let Some(fam) = face.families.first() {
-            names.insert(fam.0.clone());
-        }
-    }
-    // Include currently configured names.
-    names.insert(editor.font_config.family.clone());
-    if !app_font_name.is_empty() {
-        names.insert(app_font_name.to_string());
-    }
-    names.into_iter().collect()
 }
 
 /// Show the settings window on the given category, re-reading every field
@@ -349,6 +259,7 @@ pub(super) fn command(weak: &slint::Weak<AppWindow>, s: &mut AppState, command: 
         c if c.starts_with("settings:theme:") => {
             let name = c.trim_start_matches("settings:theme:");
             s.editor.options.insert("gui-theme".into(), name.into());
+            persist::save_settings(&s.editor);
             s.theme_name.clear();
         }
         _ => {}

@@ -338,6 +338,7 @@ pub(super) fn close_buffer_register(cmds: &mut crate::command::CommandRegistry) 
                 },
             );
             editor.drop_buffer(key);
+            crate::session::save_if_project(editor);
             let focused_shows_closed = editor
                 .view_tree
                 .focused_window()

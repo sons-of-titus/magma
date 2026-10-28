@@ -9,14 +9,25 @@ pub use session::{SessionBreakpoint, SessionBuffer, SessionState, session_file};
 
 use crate::state::Editor;
 
-/// Snapshot the per-project working state.  Only file-backed buffers are
-/// recorded — scratch buffers are editor-session-local by contract.
+/// Snapshot the per-project working state.  Only file-backed buffers
+/// currently shown in a pane are recorded — scratch buffers are
+/// editor-session-local by contract, and a buffer whose tab was closed must
+/// not resurrect on the next launch.
 pub fn capture(ed: &Editor) -> SessionState {
     let mut buffers: Vec<SessionBuffer> = Vec::new();
     let mut focused: Option<String> = None;
 
+    let open_tabs: std::collections::HashSet<usize> = ed
+        .view_tree
+        .panes()
+        .iter()
+        .filter_map(|pane| pane.buffer_id)
+        .collect();
     let focused_key = ed.focused_buffer_key();
     for (key, arc) in ed.buffers.iter() {
+        if !open_tabs.contains(&key) {
+            continue;
+        }
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let Some(path) = &buf.path else { continue };
         let cursor = ed.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0);
@@ -86,6 +97,57 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
         }
     }
 
+    apply_debug_state(ed, &state);
+
+    if let Some(focused) = &state.focused {
+        open_path(ed, focused);
+    }
+}
+
+/// Restore without making the foreground wait on disk: breakpoints and
+/// watches apply immediately (in-memory), the recorded buffers load on the
+/// pool and stream back as `SessionBufferLoaded` events, in session order.
+/// The shell — and whatever the user is already doing — never waits for a
+/// session file to read.
+pub fn restore_async(ed: &mut Editor, root: &std::path::Path) {
+    let Some(state) = session::read(root) else {
+        return;
+    };
+    apply_debug_state(ed, &state);
+    let Some(bg) = ed.background.clone() else {
+        restore(ed, root);
+        return;
+    };
+    let generation = ed.project_manager.project.generation;
+    let sender = bg.sender.clone();
+    ed.session_restore_pending = state.buffers.len();
+    let focused = state.focused.clone();
+    debug!(
+        "session: {} recorded buffers queued for background restore",
+        state.buffers.len()
+    );
+    // Coalesced: when projects are switched faster than reads complete, the
+    // queued restore of the older project skips itself.
+    bg.spawn_on(crate::runtime::Lane::Maintenance, Some("session-restore"), move || {
+        for entry in state.buffers {
+            let content = std::fs::read_to_string(&entry.path).map_err(|e| e.to_string());
+            let _ = sender.send(crate::runtime::BackgroundEvent::SessionBufferLoaded {
+                generation,
+                path: entry.path,
+                cursor: entry.cursor,
+                content,
+            });
+        }
+        let _ = sender.send(crate::runtime::BackgroundEvent::SessionRestoreDone {
+            generation,
+            focused,
+        });
+    });
+}
+
+/// Breakpoints and watches are in-memory per-project state — refill them as
+/// soon as the session file is read, before any buffer lands.
+fn apply_debug_state(ed: &mut Editor, state: &SessionState) {
     for bp in &state.breakpoints {
         if ed
             .debug
@@ -104,14 +166,10 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
             ed.debug.watches.push(watch.clone());
         }
     }
-
-    if let Some(focused) = &state.focused {
-        open_path(ed, focused);
-    }
 }
 
 /// Open a file through the `open-file` command (dedupe + focus semantics).
-fn open_path(ed: &mut Editor, path: &str) -> bool {
+pub(crate) fn open_path(ed: &mut Editor, path: &str) -> bool {
     let mut args = std::collections::HashMap::new();
     args.insert(
         "path".to_string(),

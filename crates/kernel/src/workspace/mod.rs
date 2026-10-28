@@ -112,6 +112,7 @@ pub fn close_editor_session(ed: &mut Editor) {
 /// snapshots — nothing unsaved remains (R-16).
 pub fn persist_session(ed: &Editor) {
     crate::state::persist::save_session(ed);
+    crate::state::persist::save_settings(ed);
     crate::session::save_if_project(ed);
     if let Some(dir) = ed.io.crash_dir.clone() {
         std::thread::spawn(move || {

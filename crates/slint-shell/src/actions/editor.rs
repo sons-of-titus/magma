@@ -141,6 +141,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                         _ => "intellij-dark",
                     };
                     s.editor.options.insert("gui-theme".into(), next.into());
+                    kernel::state::persist::save_settings(&s.editor);
                     s.theme_name.clear();
                 }
                 "rail:0" | "rail:1" | "rail:2" => {

@@ -85,6 +85,27 @@ pub enum BackgroundEvent {
     Index(crate::index::Event),
     /// The project subsystem's own event vocabulary.
     Project(crate::project::Event),
+    /// Project language/run-config detection finished off the foreground
+    /// thread; applied only while `generation` is the active project's.
+    TasksDetected {
+        generation: u64,
+        language: Option<String>,
+        configs: crate::run_config::RunConfigManager,
+    },
+    /// One session-recorded buffer finished loading on the pool; opened on
+    /// the foreground only while `generation` is the active project's.
+    SessionBufferLoaded {
+        generation: u64,
+        path: String,
+        cursor: usize,
+        content: Result<String, String>,
+    },
+    /// A session restore finished streaming; the recorded file regains
+    /// focus.  Stale when `generation` is no longer active.
+    SessionRestoreDone {
+        generation: u64,
+        focused: Option<String>,
+    },
     // ── Sprint 13 Network API ─────────────────────────────────────────────
     /// An HTTP request completed successfully.
     HttpResponse {

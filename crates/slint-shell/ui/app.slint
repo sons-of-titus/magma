@@ -13,6 +13,7 @@ import { DatabasePanel, DbTreeRow, DbColumn, DbRow, FormButton as DialogButton }
 import { Field } from "components/controls.slint";
 import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
 import { StatusBar } from "components/status-bar.slint";
+import { ProgressStrip, ProgressTask } from "components/progress-strip.slint";
 import { EditorView } from "components/editor-view.slint";
 import { BottomBar, BottomDock, FindRow, GitHistoryRow, ProblemRow } from "components/bottom-dock.slint";
 import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.slint";
@@ -35,6 +36,8 @@ export component AppWindow inherits Window {
     // ── Editor ───────────────────────────────────────────────────────────
     in property <[TabItem]> tabs;
     in property <image> pane;
+    in property <length> pane-width: 0px;
+    in property <length> pane-height: 0px;
     in property <string> pane-message;
     in property <image> minimap;
     in property <bool> minimap-visible: false;
@@ -128,6 +131,7 @@ export component AppWindow inherits Window {
     in property <bool> output-follow: true;
     in property <[GitHistoryRow]> git-history;
     in property <string> bottom-title;
+    in property <[ProgressTask]> progress-tasks;
 
     // ── Right dock ───────────────────────────────────────────────────────
     in property <bool> agent-open;
@@ -454,6 +458,8 @@ export component AppWindow inherits Window {
                     min-width: 120px;
                     max-width: 100000px;
                     pane: root.pane;
+                    pane-width: root.pane-width;
+                    pane-height: root.pane-height;
                     pane-message: root.pane-message;
                     minimap: root.minimap;
                     minimap-visible: root.minimap-visible;
@@ -633,6 +639,10 @@ export component AppWindow inherits Window {
             find-open(path, line) => { root.find-open(path, line); }
             output-clear => { root.output-clear(); }
             output-toggle-follow => { root.output-toggle-follow(); }
+        }
+
+        if root.progress-tasks.length > 0 : ProgressStrip {
+            tasks: root.progress-tasks;
         }
 
         BottomBar {

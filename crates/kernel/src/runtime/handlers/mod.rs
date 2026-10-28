@@ -13,6 +13,7 @@ mod lsp;
 mod net;
 mod process;
 mod project;
+mod session;
 mod task;
 mod vc;
 
@@ -60,7 +61,13 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::Index(_) => index::handle(ed, event),
 
         // ── Project search ───────────────────────────────────────────────
-        BackgroundEvent::Project(_) => project::handle(ed, event),
+        BackgroundEvent::Project(_) | BackgroundEvent::TasksDetected { .. } => {
+            project::handle(ed, event)
+        }
+
+        // ── Session restore ──────────────────────────────────────────────
+        BackgroundEvent::SessionBufferLoaded { .. }
+        | BackgroundEvent::SessionRestoreDone { .. } => session::handle(ed, event),
 
         // ── Tasks ────────────────────────────────────────────────────────
         BackgroundEvent::WorkProgress { .. }

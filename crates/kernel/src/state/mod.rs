@@ -372,6 +372,8 @@ impl Editor {
             "diag-error" => (243, 139, 168),
             "diag-warn" => (250, 179, 135),
             "highlight-bg" => (49, 50, 68),
+            "bracket-match" => (88, 91, 112),
+            "indent-guide" => (69, 71, 90),
             "highlight-fg" => (203, 166, 247),
             "exec-line-bg" => (68, 84, 106),
             "exec-line-fg" => (137, 180, 250),

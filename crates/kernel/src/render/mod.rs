@@ -6,6 +6,7 @@ pub mod host;
 pub use host::{FrameHost, PaneMetrics, RenderHost, ViewportHost};
 pub mod view;
 pub use view_tree;
+pub mod caret_extras;
 pub mod editor_view;
 pub mod gutter;
 pub mod gutter_providers;

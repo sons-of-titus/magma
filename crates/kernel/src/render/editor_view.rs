@@ -322,6 +322,34 @@ impl View for EditorView {
             scroll_left,
         );
 
+        // ── Bracket match + indent guides ────────────────────────────────
+        if is_focused {
+            crate::render::caret_extras::render_bracket_match(
+                editor,
+                &buf,
+                surface,
+                &rows,
+                &row_layouts,
+                cursor_offset,
+                scroll_left,
+                content_x,
+                row_offset,
+            );
+        }
+        if editor.options.get("indent-guides").map(|v| v.as_str()) != Some("false") {
+            crate::render::caret_extras::render_indent_guides(
+                editor,
+                surface,
+                &rows,
+                &row_layouts,
+                scroll_left,
+                content_x,
+                row_offset,
+                content_x as usize + content_cols,
+                tab_w,
+            );
+        }
+
         // ── Current execution line — the stopped debuggee's location ──────
         if let Some((path, line)) = editor
             .debug

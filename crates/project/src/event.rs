@@ -13,7 +13,10 @@ pub enum Event {
     FileSearchListed { pattern: String, files: Vec<String> },
     /// A streamed batch of project-search results; appended to the quickfix
     /// list when the generation is still current.
-    GrepResultsBatch { generation: u64, entries: Vec<QuickfixEntry> },
+    GrepResultsBatch {
+        generation: u64,
+        entries: Vec<QuickfixEntry>,
+    },
     /// A project-wide search finished; the quickfix index resets.
     GrepDone { generation: u64 },
 }
@@ -51,13 +54,19 @@ mod tests {
             entries: vec![entry("src/lib.rs", 9)],
         };
         match batch.clone() {
-            Event::GrepResultsBatch { generation, entries } => {
+            Event::GrepResultsBatch {
+                generation,
+                entries,
+            } => {
                 assert_eq!(generation, 3);
                 assert_eq!(entries[0].line, 9);
             }
             _ => panic!("wrong variant"),
         }
 
-        assert!(matches!(Event::GrepDone { generation: 3 }, Event::GrepDone { .. }));
+        assert!(matches!(
+            Event::GrepDone { generation: 3 },
+            Event::GrepDone { .. }
+        ));
     }
 }

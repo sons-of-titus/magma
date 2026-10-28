@@ -68,7 +68,9 @@ impl TerminalSession {
     pub fn send_input(&self, input: &str) -> Result<(), String> {
         use std::io::Write;
         let mut writer = self.writer.lock().map_err(|e| e.to_string())?;
-        writer.write_all(input.as_bytes()).map_err(|e| e.to_string())?;
+        writer
+            .write_all(input.as_bytes())
+            .map_err(|e| e.to_string())?;
         writer.flush().map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -115,7 +117,9 @@ impl TerminalSession {
         let mut counters: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
         for s in sessions {
-            let Some(label) = s.auto_label.clone() else { continue };
+            let Some(label) = s.auto_label.clone() else {
+                continue;
+            };
             let n = counters.entry(label.clone()).or_insert(0);
             *n += 1;
             s.title = format!("{label} {n}");

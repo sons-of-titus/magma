@@ -1,10 +1,13 @@
 //! Janet C functions for TCP client and server primitives (Sprint 13).
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::extension::Capability;
 
 /// `(net/tcp-connect host port)` → conn-id
@@ -31,19 +34,28 @@ unsafe extern "C-unwind" fn c_tcp_connect(argc: i32, argv: *mut Janet) -> Janet 
         let id = ed.io.next_net_id;
         ed.io.next_net_id += 1;
         let (write_tx, mut write_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        ed.io.net_connections.insert(id, kernel::net::NetConnection {
-            host: host.clone(), port, connected: false, write_tx: write_tx.clone(),
-        });
+        ed.io.net_connections.insert(
+            id,
+            kernel::net::NetConnection {
+                host: host.clone(),
+                port,
+                connected: false,
+                write_tx: write_tx.clone(),
+            },
+        );
         debug!("net/tcp-connect id={id} {host}:{port}");
         let sender = bg.sender.clone();
         let addr = format!("{host}:{port}");
         bg.spawn(async move {
             use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
             let stream = match tokio::net::TcpStream::connect(&addr).await {
-                Ok(s)  => s,
+                Ok(s) => s,
                 Err(e) => {
                     debug!("tcp-error id={id} {e}");
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::TcpError { id, error: e.to_string() });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::TcpError {
+                        id,
+                        error: e.to_string(),
+                    });
                     return;
                 }
             };
@@ -55,13 +67,18 @@ unsafe extern "C-unwind" fn c_tcp_connect(argc: i32, argv: *mut Janet) -> Janet 
             let read_task = tokio::spawn(async move {
                 while let Ok(Some(line)) = lines.next_line().await {
                     debug!("tcp-data id={id} len={}", line.len());
-                    let _ = sender_read.send(kernel::runtime::BackgroundEvent::TcpData { id, data: line });
+                    let _ = sender_read
+                        .send(kernel::runtime::BackgroundEvent::TcpData { id, data: line });
                 }
                 debug!("tcp-closed id={id}");
                 let _ = sender_read.send(kernel::runtime::BackgroundEvent::TcpClosed { id });
             });
             while let Some(msg) = write_rx.recv().await {
-                if writer.write_all(format!("{msg}\n").as_bytes()).await.is_err() {
+                if writer
+                    .write_all(format!("{msg}\n").as_bytes())
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -119,15 +136,21 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
         let server_id = ed.io.next_net_id;
         ed.io.next_net_id += 1;
         let running = Arc::new(AtomicBool::new(true));
-        ed.io.net_servers.insert(server_id, kernel::net::NetServer {
-            port,
-            running: running.clone(),
-            clients: std::collections::HashMap::new(),
-            next_client_id: 1,
-        });
+        ed.io.net_servers.insert(
+            server_id,
+            kernel::net::NetServer {
+                port,
+                running: running.clone(),
+                clients: std::collections::HashMap::new(),
+                next_client_id: 1,
+            },
+        );
         debug!("net/tcp-listen server_id={server_id} port={port}");
         let sender = bg.sender.clone();
-        let host = ed.options.get("tcp-listen-host").cloned()
+        let host = ed
+            .options
+            .get("tcp-listen-host")
+            .cloned()
             .unwrap_or_else(|| "127.0.0.1".to_string());
         bg.spawn(async move {
             use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -209,8 +232,14 @@ unsafe extern "C-unwind" fn c_tcp_broadcast(argc: i32, argv: *mut Janet) -> Jane
             None => conv::signal_err("net/tcp-broadcast: data string required"),
         };
         if let Some(srv) = ed.io.net_servers.get(&server_id) {
-            debug!("net/tcp-broadcast server_id={server_id} clients={} len={}", srv.clients.len(), data.len());
-            for tx in srv.clients.values() { let _ = tx.send(data.clone()); }
+            debug!(
+                "net/tcp-broadcast server_id={server_id} clients={} len={}",
+                srv.clients.len(),
+                data.len()
+            );
+            for tx in srv.clients.values() {
+                let _ = tx.send(data.clone());
+            }
         }
         conv::nil()
     })
@@ -226,10 +255,14 @@ unsafe extern "C-unwind" fn c_tcp_send_to(argc: i32, argv: *mut Janet) -> Janet 
             None => conv::signal_err("net/tcp-send-to: data string required"),
         };
         if let Some(srv) = ed.io.net_servers.get(&server_id)
-            && let Some(tx) = srv.clients.get(&client_id) {
-                debug!("net/tcp-send-to server_id={server_id} client_id={client_id} len={}", data.len());
-                let _ = tx.send(data);
-            }
+            && let Some(tx) = srv.clients.get(&client_id)
+        {
+            debug!(
+                "net/tcp-send-to server_id={server_id} client_id={client_id} len={}",
+                data.len()
+            );
+            let _ = tx.send(data);
+        }
         conv::nil()
     })
 }

@@ -58,7 +58,11 @@ pub fn resolve_cwd(cfg: &RunConfig, root: &Path) -> PathBuf {
         None | Some("") => root.to_path_buf(),
         Some(cwd) => {
             let p = Path::new(cwd);
-            if p.is_absolute() { p.to_path_buf() } else { root.join(p) }
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                root.join(p)
+            }
         }
     }
 }

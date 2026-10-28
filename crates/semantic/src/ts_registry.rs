@@ -10,8 +10,7 @@ use std::sync::Mutex;
 
 use streaming_iterator::StreamingIterator;
 
-pub static TS_LANGUAGES: Mutex<Option<HashMap<String, tree_sitter::Language>>> =
-    Mutex::new(None);
+pub static TS_LANGUAGES: Mutex<Option<HashMap<String, tree_sitter::Language>>> = Mutex::new(None);
 
 pub fn with_language_map<F, R>(f: F) -> R
 where
@@ -24,7 +23,9 @@ where
 
 /// Register a named language grammar.
 pub fn register_language(name: &str, language: tree_sitter::Language) {
-    with_language_map(|m| { m.insert(name.to_string(), language); });
+    with_language_map(|m| {
+        m.insert(name.to_string(), language);
+    });
 }
 
 /// Check whether a grammar is registered.
@@ -59,7 +60,9 @@ fn collect_errors(node: tree_sitter::Node<'_>, out: &mut Vec<String>) {
     if cursor.goto_first_child() {
         loop {
             collect_errors(cursor.node(), out);
-            if !cursor.goto_next_sibling() { break; }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
         }
     }
 }
@@ -91,15 +94,20 @@ fn query_tree(
     let query = tree_sitter::Query::new(language, query_src).ok()?;
     let root = tree.root_node();
     let mut cursor = tree_sitter::QueryCursor::new();
-    let capture_names: Vec<String> =
-        query.capture_names().iter().map(|s| s.to_string()).collect();
+    let capture_names: Vec<String> = query
+        .capture_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let mut query_caps = cursor.captures(&query, root, text_bytes);
     let mut result = Vec::new();
     while let Some((m, _)) = query_caps.next() {
         for cap in m.captures {
             let start = cap.node.start_byte();
-            let end   = cap.node.end_byte();
-            if start >= end { continue; }
+            let end = cap.node.end_byte();
+            if start >= end {
+                continue;
+            }
             let name_idx = cap.index as usize;
             let scope = if name_idx < capture_names.len() {
                 capture_names[name_idx].clone()
@@ -159,27 +167,28 @@ pub fn highlight_incremental(
         let mut chunks: ropey::iter::Chunks<'_> = rope.chunks();
         let mut cur: &str = "";
         let mut cur_pos: usize = 0;
-        let tree = parser.parse_with(
-            &mut |offset: usize, _| -> &[u8] {
-                while offset >= cur_pos + cur.len() {
-                    match chunks.next() {
-                        Some(c) => {
-                            cur_pos += cur.len();
-                            cur = c;
+        let tree = parser
+            .parse_with(
+                &mut |offset: usize, _| -> &[u8] {
+                    while offset >= cur_pos + cur.len() {
+                        match chunks.next() {
+                            Some(c) => {
+                                cur_pos += cur.len();
+                                cur = c;
+                            }
+                            None => break,
                         }
-                        None => break,
                     }
-                }
-                let rel = offset.saturating_sub(cur_pos).min(cur.len());
-                let mut b = rel;
-                while b > 0 && !cur.is_char_boundary(b) {
-                    b -= 1;
-                }
-                &cur.as_bytes()[b..]
-            },
-            old_tree.as_ref(),
-        )
-        .or(old_tree)?;
+                    let rel = offset.saturating_sub(cur_pos).min(cur.len());
+                    let mut b = rel;
+                    while b > 0 && !cur.is_char_boundary(b) {
+                        b -= 1;
+                    }
+                    &cur.as_bytes()[b..]
+                },
+                old_tree.as_ref(),
+            )
+            .or(old_tree)?;
 
         let ranges = query_tree(&language, &tree, query_text.as_bytes(), query_src)?;
         // Caller stamps the buffer revision the tree was parsed at.
@@ -194,22 +203,21 @@ pub fn load_grammar_from_lib(path: &str) -> Result<tree_sitter::Language, String
         .map_err(|e| format!("cannot open shared library: {}", e))?;
 
     let func_ptr: unsafe extern "C-unwind" fn() -> *const std::ffi::c_void = unsafe {
-        let sym: libloading::Symbol<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void> =
-            lib.get(b"tree_sitter_language")
-                .or_else(|_| lib.get(b"tree_sitter_rust"))
-                .or_else(|_| lib.get(b"tree_sitter_javascript"))
-                .or_else(|_| lib.get(b"tree_sitter_python"))
-                .or_else(|_| lib.get(b"tree_sitter_java"))
-                .or_else(|_| lib.get(b"tree_sitter_json"))
-                .or_else(|_| lib.get(b"tree_sitter_html"))
-                .or_else(|_| lib.get(b"tree_sitter_bash"))
-                .map_err(|e| format!("cannot find language function: {}", e))?;
+        let sym: libloading::Symbol<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void> = lib
+            .get(b"tree_sitter_language")
+            .or_else(|_| lib.get(b"tree_sitter_rust"))
+            .or_else(|_| lib.get(b"tree_sitter_javascript"))
+            .or_else(|_| lib.get(b"tree_sitter_python"))
+            .or_else(|_| lib.get(b"tree_sitter_java"))
+            .or_else(|_| lib.get(b"tree_sitter_json"))
+            .or_else(|_| lib.get(b"tree_sitter_html"))
+            .or_else(|_| lib.get(b"tree_sitter_bash"))
+            .map_err(|e| format!("cannot find language function: {}", e))?;
         *sym
     };
 
     std::mem::forget(lib);
-    let lang_fn: unsafe extern "C" fn() -> *const () =
-        unsafe { std::mem::transmute(func_ptr) };
+    let lang_fn: unsafe extern "C" fn() -> *const () = unsafe { std::mem::transmute(func_ptr) };
     let lang_fn = unsafe { tree_sitter_language::LanguageFn::from_raw(lang_fn) };
     Ok(tree_sitter::Language::new(lang_fn))
 }

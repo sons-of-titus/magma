@@ -1,12 +1,14 @@
-use std::collections::HashMap;
 use kernel::command::{self, builtin};
-use kernel::storage::disk::DiskFileSystem;
 use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
+use std::collections::HashMap;
 
 #[macro_export]
 macro_rules! janet_test {
     ($ed:ident, $body:block) => {{
-        let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = scripting::JANET_VM_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut $ed = helpers::make_editor();
         scripting::init(&mut $ed);
         let _editor_scope = scripting::EditorScope::new(&mut $ed);
@@ -39,7 +41,8 @@ pub fn run(ed: &mut Editor, cmd: &str) {
 }
 
 pub fn focused_key(ed: &Editor) -> usize {
-    ed.view_tree.focused_window()
+    ed.view_tree
+        .focused_window()
         .and_then(|wid| ed.view_tree.buffer(wid))
         .unwrap_or(0)
 }
@@ -57,7 +60,9 @@ pub fn cursor(ed: &Editor) -> usize {
 
 #[cfg(feature = "janet")]
 pub fn acquire_janet_lock() -> std::sync::MutexGuard<'static, ()> {
-    scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 /// A minimal DAP adapter that answers `initialize` and appends every request
@@ -104,7 +109,11 @@ while True:
 "#;
 
 pub fn python3_available() -> bool {
-    std::process::Command::new("python3").arg("-c").arg("1").output().is_ok()
+    std::process::Command::new("python3")
+        .arg("-c")
+        .arg("1")
+        .output()
+        .is_ok()
 }
 
 pub struct FakeDap {
@@ -134,8 +143,11 @@ pub fn dap_log_lines(log: &std::path::Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub fn editor_with_background() -> (Editor, kernel::runtime::BackgroundHandle,
-    tokio::sync::mpsc::UnboundedReceiver<kernel::runtime::BackgroundEvent>) {
+pub fn editor_with_background() -> (
+    Editor,
+    kernel::runtime::BackgroundHandle,
+    tokio::sync::mpsc::UnboundedReceiver<kernel::runtime::BackgroundEvent>,
+) {
     let mut ed = make_editor();
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();

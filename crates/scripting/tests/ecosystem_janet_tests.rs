@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── editor/module-path ────────────────────────────────────────────────────────
@@ -58,10 +59,15 @@ fn keymap_list_layer_contains_set_binding() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(keymap/set "ctrl-x" "save-buffer" "testlayer")"#);
     let r = scripting::eval(
-        r#"(def bs (keymap/list-layer "testlayer")) (def found (find (fn [p] (= (p 0) "ctrl-x")) bs)) (not (nil? found))"#);
+        r#"(def bs (keymap/list-layer "testlayer")) (def found (find (fn [p] (= (p 0) "ctrl-x")) bs)) (not (nil? found))"#,
+    );
     assert_eq!(r, "ok");
     let bindings = ed.keymaps.list_layer("testlayer");
-    assert!(bindings.iter().any(|(k, v)| k == "ctrl-x" && v == "save-buffer"));
+    assert!(
+        bindings
+            .iter()
+            .any(|(k, v)| k == "ctrl-x" && v == "save-buffer")
+    );
 }
 
 #[test]
@@ -82,8 +88,7 @@ fn quickfix_set_replaces_list() {
     let mut ed = helpers::make_editor_with_buffer("hello\n");
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval(
-        r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "err"}])"#);
+    let r = scripting::eval(r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "err"}])"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.search.results.len(), 1);
     assert_eq!(ed.search.results[0].filename, "a.rs");
@@ -97,8 +102,7 @@ fn quickfix_set_clears_with_empty_array() {
     let mut ed = helpers::make_editor_with_buffer("hello\n");
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    scripting::eval(
-        r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "e"}])"#);
+    scripting::eval(r#"(quickfix/set [{:filename "a.rs" :line 1 :col 1 :message "e"}])"#);
     assert_eq!(ed.search.results.len(), 1);
     scripting::eval("(quickfix/set [])");
     assert_eq!(ed.search.results.len(), 0);
@@ -113,7 +117,8 @@ fn quickfix_get_returns_all_entries() {
     scripting::eval(
         r#"(quickfix/set [
              {:filename "x.rs" :line 2 :col 3 :message "warning"}
-             {:filename "y.rs" :line 5 :col 1 :message "error"}])"#);
+             {:filename "y.rs" :line 5 :col 1 :message "error"}])"#,
+    );
     let r = scripting::eval("(= 2 (length (quickfix/get)))");
     assert_eq!(r, "ok");
     assert_eq!(ed.search.results.len(), 2);
@@ -157,8 +162,7 @@ fn mark_ring_pop_returns_last_pushed() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     scripting::eval(r#"(mark-ring/push "a.rs" 0)"#);
     scripting::eval(r#"(mark-ring/push "b.rs" 99)"#);
-    let r = scripting::eval(
-        r#"(def e (mark-ring/pop)) (= (e :path) "b.rs")"#);
+    let r = scripting::eval(r#"(def e (mark-ring/pop)) (= (e :path) "b.rs")"#);
     assert_eq!(r, "ok");
     assert_eq!(ed.mark_ring.len(), 1);
     assert_eq!(ed.mark_ring[0].0, "a.rs");

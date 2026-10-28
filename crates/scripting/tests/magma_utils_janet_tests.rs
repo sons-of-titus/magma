@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── magma-api-version ─────────────────────────────────────────────────────
@@ -6,7 +7,8 @@ use scripting;
 #[test]
 fn magma_api_version_is_tuple_of_three_numbers() {
     janet_test!(ed, {
-        let r = scripting::eval(r#"(and (tuple? magma-api-version) (= 3 (length magma-api-version)))"#);
+        let r =
+            scripting::eval(r#"(and (tuple? magma-api-version) (= 3 (length magma-api-version)))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -118,7 +120,8 @@ fn trim_trailing_empty_string_returns_empty() {
 #[test]
 fn ensure_trailing_newline_appends_newline_to_nonempty() {
     janet_test!(ed, {
-        let r = scripting::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello")))"#);
+        let r =
+            scripting::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -126,7 +129,8 @@ fn ensure_trailing_newline_appends_newline_to_nonempty() {
 #[test]
 fn ensure_trailing_newline_does_not_duplicate_newline() {
     janet_test!(ed, {
-        let r = scripting::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello\n")))"#);
+        let r =
+            scripting::eval(r#"(= "hello\n" (string (magma/ensure-trailing-newline "hello\n")))"#);
         assert_eq!(r, "ok");
     });
 }
@@ -144,7 +148,9 @@ fn ensure_trailing_newline_empty_string_returns_newline() {
 #[test]
 fn indent_returns_indented_text() {
     janet_test!(ed, {
-        let r = scripting::eval(r#"(= "  hello\n  world\n" (string (magma/indent "hello\nworld" 2 " ")))"#);
+        let r = scripting::eval(
+            r#"(= "  hello\n  world\n" (string (magma/indent "hello\nworld" 2 " ")))"#,
+        );
         assert_eq!(r, "ok");
     });
 }
@@ -166,7 +172,8 @@ fn deep_merge_returns_merged_table() {
             r#"(let [a {:x 1 :y {:a 10}} b {:y {:b 20} :z 3}]
                  (def m (magma/deep-merge a b))
                  (and (= (m :x) 1) (= (get-in m [:y :a]) 10)
-                      (= (get-in m [:y :b]) 20) (= (m :z) 3)))"#);
+                      (= (get-in m [:y :b]) 20) (= (m :z) 3)))"#,
+        );
         assert_eq!(r, "ok");
     });
 }
@@ -177,7 +184,8 @@ fn deep_merge_does_not_mutate_original() {
         let r = scripting::eval(
             r#"(let [a {:x 1} b {:x 2}]
                  (magma/deep-merge a b)
-                 (= (a :x) 1))"#);
+                 (= (a :x) 1))"#,
+        );
         assert_eq!(r, "ok");
     });
 }

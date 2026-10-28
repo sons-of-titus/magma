@@ -8,6 +8,7 @@ pub struct Position {
 }
 
 impl Position {
-    pub fn zero() -> Self { Self::default() }
+    pub fn zero() -> Self {
+        Self::default()
+    }
 }
-

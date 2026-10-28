@@ -26,14 +26,16 @@ pub struct ProjectGraph {
 }
 
 impl ProjectGraph {
-    pub fn new() -> Self { ProjectGraph::default() }
+    pub fn new() -> Self {
+        ProjectGraph::default()
+    }
 
     /// Add or update a file node.
     pub fn add_file(&mut self, path: &str, language: &str, symbols: Vec<String>) {
         let node = self.files.entry(path.to_string()).or_default();
-        node.path     = path.to_string();
+        node.path = path.to_string();
         node.language = language.to_string();
-        node.symbols  = symbols;
+        node.symbols = symbols;
     }
 
     /// Record that `from` depends on `to`.
@@ -80,7 +82,7 @@ impl ProjectGraph {
     /// Transitive closure of files that `path` depends on (depth-first).
     pub fn transitive_dependencies(&self, path: &str) -> Vec<String> {
         let mut visited: HashSet<String> = HashSet::new();
-        let mut stack   = vec![path.to_string()];
+        let mut stack = vec![path.to_string()];
         while let Some(cur) = stack.pop() {
             if visited.insert(cur.clone()) {
                 for dep in self.dependencies_of(&cur) {
@@ -97,7 +99,9 @@ impl ProjectGraph {
     }
 
     /// Total number of tracked files.
-    pub fn file_count(&self) -> usize { self.files.len() }
+    pub fn file_count(&self) -> usize {
+        self.files.len()
+    }
 }
 
 #[cfg(test)]
@@ -148,7 +152,7 @@ mod tests {
     fn transitive_dependencies() {
         let mut g = ProjectGraph::new();
         g.add_dependency("main.rs", "lib.rs");
-        g.add_dependency("lib.rs",  "util.rs");
+        g.add_dependency("lib.rs", "util.rs");
         let trans = g.transitive_dependencies("main.rs");
         assert!(trans.contains(&"lib.rs".to_string()));
         assert!(trans.contains(&"util.rs".to_string()));

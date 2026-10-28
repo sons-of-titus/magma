@@ -53,7 +53,11 @@ pub fn parse_tabstops(expanded: &str) -> Vec<TabStop> {
                             number,
                             offset, // placeholder: will be adjusted after expansion
                             text: text.to_string(),
-                            text_len: if text.is_empty() { 0 } else { expanded[offset..offset + 2 + close + 1].len() },
+                            text_len: if text.is_empty() {
+                                0
+                            } else {
+                                expanded[offset..offset + 2 + close + 1].len()
+                            },
                         });
                     }
                     offset += 2 + close + 1;
@@ -94,16 +98,25 @@ pub fn expand(trigger: &str) -> Option<String> {
 /// The built-in snippets common to many languages, keyed by trigger.
 pub fn builtin() -> HashMap<&'static str, &'static str> {
     let mut m = HashMap::new();
-    m.insert("for", "for (${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {\n    ${0}\n}");
+    m.insert(
+        "for",
+        "for (${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {\n    ${0}\n}",
+    );
     m.insert("if", "if (${1:condition}) {\n    ${0}\n}");
     m.insert("else", "} else {\n    ${0}\n}");
     m.insert("fun", "function ${1:name}(${2:args}) {\n    ${0}\n}");
     m.insert("def", "${1:name} = ${2:value}");
-    m.insert("main", "int main(int argc, char *argv[]) {\n    ${0}\n    return 0;\n}");
+    m.insert(
+        "main",
+        "int main(int argc, char *argv[]) {\n    ${0}\n    return 0;\n}",
+    );
     m.insert("class", "class ${1:Name} {\npublic:\n    ${1:Name}() {}\n    ~${1:Name}() {}\nprivate:\n    ${0}\n};");
     m.insert("struct", "struct ${1:Name} {\n    ${0}\n};");
     m.insert("enum", "enum ${1:Name} {\n    ${0}\n};");
-    m.insert("pubfn", "pub fn ${1:name}(${2:args}) -> ${3:Type} {\n    ${0}\n}");
+    m.insert(
+        "pubfn",
+        "pub fn ${1:name}(${2:args}) -> ${3:Type} {\n    ${0}\n}",
+    );
     m.insert("impl", "impl ${1:Name} {\n    ${0}\n}");
     m.insert("match", "match ${1:expr} {\n    ${2:pattern} => ${0},\n}");
     m.insert("println", "println!(\"${1}\");");

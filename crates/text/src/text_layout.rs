@@ -59,7 +59,9 @@ pub fn grapheme_cell_width(
     glyph_widths: &std::collections::HashMap<char, u8>,
 ) -> usize {
     if grapheme == "\t" {
-        return tab_width.saturating_sub(current_column % tab_width.max(1)).max(1);
+        return tab_width
+            .saturating_sub(current_column % tab_width.max(1))
+            .max(1);
     }
     grapheme
         .chars()

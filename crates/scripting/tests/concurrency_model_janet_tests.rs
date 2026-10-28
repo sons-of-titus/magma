@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet API tests for Phase 9 — Concurrency Model.
 
 use helpers::acquire_janet_lock;
@@ -11,7 +12,7 @@ macro_rules! jt {
             let _lock = acquire_janet_lock();
             let mut ed = helpers::make_editor();
             scripting::init(&mut ed);
-    let _editor_scope = scripting::EditorScope::new(&mut ed);
+            let _editor_scope = scripting::EditorScope::new(&mut ed);
             let result = scripting::eval_result($code).unwrap_or_else(|e| e);
             assert_eq!(result, $expected, "Janet: {}", $code);
         }
@@ -20,27 +21,35 @@ macro_rules! jt {
 
 // ── scheduler/list ───────────────────────────────────────────────────────────
 
-jt!(scheduler_list_empty_on_start,
+jt!(
+    scheduler_list_empty_on_start,
     "(length (scheduler/list))",
-    "0");
+    "0"
+);
 
 // ── scheduler/status ─────────────────────────────────────────────────────────
 
-jt!(scheduler_status_not_found_for_unknown,
+jt!(
+    scheduler_status_not_found_for_unknown,
     "(scheduler/status 999999)",
-    ":not-found");
+    ":not-found"
+);
 
 // ── scheduler/progress ───────────────────────────────────────────────────────
 
-jt!(scheduler_progress_nil_for_unknown,
+jt!(
+    scheduler_progress_nil_for_unknown,
     "(= nil (scheduler/progress 999999))",
-    "true");
+    "true"
+);
 
 // ── scheduler/cancel ─────────────────────────────────────────────────────────
 
-jt!(scheduler_cancel_unknown_returns_nil,
+jt!(
+    scheduler_cancel_unknown_returns_nil,
     "(= nil (scheduler/cancel 999))",
-    "true");
+    "true"
+);
 
 // ── scheduler/submit ─────────────────────────────────────────────────────────
 
@@ -49,7 +58,7 @@ fn scheduler_submit_returns_positive_id() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundEvent, BackgroundHandle};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -68,7 +77,7 @@ fn scheduler_submit_appears_in_list() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundEvent, BackgroundHandle};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -78,8 +87,9 @@ fn scheduler_submit_appears_in_list() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let result = scripting::eval_result(
-        r#"(do (scheduler/submit "my-work" "echo hello") (> (length (scheduler/list)) 0))"#
-    ).unwrap_or_default();
+        r#"(do (scheduler/submit "my-work" "echo hello") (> (length (scheduler/list)) 0))"#,
+    )
+    .unwrap_or_default();
     assert_eq!(result, "true");
 }
 
@@ -90,7 +100,7 @@ fn submitted_work_status_is_running_or_completed() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundEvent, BackgroundHandle};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -103,8 +113,9 @@ fn submitted_work_status_is_running_or_completed() {
         r#"(do
              (def id (scheduler/submit "quick-work" "true"))
              (def s (scheduler/status id))
-             (or (= s :running) (= s :completed)))"#
-    ).unwrap_or_default();
+             (or (= s :running) (= s :completed)))"#,
+    )
+    .unwrap_or_default();
     assert_eq!(result, "true");
 }
 
@@ -115,7 +126,7 @@ fn progress_table_has_done_and_total_keys() {
     let _lock = acquire_janet_lock();
     let mut ed = helpers::make_editor();
 
-    use kernel::runtime::{BackgroundHandle, BackgroundEvent};
+    use kernel::runtime::{BackgroundEvent, BackgroundHandle};
     use std::sync::Arc;
     let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<BackgroundEvent>();
@@ -129,7 +140,10 @@ fn progress_table_has_done_and_total_keys() {
     ed.scheduler.update_progress(work_id, 3, 10);
 
     // The eval runs inside the scoped bridge (docs/core-redesign.md §11).
-    let code = format!("(do (def p (scheduler/progress {})) (and (= (get p :done) 3) (= (get p :total) 10)))", work_id);
+    let code = format!(
+        "(do (def p (scheduler/progress {})) (and (= (get p :done) 3) (= (get p :total) 10)))",
+        work_id
+    );
     let result = scripting::scoped_editor(&mut ed, || {
         scripting::eval_result(&code).unwrap_or_default()
     });
@@ -169,16 +183,19 @@ fn list_item_has_expected_keys() {
 
     ed.scheduler.register_task(300, "list-test");
 
-    let result = scripting::scoped_editor(&mut ed, || scripting::eval_result(
-        r#"(do
+    let result = scripting::scoped_editor(&mut ed, || {
+        scripting::eval_result(
+            r#"(do
              (def items (scheduler/list))
              (def item  (get items 0))
              (and (has-key? item :id)
                   (has-key? item :name)
                   (has-key? item :status)
                   (has-key? item :done)
-                  (has-key? item :total)))"#
-    ).unwrap_or_default());
+                  (has-key? item :total)))"#,
+        )
+        .unwrap_or_default()
+    });
     assert_eq!(result, "true");
 }
 
@@ -197,8 +214,9 @@ fn list_item_name_matches_registered_name() {
             r#"(do
                  (def items (scheduler/list))
                  (def item  (get items 0))
-                 (= (get item :name) "my-named-work"))"#
-        ).unwrap_or_default()
+                 (= (get item :name) "my-named-work"))"#,
+        )
+        .unwrap_or_default()
     });
     assert_eq!(result, "true");
 }

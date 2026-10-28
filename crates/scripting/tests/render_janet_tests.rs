@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── font/invalidate ────────────────────────────────────────────────────
@@ -13,7 +14,10 @@ fn font_invalidate_sets_font_changed_flag() {
     assert!(!ed.font_changed, "font_changed must start false");
     let r = scripting::eval("(font/invalidate)");
     assert_eq!(r, "ok");
-    assert!(ed.font_changed, "font_changed must be true after font/invalidate");
+    assert!(
+        ed.font_changed,
+        "font_changed must be true after font/invalidate"
+    );
 }
 
 // ── font-changed event ────────────────────────────────────────────────────────
@@ -26,7 +30,10 @@ fn font_changed_event_has_subscriber_from_ecosystem() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let count = ed.events.subscriber_count("font-changed");
-    assert!(count > 0, "ecosystem.janet must register a font-changed subscriber");
+    assert!(
+        count > 0,
+        "ecosystem.janet must register a font-changed subscriber"
+    );
 }
 
 #[test]
@@ -42,7 +49,10 @@ fn font_changed_event_sets_flag_after_drain() {
     // Drain dispatches the Rust subscriber, which calls the Janet handler,
     // which calls font/invalidate, which sets ed.font_changed = true.
     ed.events.drain_and_dispatch();
-    assert!(ed.font_changed, "font_changed flag must be set after font-changed event is drained");
+    assert!(
+        ed.font_changed,
+        "font_changed flag must be set after font-changed event is drained"
+    );
 }
 
 #[test]

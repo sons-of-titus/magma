@@ -148,8 +148,11 @@ fn newline_inserts_at_cursor() {
 fn undo_command_reverts_insert() {
     let mut ed = helpers::make_editor_with_buffer("");
     {
-        let slab = ed.view_tree.focused_window()
-            .and_then(|wid| ed.view_tree.buffer(wid)).unwrap();
+        let slab = ed
+            .view_tree
+            .focused_window()
+            .and_then(|wid| ed.view_tree.buffer(wid))
+            .unwrap();
         ed.views.get_mut(&slab).unwrap().insert(0, "hello");
     }
     helpers::run(&mut ed, "undo");
@@ -190,7 +193,11 @@ fn goto_matching_brace_survives_non_boundary_cursor() {
     let mid_char = "(println \"h".len() + 1; // inside é
     ed.views.get_mut(&key).unwrap().set_cursor(mid_char);
     helpers::run(&mut ed, "goto-matching-brace");
-    assert_eq!(helpers::cursor(&ed), mid_char, "no bracket at the snapped char: cursor stays");
+    assert_eq!(
+        helpers::cursor(&ed),
+        mid_char,
+        "no bracket at the snapped char: cursor stays"
+    );
 }
 
 #[test]
@@ -199,7 +206,11 @@ fn goto_matching_brace_from_mid_char_after_opener() {
     let key = helpers::focused_key(&ed);
     ed.views.get_mut(&key).unwrap().set_cursor(2); // second byte of é
     helpers::run(&mut ed, "goto-matching-brace");
-    assert_eq!(helpers::cursor(&ed), 2, "snap lands on é, not a bracket: cursor stays");
+    assert_eq!(
+        helpers::cursor(&ed),
+        2,
+        "snap lands on é, not a bracket: cursor stays"
+    );
 }
 
 #[test]
@@ -210,7 +221,11 @@ fn goto_matching_brace_backward_from_end_of_buffer() {
     let key = helpers::focused_key(&ed);
     ed.views.get_mut(&key).unwrap().set_cursor("(é)".len());
     helpers::run(&mut ed, "goto-matching-brace");
-    assert_eq!(helpers::cursor(&ed), 0, "closing paren at EOB jumps to its opener");
+    assert_eq!(
+        helpers::cursor(&ed),
+        0,
+        "closing paren at EOB jumps to its opener"
+    );
 }
 
 // ── Word motions on the chunk-scan path ──────────────────────────────
@@ -245,7 +260,11 @@ fn word_motions_handle_multibyte_words() {
     let key = helpers::focused_key(&ed);
     ed.views.get_mut(&key).unwrap().set_cursor(0);
     helpers::run(&mut ed, "move-word-forward");
-    assert_eq!(helpers::cursor(&ed), 7, "wörld starts after 'héllo ' (é is 2 bytes)");
+    assert_eq!(
+        helpers::cursor(&ed),
+        7,
+        "wörld starts after 'héllo ' (é is 2 bytes)"
+    );
     helpers::run(&mut ed, "move-word-back");
     assert_eq!(helpers::cursor(&ed), 0);
 }
@@ -262,7 +281,11 @@ fn search_repeat_wraps_in_both_directions() {
     helpers::run(&mut ed, "repeat-search");
     assert_eq!(helpers::cursor(&ed), 7);
     helpers::run(&mut ed, "repeat-search");
-    assert_eq!(helpers::cursor(&ed), 2, "forward search wraps to the first match");
+    assert_eq!(
+        helpers::cursor(&ed),
+        2,
+        "forward search wraps to the first match"
+    );
 
     helpers::run(&mut ed, "reverse-search");
     assert_eq!(helpers::cursor(&ed), 7, "backward wraps to the last match");
@@ -283,8 +306,7 @@ fn replace_all_is_one_undo_step() {
     let key = helpers::focused_key(&ed);
     let before_undo = ed.buffers.get(key).unwrap().lock().unwrap().undo_len();
 
-    crate::kernel::command::builtin::search_query::replace_all(
-        &mut ed, "at", "op", false).unwrap();
+    crate::kernel::command::builtin::search_query::replace_all(&mut ed, "at", "op", false).unwrap();
     assert_eq!(helpers::buf_text(&ed), "cop hop bop");
 
     // One undo STEP: the three replacements share a group even though
@@ -299,7 +321,9 @@ fn replace_all_is_one_undo_step() {
 fn replace_all_regex_uses_patterns() {
     let mut ed = helpers::make_editor_with_buffer("fn a() fn b()");
     crate::kernel::command::builtin::search_query::replace_all(
-        &mut ed, r"fn (\w)", "fn m_$1", true).unwrap();
+        &mut ed, r"fn (\w)", "fn m_$1", true,
+    )
+    .unwrap();
     assert_eq!(helpers::buf_text(&ed), "fn m_a() fn m_b()");
 }
 
@@ -319,7 +343,7 @@ fn replace_next_walks_matches() {
 #[test]
 fn smart_case_replaces_insensitively() {
     let mut ed = helpers::make_editor_with_buffer("Hello hello");
-    crate::kernel::command::builtin::search_query::replace_all(
-        &mut ed, "hello", "x", false).unwrap();
+    crate::kernel::command::builtin::search_query::replace_all(&mut ed, "hello", "x", false)
+        .unwrap();
     assert_eq!(helpers::buf_text(&ed), "x x");
 }

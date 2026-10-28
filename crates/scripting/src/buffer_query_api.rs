@@ -1,26 +1,35 @@
 //! Janet API — buffer queries: current, list, create, name, path, mode, line info, modified, diagnostics.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 
 pub(super) fn emit_buffer_changed(ed: &mut kernel::state::Editor, key: usize) {
     // Not a text mutation: an empty transition (same revision, no edits)
     // signals "this buffer's content should be re-examined".
-    let rev = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision()).unwrap_or(0);
-    ed.events.emit_typed(keys::events::BUFFER_CHANGED, BufferChangedPayload {
-        buffer_id: key.to_string(),
-        revision_before: rev.to_string(),
-        revision_after: rev.to_string(),
-        edits: String::new(),
-    });
+    let rev = ed
+        .buffers
+        .get(key)
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
+        .unwrap_or(0);
+    ed.events.emit_typed(
+        keys::events::BUFFER_CHANGED,
+        BufferChangedPayload {
+            buffer_id: key.to_string(),
+            revision_before: rev.to_string(),
+            revision_after: rev.to_string(),
+            edits: String::new(),
+        },
+    );
 }
 
 unsafe extern "C-unwind" fn c_buffer_current(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let slab = ed.view_tree.focused_window()
+        let slab = ed
+            .view_tree
+            .focused_window()
             .and_then(|wid| ed.view_tree.buffer(wid));
         debug!("BC: buffer/current -> {:?}", slab);
         match slab {
@@ -36,9 +45,21 @@ unsafe extern "C-unwind" fn c_buffer_list(_argc: i32, _argv: *mut Janet) -> Jane
         for (key, arc) in ed.buffers.iter() {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             let tbl = janet_wrap_table(janet_table(0));
-            janet_table_put(janet_unwrap_table(tbl), conv::keyword("slab"), conv::integer(key as i32));
-            janet_table_put(janet_unwrap_table(tbl), conv::keyword("name"), conv::string(&buf.name.clone()));
-            janet_table_put(janet_unwrap_table(tbl), conv::keyword("len"), conv::integer(buf.len() as i32));
+            janet_table_put(
+                janet_unwrap_table(tbl),
+                conv::keyword("slab"),
+                conv::integer(key as i32),
+            );
+            janet_table_put(
+                janet_unwrap_table(tbl),
+                conv::keyword("name"),
+                conv::string(&buf.name.clone()),
+            );
+            janet_table_put(
+                janet_unwrap_table(tbl),
+                conv::keyword("len"),
+                conv::integer(buf.len() as i32),
+            );
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
         arr
@@ -64,7 +85,11 @@ unsafe extern "C-unwind" fn c_buffer_create(argc: i32, argv: *mut Janet) -> Jane
 unsafe extern "C-unwind" fn c_buffer_name(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let name = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).name.clone()).unwrap_or_default();
+        let name = ed
+            .buffers
+            .get(key)
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).name.clone())
+            .unwrap_or_default();
         conv::string(&name)
     })
 }
@@ -99,7 +124,12 @@ unsafe extern "C-unwind" fn c_buffer_language_path(argc: i32, argv: *mut Janet) 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => match arc.lock().unwrap_or_else(|e| e.into_inner()).language_path.clone() {
+            Some(arc) => match arc
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .language_path
+                .clone()
+            {
                 Some(p) => conv::string(&p),
                 None => conv::nil(),
             },
@@ -112,7 +142,12 @@ unsafe extern "C-unwind" fn c_buffer_major_mode(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => conv::string(arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode.name()),
+            Some(arc) => conv::string(
+                arc.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .major_mode
+                    .name(),
+            ),
             None => conv::string("fundamental"),
         }
     })
@@ -122,7 +157,9 @@ unsafe extern "C-unwind" fn c_buffer_line_count(argc: i32, argv: *mut Janet) -> 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => conv::integer(arc.lock().unwrap_or_else(|e| e.into_inner()).line_count() as i32),
+            Some(arc) => {
+                conv::integer(arc.lock().unwrap_or_else(|e| e.into_inner()).line_count() as i32)
+            }
             None => conv::integer(0),
         }
     })
@@ -133,7 +170,11 @@ unsafe extern "C-unwind" fn c_buffer_line_start_offset(argc: i32, argv: *mut Jan
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let line = conv::get_int(argc, argv, 1).unwrap_or(0) as usize;
         match ed.buffers.get(key) {
-            Some(arc) => match arc.lock().unwrap_or_else(|e| e.into_inner()).line_start_offset(line) {
+            Some(arc) => match arc
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .line_start_offset(line)
+            {
                 Some(offset) => conv::integer(offset as i32),
                 None => conv::nil(),
             },
@@ -145,7 +186,10 @@ unsafe extern "C-unwind" fn c_buffer_line_start_offset(argc: i32, argv: *mut Jan
 unsafe extern "C-unwind" fn c_buffer_line_number(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let cursor = ed.view_of_buffer(key).map(|v| v.cursor_offset()).unwrap_or(0);
+        let cursor = ed
+            .view_of_buffer(key)
+            .map(|v| v.cursor_offset())
+            .unwrap_or(0);
         match ed.buffers.get(key) {
             Some(arc) => {
                 let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
@@ -172,7 +216,10 @@ unsafe extern "C-unwind" fn c_buffer_diagnostics(argc: i32, argv: *mut Janet) ->
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let diags = match ed.buffers.get(key) {
-            Some(arc) => arc.lock().unwrap_or_else(|e| e.into_inner()).diagnostic_strings(),
+            Some(arc) => arc
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .diagnostic_strings(),
             None => Vec::new(),
         };
         let arr_ptr = janet_array(diags.len() as i32);
@@ -187,7 +234,11 @@ unsafe extern "C-unwind" fn c_buffer_lsp_position(argc: i32, argv: *mut Janet) -
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let offset = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
-        match ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).lsp_position(offset)) {
+        match ed.buffers.get(key).map(|a| {
+            a.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .lsp_position(offset)
+        }) {
             Some((line, col)) => {
                 let arr = janet_array(2);
                 janet_array_push(arr, conv::integer(line as i32));
@@ -206,10 +257,14 @@ unsafe extern "C-unwind" fn c_buffer_offset_of_lsp_position(argc: i32, argv: *mu
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let line = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as usize;
         let col = conv::get_int(argc, argv, 2).unwrap_or(0).max(0) as usize;
-        let offset = ed.buffers.get(key).map(|a| {
-            let buf = a.lock().unwrap_or_else(|e| e.into_inner());
-            kernel::semantic::edit_apply::offset_of_lsp_position(&buf, line, col)
-        }).unwrap_or(0);
+        let offset = ed
+            .buffers
+            .get(key)
+            .map(|a| {
+                let buf = a.lock().unwrap_or_else(|e| e.into_inner());
+                kernel::semantic::edit_apply::offset_of_lsp_position(&buf, line, col)
+            })
+            .unwrap_or(0);
         conv::integer(offset as i32)
     })
 }
@@ -218,8 +273,15 @@ unsafe extern "C-unwind" fn c_buffer_line_of(argc: i32, argv: *mut Janet) -> Jan
     with_editor(|ed| {
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
         let offset = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0).max(0) as usize;
-        let line = ed.buffers.get(key)
-            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).position_of(offset).line)
+        let line = ed
+            .buffers
+            .get(key)
+            .map(|a| {
+                a.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .position_of(offset)
+                    .line
+            })
             .unwrap_or(0);
         conv::integer(line as i32)
     })
@@ -228,7 +290,11 @@ unsafe extern "C-unwind" fn c_buffer_line_of(argc: i32, argv: *mut Janet) -> Jan
 unsafe extern "C-unwind" fn c_buffer_revision(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let key = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
-        let rev = ed.buffers.get(key).map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision()).unwrap_or(0);
+        let rev = ed
+            .buffers
+            .get(key)
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
+            .unwrap_or(0);
         conv::integer(rev as i32)
     })
 }
@@ -237,8 +303,14 @@ unsafe extern "C-unwind" fn c_buffer_changes_since(argc: i32, argv: *mut Janet) 
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
         let since = conv::get_int(argc, argv, 1).unwrap_or(0).max(0) as u64;
-        let changes = ed.buffers.get(key)
-            .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).changes_since(since))
+        let changes = ed
+            .buffers
+            .get(key)
+            .and_then(|a| {
+                a.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .changes_since(since)
+            })
             .unwrap_or_default();
         let arr = janet_array(changes.len() as i32);
         for (before, after, edits) in changes {
@@ -264,12 +336,18 @@ pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
             name: c"buffer/offset-of-lsp-position".as_ptr() as *const _,
-            cfun: Some(c_buffer_offset_of_lsp_position as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Byte offset of an LSP (line, UTF-16 character) position".as_ptr() as *const _,
+            cfun: Some(
+                c_buffer_offset_of_lsp_position
+                    as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Byte offset of an LSP (line, UTF-16 character) position".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"buffer/lsp-position".as_ptr() as *const _,
-            cfun: Some(c_buffer_lsp_position as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_lsp_position as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"[line utf16-column] of a byte offset".as_ptr() as *const _,
         },
         JanetReg {
@@ -284,7 +362,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"buffer/changes-since".as_ptr() as *const _,
-            cfun: Some(c_buffer_changes_since as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_changes_since as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Transactions committed after a revision".as_ptr() as *const _,
         },
         JanetReg {
@@ -319,27 +399,38 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"buffer/language-path".as_ptr() as *const _,
-            cfun: Some(c_buffer_language_path as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Path the buffer's syntax is inferred from, or nil".as_ptr() as *const _,
+            cfun: Some(
+                c_buffer_language_path as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Path the buffer's syntax is inferred from, or nil".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"buffer/major-mode".as_ptr() as *const _,
-            cfun: Some(c_buffer_major_mode as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_major_mode as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Get the major mode name for a buffer".as_ptr() as *const _,
         },
         JanetReg {
             name: c"buffer/line-count".as_ptr() as *const _,
-            cfun: Some(c_buffer_line_count as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_line_count as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Get number of lines in buffer".as_ptr() as *const _,
         },
         JanetReg {
             name: c"buffer/line-start-offset".as_ptr() as *const _,
-            cfun: Some(c_buffer_line_start_offset as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_line_start_offset as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Get byte offset of a line start".as_ptr() as *const _,
         },
         JanetReg {
             name: c"buffer/line-number".as_ptr() as *const _,
-            cfun: Some(c_buffer_line_number as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_line_number as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Get current line number (0-based)".as_ptr() as *const _,
         },
         JanetReg {
@@ -349,7 +440,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"buffer/diagnostics".as_ptr() as *const _,
-            cfun: Some(c_buffer_diagnostics as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_buffer_diagnostics as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Get LSP diagnostics for a buffer".as_ptr() as *const _,
         },
     ]

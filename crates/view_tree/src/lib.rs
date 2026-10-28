@@ -136,21 +136,38 @@ impl ViewTree {
     fn redistribute(&mut self) {
         let tw = self.term_width;
         let th = self.term_height.saturating_sub(1);
-        if self.panes.is_empty() { return; }
-        for pane in self.panes.iter_mut().filter(|p| p.layout == LayoutConstraint::Tab) {
-            pane.x = 0; pane.y = 0; pane.width = tw; pane.height = th;
-        }
-        let split: Vec<usize> = self.panes.iter().enumerate()
-            .filter(|(_, p)| p.layout != LayoutConstraint::Tab)
-            .map(|(i, _)| i).collect();
-        if split.is_empty() { return; }
-        if split.len() == 1 {
-            let p = &mut self.panes[split[0]];
-            p.x = 0; p.y = 0; p.width = tw; p.height = th;
+        if self.panes.is_empty() {
             return;
         }
-        let total: f32 = split.iter()
-            .map(|&i| self.panes[i].weight.max(0.01)).sum();
+        for pane in self
+            .panes
+            .iter_mut()
+            .filter(|p| p.layout == LayoutConstraint::Tab)
+        {
+            pane.x = 0;
+            pane.y = 0;
+            pane.width = tw;
+            pane.height = th;
+        }
+        let split: Vec<usize> = self
+            .panes
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.layout != LayoutConstraint::Tab)
+            .map(|(i, _)| i)
+            .collect();
+        if split.is_empty() {
+            return;
+        }
+        if split.len() == 1 {
+            let p = &mut self.panes[split[0]];
+            p.x = 0;
+            p.y = 0;
+            p.width = tw;
+            p.height = th;
+            return;
+        }
+        let total: f32 = split.iter().map(|&i| self.panes[i].weight.max(0.01)).sum();
         let n = split.len();
         match self.layout_axis {
             SplitDirection::Vertical => {
@@ -163,8 +180,10 @@ impl ViewTree {
                     } else {
                         ((frac * th as f32) as u16).max(1)
                     };
-                    pane.x = 0; pane.y = y;
-                    pane.width = tw; pane.height = win_h;
+                    pane.x = 0;
+                    pane.y = y;
+                    pane.width = tw;
+                    pane.height = win_h;
                     y += win_h;
                 }
             }
@@ -178,8 +197,10 @@ impl ViewTree {
                     } else {
                         ((frac * tw as f32) as u16).max(1)
                     };
-                    pane.x = x; pane.y = 0;
-                    pane.width = win_w; pane.height = th;
+                    pane.x = x;
+                    pane.y = 0;
+                    pane.width = win_w;
+                    pane.height = th;
                     x += win_w;
                 }
             }
@@ -256,7 +277,9 @@ impl ViewTree {
     }
 
     pub fn close(&mut self, id: WindowId) {
-        if self.panes.len() <= 1 { return; }
+        if self.panes.len() <= 1 {
+            return;
+        }
         if let Some(idx) = self.panes.iter().position(|p| p.id == id) {
             self.panes.remove(idx);
             if self.focused >= idx && self.focused > 0 {

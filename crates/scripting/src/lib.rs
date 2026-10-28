@@ -8,9 +8,9 @@ use std::cell::Cell;
 #[cfg(feature = "janet")]
 use std::ffi::CString;
 
-use kernel::state::Editor;
 #[cfg(feature = "janet")]
 use evil_janet::*;
+use kernel::state::Editor;
 
 /// Global lock to serialise all access to the Janet VM.
 ///
@@ -43,56 +43,64 @@ thread_local! {
 pub(crate) mod conv {
     use evil_janet::*;
 
-    pub unsafe fn get_str(argc: i32, argv: *mut Janet, i: i32) -> Option<String> { unsafe {
-        if i >= argc {
-            return None;
+    pub unsafe fn get_str(argc: i32, argv: *mut Janet, i: i32) -> Option<String> {
+        unsafe {
+            if i >= argc {
+                return None;
+            }
+            let v = *argv.add(i as usize);
+            if janet_checktype(v, JanetType_JANET_STRING) == 0
+                && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
+            {
+                return None;
+            }
+            let ptr = janet_unwrap_string(v);
+            if ptr.is_null() {
+                return None;
+            }
+            let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
+            Some(cstr.to_string_lossy().into_owned())
         }
-        let v = *argv.add(i as usize);
-        if janet_checktype(v, JanetType_JANET_STRING) == 0
-            && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
-        {
-            return None;
-        }
-        let ptr = janet_unwrap_string(v);
-        if ptr.is_null() {
-            return None;
-        }
-        let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
-        Some(cstr.to_string_lossy().into_owned())
-    }}
+    }
 
-    pub unsafe fn get_opt_str(argc: i32, argv: *mut Janet, i: i32) -> Option<Option<String>> { unsafe {
-        if i >= argc {
-            return Some(None);
+    pub unsafe fn get_opt_str(argc: i32, argv: *mut Janet, i: i32) -> Option<Option<String>> {
+        unsafe {
+            if i >= argc {
+                return Some(None);
+            }
+            let v = *argv.add(i as usize);
+            if janet_checktype(v, JanetType_JANET_NIL) != 0 {
+                return Some(None);
+            }
+            get_str(argc, argv, i).map(Some)
         }
-        let v = *argv.add(i as usize);
-        if janet_checktype(v, JanetType_JANET_NIL) != 0 {
-            return Some(None);
-        }
-        get_str(argc, argv, i).map(Some)
-    }}
+    }
 
-    pub unsafe fn get_int(argc: i32, argv: *mut Janet, i: i32) -> Option<i32> { unsafe {
-        if i >= argc {
-            return None;
+    pub unsafe fn get_int(argc: i32, argv: *mut Janet, i: i32) -> Option<i32> {
+        unsafe {
+            if i >= argc {
+                return None;
+            }
+            let v = *argv.add(i as usize);
+            if janet_checktype(v, JanetType_JANET_NUMBER) == 0 {
+                return None;
+            }
+            Some(janet_unwrap_integer(v))
         }
-        let v = *argv.add(i as usize);
-        if janet_checktype(v, JanetType_JANET_NUMBER) == 0 {
-            return None;
-        }
-        Some(janet_unwrap_integer(v))
-    }}
+    }
 
-    pub unsafe fn get_bool(argc: i32, argv: *mut Janet, i: i32) -> Option<bool> { unsafe {
-        if i >= argc {
-            return None;
+    pub unsafe fn get_bool(argc: i32, argv: *mut Janet, i: i32) -> Option<bool> {
+        unsafe {
+            if i >= argc {
+                return None;
+            }
+            let v = *argv.add(i as usize);
+            if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 {
+                return None;
+            }
+            Some(janet_unwrap_boolean(v) != 0)
         }
-        let v = *argv.add(i as usize);
-        if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 {
-            return None;
-        }
-        Some(janet_unwrap_boolean(v) != 0)
-    }}
+    }
 
     pub fn nil() -> Janet {
         unsafe { janet_wrap_nil() }
@@ -194,37 +202,73 @@ pub fn clear_editor_scope() {
 pub fn clear_editor_scope() {}
 
 #[cfg(feature = "janet")]
-mod keymap_api;
+mod agent_api;
 #[cfg(feature = "janet")]
 mod buffer_api;
 #[cfg(feature = "janet")]
-mod buffer_text_api;
-#[cfg(feature = "janet")]
 mod buffer_query_api;
 #[cfg(feature = "janet")]
-mod special_buffer_api;
+mod buffer_text_api;
+#[cfg(feature = "janet")]
+mod clipboard_api;
 #[cfg(feature = "janet")]
 mod command_api;
 #[cfg(feature = "janet")]
-mod event_api;
+mod debug_api;
 #[cfg(feature = "janet")]
-mod window_api;
+mod decoration_api;
 #[cfg(feature = "janet")]
-mod editor_state_api;
+mod display_api;
+#[cfg(feature = "janet")]
+mod ecosystem_api;
 #[cfg(feature = "janet")]
 mod editor_io_api;
 #[cfg(feature = "janet")]
+mod editor_state_api;
+#[cfg(feature = "janet")]
 mod editor_view_api;
 #[cfg(feature = "janet")]
-mod messages_api;
+mod eval_api;
+#[cfg(feature = "janet")]
+mod event_api;
+#[cfg(feature = "janet")]
+mod extension_api;
+#[cfg(feature = "janet")]
+mod face_api;
+#[cfg(feature = "janet")]
+mod font_api;
+#[cfg(feature = "janet")]
+mod fs_api;
+#[cfg(feature = "janet")]
+mod gutter_api;
+#[cfg(feature = "janet")]
+mod icons_api;
+#[cfg(feature = "janet")]
+mod keymap_api;
+#[cfg(feature = "janet")]
+mod language_api;
+#[cfg(feature = "janet")]
+mod layout_api;
 #[cfg(feature = "janet")]
 mod lsp_api;
 #[cfg(feature = "janet")]
 mod lsp_edit_api;
 #[cfg(feature = "janet")]
-mod semantic_api;
+mod messages_api;
 #[cfg(feature = "janet")]
-mod vc_api;
+mod modality_api;
+#[cfg(feature = "janet")]
+mod mode_api;
+#[cfg(feature = "janet")]
+mod net_http_api;
+#[cfg(feature = "janet")]
+mod net_tcp_api;
+#[cfg(feature = "janet")]
+mod option_api;
+#[cfg(feature = "janet")]
+mod overlay_api;
+#[cfg(feature = "janet")]
+mod plugin_state_api;
 #[cfg(feature = "janet")]
 mod process_api;
 #[cfg(feature = "janet")]
@@ -232,67 +276,31 @@ mod project_api;
 #[cfg(feature = "janet")]
 mod project_registry_api;
 #[cfg(feature = "janet")]
-mod workspace_api;
-#[cfg(feature = "janet")]
-mod face_api;
-#[cfg(feature = "janet")]
-mod treesitter_api;
-#[cfg(feature = "janet")]
-mod display_api;
-#[cfg(feature = "janet")]
-mod layout_api;
-#[cfg(feature = "janet")]
-mod mode_api;
-#[cfg(feature = "janet")]
-mod ecosystem_api;
-#[cfg(feature = "janet")]
-mod font_api;
-#[cfg(feature = "janet")]
-mod icons_api;
-#[cfg(feature = "janet")]
-mod ui_api;
-#[cfg(feature = "janet")]
-mod overlay_api;
-#[cfg(feature = "janet")]
-mod gutter_api;
-#[cfg(feature = "janet")]
-mod decoration_api;
-#[cfg(feature = "janet")]
-mod modality_api;
-#[cfg(feature = "janet")]
-mod eval_api;
-#[cfg(feature = "janet")]
-mod fs_api;
-#[cfg(feature = "janet")]
-mod net_http_api;
-#[cfg(feature = "janet")]
-mod net_tcp_api;
-#[cfg(feature = "janet")]
-mod selection_api;
-#[cfg(feature = "janet")]
 mod register_api;
-#[cfg(feature = "janet")]
-mod option_api;
-#[cfg(feature = "janet")]
-mod plugin_state_api;
-#[cfg(feature = "janet")]
-mod search_api;
-#[cfg(feature = "janet")]
-mod clipboard_api;
-#[cfg(feature = "janet")]
-mod task_api;
-#[cfg(feature = "janet")]
-mod debug_api;
-#[cfg(feature = "janet")]
-mod toolchain_api;
 #[cfg(feature = "janet")]
 mod scheduler_api;
 #[cfg(feature = "janet")]
-mod extension_api;
+mod search_api;
 #[cfg(feature = "janet")]
-mod agent_api;
+mod selection_api;
 #[cfg(feature = "janet")]
-mod language_api;
+mod semantic_api;
+#[cfg(feature = "janet")]
+mod special_buffer_api;
+#[cfg(feature = "janet")]
+mod task_api;
+#[cfg(feature = "janet")]
+mod toolchain_api;
+#[cfg(feature = "janet")]
+mod treesitter_api;
+#[cfg(feature = "janet")]
+mod ui_api;
+#[cfg(feature = "janet")]
+mod vc_api;
+#[cfg(feature = "janet")]
+mod window_api;
+#[cfg(feature = "janet")]
+mod workspace_api;
 
 #[cfg(feature = "janet")]
 mod loader;
@@ -390,7 +398,9 @@ pub fn call_janet_command_scoped(
             return Err(format!("Unknown command: {name}"));
         }
         let func = janet_unwrap_function(func_val);
-        let raw = args.get("arg").and_then(|v| v.as_string().map(|s| s.to_string()));
+        let raw = args
+            .get("arg")
+            .and_then(|v| v.as_string().map(|s| s.to_string()));
         command_api::invoke_janet_command(func, raw.as_deref())
     }
 }
@@ -408,12 +418,13 @@ pub fn load_file(path: &str) -> Result<(), String> {
             bg.block_on(move || std::fs::read_to_string(p))
                 .map_err(|e| format!("{e}"))
         });
-        content = Some(via_bg.unwrap_or_else(|| {
-            std::fs::read_to_string(path).map_err(|e| format!("{e}"))
-        }));
+        content = Some(
+            via_bg.unwrap_or_else(|| std::fs::read_to_string(path).map_err(|e| format!("{e}"))),
+        );
         conv::nil()
     });
-    let content = content.unwrap_or_else(|| std::fs::read_to_string(path).map_err(|e| format!("{e}")))?;
+    let content =
+        content.unwrap_or_else(|| std::fs::read_to_string(path).map_err(|e| format!("{e}")))?;
     loader::eval_string(path, &content)
 }
 

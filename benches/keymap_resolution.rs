@@ -95,7 +95,11 @@ fn main() {
         let mut km = KeymapManager::new();
         km.set("fallback", "global-cmd");
         for i in 0..10 {
-            km.set_layer(&format!("layer-{}", i), &format!("lk-{}", i), &format!("lcmd-{}", i));
+            km.set_layer(
+                &format!("layer-{}", i),
+                &format!("lk-{}", i),
+                &format!("lcmd-{}", i),
+            );
             km.push_layer(&format!("layer-{}", i));
         }
         let start = std::time::Instant::now();

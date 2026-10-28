@@ -3,11 +3,11 @@
 
 use std::sync::{LazyLock, Mutex};
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 use kernel::extension::Capability;
 use std::collections::HashMap;
 
@@ -20,8 +20,9 @@ unsafe impl Sync for JanetSend {}
 /// GC-rooted function references for pending background tasks, each with the
 /// capability context captured at registration — the foreground invocation
 /// must run with the registrar's trust, not the ambient one (F-28).
-static TASK_FUNCTIONS: LazyLock<Mutex<HashMap<u64, (JanetSend, super::extension_api::ExecContext)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static TASK_FUNCTIONS: LazyLock<
+    Mutex<HashMap<u64, (JanetSend, super::extension_api::ExecContext)>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// (process/spawn cmd &opt args cwd) → process-id
 ///
@@ -88,7 +89,9 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             let reader = std::io::BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
                 let _ = sender_out.send(kernel::runtime::BackgroundEvent::ProcessOutput {
-                    id, line, stream: "stdout".to_string(),
+                    id,
+                    line,
+                    stream: "stdout".to_string(),
                 });
             }
         });
@@ -98,7 +101,9 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
                 let _ = sender_err.send(kernel::runtime::BackgroundEvent::ProcessOutput {
-                    id: exit_id, line, stream: "stderr".to_string(),
+                    id: exit_id,
+                    line,
+                    stream: "stderr".to_string(),
                 });
             }
         });
@@ -115,12 +120,15 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
 
         // Phase 9: register process in the work scheduler for progress tracking
         ed.scheduler.register_process(id, &full_cmd);
-        ed.io.processes.insert(id, kernel::runtime::ProcessState {
-            cmd: full_cmd,
-            running: true,
-            pid,
-            stdin,
-        });
+        ed.io.processes.insert(
+            id,
+            kernel::runtime::ProcessState {
+                cmd: full_cmd,
+                running: true,
+                pid,
+                stdin,
+            },
+        );
 
         conv::integer(id as i32)
     })
@@ -151,11 +159,12 @@ unsafe extern "C-unwind" fn c_process_stdin(argc: i32, argv: *mut Janet) -> Jane
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         let text = conv::get_str(argc, argv, 1).unwrap_or_default();
         if let Some(state) = ed.io.processes.get_mut(&id)
-            && let Some(stdin) = state.stdin.as_mut() {
-                use std::io::Write;
-                let _ = stdin.write_all(text.as_bytes());
-                let _ = stdin.flush();
-            }
+            && let Some(stdin) = state.stdin.as_mut()
+        {
+            use std::io::Write;
+            let _ = stdin.write_all(text.as_bytes());
+            let _ = stdin.flush();
+        }
         conv::nil()
     })
 }
@@ -189,7 +198,7 @@ pub(crate) fn execute_stored_task(ed: &mut kernel::state::Editor, task_id: u64) 
     if let Some((JanetSend(fn_ref), ctx)) = entry {
         unsafe {
             janet_gcunroot(fn_ref);
-            super::extension_api::with_context(ctx, || { execute_stored_fn(ed, task_id, fn_ref) });
+            super::extension_api::with_context(ctx, || execute_stored_fn(ed, task_id, fn_ref));
         }
     }
 }
@@ -202,11 +211,14 @@ unsafe fn execute_stored_fn(ed: &mut kernel::state::Editor, task_id: u64, fn_ref
         let args = [janet_wrap_nil()];
         let fiber = janet_fiber(func, 64, 1, args.as_ptr());
         if fiber.is_null() {
-            ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
-                id: task_id.to_string(),
-                value: String::new(),
-                error: "fiber creation failed".to_string(),
-            });
+            ed.events.emit_typed(
+                keys::events::TASK_RESULT,
+                TaskResultPayload {
+                    id: task_id.to_string(),
+                    value: String::new(),
+                    error: "fiber creation failed".to_string(),
+                },
+            );
             return;
         }
         let mut out: Janet = std::mem::zeroed();
@@ -217,7 +229,9 @@ unsafe fn execute_stored_fn(ed: &mut kernel::state::Editor, task_id: u64, fn_ref
                 if ptr.is_null() {
                     "nil".to_string()
                 } else {
-                    std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
+                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                        .to_string_lossy()
+                        .into_owned()
                 }
             } else if janet_checktype(out, JanetType_JANET_NUMBER) != 0 {
                 format!("{}", janet_unwrap_number(out))
@@ -226,17 +240,23 @@ unsafe fn execute_stored_fn(ed: &mut kernel::state::Editor, task_id: u64, fn_ref
             } else {
                 "ok".to_string()
             };
-            ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
-                id: task_id.to_string(),
-                value: result,
-                error: String::new(),
-            });
+            ed.events.emit_typed(
+                keys::events::TASK_RESULT,
+                TaskResultPayload {
+                    id: task_id.to_string(),
+                    value: result,
+                    error: String::new(),
+                },
+            );
         } else {
-            ed.events.emit_typed(keys::events::TASK_RESULT, TaskResultPayload {
-                id: task_id.to_string(),
-                value: String::new(),
-                error: format!("signal {}", sig),
-            });
+            ed.events.emit_typed(
+                keys::events::TASK_RESULT,
+                TaskResultPayload {
+                    id: task_id.to_string(),
+                    value: String::new(),
+                    error: format!("signal {}", sig),
+                },
+            );
         }
     }
 }
@@ -266,12 +286,19 @@ unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
         // GC-root the function, capturing this call's capability context
         janet_gcroot(fn_val);
         let ctx = super::extension_api::current_context();
-        TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).insert(id, (JanetSend(fn_val), ctx));
+        TASK_FUNCTIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, (JanetSend(fn_val), ctx));
 
         let bg = match ed.background.as_ref() {
             Some(bg) => bg.clone(),
             None => {
-                if let Some((JanetSend(fn_val), _)) = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+                if let Some((JanetSend(fn_val), _)) = TASK_FUNCTIONS
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id)
+                {
                     janet_gcunroot(fn_val);
                 }
                 conv::signal_err("no background runtime available");
@@ -285,9 +312,9 @@ unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
             let _ = sender.send(kernel::runtime::BackgroundEvent::TaskReady { id });
         });
 
-        ed.io.tasks.insert(id, kernel::runtime::TaskState {
-            running: true,
-        });
+        ed.io
+            .tasks
+            .insert(id, kernel::runtime::TaskState { running: true });
 
         conv::integer(id as i32)
     })
@@ -302,7 +329,11 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         ed.io.tasks.remove(&id);
         // Remove the stored function so task-result won't fire
-        if let Some((JanetSend(fn_val), _)) = TASK_FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+        if let Some((JanetSend(fn_val), _)) = TASK_FUNCTIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id)
+        {
             janet_gcunroot(fn_val);
         }
         conv::nil()
@@ -321,9 +352,12 @@ pub fn reset_task_functions() {
 /// task/cancel implementation in task_api.rs when cancelling any task.
 pub(super) fn remove_task_function(id: u64) {
     if let Ok(mut tasks) = TASK_FUNCTIONS.lock()
-        && let Some((JanetSend(fn_val), _)) = tasks.remove(&id) {
-            unsafe { evil_janet::janet_gcunroot(fn_val); }
+        && let Some((JanetSend(fn_val), _)) = tasks.remove(&id)
+    {
+        unsafe {
+            evil_janet::janet_gcunroot(fn_val);
         }
+    }
 }
 
 pub fn register() -> Vec<JanetReg> {
@@ -331,7 +365,9 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"process/spawn".as_ptr() as *const _,
             cfun: Some(c_process_spawn as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Spawn an async subprocess with optional args and cwd; streams output via events".as_ptr() as *const _,
+            documentation:
+                c"Spawn an async subprocess with optional args and cwd; streams output via events"
+                    .as_ptr() as *const _,
         },
         JanetReg {
             name: c"process/kill".as_ptr() as *const _,

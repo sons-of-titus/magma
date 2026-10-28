@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Keymap/GUI contract guards.
 //
 // The GUI consumes a small set of chords in normal mode (see
@@ -42,8 +43,14 @@ fn completion_bindings_work_while_typing() {
     // are live whenever the user is typing — no mode entry required.
     janet_test!(ed, {
         enter_normal_mode(&mut ed);
-        assert_eq!(ed.keymaps.resolve("ctrl-n").as_deref(), Some("completion-next"));
-        assert_eq!(ed.keymaps.resolve("ctrl-space").as_deref(), Some("completion-trigger"));
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-n").as_deref(),
+            Some("completion-next")
+        );
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-space").as_deref(),
+            Some("completion-trigger")
+        );
         assert_eq!(ed.keymaps.resolve("esc").as_deref(), Some("editor-escape"));
     });
 }
@@ -54,8 +61,14 @@ fn ctrl_o_still_means_jump_back_in_normal_mode() {
     // silently vanished.  It is restored; the GUI takes no ctrl-p.
     janet_test!(ed, {
         enter_normal_mode(&mut ed);
-        assert_eq!(ed.keymaps.resolve("ctrl-o").as_deref(), Some("mark-ring-jump-back"));
-        assert_eq!(ed.keymaps.resolve("ctrl-i").as_deref(), Some("mark-ring-jump-forward"));
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-o").as_deref(),
+            Some("mark-ring-jump-back")
+        );
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-i").as_deref(),
+            Some("mark-ring-jump-forward")
+        );
     });
 }
 
@@ -63,13 +76,23 @@ fn ctrl_o_still_means_jump_back_in_normal_mode() {
 fn horizontal_scroll_chords_resolve_in_normal_mode() {
     janet_test!(ed, {
         enter_normal_mode(&mut ed);
-        assert_eq!(ed.keymaps.resolve("ctrl-shift-left").as_deref(),
-            Some("scroll-column-left"));
-        assert_eq!(ed.keymaps.resolve("ctrl-shift-right").as_deref(),
-            Some("scroll-column-right"));
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-shift-left").as_deref(),
+            Some("scroll-column-left")
+        );
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-shift-right").as_deref(),
+            Some("scroll-column-right")
+        );
         // ctrl/meta + arrow keep their pre-prefix cursor behavior.
-        assert_eq!(ed.keymaps.resolve("ctrl-left").as_deref(), Some("cursor-left"));
-        assert_eq!(ed.keymaps.resolve("meta-right").as_deref(), Some("cursor-right"));
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-left").as_deref(),
+            Some("cursor-left")
+        );
+        assert_eq!(
+            ed.keymaps.resolve("meta-right").as_deref(),
+            Some("cursor-right")
+        );
     });
 }
 
@@ -77,11 +100,14 @@ fn horizontal_scroll_chords_resolve_in_normal_mode() {
 fn debug_keys_follow_intellij_defaults() {
     janet_test!(ed, {
         enter_normal_mode(&mut ed);
-        assert_eq!(ed.keymaps.resolve("f7").as_deref(),       Some("dbg-step-in"));
-        assert_eq!(ed.keymaps.resolve("f8").as_deref(),       Some("dbg-step-over"));
-        assert_eq!(ed.keymaps.resolve("shift-f8").as_deref(), Some("dbg-step-out"));
-        assert_eq!(ed.keymaps.resolve("f9").as_deref(),       Some("dbg-continue"));
-        assert_eq!(ed.keymaps.resolve("meta-f8").as_deref(),  Some("dbg-bp"));
+        assert_eq!(ed.keymaps.resolve("f7").as_deref(), Some("dbg-step-in"));
+        assert_eq!(ed.keymaps.resolve("f8").as_deref(), Some("dbg-step-over"));
+        assert_eq!(
+            ed.keymaps.resolve("shift-f8").as_deref(),
+            Some("dbg-step-out")
+        );
+        assert_eq!(ed.keymaps.resolve("f9").as_deref(), Some("dbg-continue"));
+        assert_eq!(ed.keymaps.resolve("meta-f8").as_deref(), Some("dbg-bp"));
     });
 }
 
@@ -95,15 +121,20 @@ fn variadic_janet_command_from_keymap_gets_zero_args() {
     // commands reading a count from it (indent-line's `(for i 0 count)`)
     // looped forever on every keymap press of tab.
     janet_test!(ed, {
-        let r = scripting::eval_result(r#"
+        let r = scripting::eval_result(
+            r#"
             (do
               (var arg-len nil)
               (command/define "bisect-variadic" (fn [& args]
                 (set arg-len (length args))))
               (editor/run-command "bisect-variadic")
               (string arg-len))
-        "#).unwrap_or_default();
-        assert_eq!(r, "\"0\"",
-            "a variadic command invoked without arguments must see an empty args tuple");
+        "#,
+        )
+        .unwrap_or_default();
+        assert_eq!(
+            r, "\"0\"",
+            "a variadic command invoked without arguments must see an empty args tuple"
+        );
     });
 }

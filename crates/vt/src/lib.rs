@@ -5,8 +5,8 @@
 //! No PTY, no editor state, no background runtime — the kernel's terminal
 //! subsystem owns sessions and feeds bytes into this crate.
 
-pub mod screen;
 pub mod ansi;
+pub mod screen;
 
 pub use ansi::feed;
 pub use screen::{Cell, Color, Span, Style, StyledLine, TerminalScreen};

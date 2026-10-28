@@ -1,8 +1,8 @@
 //! Janet API — editor I/O: filesystem, shell, load-file, run-command.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_editor_fs_write(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -27,7 +27,9 @@ unsafe extern "C-unwind" fn c_editor_fs_write(argc: i32, argv: *mut Janet) -> Ja
             result.unwrap_or_else(|e| conv::signal_err(&e));
             conv::nil()
         } else {
-            ed.fs.write(&path, &content).unwrap_or_else(|e| conv::signal_err(&e.to_string()));
+            ed.fs
+                .write(&path, &content)
+                .unwrap_or_else(|e| conv::signal_err(&e.to_string()));
             conv::nil()
         }
     })
@@ -54,28 +56,34 @@ unsafe extern "C-unwind" fn c_editor_fs_read(argc: i32, argv: *mut Janet) -> Jan
     })
 }
 
-unsafe extern "C-unwind" fn c_editor_shell(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    with_editor(|_ed| {
-        let Some(cmd) = conv::get_str(argc, argv, 0) else {
-            conv::signal_err("editor/shell requires a command string")
-        };
-        match std::process::Command::new("sh").arg("-c").arg(&cmd).output() {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let result = if stderr.is_empty() {
-                    stdout.into_owned()
-                } else if stdout.is_empty() {
-                    stderr.into_owned()
-                } else {
-                    format!("{}\n--- stderr ---\n{}", stdout, stderr)
-                };
-                conv::string(&result)
+unsafe extern "C-unwind" fn c_editor_shell(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        with_editor(|_ed| {
+            let Some(cmd) = conv::get_str(argc, argv, 0) else {
+                conv::signal_err("editor/shell requires a command string")
+            };
+            match std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&cmd)
+                .output()
+            {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let result = if stderr.is_empty() {
+                        stdout.into_owned()
+                    } else if stdout.is_empty() {
+                        stderr.into_owned()
+                    } else {
+                        format!("{}\n--- stderr ---\n{}", stdout, stderr)
+                    };
+                    conv::string(&result)
+                }
+                Err(e) => conv::signal_err(&format!("editor/shell exec error: {e}")),
             }
-            Err(e) => conv::signal_err(&format!("editor/shell exec error: {e}")),
-        }
-    })
-}}
+        })
+    }
+}
 
 unsafe extern "C-unwind" fn c_editor_run_command(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -88,7 +96,11 @@ unsafe extern "C-unwind" fn c_editor_run_command(argc: i32, argv: *mut Janet) ->
         } else {
             String::new()
         };
-        let line = if rest.is_empty() { name.clone() } else { format!("{name} {rest}") };
+        let line = if rest.is_empty() {
+            name.clone()
+        } else {
+            format!("{name} {rest}")
+        };
         match kernel::command::execute_command_line(ed, &line) {
             Ok(()) => conv::nil(),
             Err(e) => conv::signal_err(&e),
@@ -101,17 +113,19 @@ unsafe extern "C-unwind" fn c_editor_fs_exists(argc: i32, argv: *mut Janet) -> J
     conv::boolean(std::path::Path::new(&path).exists())
 }
 
-unsafe extern "C-unwind" fn c_editor_load_file(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    with_editor(|_ed| {
-        let Some(path) = conv::get_str(argc, argv, 0) else {
-            conv::signal_err("editor/load-file requires a path")
-        };
-        match crate::load_file(&path) {
-            Ok(()) => conv::nil(),
-            Err(e) => conv::signal_err(&e),
-        }
-    })
-}}
+unsafe extern "C-unwind" fn c_editor_load_file(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        with_editor(|_ed| {
+            let Some(path) = conv::get_str(argc, argv, 0) else {
+                conv::signal_err("editor/load-file requires a path")
+            };
+            match crate::load_file(&path) {
+                Ok(()) => conv::nil(),
+                Err(e) => conv::signal_err(&e),
+            }
+        })
+    }
+}
 
 pub fn register() -> Vec<JanetReg> {
     vec![
@@ -128,12 +142,16 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"editor/shell".as_ptr() as *const _,
             cfun: Some(c_editor_shell as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Run a shell command and return combined stdout+stderr as a string".as_ptr() as *const _,
+            documentation: c"Run a shell command and return combined stdout+stderr as a string"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"editor/run-command".as_ptr() as *const _,
-            cfun: Some(c_editor_run_command as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Run a named command with positional string arguments".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_run_command as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Run a named command with positional string arguments".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"editor/fs-exists?".as_ptr() as *const _,

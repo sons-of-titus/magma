@@ -1,8 +1,8 @@
 //! Janet C function for interactive Janet evaluation (Sprint 12).
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 /// (editor/eval expr) → result-string
 ///
@@ -23,11 +23,10 @@ unsafe extern "C-unwind" fn c_editor_eval(argc: i32, argv: *mut Janet) -> Janet 
 }
 
 pub fn register() -> Vec<JanetReg> {
-    vec![
-        JanetReg {
-            name: c"editor/eval".as_ptr() as *const _,
-            cfun: Some(c_editor_eval as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Evaluate a Janet expression string and return the printed result".as_ptr() as *const _,
-        },
-    ]
+    vec![JanetReg {
+        name: c"editor/eval".as_ptr() as *const _,
+        cfun: Some(c_editor_eval as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+        documentation: c"Evaluate a Janet expression string and return the printed result".as_ptr()
+            as *const _,
+    }]
 }

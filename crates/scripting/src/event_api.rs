@@ -1,10 +1,10 @@
 //! Janet API functions for the event system — registered as `extern "C"` via evil-janet.
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 
 /// Send+Sync wrapper for `Janet` (which contains raw pointers in its union).
 #[derive(Clone, Copy)]
@@ -45,33 +45,39 @@ unsafe fn call_in_registration_context(
 ///
 /// `janet_call` requires an existing fiber context; this function creates a
 /// fresh fiber with `janet_fiber` so it works from plain Rust call sites.
-unsafe fn call_janet_fn_with_arg(fn_val: Janet, arg: Janet) { unsafe {
-    let func = janet_unwrap_function(fn_val);
-    let args = [arg];
-    let fiber = janet_fiber(func, 64, 1, args.as_ptr());
-    if fiber.is_null() {
-        return;
+unsafe fn call_janet_fn_with_arg(fn_val: Janet, arg: Janet) {
+    unsafe {
+        let func = janet_unwrap_function(fn_val);
+        let args = [arg];
+        let fiber = janet_fiber(func, 64, 1, args.as_ptr());
+        if fiber.is_null() {
+            return;
+        }
+        let mut out: Janet = std::mem::zeroed();
+        janet_continue(fiber, janet_wrap_nil(), &mut out);
+        // A handler that errors must not vanish: a fault leaves the fiber in an
+        // error state with the message on the return slot.
+        let status = janet_fiber_status(fiber);
+        if status != 0
+            && let Some(text) = janet_to_string(out)
+        {
+            error!("janet event handler error (status {status}): {text}");
+        }
     }
-    let mut out: Janet = std::mem::zeroed();
-    janet_continue(fiber, janet_wrap_nil(), &mut out);
-    // A handler that errors must not vanish: a fault leaves the fiber in an
-    // error state with the message on the return slot.
-    let status = janet_fiber_status(fiber);
-    if status != 0 && let Some(text) = janet_to_string(out) {
-        error!("janet event handler error (status {status}): {text}");
-    }
-}}
+}
 
 /// Build a Janet table from a `HashMap<String, String>`.
-unsafe fn data_to_table(data: &HashMap<String, String>) -> *mut JanetTable { unsafe {
-    let tbl = janet_table(data.len() as i32);
-    for (key, value) in data {
-        let k = conv::keyword(key);
-        let v = conv::string(value);
-        janet_table_put(tbl, k, v);
+unsafe fn data_to_table(data: &HashMap<String, String>) -> *mut JanetTable {
+    unsafe {
+        let tbl = janet_table(data.len() as i32);
+        for (key, value) in data {
+            let k = conv::keyword(key);
+            let v = conv::string(value);
+            janet_table_put(tbl, k, v);
+        }
+        tbl
     }
-    tbl
-}}
+}
 
 /// (event/on name handler-fn) → subscription-id
 unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
@@ -91,7 +97,8 @@ unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
             // the VM: a handler that registers or removes handlers
             // (event/on, event/off) re-locks this mutex on the same thread,
             // and a held std Mutex would deadlock the editor.
-            let fn_val = JANET_HANDLERS.lock()
+            let fn_val = JANET_HANDLERS
+                .lock()
                 .ok()
                 .and_then(|handlers| handlers.get(fn_idx).and_then(|s| s.map(|JanetSend(f)| f)));
             if let Some(fn_val) = fn_val {
@@ -118,17 +125,19 @@ unsafe extern "C-unwind" fn c_event_once(argc: i32, argv: *mut Janet) -> Janet {
         let fn_val = *argv.add(1);
         let fn_idx = register_handler(fn_val);
         let registration_ctx = super::extension_api::current_context();
-        let sub_id = ed.events.once(&name, move |data: &HashMap<String, String>| {
-            let fn_val = JANET_HANDLERS.lock()
-                .ok()
-                .and_then(|handlers| handlers.get(fn_idx).and_then(|s| s.map(|JanetSend(f)| f)));
-            if let Some(fn_val) = fn_val {
-                let tbl = data_to_table(data);
-                let arg = janet_wrap_table(tbl);
-                call_in_registration_context(registration_ctx.clone(), fn_val, arg);
-            }
-            None
-        });
+        let sub_id = ed
+            .events
+            .once(&name, move |data: &HashMap<String, String>| {
+                let fn_val = JANET_HANDLERS.lock().ok().and_then(|handlers| {
+                    handlers.get(fn_idx).and_then(|s| s.map(|JanetSend(f)| f))
+                });
+                if let Some(fn_val) = fn_val {
+                    let tbl = data_to_table(data);
+                    let arg = janet_wrap_table(tbl);
+                    call_in_registration_context(registration_ctx.clone(), fn_val, arg);
+                }
+                None
+            });
         conv::integer(sub_id as i32)
     })
 }
@@ -143,9 +152,10 @@ unsafe extern "C-unwind" fn c_event_off(argc: i32, argv: *mut Janet) -> Janet {
         let idx = id as usize;
         if let Ok(mut handlers) = JANET_HANDLERS.lock()
             && idx < handlers.len()
-                && let Some(JanetSend(fn_val)) = handlers[idx].take() {
-                    janet_gcunroot(fn_val);
-                }
+            && let Some(JanetSend(fn_val)) = handlers[idx].take()
+        {
+            janet_gcunroot(fn_val);
+        }
         conv::nil()
     })
 }
@@ -157,8 +167,16 @@ unsafe extern "C-unwind" fn c_event_list_events(_argc: i32, _argv: *mut Janet) -
         let arr = janet_wrap_array(janet_array(events.len() as i32));
         for (name, count) in &events {
             let tbl = janet_wrap_table(janet_table(2));
-            janet_table_put(janet_unwrap_table(tbl), conv::keyword("name"), conv::string(name));
-            janet_table_put(janet_unwrap_table(tbl), conv::keyword("count"), conv::integer(*count as i32));
+            janet_table_put(
+                janet_unwrap_table(tbl),
+                conv::keyword("name"),
+                conv::string(name),
+            );
+            janet_table_put(
+                janet_unwrap_table(tbl),
+                conv::keyword("count"),
+                conv::integer(*count as i32),
+            );
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
         arr
@@ -178,17 +196,21 @@ unsafe extern "C-unwind" fn c_event_list_subscribers(argc: i32, argv: *mut Janet
     })
 }
 
-unsafe fn janet_to_string(v: Janet) -> Option<String> { unsafe {
-    if janet_checktype(v, JanetType_JANET_STRING) == 0
-        && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
-    {
-        return None;
+unsafe fn janet_to_string(v: Janet) -> Option<String> {
+    unsafe {
+        if janet_checktype(v, JanetType_JANET_STRING) == 0
+            && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
+        {
+            return None;
+        }
+        let ptr = janet_unwrap_string(v);
+        if ptr.is_null() {
+            return None;
+        }
+        let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
+        Some(cstr.to_string_lossy().into_owned())
     }
-    let ptr = janet_unwrap_string(v);
-    if ptr.is_null() { return None; }
-    let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
-    Some(cstr.to_string_lossy().into_owned())
-}}
+}
 
 /// (event/emit name &opt data)
 unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
@@ -208,8 +230,11 @@ unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
                 for i in 0..tbl.capacity {
                     let kv = &*tbl.data.add(i as usize);
                     // Skip empty slots (nil key) and dead/tombstone slots.
-                    if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 { continue; }
-                    if let (Some(k), Some(v)) = (janet_to_string(kv.key), janet_to_string(kv.value)) {
+                    if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 {
+                        continue;
+                    }
+                    if let (Some(k), Some(v)) = (janet_to_string(kv.key), janet_to_string(kv.value))
+                    {
                         data.insert(k, v);
                     }
                 }
@@ -252,12 +277,16 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"event/list-events".as_ptr() as *const _,
-            cfun: Some(c_event_list_events as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_event_list_events as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"List events and subscriber counts".as_ptr() as *const _,
         },
         JanetReg {
             name: c"event/list-subscribers".as_ptr() as *const _,
-            cfun: Some(c_event_list_subscribers as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_event_list_subscribers as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"List subscriber IDs for an event".as_ptr() as *const _,
         },
         JanetReg {

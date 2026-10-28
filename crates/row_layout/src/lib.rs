@@ -92,7 +92,10 @@ impl RowLayout {
                 return self.cols[i] as usize;
             }
         }
-        self.cols.last().map(|c| *c as usize + self.widths.last().map(|&w| w as usize).unwrap_or(0)).unwrap_or(0)
+        self.cols
+            .last()
+            .map(|c| *c as usize + self.widths.last().map(|&w| w as usize).unwrap_or(0))
+            .unwrap_or(0)
     }
 
     pub fn bidi(&self) -> bool {
@@ -123,11 +126,17 @@ impl RowLayoutCache {
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(cached) = map.get(&key)
             && cached.revision == revision
-                && cached.line_len == line_text.len()
-                && cached.tab_width == tab_width {
-                    return cached.clone();
-                }
-        let layout = Arc::new(RowLayout::build(line_text, revision, tab_width, glyph_widths));
+            && cached.line_len == line_text.len()
+            && cached.tab_width == tab_width
+        {
+            return cached.clone();
+        }
+        let layout = Arc::new(RowLayout::build(
+            line_text,
+            revision,
+            tab_width,
+            glyph_widths,
+        ));
         if map.len() >= 8_192 {
             let keys: Vec<RowKey> = map.keys().take(64).copied().collect();
             for k in keys {
@@ -179,7 +188,10 @@ mod tests {
         let text = "hello";
         let first = cache.get_or_build(key, text, 1, 4, &widths_map());
         let second = cache.get_or_build(key, text, 1, 4, &widths_map());
-        assert!(Arc::ptr_eq(&first, &second), "same revision reuses the entry");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "same revision reuses the entry"
+        );
 
         let bumped = cache.get_or_build(key, text, 2, 4, &widths_map());
         assert!(!Arc::ptr_eq(&first, &bumped), "a new revision relays out");
@@ -210,7 +222,10 @@ mod bidi_tests {
     fn ltr_lines_are_untouched_by_bidi() {
         let ltr = RowLayout::build("hello world", 1, 4, &widths_map());
         assert!(!ltr.bidi());
-        assert_eq!(ltr.leads, vec!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+        assert_eq!(
+            ltr.leads,
+            vec!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']
+        );
         let offs: Vec<usize> = ltr.offsets.iter().map(|&o| o as usize).collect();
         let mut sorted = offs.clone();
         sorted.sort();
@@ -229,7 +244,10 @@ mod bidi_tests {
     fn mixed_ltr_rtl_keeps_ltr_runs_in_order() {
         let mixed = RowLayout::build("abc \u{05D0}\u{05D1}\u{05D2}", 1, 4, &widths_map());
         assert!(mixed.bidi());
-        assert_eq!(mixed.leads, vec!['a', 'b', 'c', ' ', '\u{05D2}', '\u{05D1}', '\u{05D0}']);
+        assert_eq!(
+            mixed.leads,
+            vec!['a', 'b', 'c', ' ', '\u{05D2}', '\u{05D1}', '\u{05D0}']
+        );
         assert_eq!(mixed.visual_col_of(4), 6);
         assert_eq!(mixed.visual_col_of(8), 4);
     }

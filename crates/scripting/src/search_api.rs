@@ -1,8 +1,8 @@
 //! Janet API — search: pattern, set-pattern, forward?, last-find.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_search_pattern(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| match &ed.search.pattern {
@@ -51,7 +51,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"search/set-pattern".as_ptr() as *const _,
-            cfun: Some(c_search_set_pattern as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_search_set_pattern as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Set the current search pattern".as_ptr() as *const _,
         },
         JanetReg {

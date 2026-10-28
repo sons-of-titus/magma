@@ -68,7 +68,10 @@ pub fn write_snapshot(dir: &Path, name: &str, path: Option<&str>, content: &str)
         return;
     }
     let stem = snapshot_stem(name, path);
-    let _ = atomic_write(dir.join(format!("{stem}.txt")).to_string_lossy().as_ref(), content);
+    let _ = atomic_write(
+        dir.join(format!("{stem}.txt")).to_string_lossy().as_ref(),
+        content,
+    );
     // Rewrite the manifest with this buffer included.
     let mut entries = read_manifest(dir);
     entries.retain(|e| e["stem"].as_str() != Some(stem.as_str()));
@@ -114,7 +117,9 @@ pub fn collect_recoverable(state_dir: &Path) -> Vec<RecoverableSession> {
 /// manifest) are skipped — recovering twice would let a second crash
 /// destroy the only copy of work the user never got to save.
 pub fn collect_from(crash_root: &Path) -> Vec<RecoverableSession> {
-    let Ok(entries) = std::fs::read_dir(crash_root) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(crash_root) else {
+        return Vec::new();
+    };
     let mut sessions: Vec<(PathBuf, std::time::SystemTime)> = entries
         .flatten()
         .filter(|e| e.path().is_dir())
@@ -130,7 +135,8 @@ pub fn collect_from(crash_root: &Path) -> Vec<RecoverableSession> {
         let (oldest, _) = sessions.remove(0);
         clear_session(&oldest);
     }
-    sessions.into_iter()
+    sessions
+        .into_iter()
         .filter(|(dir, _)| !manifest_flag(dir, "recovered"))
         .map(|(dir, _)| RecoverableSession {
             snapshots: read_snapshots(&dir),
@@ -151,23 +157,29 @@ pub fn mark_recovered(dir: &Path) {
 }
 
 fn manifest_flag(dir: &Path, key: &str) -> bool {
-    read_manifest(dir).iter().any(|e| e[key] == serde_json::Value::Bool(true))
+    read_manifest(dir)
+        .iter()
+        .any(|e| e[key] == serde_json::Value::Bool(true))
 }
 
 fn read_snapshots(dir: &Path) -> Vec<CrashSnapshot> {
-    read_manifest(dir).into_iter().filter_map(|e| {
-        let stem = e["stem"].as_str()?;
-        let content = std::fs::read_to_string(dir.join(format!("{stem}.txt"))).ok()?;
-        Some(CrashSnapshot {
-            label: e["label"].as_str().unwrap_or("buffer").to_string(),
-            path: e["path"].as_str().map(String::from),
-            content,
+    read_manifest(dir)
+        .into_iter()
+        .filter_map(|e| {
+            let stem = e["stem"].as_str()?;
+            let content = std::fs::read_to_string(dir.join(format!("{stem}.txt"))).ok()?;
+            Some(CrashSnapshot {
+                label: e["label"].as_str().unwrap_or("buffer").to_string(),
+                path: e["path"].as_str().map(String::from),
+                content,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 fn read_manifest(dir: &Path) -> Vec<serde_json::Value> {
-    std::fs::read_to_string(dir.join(MANIFEST)).ok()
+    std::fs::read_to_string(dir.join(MANIFEST))
+        .ok()
         .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
         .unwrap_or_default()
 }

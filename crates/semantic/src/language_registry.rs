@@ -52,7 +52,9 @@ pub struct LanguageRegistry {
 }
 
 impl LanguageRegistry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Register or replace a language entry.
     pub fn register(&mut self, info: LanguageInfo) {
@@ -100,22 +102,34 @@ impl LanguageRegistry {
     /// `config.janet` actually exist on disk.
     pub fn discover(&mut self, languages_root: &str) {
         let root = std::path::Path::new(languages_root);
-        let Ok(entries) = std::fs::read_dir(root) else { return };
+        let Ok(entries) = std::fs::read_dir(root) else {
+            return;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_dir() { continue; }
-            let Some(lang) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(lang) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
             let lang = lang.to_string();
 
             let provider = path.join("provider.janet");
-            let syntax   = path.join("syntax.scm");
-            let config   = path.join("config.janet");
+            let syntax = path.join("syntax.scm");
+            let config = path.join("config.janet");
 
             let info = LanguageInfo {
                 name: lang.clone(),
-                provider_path: provider.exists().then(|| provider.to_string_lossy().into_owned()),
-                syntax_path:   syntax.exists().then(|| syntax.to_string_lossy().into_owned()),
-                config_path:   config.exists().then(|| config.to_string_lossy().into_owned()),
+                provider_path: provider
+                    .exists()
+                    .then(|| provider.to_string_lossy().into_owned()),
+                syntax_path: syntax
+                    .exists()
+                    .then(|| syntax.to_string_lossy().into_owned()),
+                config_path: config
+                    .exists()
+                    .then(|| config.to_string_lossy().into_owned()),
                 loaded: false,
             };
             self.languages.insert(lang, info);
@@ -136,7 +150,8 @@ mod tests {
         ));
         r.register(LanguageInfo::new("janet").with_paths(
             Some("/langs/janet/provider.janet".into()),
-            None, None,
+            None,
+            None,
         ));
         r
     }
@@ -163,7 +178,10 @@ mod tests {
     fn get_returns_info() {
         let r = make_registry();
         let info = r.get("rust").unwrap();
-        assert_eq!(info.provider_path.as_deref(), Some("/langs/rust/provider.janet"));
+        assert_eq!(
+            info.provider_path.as_deref(),
+            Some("/langs/rust/provider.janet")
+        );
         assert_eq!(info.syntax_path.as_deref(), Some("/langs/rust/syntax.scm"));
     }
 
@@ -225,7 +243,8 @@ mod tests {
         std::fs::create_dir_all(&lang_dir).unwrap();
         let provider_path = lang_dir.join("provider.janet");
         let _ = std::fs::File::create(&provider_path).and_then(|mut f| f.write_all(b"# provider"));
-        let _ = std::fs::File::create(lang_dir.join("config.janet")).and_then(|mut f| f.write_all(b"# cfg"));
+        let _ = std::fs::File::create(lang_dir.join("config.janet"))
+            .and_then(|mut f| f.write_all(b"# cfg"));
 
         let mut r = LanguageRegistry::new();
         r.discover(tmp.to_str().unwrap());
@@ -242,9 +261,20 @@ mod tests {
     #[test]
     fn register_replaces_existing() {
         let mut r = LanguageRegistry::new();
-        r.register(LanguageInfo::new("go").with_paths(Some("/old/provider.janet".into()), None, None));
-        r.register(LanguageInfo::new("go").with_paths(Some("/new/provider.janet".into()), None, None));
+        r.register(LanguageInfo::new("go").with_paths(
+            Some("/old/provider.janet".into()),
+            None,
+            None,
+        ));
+        r.register(LanguageInfo::new("go").with_paths(
+            Some("/new/provider.janet".into()),
+            None,
+            None,
+        ));
         assert_eq!(r.count(), 1);
-        assert_eq!(r.get("go").unwrap().provider_path.as_deref(), Some("/new/provider.janet"));
+        assert_eq!(
+            r.get("go").unwrap().provider_path.as_deref(),
+            Some("/new/provider.janet")
+        );
     }
 }

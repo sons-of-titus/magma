@@ -8,8 +8,8 @@
 use std::sync::{Arc, Mutex};
 
 use crate::kernel::index::Event as IndexEvent;
-use crate::kernel::runtime::{BackgroundEvent, process_background_event};
 use crate::kernel::project::Project;
+use crate::kernel::runtime::{BackgroundEvent, process_background_event};
 
 #[test]
 fn index_events_round_trip_through_the_shared_channel_in_send_order() {
@@ -61,28 +61,47 @@ fn index_events_round_trip_through_the_shared_channel_in_send_order() {
 #[test]
 fn project_indexed_dispatch_updates_the_registry_and_emits_the_bus_event() {
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
-    ed.project_manager.projects.insert("demo".to_string(), Project {
-        name: Some("demo".to_string()),
-        ..Project::default()
-    });
+    ed.project_manager.projects.insert(
+        "demo".to_string(),
+        Project {
+            name: Some("demo".to_string()),
+            ..Project::default()
+        },
+    );
     let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let cap = captured.clone();
-    ed.events.on(crate::kernel::event::keys::events::FILE_INDEXED, move |data| {
-        *cap.lock().unwrap_or_else(|e| e.into_inner()) = data.get("count").cloned();
-        None
-    });
+    ed.events.on(
+        crate::kernel::event::keys::events::FILE_INDEXED,
+        move |data| {
+            *cap.lock().unwrap_or_else(|e| e.into_inner()) = data.get("count").cloned();
+            None
+        },
+    );
 
-    process_background_event(&mut ed, BackgroundEvent::Index(IndexEvent::ProjectIndexed {
-        project_name: "demo".into(),
-        files: vec!["src/main.rs".into()],
-        ignored_files: vec![],
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Index(IndexEvent::ProjectIndexed {
+            project_name: "demo".into(),
+            files: vec!["src/main.rs".into()],
+            ignored_files: vec![],
+        }),
+    );
     ed.events.drain_and_dispatch();
 
-    let proj = ed.project_manager.projects.get("demo").expect("project stays");
+    let proj = ed
+        .project_manager
+        .projects
+        .get("demo")
+        .expect("project stays");
     assert_eq!(proj.files, vec!["src/main.rs".to_string()]);
     assert!(!proj.file_index_dirty);
-    assert_eq!(captured.lock().unwrap_or_else(|e| e.into_inner()).as_deref(), Some("1"));
+    assert_eq!(
+        captured
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_deref(),
+        Some("1")
+    );
 }
 
 #[test]
@@ -90,9 +109,12 @@ fn index_record_dispatch_merges_into_the_index_store() {
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
     let before = ed.index.stats().files;
 
-    process_background_event(&mut ed, BackgroundEvent::Index(IndexEvent::RecordArrived(
-        crate::kernel::index::record_from_text("src/dispatch.rs", 1, "fn dispatched() {}"),
-    )));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Index(IndexEvent::RecordArrived(
+            crate::kernel::index::record_from_text("src/dispatch.rs", 1, "fn dispatched() {}"),
+        )),
+    );
 
     let stats = ed.index.stats();
     assert_eq!(stats.files, before + 1);

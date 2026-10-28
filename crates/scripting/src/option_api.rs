@@ -1,8 +1,8 @@
 //! Janet API — option: list, get, set, get-local, set-local.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_option_list(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -68,7 +68,10 @@ unsafe extern "C-unwind" fn c_option_set_local(argc: i32, argv: *mut Janet) -> J
         };
         let buf_id = kernel::input::focused_buffer_id(ed);
         if let Some(arc) = ed.buffers.get_mut(buf_id) {
-            arc.lock().unwrap_or_else(|e| e.into_inner()).local_options.insert(key, value);
+            arc.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .local_options
+                .insert(key, value);
         }
         conv::nil()
     })

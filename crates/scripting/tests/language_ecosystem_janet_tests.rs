@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── language/list ─────────────────────────────────────────────────────────────
@@ -43,21 +44,27 @@ fn language_register_increments_list_length() {
 fn language_register_stores_name() {
     janet_test!(ed, {
         scripting::eval(r#"(language/register "rust" "/path/to/provider.janet")"#);
-        let result = scripting::eval_result(
-            r#"(get (first (language/list)) :name)"#
-        ).unwrap_or_default();
-        assert!(result.contains("rust"), "name not found in result: {result}");
+        let result =
+            scripting::eval_result(r#"(get (first (language/list)) :name)"#).unwrap_or_default();
+        assert!(
+            result.contains("rust"),
+            "name not found in result: {result}"
+        );
     });
 }
 
 #[test]
 fn language_register_stores_provider_path() {
     janet_test!(ed, {
-        scripting::eval(r#"(language/register "rust" "/a/provider.janet" "/a/syntax.scm" "/a/config.janet")"#);
-        let result = scripting::eval_result(
-            r#"(get (first (language/list)) :provider-path)"#
-        ).unwrap_or_default();
-        assert!(result.contains("/a/provider.janet"), "provider-path not found: {result}");
+        scripting::eval(
+            r#"(language/register "rust" "/a/provider.janet" "/a/syntax.scm" "/a/config.janet")"#,
+        );
+        let result = scripting::eval_result(r#"(get (first (language/list)) :provider-path)"#)
+            .unwrap_or_default();
+        assert!(
+            result.contains("/a/provider.janet"),
+            "provider-path not found: {result}"
+        );
     });
 }
 
@@ -65,9 +72,8 @@ fn language_register_stores_provider_path() {
 fn language_register_loaded_initially_false() {
     janet_test!(ed, {
         scripting::eval(r#"(language/register "janet")"#);
-        let result = scripting::eval_result(
-            r#"(get (first (language/list)) :loaded)"#
-        ).unwrap_or_default();
+        let result =
+            scripting::eval_result(r#"(get (first (language/list)) :loaded)"#).unwrap_or_default();
         assert_eq!(result, "false");
     });
 }
@@ -87,7 +93,8 @@ fn language_unregister_removes_entry() {
 #[test]
 fn language_unregister_missing_returns_nil() {
     janet_test!(ed, {
-        let result = scripting::eval_result(r#"(language/unregister "unknown")"#).unwrap_or_default();
+        let result =
+            scripting::eval_result(r#"(language/unregister "unknown")"#).unwrap_or_default();
         assert_eq!(result, "nil");
     });
 }
@@ -153,8 +160,9 @@ fn language_load_marks_language_loaded_on_success() {
         assert_eq!(result, ":ok", "load returned: {result}");
 
         let loaded = scripting::eval_result(
-            r#"(get (find (fn [l] (= (get l :name) "testlang")) (language/list)) :loaded)"#
-        ).unwrap_or_default();
+            r#"(get (find (fn [l] (= (get l :name) "testlang")) (language/list)) :loaded)"#,
+        )
+        .unwrap_or_default();
         assert_eq!(loaded, "true");
     });
 }
@@ -169,19 +177,25 @@ fn language_list_sorted_alphabetically() {
         scripting::eval(r#"(language/register "python")"#);
 
         // Verify sorted order by checking each position directly.
-        let name0 = scripting::eval_result(
-            r#"(get (get (language/list) 0) :name)"#
-        ).unwrap_or_default();
-        let name1 = scripting::eval_result(
-            r#"(get (get (language/list) 1) :name)"#
-        ).unwrap_or_default();
-        let name2 = scripting::eval_result(
-            r#"(get (get (language/list) 2) :name)"#
-        ).unwrap_or_default();
+        let name0 =
+            scripting::eval_result(r#"(get (get (language/list) 0) :name)"#).unwrap_or_default();
+        let name1 =
+            scripting::eval_result(r#"(get (get (language/list) 1) :name)"#).unwrap_or_default();
+        let name2 =
+            scripting::eval_result(r#"(get (get (language/list) 2) :name)"#).unwrap_or_default();
 
-        assert!(name0.contains("janet"),  "index 0 should be janet, got: {name0}");
-        assert!(name1.contains("python"), "index 1 should be python, got: {name1}");
-        assert!(name2.contains("rust"),   "index 2 should be rust, got: {name2}");
+        assert!(
+            name0.contains("janet"),
+            "index 0 should be janet, got: {name0}"
+        );
+        assert!(
+            name1.contains("python"),
+            "index 1 should be python, got: {name1}"
+        );
+        assert!(
+            name2.contains("rust"),
+            "index 2 should be rust, got: {name2}"
+        );
     });
 }
 

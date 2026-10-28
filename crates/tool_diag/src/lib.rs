@@ -72,7 +72,8 @@ pub fn parse_tool_output(_command: &str, text: &str, cwd: &Path) -> Vec<ToolDiag
         let trimmed = line.trim();
         // rustc/cargo message header — the span follows on the ` -->` line.
         if let Some(msg) = trimmed.strip_prefix("error") {
-            let msg = msg.strip_prefix('[')
+            let msg = msg
+                .strip_prefix('[')
                 .and_then(|r| r.find(']').map(|i| &r[i + 1..]))
                 .unwrap_or(msg);
             if let Some(msg) = msg.strip_prefix(": ") {
@@ -86,8 +87,9 @@ pub fn parse_tool_output(_command: &str, text: &str, cwd: &Path) -> Vec<ToolDiag
         }
         if let Some(span) = trimmed.strip_prefix("--> ") {
             if let Some((severity, message)) = pending.take()
-                && let Some(finding) = span_finding(span, severity, message, cwd) {
-                    out.push(finding);
+                && let Some(finding) = span_finding(span, severity, message, cwd)
+            {
+                out.push(finding);
             }
             continue;
         }
@@ -100,8 +102,13 @@ pub fn parse_tool_output(_command: &str, text: &str, cwd: &Path) -> Vec<ToolDiag
             let rest = trimmed[at + "panicked at".len()..].trim();
             let loc = rest.rsplit(", ").next().unwrap_or(rest);
             let loc = loc.trim().trim_end_matches(':');
-            if let Some(finding) = colon_finding(loc, DiagnosticSeverity::Error,
-                    "test panicked".to_string(), cwd, 3) {
+            if let Some(finding) = colon_finding(
+                loc,
+                DiagnosticSeverity::Error,
+                "test panicked".to_string(),
+                cwd,
+                3,
+            ) {
                 out.push(finding);
             }
             continue;
@@ -109,21 +116,33 @@ pub fn parse_tool_output(_command: &str, text: &str, cwd: &Path) -> Vec<ToolDiag
 
         // Generic `path:line[:col]: message`.
         if trimmed.contains(' ')
-            && let Some(finding) = generic_line_finding(trimmed, cwd) {
-                out.push(finding);
-            }
+            && let Some(finding) = generic_line_finding(trimmed, cwd)
+        {
+            out.push(finding);
+        }
     }
     out
 }
 
 /// `path:line:col` (rustc span) with its message.
-fn span_finding(span: &str, severity: DiagnosticSeverity, message: String, cwd: &Path) -> Option<ToolDiag> {
+fn span_finding(
+    span: &str,
+    severity: DiagnosticSeverity,
+    message: String,
+    cwd: &Path,
+) -> Option<ToolDiag> {
     colon_finding(span.trim(), severity, message, cwd, 2)
 }
 
 /// Parse `path:line[:col]`; `max_parts` limits how many colon-separated
 /// numeric suffixes are required/accepted.
-fn colon_finding(loc: &str, severity: DiagnosticSeverity, message: String, cwd: &Path, _max_parts: usize) -> Option<ToolDiag> {
+fn colon_finding(
+    loc: &str,
+    severity: DiagnosticSeverity,
+    message: String,
+    cwd: &Path,
+    _max_parts: usize,
+) -> Option<ToolDiag> {
     let (path, line, col) = split_loc(loc)?;
     Some(ToolDiag {
         path: resolve(&path, cwd),
@@ -147,7 +166,10 @@ fn generic_line_finding(line: &str, cwd: &Path) -> Option<ToolDiag> {
         return None;
     }
     let (path, line_no, col) = split_loc(head)?;
-    let message = line.split_once(' ').map(|(_, m)| m.trim()).unwrap_or_default();
+    let message = line
+        .split_once(' ')
+        .map(|(_, m)| m.trim())
+        .unwrap_or_default();
     if message.is_empty() {
         return None;
     }
@@ -178,7 +200,10 @@ fn split_loc(loc: &str) -> Option<(String, usize, Option<usize>)> {
     let a: usize = last.parse().ok()?;
     idx -= 1;
     let (line, col) = match segs.get(idx - 1).map(|s| s.trim().parse::<usize>()) {
-        Some(Ok(b)) => { idx -= 1; (b, Some(a)) }
+        Some(Ok(b)) => {
+            idx -= 1;
+            (b, Some(a))
+        }
         _ => (a, None),
     };
     let path = segs[..idx].join(":");

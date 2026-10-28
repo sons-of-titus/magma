@@ -3,9 +3,11 @@ use super::*;
 fn glyph_pack() -> IconPack {
     let mut pack = IconPack::empty("test");
     pack.extensions.insert("ts".into(), IconKind::glyph('A'));
-    pack.extensions.insert("spec.ts".into(), IconKind::glyph('B'));
+    pack.extensions
+        .insert("spec.ts".into(), IconKind::glyph('B'));
     pack.extensions.insert("md".into(), IconKind::glyph('C'));
-    pack.file_names.insert("Cargo.toml".into(), IconKind::glyph('D'));
+    pack.file_names
+        .insert("Cargo.toml".into(), IconKind::glyph('D'));
     pack.default_file = Some(IconKind::glyph('?'));
     pack.folder = Some(IconKind::glyph('F'));
     pack.folder_open = Some(IconKind::glyph('O'));
@@ -93,7 +95,10 @@ fn temp_dir(tag: &str) -> PathBuf {
 fn write_vscode_pack(dir: &Path, font_theme: bool) -> PathBuf {
     std::fs::create_dir_all(dir).unwrap();
     let (icon_def, file_key) = if font_theme {
-        (r##"{"fontCharacter": "\uE001", "fontColor": "#AABBCC"}"##.to_string(), "rs".to_string())
+        (
+            r##"{"fontCharacter": "\uE001", "fontColor": "#AABBCC"}"##.to_string(),
+            "rs".to_string(),
+        )
     } else {
         (r#"{"iconPath": "icon.svg"}"#.to_string(), ".rs".to_string())
     };
@@ -237,8 +242,14 @@ fn a_missing_pack_is_an_error_not_a_panic() {
 #[test]
 fn pack_search_dirs_prefers_the_user_config_then_the_project() {
     let dirs = pack_search_dirs();
-    assert!(dirs.last().is_some_and(|d| d.ends_with(".magma/icon-packs")));
+    assert!(
+        dirs.last()
+            .is_some_and(|d| d.ends_with(".magma/icon-packs"))
+    );
     if std::env::var("HOME").is_ok_and(|h| !h.is_empty()) {
-        assert!(dirs.first().is_some_and(|d| d.ends_with(".config/magma/icon-packs")));
+        assert!(
+            dirs.first()
+                .is_some_and(|d| d.ends_with(".config/magma/icon-packs"))
+        );
     }
 }

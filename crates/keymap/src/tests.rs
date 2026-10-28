@@ -131,7 +131,7 @@ fn active_layer_overrides_global() {
 #[test]
 fn later_pushed_layer_has_higher_priority() {
     let mut km = make_km();
-    km.set_layer("editor",    "h", "cursor-left");
+    km.set_layer("editor", "h", "cursor-left");
     km.set_layer("insert", "h", "insert-h");
     km.push_layer("editor");
     km.push_layer("insert");
@@ -141,7 +141,7 @@ fn later_pushed_layer_has_higher_priority() {
 #[test]
 fn later_pushed_layer_does_not_override_unbound_keys() {
     let mut km = make_km();
-    km.set_layer("editor",    "h", "cursor-left");
+    km.set_layer("editor", "h", "cursor-left");
     km.set_layer("insert", "j", "insert-j");
     km.push_layer("editor");
     km.push_layer("insert");
@@ -241,7 +241,7 @@ fn set_layer_before_push_is_visible_after_push() {
 
     km.push_layer("insert");
     assert!(km.is_layer_active("insert"));
-    assert_eq!(km.resolve("esc"),    Some("exit-insert-mode".into()));
+    assert_eq!(km.resolve("esc"), Some("exit-insert-mode".into()));
     assert_eq!(km.resolve("ctrl-c"), Some("exit-insert-mode".into()));
 }
 
@@ -300,9 +300,15 @@ fn buffer_local_overrides_layer() {
     km.push_layer("editor");
     km.set_buffer_local(42, "h", "buffer-specific");
 
-    assert_eq!(km.resolve_for_buffer("h", Some(42)), Some("buffer-specific".into()));
-    assert_eq!(km.resolve_for_buffer("h", None),     Some("cursor-left".into()));
-    assert_eq!(km.resolve_for_buffer("h", Some(99)), Some("cursor-left".into()));
+    assert_eq!(
+        km.resolve_for_buffer("h", Some(42)),
+        Some("buffer-specific".into())
+    );
+    assert_eq!(km.resolve_for_buffer("h", None), Some("cursor-left".into()));
+    assert_eq!(
+        km.resolve_for_buffer("h", Some(99)),
+        Some("cursor-left".into())
+    );
 }
 
 #[test]
@@ -312,10 +318,19 @@ fn buffer_local_only_affects_its_buffer() {
     km.set_buffer_local(1, "ctrl-s", "buffer-1-save");
     km.set_buffer_local(2, "ctrl-s", "buffer-2-save");
 
-    assert_eq!(km.resolve_for_buffer("ctrl-s", Some(1)), Some("buffer-1-save".into()));
-    assert_eq!(km.resolve_for_buffer("ctrl-s", Some(2)), Some("buffer-2-save".into()));
-    assert_eq!(km.resolve_for_buffer("ctrl-s", Some(3)), Some("save".into()));
-    assert_eq!(km.resolve_for_buffer("ctrl-s", None),    Some("save".into()));
+    assert_eq!(
+        km.resolve_for_buffer("ctrl-s", Some(1)),
+        Some("buffer-1-save".into())
+    );
+    assert_eq!(
+        km.resolve_for_buffer("ctrl-s", Some(2)),
+        Some("buffer-2-save".into())
+    );
+    assert_eq!(
+        km.resolve_for_buffer("ctrl-s", Some(3)),
+        Some("save".into())
+    );
+    assert_eq!(km.resolve_for_buffer("ctrl-s", None), Some("save".into()));
 }
 
 #[test]
@@ -324,16 +339,22 @@ fn buffer_local_resolves_when_no_layer_active() {
     km.set("ctrl-s", "global-save");
     km.set_buffer_local(7, "ctrl-s", "local-save");
     // No layers active, buffer local should still win
-    assert_eq!(km.resolve_for_buffer("ctrl-s", Some(7)), Some("local-save".into()));
+    assert_eq!(
+        km.resolve_for_buffer("ctrl-s", Some(7)),
+        Some("local-save".into())
+    );
 }
 
 #[test]
 fn buffer_local_without_global_fallback() {
     let mut km = make_km();
     km.set_buffer_local(7, "special", "only-buf-7");
-    assert_eq!(km.resolve_for_buffer("special", Some(7)), Some("only-buf-7".into()));
+    assert_eq!(
+        km.resolve_for_buffer("special", Some(7)),
+        Some("only-buf-7".into())
+    );
     assert_eq!(km.resolve_for_buffer("special", Some(8)), None);
-    assert_eq!(km.resolve_for_buffer("special", None),    None);
+    assert_eq!(km.resolve_for_buffer("special", None), None);
 }
 
 // ── Modal editing cycles ─────────────────────────────────────────────
@@ -341,7 +362,12 @@ fn buffer_local_without_global_fallback() {
 #[test]
 fn normal_mode_hjkl_resolve() {
     let mut km = make_km();
-    for (k, v) in [("h","cursor-left"),("j","cursor-down"),("k","cursor-up"),("l","cursor-right")] {
+    for (k, v) in [
+        ("h", "cursor-left"),
+        ("j", "cursor-down"),
+        ("k", "cursor-up"),
+        ("l", "cursor-right"),
+    ] {
         km.set_layer("editor", k, v);
     }
     km.set_layer("editor", "i", "enter-insert-mode");
@@ -355,27 +381,27 @@ fn normal_mode_hjkl_resolve() {
 #[test]
 fn insert_mode_esc_exits() {
     let mut km = make_km();
-    km.set_layer("editor",    "h",   "cursor-left");
-    km.set_layer("editor",    "i",   "enter-insert-mode");
+    km.set_layer("editor", "h", "cursor-left");
+    km.set_layer("editor", "i", "enter-insert-mode");
     km.set_layer("insert", "esc", "exit-insert-mode");
     km.push_layer("editor");
 
     km.push_layer("insert");
     assert!(km.is_layer_active("insert"));
     assert_eq!(km.resolve("esc"), Some("exit-insert-mode".into()));
-    assert_eq!(km.resolve("h"),   Some("cursor-left".into()));
-    assert_eq!(km.resolve("i"),   Some("enter-insert-mode".into()));
+    assert_eq!(km.resolve("h"), Some("cursor-left".into()));
+    assert_eq!(km.resolve("i"), Some("enter-insert-mode".into()));
 
     km.pop_layer("insert");
     assert!(!km.is_layer_active("insert"));
     assert_eq!(km.resolve("esc"), None);
-    assert_eq!(km.resolve("h"),   Some("cursor-left".into()));
+    assert_eq!(km.resolve("h"), Some("cursor-left".into()));
 }
 
 #[test]
 fn multiple_toggle_cycles_work() {
     let mut km = make_km();
-    km.set_layer("editor",    "i",   "enter-insert-mode");
+    km.set_layer("editor", "i", "enter-insert-mode");
     km.set_layer("insert", "esc", "exit-insert-mode");
     km.push_layer("editor");
 
@@ -422,7 +448,7 @@ fn list_layer_global_returns_all_global_bindings() {
 fn list_all_includes_all_layers_and_global() {
     let mut km = make_km();
     km.set("ctrl-q", "quit");
-    km.set_layer("editor",    "h", "cursor-left");
+    km.set_layer("editor", "h", "cursor-left");
     km.set_layer("insert", "esc", "exit-insert-mode");
 
     let all = km.list_all();
@@ -432,7 +458,7 @@ fn list_all_includes_all_layers_and_global() {
     assert!(all.contains_key("insert"));
 
     assert_eq!(all.get("global").unwrap().len(), 1);
-    assert_eq!(all.get("editor").unwrap().len(),    1);
+    assert_eq!(all.get("editor").unwrap().len(), 1);
     assert_eq!(all.get("insert").unwrap().len(), 1);
 
     // Layers registered but without bindings do not appear in list_all
@@ -505,27 +531,33 @@ fn full_resolution_chain_global_layer_buffer() {
     // No layers active: only global resolves
     assert_eq!(km.resolve("ctrl-s"), Some("global-save".into()));
     assert_eq!(km.resolve("ctrl-q"), Some("global-quit".into()));
-    assert_eq!(km.resolve_for_buffer("ctrl-s", Some(42)), Some("buf-42-save".into()));
+    assert_eq!(
+        km.resolve_for_buffer("ctrl-s", Some(42)),
+        Some("buf-42-save".into())
+    );
 
     // Push vim: vim overrides global for h, ctrl-s; global for ctrl-q
     km.push_layer("editor");
-    assert_eq!(km.resolve("h"),       Some("cursor-left".into()));
-    assert_eq!(km.resolve("ctrl-s"),  Some("vim-save".into()));
-    assert_eq!(km.resolve("ctrl-q"),  Some("global-quit".into()));
+    assert_eq!(km.resolve("h"), Some("cursor-left".into()));
+    assert_eq!(km.resolve("ctrl-s"), Some("vim-save".into()));
+    assert_eq!(km.resolve("ctrl-q"), Some("global-quit".into()));
     // Buffer-local still wins for buffer 42
-    assert_eq!(km.resolve_for_buffer("ctrl-s", Some(42)), Some("buf-42-save".into()));
+    assert_eq!(
+        km.resolve_for_buffer("ctrl-s", Some(42)),
+        Some("buf-42-save".into())
+    );
 
     // Push insert: insert wins for esc, but not ctrl-s or h
     km.push_layer("insert");
-    assert_eq!(km.resolve("esc"),     Some("exit-insert-mode".into()));
-    assert_eq!(km.resolve("ctrl-s"),  Some("vim-save".into()));      // from vim (insert doesn't bind)
-    assert_eq!(km.resolve("h"),       Some("cursor-left".into()));   // from vim
+    assert_eq!(km.resolve("esc"), Some("exit-insert-mode".into()));
+    assert_eq!(km.resolve("ctrl-s"), Some("vim-save".into())); // from vim (insert doesn't bind)
+    assert_eq!(km.resolve("h"), Some("cursor-left".into())); // from vim
 
     // Pop insert and vim: back to global
     km.pop_layer("insert");
     km.pop_layer("editor");
-    assert_eq!(km.resolve("ctrl-s"),  Some("global-save".into()));
-    assert_eq!(km.resolve("h"),       None);
+    assert_eq!(km.resolve("ctrl-s"), Some("global-save".into()));
+    assert_eq!(km.resolve("h"), None);
 }
 
 #[test]
@@ -553,7 +585,7 @@ fn pop_all_layers_returns_to_global_only() {
     km.push_layer("a");
     km.push_layer("b");
 
-    assert_eq!(km.resolve("only-global"),  Some("found".into()));
+    assert_eq!(km.resolve("only-global"), Some("found".into()));
     assert_eq!(km.resolve("only-layer-a"), Some("found".into()));
     assert_eq!(km.resolve("only-layer-b"), Some("found".into()));
 
@@ -562,5 +594,5 @@ fn pop_all_layers_returns_to_global_only() {
 
     km.pop_layer("a");
     assert_eq!(km.resolve("only-layer-a"), None);
-    assert_eq!(km.resolve("only-global"),  Some("found".into()));
+    assert_eq!(km.resolve("only-global"), Some("found".into()));
 }

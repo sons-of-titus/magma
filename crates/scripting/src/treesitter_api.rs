@@ -5,9 +5,9 @@
 //! `kernel/semantic/ts_registry` so that both the scripting bridge and the
 //! TreesitterLanguageProvider can share it without a layering violation.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::semantic::ts_registry;
 
 /// Parse a buffer's content with tree-sitter.
@@ -131,7 +131,11 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
 
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let current_rev = buf.revision();
-        let mut cached = ed.ts_trees.get(&buf_id).filter(|s| s.revision <= current_rev).cloned();
+        let mut cached = ed
+            .ts_trees
+            .get(&buf_id)
+            .filter(|s| s.revision <= current_rev)
+            .cloned();
         let mut edits: Vec<tree_sitter::InputEdit> = Vec::new();
         if let Some(state) = &cached {
             match buf.changes_since(state.revision) {
@@ -156,14 +160,20 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
             }
         }
         let query_text = buf.slice(0, buf.len());
-        let (result, mut state) =
-            match ts_registry::highlight_incremental(&lang_name, buf.rope_handle(), &query_text, &query_str, &edits, cached) {
-                Some(r) => r,
-                None => {
-                    drop(buf);
-                    return conv::nil();
-                }
-            };
+        let (result, mut state) = match ts_registry::highlight_incremental(
+            &lang_name,
+            buf.rope_handle(),
+            &query_text,
+            &query_str,
+            &edits,
+            cached,
+        ) {
+            Some(r) => r,
+            None => {
+                drop(buf);
+                return conv::nil();
+            }
+        };
         drop(buf);
         state.revision = current_rev;
         ed.ts_trees.insert(buf_id, state);
@@ -179,7 +189,6 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
         janet_wrap_array(result_arr)
     })
 }
-
 
 /// Check if a buffer has a tree-sitter language set.
 /// (ts/has-tree? buf-id) → bool

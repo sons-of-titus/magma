@@ -22,12 +22,23 @@ fn unknown_languages_have_no_defaults() {
 
 #[test]
 fn every_known_language_seeds_named_configs_with_commands() {
-    for language in ["rust", "go", "node", "make", "python", "cmake", "maven", "gradle"] {
+    for language in [
+        "rust", "go", "node", "make", "python", "cmake", "maven", "gradle",
+    ] {
         let configs = defaults_for(language);
-        assert!(!configs.is_empty(), "{language} must seed at least one config");
+        assert!(
+            !configs.is_empty(),
+            "{language} must seed at least one config"
+        );
         for config in &configs {
-            assert!(!config.name.trim().is_empty(), "{language} config needs a name");
-            assert!(!config.command.trim().is_empty(), "{language} config needs a command");
+            assert!(
+                !config.name.trim().is_empty(),
+                "{language} config needs a name"
+            );
+            assert!(
+                !config.command.trim().is_empty(),
+                "{language} config needs a command"
+            );
         }
     }
 }
@@ -57,7 +68,10 @@ fn self_building_commands_do_not_chain_a_build_step() {
             .into_iter()
             .find(|c| c.name == "run")
             .expect("a run config");
-        assert!(run.build_before_run.is_none(), "{language} run builds itself");
+        assert!(
+            run.build_before_run.is_none(),
+            "{language} run builds itself"
+        );
     }
 }
 
@@ -65,28 +79,40 @@ fn self_building_commands_do_not_chain_a_build_step() {
 
 #[test]
 fn a_missing_cwd_resolves_to_the_project_root() {
-    assert_eq!(resolve_cwd(&cfg("run"), Path::new("/project")), Path::new("/project"));
+    assert_eq!(
+        resolve_cwd(&cfg("run"), Path::new("/project")),
+        Path::new("/project")
+    );
 }
 
 #[test]
 fn a_blank_cwd_resolves_to_the_project_root() {
     let mut c = cfg("run");
     c.cwd = Some("   ".into());
-    assert_eq!(resolve_cwd(&c, Path::new("/project")), Path::new("/project"));
+    assert_eq!(
+        resolve_cwd(&c, Path::new("/project")),
+        Path::new("/project")
+    );
 }
 
 #[test]
 fn a_relative_cwd_resolves_against_the_root() {
     let mut c = cfg("run");
     c.cwd = Some("crates/app".into());
-    assert_eq!(resolve_cwd(&c, Path::new("/project")), Path::new("/project/crates/app"));
+    assert_eq!(
+        resolve_cwd(&c, Path::new("/project")),
+        Path::new("/project/crates/app")
+    );
 }
 
 #[test]
 fn an_absolute_cwd_is_used_as_is() {
     let mut c = cfg("run");
     c.cwd = Some("/elsewhere".into());
-    assert_eq!(resolve_cwd(&c, Path::new("/project")), Path::new("/elsewhere"));
+    assert_eq!(
+        resolve_cwd(&c, Path::new("/project")),
+        Path::new("/elsewhere")
+    );
 }
 
 // ── DAP launch arguments ─────────────────────────────────────────────────────
@@ -115,8 +141,7 @@ fn launch_args_without_a_cwd_use_the_root() {
 
 #[test]
 fn optional_fields_default_when_absent() {
-    let parsed: RunConfig =
-        serde_json::from_str(r#"{"name":"run","command":"cargo"}"#).unwrap();
+    let parsed: RunConfig = serde_json::from_str(r#"{"name":"run","command":"cargo"}"#).unwrap();
     assert!(parsed.args.is_empty());
     assert!(parsed.cwd.is_none());
     assert!(parsed.env.is_empty());

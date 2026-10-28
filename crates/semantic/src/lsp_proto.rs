@@ -3,14 +3,25 @@
 //! All JSON is built and parsed with serde_json: hand-rolled string escaping
 //! is how control characters and quotes corrupt server streams.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// One parsed inbound LSP message.
 #[derive(Debug, Clone)]
 pub enum Inbound {
-    Request { id: u64, method: String, params: Value },
-    Response { id: u64, result: Option<Value>, error: Option<Value> },
-    Notification { method: String, params: Value },
+    Request {
+        id: u64,
+        method: String,
+        params: Value,
+    },
+    Response {
+        id: u64,
+        result: Option<Value>,
+        error: Option<Value>,
+    },
+    Notification {
+        method: String,
+        params: Value,
+    },
 }
 
 /// Errors while reading the byte stream — malformed input is skipped where
@@ -45,7 +56,8 @@ pub fn read_message(read: &mut impl std::io::Read) -> Result<Value, FrameError> 
         }
         // Other headers (Content-Type) are legal and ignored.
     }
-    let len = content_length.ok_or_else(|| FrameError::Malformed("missing Content-Length".into()))?;
+    let len =
+        content_length.ok_or_else(|| FrameError::Malformed("missing Content-Length".into()))?;
     let mut body = vec![0u8; len];
     read.read_exact(&mut body).map_err(|_| FrameError::Eof)?;
     serde_json::from_slice(&body).map_err(|e| FrameError::Malformed(format!("bad JSON body: {e}")))
@@ -89,11 +101,13 @@ pub fn initialize_params(root: Option<&str>) -> Value {
 }
 
 pub fn path_to_uri(path: &str) -> String {
-    format!("file://{}", path
-        .replace('%', "%25")
-        .replace(' ', "%20")
-        .replace('#', "%23")
-        .replace('?', "%3F"))
+    format!(
+        "file://{}",
+        path.replace('%', "%25")
+            .replace(' ', "%20")
+            .replace('#', "%23")
+            .replace('?', "%3F")
+    )
 }
 
 #[cfg(test)]
@@ -112,7 +126,10 @@ mod tests {
     #[test]
     fn framing_multiple_headers_then_body() {
         let body = br#"{"jsonrpc":"2.0","id":1,"method":"x"}"#;
-        let wire = format!("Content-Type: application/vscode-jsonrpc\r\nContent-Length: {}\r\n\r\n", body.len());
+        let wire = format!(
+            "Content-Type: application/vscode-jsonrpc\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
         let mut stream = wire.into_bytes();
         stream.extend_from_slice(body);
         let parsed = read_message(&mut &stream[..]).unwrap();

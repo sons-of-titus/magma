@@ -17,15 +17,24 @@ pub struct Edit {
 
 impl Edit {
     pub fn insert(offset: ByteOffset, text: &str) -> Self {
-        Edit { range: offset..offset, inserted_text: text.to_string() }
+        Edit {
+            range: offset..offset,
+            inserted_text: text.to_string(),
+        }
     }
 
     pub fn delete(range: ByteRange) -> Self {
-        Edit { range, inserted_text: String::new() }
+        Edit {
+            range,
+            inserted_text: String::new(),
+        }
     }
 
     pub fn replace(range: ByteRange, text: &str) -> Self {
-        Edit { range, inserted_text: text.to_string() }
+        Edit {
+            range,
+            inserted_text: text.to_string(),
+        }
     }
 
     pub fn start(&self) -> ByteOffset {

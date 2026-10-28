@@ -15,7 +15,11 @@ fn undo_history_is_capped_at_ten_thousand_entries() {
         buf.insert(end, &text);
     }
     let buf = arc.lock().unwrap();
-    assert!(buf.undo_len() <= 10_000, "undo entries must cap at 10k, got {}", buf.undo_len());
+    assert!(
+        buf.undo_len() <= 10_000,
+        "undo entries must cap at 10k, got {}",
+        buf.undo_len()
+    );
 }
 
 #[test]
@@ -29,12 +33,21 @@ fn document_history_is_capped_and_old_revisions_report_none() {
         let text = format!("{i}");
         let end = buf.len();
         buf.insert(end, &text);
-        if first_rev.is_none() { first_rev = Some(buf.revision()); }
+        if first_rev.is_none() {
+            first_rev = Some(buf.revision());
+        }
     }
     let buf = arc.lock().unwrap();
-    assert_eq!(buf.changes_since(0), None, "revision 0 is out of the retention window");
+    assert_eq!(
+        buf.changes_since(0),
+        None,
+        "revision 0 is out of the retention window"
+    );
     let recent = buf.revision() - 8;
-    assert!(buf.changes_since(recent).is_some(), "recent revisions stay available");
+    assert!(
+        buf.changes_since(recent).is_some(),
+        "recent revisions stay available"
+    );
 }
 
 #[test]
@@ -44,14 +57,27 @@ fn find_results_truncate_at_five_hundred() {
     let generation = ed.search.generation;
     let entries: Vec<crate::kernel::task::QuickfixEntry> = (0..900)
         .map(|i| crate::kernel::task::QuickfixEntry {
-            filename: format!("f{i}.rs"), line: i, col: 1, message: "m".into(),
+            filename: format!("f{i}.rs"),
+            line: i,
+            col: 1,
+            message: "m".into(),
             ..Default::default()
         })
         .collect();
-    crate::kernel::runtime::process_background_event(&mut ed,
+    crate::kernel::runtime::process_background_event(
+        &mut ed,
         crate::kernel::runtime::BackgroundEvent::Project(
-            crate::kernel::project::Event::GrepResultsBatch { generation, entries }));
-    assert_eq!(ed.search.results.len(), 500, "the find-results list must cap at 500");
+            crate::kernel::project::Event::GrepResultsBatch {
+                generation,
+                entries,
+            },
+        ),
+    );
+    assert_eq!(
+        ed.search.results.len(),
+        500,
+        "the find-results list must cap at 500"
+    );
 }
 
 #[test]
@@ -66,8 +92,14 @@ fn buffer_caches_are_evicted_on_close() {
 
     assert!(ed.completion.word_cache.contains_key(&key) || !ed.completion.visible);
     ed.drop_buffer(key);
-    assert!(!ed.completion.word_cache.contains_key(&key), "word cache evicted");
-    assert!(!ed.minimap_cache.contains_key(&key), "minimap cache evicted");
+    assert!(
+        !ed.completion.word_cache.contains_key(&key),
+        "word cache evicted"
+    );
+    assert!(
+        !ed.minimap_cache.contains_key(&key),
+        "minimap cache evicted"
+    );
 }
 
 #[test]
@@ -97,12 +129,17 @@ fn large_document_soak_edits_undo_and_cursor_stay_correct() {
     // Cursor to a far offset and back via position_of: no scans that break.
     let buf = arc.lock().unwrap();
     let mid = buf.line_col_bytes(base_len / 2).0;
-    assert!(mid > 100_000, "half of a 20MB doc is ~233k lines in, got {mid}");
+    assert!(
+        mid > 100_000,
+        "half of a 20MB doc is ~233k lines in, got {mid}"
+    );
     drop(buf);
 
     // Undo all 1000 edits: exact restoration.
     loop {
-        if arc.lock().unwrap().undo().is_none() { break; }
+        if arc.lock().unwrap().undo().is_none() {
+            break;
+        }
     }
     let buf = arc.lock().unwrap();
     assert_eq!(buf.len(), base_len, "undo restores the exact base length");

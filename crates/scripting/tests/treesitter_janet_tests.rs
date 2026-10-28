@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── ts/set-language ───────────────────────────────────────────────────
@@ -11,8 +12,7 @@ fn ts_set_language_stores_on_buffer() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let result = scripting::eval(
-        &format!("(ts/set-language {} \"janet\")", key));
+    let result = scripting::eval(&format!("(ts/set-language {} \"janet\")", key));
     assert_eq!(result, "ok");
 
     assert_eq!(ed.ts_languages.get(&key).unwrap(), "janet");
@@ -25,8 +25,7 @@ fn ts_has_tree_returns_false_by_default() {
     janet_test!(ed, {
         let key = helpers::focused_key(&ed);
 
-        let result = scripting::eval(
-            &format!("(ts/has-tree? {})", key));
+        let result = scripting::eval(&format!("(ts/has-tree? {})", key));
         assert_eq!(result, "ok");
         assert!(!ed.ts_trees.contains_key(&key));
     });
@@ -42,10 +41,8 @@ fn ts_parse_without_grammar_returns_false() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let _ = scripting::eval(
-        &format!("(ts/set-language {} \"rust\")", key));
-    let result = scripting::eval(
-        &format!("(ts/parse {})", key));
+    let _ = scripting::eval(&format!("(ts/set-language {} \"rust\")", key));
+    let result = scripting::eval(&format!("(ts/parse {})", key));
     assert_eq!(result, "ok");
 }
 
@@ -56,8 +53,7 @@ fn ts_query_without_tree_handles_gracefully() {
     janet_test!(ed, {
         let key = helpers::focused_key(&ed);
 
-        let result = scripting::eval(
-            &format!("(ts/query {} \"(symbol)\")", key));
+        let result = scripting::eval(&format!("(ts/query {} \"(symbol)\")", key));
         assert_eq!(result, "ok");
     });
 }
@@ -67,8 +63,7 @@ fn ts_query_without_tree_handles_gracefully() {
 #[test]
 fn ts_set_language_invalid_buffer_does_not_panic() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(ts/set-language 99999 \"janet\")");
+        let result = scripting::eval("(ts/set-language 99999 \"janet\")");
         assert_eq!(result, "ok");
     });
 }
@@ -82,7 +77,8 @@ fn buffer_changed_handler_is_noop_and_highlight_follows_ts_tree_updated() {
         // language attach machinery sees it.
         let key = helpers::focused_key(&ed);
         let _ = &key;
-        let r = scripting::eval(r#"
+        let r = scripting::eval(
+            r#"
             (do
               (var ran nil)
               # The buffer-changed handler is a deliberate no-op now: the
@@ -91,16 +87,22 @@ fn buffer_changed_handler_is_noop_and_highlight_follows_ts_tree_updated() {
                                             "revision-after" "1" "edits" "0:0:1"})
               (set ran true)
               ran)
-        "#);
+        "#,
+        );
         assert_eq!(r, "ok");
 
         // The listener that replaces it: ts-tree-updated drives the
         // highlight from a completed (off-thread) parse.
-        let r2 = scripting::eval(r#"
+        let r2 = scripting::eval(
+            r#"
             (do
               (event/emit "ts-tree-updated" {"buffer-id" "0"})
               "ok")
-        "#);
-        assert_eq!(r2, "ok", "the ts-tree-updated listener must not error on a real buffer id");
+        "#,
+        );
+        assert_eq!(
+            r2, "ok",
+            "the ts-tree-updated listener must not error on a real buffer id"
+        );
     });
 }

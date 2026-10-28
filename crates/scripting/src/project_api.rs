@@ -1,10 +1,10 @@
 //! Janet API — project core: root, name, files, index-files, per-project options.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 use kernel::project::Project;
 
 /// (project/root) → string or nil
@@ -25,7 +25,8 @@ unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> J
                 ed.project_manager.project = Project::default();
                 ed.project_manager.current_project = None;
                 if was_active {
-                    ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
+                    ed.events
+                        .emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
                 }
             }
         }
@@ -50,9 +51,10 @@ unsafe extern "C-unwind" fn c_project_set_name(argc: i32, argv: *mut Janet) -> J
         };
         ed.project_manager.project.name = Some(name.clone());
         if let Some(ref cur) = ed.project_manager.current_project.clone()
-            && let Some(proj) = ed.project_manager.projects.get_mut(cur) {
-                proj.name = Some(name);
-            }
+            && let Some(proj) = ed.project_manager.projects.get_mut(cur)
+        {
+            proj.name = Some(name);
+        }
         conv::nil()
     })
 }
@@ -102,11 +104,15 @@ unsafe extern "C-unwind" fn c_project_option_set(argc: i32, argv: *mut Janet) ->
             Some(s) => s,
             None => return conv::nil(),
         };
-        ed.project_manager.project.options.insert(key.clone(), val.clone());
+        ed.project_manager
+            .project
+            .options
+            .insert(key.clone(), val.clone());
         if let Some(ref cur) = ed.project_manager.current_project.clone()
-            && let Some(proj) = ed.project_manager.projects.get_mut(cur) {
-                proj.options.insert(key, val);
-            }
+            && let Some(proj) = ed.project_manager.projects.get_mut(cur)
+        {
+            proj.options.insert(key, val);
+        }
         conv::nil()
     })
 }
@@ -129,8 +135,8 @@ unsafe extern "C-unwind" fn c_project_current(_argc: i32, _argv: *mut Janet) -> 
         let name = proj.name.clone().unwrap_or_default();
         let tbl = janet_wrap_table(janet_table(6));
         let t = janet_unwrap_table(tbl);
-        janet_table_put(t, conv::keyword("name"),     conv::string(&name));
-        janet_table_put(t, conv::keyword("root"),     conv::string(&root));
+        janet_table_put(t, conv::keyword("name"), conv::string(&name));
+        janet_table_put(t, conv::keyword("root"), conv::string(&root));
         janet_table_put(t, conv::keyword("language"), conv::string(&proj.language));
 
         let rc_arr = janet_wrap_array(janet_array(pm.run_configs.configs.len() as i32));

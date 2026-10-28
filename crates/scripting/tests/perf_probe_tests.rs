@@ -8,7 +8,8 @@
 
 use kernel::input;
 use scripting;
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 
 const KEYS: usize = 30;
 
@@ -41,8 +42,14 @@ fn typing_stays_fast_on_a_100kb_buffer() {
     let p50 = samples[samples.len() / 2];
     let p100 = samples[samples.len() - 1];
     println!("typing on 100 KB: p50 {p50} ms, max {p100} ms over {KEYS} keys");
-    assert!(p50 <= 10, "typing p50 {p50} ms — the keystroke path regressed");
-    assert!(p100 <= 100, "typing max {p100} ms — an O(document) pass is back on the keystroke path");
+    assert!(
+        p50 <= 10,
+        "typing p50 {p50} ms — the keystroke path regressed"
+    );
+    assert!(
+        p100 <= 100,
+        "typing max {p100} ms — an O(document) pass is back on the keystroke path"
+    );
 }
 
 #[test]
@@ -68,6 +75,8 @@ fn indent_line_on_a_100kb_buffer_does_not_block() {
     }
     let elapsed = t0.elapsed().as_millis();
     println!("10 × tab on 100 KB: {elapsed} ms total");
-    assert!(elapsed <= 500,
-        "TAB took {elapsed} ms for 10 presses — it is blocking again");
+    assert!(
+        elapsed <= 500,
+        "TAB took {elapsed} ms for 10 presses — it is blocking again"
+    );
 }

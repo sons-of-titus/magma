@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet runtime integration — command surface, options, and the mode
 // substrate a community modal-editing plugin would build on.
 
@@ -41,7 +42,10 @@ fn set_mode_substrate_remains_for_community_plugins() {
 
         let r = scripting::eval("(editor/set-mode \"editor\")");
         assert_eq!(r, "ok");
-        assert!(ed.editor_mode.accepts_text, "back to the default typing mode");
+        assert!(
+            ed.editor_mode.accepts_text,
+            "back to the default typing mode"
+        );
     });
 }
 
@@ -57,13 +61,17 @@ fn option_set_is_the_configuration_path() {
 #[test]
 fn janet_defined_commands_execute_and_reach_the_palette() {
     janet_test!(ed, {
-        let r = scripting::eval(
-            "(command/define \"community-hello\" (fn [&] (editor/echo \"hi\")))");
+        let r =
+            scripting::eval("(command/define \"community-hello\" (fn [&] (editor/echo \"hi\")))");
         assert_eq!(r, "ok");
         assert!(ed.commands.exists("community-hello"));
-        assert!(ed.commands.list_detailed().iter()
-            .any(|(name, _, _)| name == "community-hello"),
-            "Janet-defined commands are palette surface");
+        assert!(
+            ed.commands
+                .list_detailed()
+                .iter()
+                .any(|(name, _, _)| name == "community-hello"),
+            "Janet-defined commands are palette surface"
+        );
     });
 }
 
@@ -74,7 +82,10 @@ fn builtin_command_files_register_their_commands() {
     // failure.  One command per file that registers verbs at load time.
     janet_test!(ed, {
         for name in ["dbg-start", "ws-save", "agent-ask"] {
-            assert!(ed.commands.exists(name), "builtin command {name} must be registered at load time");
+            assert!(
+                ed.commands.exists(name),
+                "builtin command {name} must be registered at load time"
+            );
         }
     });
 }
@@ -99,9 +110,16 @@ fn command_run_passes_arguments_to_the_command() {
         std::fs::create_dir_all(&dir).unwrap();
         let src = format!(r#"(command/run "open-project" :path "{}")"#, dir.display());
         let r = scripting::eval_result(&src);
-        assert!(r.is_ok(), "command/run must accept :key value pairs: {:?}", r.err());
-        assert_eq!(ed.project_manager.project.root.as_ref(), Some(&dir),
-            "the :path argument must reach open-project");
+        assert!(
+            r.is_ok(),
+            "command/run must accept :key value pairs: {:?}",
+            r.err()
+        );
+        assert_eq!(
+            ed.project_manager.project.root.as_ref(),
+            Some(&dir),
+            "the :path argument must reach open-project"
+        );
         std::fs::remove_dir_all(&dir).ok();
     });
 }
@@ -118,7 +136,9 @@ fn lsp_attach_uses_numeric_buffer_ids() {
         }
         // Registering a language is the first observable step of attach;
         // lsp/start itself is skipped when the server binary is missing.
-        let r = scripting::eval(&format!("(do (event/emit \"buffer-created\" {{:buffer-id \"{key}\"}}) nil)"));
+        let r = scripting::eval(&format!(
+            "(do (event/emit \"buffer-created\" {{:buffer-id \"{key}\"}}) nil)"
+        ));
         assert_eq!(r, "ok", "handler must not error on the string payload: {r}");
     });
 }
@@ -129,7 +149,7 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
     // open-file → frame drain → the file is on screen and highlighted.
     janet_test!(ed, {
         use kernel::command::{self, args::ArgValue};
-        use kernel::runtime::{process_background_event, BackgroundHandle};
+        use kernel::runtime::{BackgroundHandle, process_background_event};
 
         let rt = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -137,10 +157,17 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
 
         let dir = std::env::temp_dir().join(format!("magma-explorer-e2e-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::write(dir.join("src/main.rs"), "fn main() {\n    let done = true;\n}\n").unwrap();
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "fn main() {\n    let done = true;\n}\n",
+        )
+        .unwrap();
 
         let mut args = std::collections::HashMap::new();
-        args.insert("path".to_string(), ArgValue::Path(dir.to_string_lossy().into_owned()));
+        args.insert(
+            "path".to_string(),
+            ArgValue::Path(dir.to_string_lossy().into_owned()),
+        );
         command::execute_command(&mut ed, "open-project", &args).unwrap();
 
         // What drain_background_events does every frame.
@@ -154,12 +181,24 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
                 _ => panic!("no ProjectIndexed event"),
             }
         }
-        assert!(ed.project_manager.project.files.contains(&"src/main.rs".to_string()),
-            "index must be project-relative: {:?}", ed.project_manager.project.files);
+        assert!(
+            ed.project_manager
+                .project
+                .files
+                .contains(&"src/main.rs".to_string()),
+            "index must be project-relative: {:?}",
+            ed.project_manager.project.files
+        );
 
         // The exact string the sidebar click computes for a file node.
-        let root = ed.project_manager.project.root.as_ref().unwrap()
-            .to_string_lossy().into_owned();
+        let root = ed
+            .project_manager
+            .project
+            .root
+            .as_ref()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         let full = format!("{}/{}", root.trim_end_matches('/'), "src/main.rs");
 
         // SidebarAction::Open → DialogAction::OpenFile → open-file.
@@ -171,17 +210,28 @@ fn explorer_open_end_to_end_focuses_and_highlights() {
         ed.dispatch_events_scoped();
 
         // The file is on screen in the focused pane.
-        let focused = ed.view_tree.focused_window()
+        let focused = ed
+            .view_tree
+            .focused_window()
             .and_then(|w| ed.view_tree.buffer(w))
             .expect("a focused buffer after opening from the explorer");
         assert_eq!(
-            ed.buffers.get(focused).unwrap().lock().unwrap().path.as_deref(),
+            ed.buffers
+                .get(focused)
+                .unwrap()
+                .lock()
+                .unwrap()
+                .path
+                .as_deref(),
             Some(full.as_str()),
-            "the clicked file's buffer must be the focused one");
+            "the clicked file's buffer must be the focused one"
+        );
 
         // The syntax core ran on buffer-created and highlighted it.
         let view = ed.view_of_buffer(focused).expect("view for focused buffer");
-        let syntax = view.highlight_layers.get("syntax")
+        let syntax = view
+            .highlight_layers
+            .get("syntax")
             .expect("syntax highlight layer set by buffer-created handler");
         assert!(!syntax.is_empty(), "rust keywords must be highlighted");
 
@@ -196,10 +246,15 @@ fn self_emitting_handler_terminates() {
     // emits; this test hangs instead of passing if the guard regresses.
     janet_test!(ed, {
         scripting::eval(
-            r#"(event/on "magma-loop-test" (fn [ev] (event/emit "magma-loop-test" {})))"#);
+            r#"(event/on "magma-loop-test" (fn [ev] (event/emit "magma-loop-test" {})))"#,
+        );
         scripting::eval(r#"(event/emit "magma-loop-test" {})"#);
         ed.dispatch_events_scoped();
-        assert_eq!(ed.events.pending_len(), 0, "self-emit must be dropped, not queued");
+        assert_eq!(
+            ed.events.pending_len(),
+            0,
+            "self-emit must be dropped, not queued"
+        );
     });
 }
 
@@ -209,11 +264,15 @@ fn handler_can_subscribe_from_inside_a_handler() {
     // a handler that subscribed again deadlocked the editor on the spot.
     janet_test!(ed, {
         scripting::eval(
-            r#"(event/on "magma-reg-outer" (fn [ev] (event/on "magma-reg-inner" (fn [e2] nil))))"#);
+            r#"(event/on "magma-reg-outer" (fn [ev] (event/on "magma-reg-inner" (fn [e2] nil))))"#,
+        );
         scripting::eval(r#"(event/emit "magma-reg-outer" {})"#);
         ed.dispatch_events_scoped();
-        assert_eq!(ed.events.subscriber_count("magma-reg-inner"), 1,
-            "the nested subscription must have registered");
+        assert_eq!(
+            ed.events.subscriber_count("magma-reg-inner"),
+            1,
+            "the nested subscription must have registered"
+        );
     });
 }
 
@@ -229,11 +288,17 @@ fn lsp_position_round_trip_on_non_ascii() {
         // Line 0 ("fn héllo() {}\n") is 15 bytes; 'r' in "wörld" sits at
         // byte 21 (ö is two bytes) but UTF-16 column 5 (ö is one unit).
         let a = scripting::eval_result(
-            "(let [b (buffer/current)] (string/format \"%d %d\" ;(buffer/lsp-position b 21)))").unwrap();
+            "(let [b (buffer/current)] (string/format \"%d %d\" ;(buffer/lsp-position b 21)))",
+        )
+        .unwrap();
         assert!(a.contains("1 5"), "lsp-position must be (1, 5), got {a}");
 
-        let b = scripting::eval_result(
-            "(string (buffer/offset-of-lsp-position (buffer/current) 1 5))").unwrap();
-        assert!(b.contains("21"), "inverse must return byte offset 21, got {b}");
+        let b =
+            scripting::eval_result("(string (buffer/offset-of-lsp-position (buffer/current) 1 5))")
+                .unwrap();
+        assert!(
+            b.contains("21"),
+            "inverse must return byte offset 21, got {b}"
+        );
     });
 }

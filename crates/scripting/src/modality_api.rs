@@ -1,15 +1,17 @@
 //! Janet API — modality: set-mode, mode-name, mode-accepts-text?.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::state::mode::Selection;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::state::mode::Selection;
 
 unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let Some(name) = conv::get_str(argc, argv, 0) else { return conv::nil(); };
+        let Some(name) = conv::get_str(argc, argv, 0) else {
+            return conv::nil();
+        };
         let old_name = ed.editor_mode.name.clone();
         let accepts_text = if argc >= 2 {
             let opts = *argv.add(1);
@@ -30,28 +32,51 @@ unsafe extern "C-unwind" fn c_editor_set_mode(argc: i32, argv: *mut Janet) -> Ja
         ed.editor_mode.name = name.clone();
         ed.editor_mode.accepts_text = accepts_text;
         match name.as_str() {
-            "visual"
-                if ed.selection.is_none() => {
-                    let buf_id = kernel::input::focused_buffer_id(ed);
-                    let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-                    ed.selection = Some(Selection { anchor, kind: "char".into() });
-                }
+            "visual" if ed.selection.is_none() => {
+                let buf_id = kernel::input::focused_buffer_id(ed);
+                let anchor = ed
+                    .view_of_buffer(buf_id)
+                    .map(|v| v.cursor_offset())
+                    .unwrap_or(0);
+                ed.selection = Some(Selection {
+                    anchor,
+                    kind: "char".into(),
+                });
+            }
             "visual-line" => {
                 let buf_id = kernel::input::focused_buffer_id(ed);
-                let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-                ed.selection = Some(Selection { anchor, kind: "line".into() });
+                let anchor = ed
+                    .view_of_buffer(buf_id)
+                    .map(|v| v.cursor_offset())
+                    .unwrap_or(0);
+                ed.selection = Some(Selection {
+                    anchor,
+                    kind: "line".into(),
+                });
             }
             "visual-block" => {
                 let buf_id = kernel::input::focused_buffer_id(ed);
-                let anchor = ed.view_of_buffer(buf_id).map(|v| v.cursor_offset()).unwrap_or(0);
-                ed.selection = Some(Selection { anchor, kind: "block".into() });
+                let anchor = ed
+                    .view_of_buffer(buf_id)
+                    .map(|v| v.cursor_offset())
+                    .unwrap_or(0);
+                ed.selection = Some(Selection {
+                    anchor,
+                    kind: "block".into(),
+                });
             }
             "normal" | "insert" | "replace" | "command" | "cmdline" | "search" => {
                 ed.selection = None;
             }
             _ => {}
         }
-        ed.events.emit_typed(keys::events::MODE_CHANGED, ModeChangedPayload { from: old_name, to: name });
+        ed.events.emit_typed(
+            keys::events::MODE_CHANGED,
+            ModeChangedPayload {
+                from: old_name,
+                to: name,
+            },
+        );
         conv::nil()
     })
 }
@@ -69,7 +94,8 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"editor/set-mode".as_ptr() as *const _,
             cfun: Some(c_editor_set_mode as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Set the current editor mode name and accepts-text policy".as_ptr() as *const _,
+            documentation: c"Set the current editor mode name and accepts-text policy".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"editor/mode-name".as_ptr() as *const _,
@@ -78,8 +104,11 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"editor/mode-accepts-text?".as_ptr() as *const _,
-            cfun: Some(c_editor_mode_accepts_text as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return true if unbound keys insert text in the current mode".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_mode_accepts_text as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Return true if unbound keys insert text in the current mode".as_ptr()
+                as *const _,
         },
     ]
 }

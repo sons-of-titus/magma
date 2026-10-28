@@ -4,16 +4,16 @@
 //! §2.1); marks transform through transactions; undo history stores
 //! transactions grouped explicitly; save state is revision-based.
 
+mod breakpoint_anchors;
+pub mod buffer;
+pub mod decoration;
 pub mod diagnostic;
+pub mod marks;
+pub mod position;
 pub mod rope;
 pub mod scan;
 pub mod undo;
-pub mod marks;
-pub mod decoration;
-pub mod position;
 pub mod view;
-pub mod buffer;
-mod breakpoint_anchors;
 pub use buffer::Buffer;
 pub use buffer::ImageData;
 mod fold;
@@ -31,14 +31,13 @@ pub mod edit;
 pub mod line_index;
 #[allow(dead_code)]
 pub mod revision;
+pub mod text_layout;
 #[allow(dead_code)]
 pub mod transaction;
-pub mod text_layout;
 
 pub use decoration::Decoration;
 pub use position::Position;
 pub use view::BufferView;
-
 
 /// Buffer major mode — the content/context type of a buffer (Emacs-style).
 ///
@@ -62,9 +61,9 @@ impl MajorMode {
     pub fn name(&self) -> &str {
         match self {
             MajorMode::Fundamental => "fundamental",
-            MajorMode::Text        => "text",
-            MajorMode::Prog        => "prog",
-            MajorMode::Custom(s)   => s.as_str(),
+            MajorMode::Text => "text",
+            MajorMode::Prog => "prog",
+            MajorMode::Custom(s) => s.as_str(),
         }
     }
 
@@ -73,9 +72,9 @@ impl MajorMode {
     pub fn from_name(s: &str) -> Self {
         match s {
             "fundamental" | "fundamental-mode" => MajorMode::Fundamental,
-            "text"        | "text-mode"        => MajorMode::Text,
-            "prog"        | "prog-mode"        => MajorMode::Prog,
-            other                              => MajorMode::Custom(other.to_string()),
+            "text" | "text-mode" => MajorMode::Text,
+            "prog" | "prog-mode" => MajorMode::Prog,
+            other => MajorMode::Custom(other.to_string()),
         }
     }
 }

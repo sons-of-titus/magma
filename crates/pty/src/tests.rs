@@ -4,9 +4,18 @@ use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
 
 /// Spawn a real shell under a PTY so the session has genuine handles.  The
 /// child is returned as well: tests reap or kill it themselves.
-fn spawn_session(id: usize, label: &str, script: &str) -> (TerminalSession, Box<dyn Child + Send + Sync>) {
+fn spawn_session(
+    id: usize,
+    label: &str,
+    script: &str,
+) -> (TerminalSession, Box<dyn Child + Send + Sync>) {
     let pair = native_pty_system()
-        .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+        .openpty(PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
         .expect("openpty");
     let mut cmd = CommandBuilder::new("sh");
     cmd.arg("-c");
@@ -71,9 +80,15 @@ fn renaming_reports_whether_the_name_changed() {
 #[test]
 fn input_and_resize_reach_the_pty() {
     let (s, mut child) = spawn_session(0, "cat", "read _");
-    assert!(s.send_input("echo hi\n").is_ok(), "the writer accepts input");
+    assert!(
+        s.send_input("echo hi\n").is_ok(),
+        "the writer accepts input"
+    );
     assert!(s.resize(120, 40).is_ok(), "the master resizes");
-    assert!(child.try_wait().expect("try_wait").is_none(), "still running");
+    assert!(
+        child.try_wait().expect("try_wait").is_none(),
+        "still running"
+    );
     drop(s);
     let _ = child.kill();
 }

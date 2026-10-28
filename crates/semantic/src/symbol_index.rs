@@ -1,7 +1,7 @@
 //! SymbolIndex — stores symbol definitions, references, and documentation.
 
-use std::collections::HashMap;
 use super::provider::Symbol;
+use std::collections::HashMap;
 
 /// A reference to a symbol (a use site, not a definition).
 #[derive(Debug, Clone)]
@@ -22,7 +22,9 @@ pub struct SymbolIndex {
 }
 
 impl SymbolIndex {
-    pub fn new() -> Self { SymbolIndex::default() }
+    pub fn new() -> Self {
+        SymbolIndex::default()
+    }
 
     /// Index all symbols extracted from a file.  Replaces any previously
     /// indexed symbols for that file.
@@ -54,7 +56,9 @@ impl SymbolIndex {
 
     /// Return symbol names that start with `prefix` (for completion).
     pub fn completions_for_prefix(&self, prefix: &str) -> Vec<String> {
-        let mut out: Vec<String> = self.symbols.keys()
+        let mut out: Vec<String> = self
+            .symbols
+            .keys()
             .filter(|n| n.starts_with(prefix))
             .cloned()
             .collect();
@@ -64,12 +68,15 @@ impl SymbolIndex {
 
     /// Record a reference to a symbol.
     pub fn add_reference(&mut self, name: &str, file: &str, line: usize, column: usize) {
-        self.references.entry(name.to_string()).or_default().push(SymbolRef {
-            name: name.to_string(),
-            file: file.to_string(),
-            line,
-            column,
-        });
+        self.references
+            .entry(name.to_string())
+            .or_default()
+            .push(SymbolRef {
+                name: name.to_string(),
+                file: file.to_string(),
+                line,
+                column,
+            });
     }
 
     /// Look up all known references for a symbol name.
@@ -79,7 +86,8 @@ impl SymbolIndex {
 
     /// Return documentation for a symbol (from its first definition that has doc).
     pub fn documentation(&self, name: &str) -> Option<String> {
-        self.symbols.get(name)?
+        self.symbols
+            .get(name)?
             .iter()
             .find_map(|s| s.documentation.clone())
     }
@@ -108,7 +116,14 @@ mod tests {
     use crate::provider::SymbolKind;
 
     fn make_sym(name: &str, kind: SymbolKind) -> Symbol {
-        Symbol { name: name.to_string(), kind, file: String::new(), line: 0, column: 0, documentation: None }
+        Symbol {
+            name: name.to_string(),
+            kind,
+            file: String::new(),
+            line: 0,
+            column: 0,
+            documentation: None,
+        }
     }
 
     #[test]
@@ -133,11 +148,14 @@ mod tests {
     #[test]
     fn completions_for_prefix() {
         let mut idx = SymbolIndex::new();
-        idx.add_symbols("a.rs", vec![
-            make_sym("fmt_write", SymbolKind::Function),
-            make_sym("fmt_read",  SymbolKind::Function),
-            make_sym("parse",     SymbolKind::Function),
-        ]);
+        idx.add_symbols(
+            "a.rs",
+            vec![
+                make_sym("fmt_write", SymbolKind::Function),
+                make_sym("fmt_read", SymbolKind::Function),
+                make_sym("parse", SymbolKind::Function),
+            ],
+        );
         let comps = idx.completions_for_prefix("fmt");
         assert_eq!(comps, vec!["fmt_read", "fmt_write"]);
         assert!(idx.completions_for_prefix("xyz").is_empty());
@@ -168,17 +186,23 @@ mod tests {
         let mut sym = make_sym("documented", SymbolKind::Function);
         sym.documentation = Some("Does things.".to_string());
         idx.add_symbols("a.rs", vec![sym]);
-        assert_eq!(idx.documentation("documented"), Some("Does things.".to_string()));
+        assert_eq!(
+            idx.documentation("documented"),
+            Some("Does things.".to_string())
+        );
         assert!(idx.documentation("undocumented").is_none());
     }
 
     #[test]
     fn symbol_count() {
         let mut idx = SymbolIndex::new();
-        idx.add_symbols("a.rs", vec![
-            make_sym("a", SymbolKind::Function),
-            make_sym("b", SymbolKind::Function),
-        ]);
+        idx.add_symbols(
+            "a.rs",
+            vec![
+                make_sym("a", SymbolKind::Function),
+                make_sym("b", SymbolKind::Function),
+            ],
+        );
         assert_eq!(idx.symbol_count(), 2);
     }
 }

@@ -31,11 +31,17 @@ pub struct Anchor {
 
 impl Anchor {
     pub fn before(offset: ByteOffset) -> Self {
-        Anchor { offset, affinity: Affinity::Before }
+        Anchor {
+            offset,
+            affinity: Affinity::Before,
+        }
     }
 
     pub fn after(offset: ByteOffset) -> Self {
-        Anchor { offset, affinity: Affinity::After }
+        Anchor {
+            offset,
+            affinity: Affinity::After,
+        }
     }
 }
 
@@ -51,7 +57,10 @@ pub fn transform_anchor(anchor: Anchor, edit: &Edit) -> Anchor {
     } else {
         anchor.offset + len - (e - s)
     };
-    Anchor { offset, affinity: anchor.affinity }
+    Anchor {
+        offset,
+        affinity: anchor.affinity,
+    }
 }
 
 /// Transform through a *normalized* transaction edit list: edits sorted by
@@ -70,7 +79,10 @@ pub fn transform_anchor_through_edits(anchor: Anchor, edits: &[Edit]) -> Anchor 
                 Affinity::Before => s as isize + delta,
                 Affinity::After => s as isize + delta + len as isize,
             };
-            return Anchor { offset: offset.max(0) as usize, affinity: anchor.affinity };
+            return Anchor {
+                offset: offset.max(0) as usize,
+                affinity: anchor.affinity,
+            };
         }
         delta += len as isize - (e - s) as isize;
     }

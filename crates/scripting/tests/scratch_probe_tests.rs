@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 #[test]
@@ -26,7 +27,13 @@ fn probe_syntax_event_path() {
         });
         ed.dispatch_events_scoped();
         let view = ed.view_of_buffer(key).expect("view");
-        println!("LAYERS: {:?}", view.highlight_layers.keys().collect::<Vec<_>>());
-        println!("SYNTAX RANGES: {:?}", view.highlight_layers.get("syntax").map(|v| v.len()));
+        println!(
+            "LAYERS: {:?}",
+            view.highlight_layers.keys().collect::<Vec<_>>()
+        );
+        println!(
+            "SYNTAX RANGES: {:?}",
+            view.highlight_layers.get("syntax").map(|v| v.len())
+        );
     });
 }

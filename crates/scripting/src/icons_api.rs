@@ -1,91 +1,107 @@
 //! Janet API for icon packs — install glyph packs, per-extension
 //! overrides, and VS Code icon-theme loading.
 
-use std::collections::HashMap;
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::icons::{IconKind, IconPack};
+use std::collections::HashMap;
 
 /// Extract one icon spec from a Janet value: a codepoint integer, or a
 /// `[codepoint [r g b]]` tuple for a colored glyph.
-unsafe fn icon_from_val(v: Janet) -> Option<IconKind> { unsafe {
-    if janet_checktype(v, JanetType_JANET_NUMBER) != 0 {
-        let cp = janet_unwrap_number(v) as u32;
-        char::from_u32(cp).map(IconKind::glyph)
-    } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0
-        || janet_checktype(v, JanetType_JANET_ARRAY) != 0
-    {
-        let cp = janet_in(v, conv::integer(0));
-        let rgb = janet_in(v, conv::integer(1));
-        if janet_checktype(cp, JanetType_JANET_NUMBER) == 0 {
-            return None;
-        }
-        let glyph = char::from_u32(janet_unwrap_number(cp) as u32)?;
-        let color = if janet_checktype(rgb, JanetType_JANET_TUPLE) != 0
-            || janet_checktype(rgb, JanetType_JANET_ARRAY) != 0
+unsafe fn icon_from_val(v: Janet) -> Option<IconKind> {
+    unsafe {
+        if janet_checktype(v, JanetType_JANET_NUMBER) != 0 {
+            let cp = janet_unwrap_number(v) as u32;
+            char::from_u32(cp).map(IconKind::glyph)
+        } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0
+            || janet_checktype(v, JanetType_JANET_ARRAY) != 0
         {
-            let mut c = [0u8; 3];
-            for (i, slot) in c.iter_mut().enumerate() {
-                let part = janet_in(rgb, conv::integer(i as i32));
-                if janet_checktype(part, JanetType_JANET_NUMBER) != 0 {
-                    *slot = janet_unwrap_number(part).clamp(0.0, 255.0) as u8;
-                }
+            let cp = janet_in(v, conv::integer(0));
+            let rgb = janet_in(v, conv::integer(1));
+            if janet_checktype(cp, JanetType_JANET_NUMBER) == 0 {
+                return None;
             }
-            Some((c[0], c[1], c[2]))
+            let glyph = char::from_u32(janet_unwrap_number(cp) as u32)?;
+            let color = if janet_checktype(rgb, JanetType_JANET_TUPLE) != 0
+                || janet_checktype(rgb, JanetType_JANET_ARRAY) != 0
+            {
+                let mut c = [0u8; 3];
+                for (i, slot) in c.iter_mut().enumerate() {
+                    let part = janet_in(rgb, conv::integer(i as i32));
+                    if janet_checktype(part, JanetType_JANET_NUMBER) != 0 {
+                        *slot = janet_unwrap_number(part).clamp(0.0, 255.0) as u8;
+                    }
+                }
+                Some((c[0], c[1], c[2]))
+            } else {
+                None
+            };
+            Some(IconKind::Glyph { glyph, color })
         } else {
             None
-        };
-        Some(IconKind::Glyph { glyph, color })
-    } else {
-        None
+        }
     }
-}}
+}
 
 /// Copy a Janet table of `{key icon-spec}` into a Rust map.  Keys may be
 /// strings or keywords; extension keys lose leading dots.
-unsafe fn string_of(v: Janet) -> Option<String> { unsafe {
-    if janet_checktype(v, JanetType_JANET_STRING) == 0
-        && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
-    {
-        return None;
-    }
-    let ptr = janet_unwrap_string(v);
-    if ptr.is_null() {
-        return None;
-    }
-    Some(std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned())
-}}
-
-unsafe fn copy_map(ds: Janet, out: &mut HashMap<String, IconKind>, strip_dots: bool) { unsafe {
-    if janet_checktype(ds, JanetType_JANET_TABLE) == 0 {
-        return;
-    }
-    let tbl = &*janet_unwrap_table(ds);
-    for i in 0..tbl.capacity {
-        let kv = &*tbl.data.add(i as usize);
-        if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 {
-            continue;
+unsafe fn string_of(v: Janet) -> Option<String> {
+    unsafe {
+        if janet_checktype(v, JanetType_JANET_STRING) == 0
+            && janet_checktype(v, JanetType_JANET_KEYWORD) == 0
+        {
+            return None;
         }
-        let Some(key) = string_of(kv.key) else { continue };
-        let Some(icon) = icon_from_val(kv.value) else { continue };
-        let key = if strip_dots {
-            key.trim_start_matches('.').to_lowercase()
-        } else {
-            key
-        };
-        out.insert(key, icon);
+        let ptr = janet_unwrap_string(v);
+        if ptr.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(ptr as *const i8)
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
-}}
+}
 
-unsafe fn single_icon(ds: Janet, key: &str) -> Option<IconKind> { unsafe {
-    let v = janet_in(ds, conv::keyword(key));
-    if janet_checktype(v, JanetType_JANET_NIL) != 0 {
-        None
-    } else {
-        icon_from_val(v)
+unsafe fn copy_map(ds: Janet, out: &mut HashMap<String, IconKind>, strip_dots: bool) {
+    unsafe {
+        if janet_checktype(ds, JanetType_JANET_TABLE) == 0 {
+            return;
+        }
+        let tbl = &*janet_unwrap_table(ds);
+        for i in 0..tbl.capacity {
+            let kv = &*tbl.data.add(i as usize);
+            if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 {
+                continue;
+            }
+            let Some(key) = string_of(kv.key) else {
+                continue;
+            };
+            let Some(icon) = icon_from_val(kv.value) else {
+                continue;
+            };
+            let key = if strip_dots {
+                key.trim_start_matches('.').to_lowercase()
+            } else {
+                key
+            };
+            out.insert(key, icon);
+        }
     }
-}}
+}
+
+unsafe fn single_icon(ds: Janet, key: &str) -> Option<IconKind> {
+    unsafe {
+        let v = janet_in(ds, conv::keyword(key));
+        if janet_checktype(v, JanetType_JANET_NIL) != 0 {
+            None
+        } else {
+            icon_from_val(v)
+        }
+    }
+}
 
 /// (icons/set-pack name spec) → nil
 ///
@@ -103,8 +119,16 @@ unsafe extern "C-unwind" fn c_set_pack(argc: i32, argv: *mut Janet) -> Janet {
         }
         let spec = *argv.add(1);
         let mut pack = IconPack::empty(&name);
-        copy_map(janet_in(spec, conv::keyword("files")), &mut pack.extensions, true);
-        copy_map(janet_in(spec, conv::keyword("file-names")), &mut pack.file_names, false);
+        copy_map(
+            janet_in(spec, conv::keyword("files")),
+            &mut pack.extensions,
+            true,
+        );
+        copy_map(
+            janet_in(spec, conv::keyword("file-names")),
+            &mut pack.file_names,
+            false,
+        );
         pack.default_file = single_icon(spec, "default-file");
         pack.folder = single_icon(spec, "folder");
         pack.folder_open = single_icon(spec, "folder-open");

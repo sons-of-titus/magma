@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 #[test]
@@ -6,7 +7,10 @@ fn project_root_returns_nil_by_default() {
     janet_test!(ed, {
         let r = scripting::eval("(project/root)");
         assert_eq!(r, "ok", "project/root default must not error");
-        assert!(ed.project_manager.project.root.is_none(), "project root must be None by default");
+        assert!(
+            ed.project_manager.project.root.is_none(),
+            "project root must be None by default"
+        );
     });
 }
 
@@ -21,10 +25,21 @@ fn project_set_root_creates_project_state() {
         let r = scripting::eval(&expr);
         assert_eq!(r, "ok", "project/set-root must not error");
 
-        assert!(ed.project_manager.project.root.is_some(), "project root must be set");
-        let root_got = ed.project_manager.project.root.as_ref().map(|p| p.to_string_lossy().into_owned());
+        assert!(
+            ed.project_manager.project.root.is_some(),
+            "project root must be set"
+        );
+        let root_got = ed
+            .project_manager
+            .project
+            .root
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned());
         assert_eq!(root_got.as_deref(), Some(root_str.as_str()));
-        assert!(ed.project_manager.current_project.is_some(), "current_project must be set");
+        assert!(
+            ed.project_manager.current_project.is_some(),
+            "current_project must be set"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     });
@@ -43,7 +58,10 @@ fn project_set_root_clears_when_nil() {
         // Clear it
         let r = scripting::eval("(project/set-root nil)");
         assert_eq!(r, "ok");
-        assert!(ed.project_manager.project.root.is_none(), "project root must be cleared");
+        assert!(
+            ed.project_manager.project.root.is_none(),
+            "project root must be cleared"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     });
@@ -60,7 +78,10 @@ fn project_set_name_works() {
 
         let r = scripting::eval("(project/set-name \"my-project\")");
         assert_eq!(r, "ok");
-        assert_eq!(ed.project_manager.project.name.as_deref(), Some("my-project"));
+        assert_eq!(
+            ed.project_manager.project.name.as_deref(),
+            Some("my-project")
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     });
@@ -77,7 +98,11 @@ fn project_option_set_and_get() {
 
         scripting::eval(r#"(project/option-set "build-command" "cargo check")"#);
         assert_eq!(
-            ed.project_manager.project.options.get("build-command").map(|s| s.as_str()),
+            ed.project_manager
+                .project
+                .options
+                .get("build-command")
+                .map(|s| s.as_str()),
             Some("cargo check")
         );
 
@@ -133,7 +158,9 @@ fn project_unregister_removes() {
 #[test]
 fn project_buffer_set_and_get() {
     janet_test!(ed, {
-        let key = ed.view_tree.focused_window()
+        let key = ed
+            .view_tree
+            .focused_window()
             .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap_or(0);
 
@@ -142,7 +169,10 @@ fn project_buffer_set_and_get() {
         assert_eq!(r, "ok");
 
         assert_eq!(
-            ed.project_manager.buffer_projects.get(&key).map(|s| s.as_str()),
+            ed.project_manager
+                .buffer_projects
+                .get(&key)
+                .map(|s| s.as_str()),
             Some("my-proj")
         );
 
@@ -157,7 +187,10 @@ fn project_files_empty_by_default() {
     janet_test!(ed, {
         let r = scripting::eval("(project/files)");
         assert_eq!(r, "ok", "project/files default must not error");
-        assert!(ed.project_manager.project.files.is_empty(), "files must be empty by default");
+        assert!(
+            ed.project_manager.project.files.is_empty(),
+            "files must be empty by default"
+        );
     });
 }
 
@@ -182,7 +215,12 @@ fn project_set_workspace_members_via_janet() {
         let r = scripting::eval(&expr);
         assert_eq!(r, "ok");
 
-        let ws = ed.project_manager.project.workspace.as_ref().expect("workspace must be set");
+        let ws = ed
+            .project_manager
+            .project
+            .workspace
+            .as_ref()
+            .expect("workspace must be set");
         assert_eq!(ws.members.len(), 2);
         assert_eq!(ws.members[0].name, "sub-a");
         assert_eq!(ws.members[1].name, "sub-b");
@@ -238,8 +276,9 @@ fn toolchain_find_extended_resolves_path_binaries() {
 #[test]
 fn toolchain_find_extended_reports_missing_binaries() {
     janet_test!(_ed, {
-        let r = scripting::eval_result(r#"(nil? (toolchain/find-extended "magma-no-such-tool-9f3a"))"#)
-            .unwrap();
+        let r =
+            scripting::eval_result(r#"(nil? (toolchain/find-extended "magma-no-such-tool-9f3a"))"#)
+                .unwrap();
         assert_eq!(r, "true", "a binary installed nowhere must be nil");
     });
 }

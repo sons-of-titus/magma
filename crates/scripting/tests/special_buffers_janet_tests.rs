@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── buffer/find-or-create ─────────────────────────────────────────────
@@ -7,14 +8,18 @@ use scripting;
 fn find_or_create_creates_buffer_when_absent() {
     janet_test!(ed, {
         let before = ed.buffers.len();
-        let result = scripting::eval(
-            r#"(buffer/find-or-create "*Test-FOC*")"#,
-        );
+        let result = scripting::eval(r#"(buffer/find-or-create "*Test-FOC*")"#);
         assert_eq!(result, "ok");
-        assert_eq!(ed.buffers.len(), before + 1,
-            "find-or-create must create a new buffer when name is absent");
+        assert_eq!(
+            ed.buffers.len(),
+            before + 1,
+            "find-or-create must create a new buffer when name is absent"
+        );
 
-        let found = ed.buffers.iter().any(|(_, b)| b.lock().unwrap().name == "*Test-FOC*");
+        let found = ed
+            .buffers
+            .iter()
+            .any(|(_, b)| b.lock().unwrap().name == "*Test-FOC*");
         assert!(found, "the new buffer must have the requested name");
     });
 }
@@ -24,18 +29,25 @@ fn find_or_create_returns_existing_slab_key() {
     janet_test!(ed, {
         // Create the buffer once and record the key
         scripting::eval(r#"(buffer/find-or-create "*Test-FOC2*")"#);
-        let key1 = ed.buffers.iter()
+        let key1 = ed
+            .buffers
+            .iter()
             .find(|(_, b)| b.lock().unwrap().name == "*Test-FOC2*")
             .map(|(k, _)| k);
         let count_before = ed.buffers.len();
 
         // Call again — must return the same key and not add a new buffer
         scripting::eval(r#"(buffer/find-or-create "*Test-FOC2*")"#);
-        let key2 = ed.buffers.iter()
+        let key2 = ed
+            .buffers
+            .iter()
             .find(|(_, b)| b.lock().unwrap().name == "*Test-FOC2*")
             .map(|(k, _)| k);
-        assert_eq!(ed.buffers.len(), count_before,
-            "find-or-create must not duplicate an existing buffer");
+        assert_eq!(
+            ed.buffers.len(),
+            count_before,
+            "find-or-create must not duplicate an existing buffer"
+        );
         assert_eq!(key1, key2, "returned key must be stable across calls");
     });
 }
@@ -46,12 +58,13 @@ fn find_or_create_returns_existing_slab_key() {
 fn get_by_name_returns_nil_for_missing() {
     janet_test!(ed, {
         let before = ed.buffers.len();
-        let result = scripting::eval(
-            r#"(buffer/get-by-name "*Never-Created*")"#,
-        );
+        let result = scripting::eval(r#"(buffer/get-by-name "*Never-Created*")"#);
         assert_eq!(result, "ok");
-        assert_eq!(ed.buffers.len(), before,
-            "get-by-name must not create a buffer");
+        assert_eq!(
+            ed.buffers.len(),
+            before,
+            "get-by-name must not create a buffer"
+        );
     });
 }
 
@@ -62,14 +75,14 @@ fn get_by_name_finds_existing_buffer() {
         let expected_key = ed.create_buffer("*NamedTestBuf*");
 
         // get-by-name must find it and return a non-nil integer
-        let result = scripting::eval(
-            &format!(
-                "(= (buffer/get-by-name \"*NamedTestBuf*\") {})",
-                expected_key
-            ),
+        let result = scripting::eval(&format!(
+            "(= (buffer/get-by-name \"*NamedTestBuf*\") {})",
+            expected_key
+        ));
+        assert_eq!(
+            result, "ok",
+            "get-by-name must return the correct slab key for an existing buffer"
         );
-        assert_eq!(result, "ok",
-            "get-by-name must return the correct slab key for an existing buffer");
     });
 }
 
@@ -86,32 +99,37 @@ fn set_read_only_blocks_janet_insert() {
             None
         });
 
-        let key = ed.view_tree.focused_window()
+        let key = ed
+            .view_tree
+            .focused_window()
             .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
-        scripting::eval(
-            &format!("(buffer/set-read-only {} true)", key),
-        );
-        scripting::eval(
-            &format!("(buffer/insert {} 0 \"blocked\")", key),
-        );
+        scripting::eval(&format!("(buffer/set-read-only {} true)", key));
+        scripting::eval(&format!("(buffer/insert {} 0 \"blocked\")", key));
         ed.events.drain_and_dispatch();
 
         // Buffer content must be unchanged
         let buf = ed.buffers.get(key).unwrap().lock().unwrap();
-        assert_eq!(buf.len(), 0,
-            "buffer/insert must be a no-op when buffer is read-only");
+        assert_eq!(
+            buf.len(),
+            0,
+            "buffer/insert must be a no-op when buffer is read-only"
+        );
         drop(buf);
-        assert!(*fired.lock().unwrap(),
-            "buffer-read-only event must fire when insert is blocked");
+        assert!(
+            *fired.lock().unwrap(),
+            "buffer-read-only event must fire when insert is blocked"
+        );
     });
 }
 
 #[test]
 fn read_only_getter_reflects_flag() {
     janet_test!(ed, {
-        let key = ed.view_tree.focused_window()
+        let key = ed
+            .view_tree
+            .focused_window()
             .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
@@ -119,12 +137,16 @@ fn read_only_getter_reflects_flag() {
         assert!(!ed.buffers.get(key).unwrap().lock().unwrap().read_only);
 
         scripting::eval(&format!("(buffer/set-read-only {} true)", key));
-        assert!(ed.buffers.get(key).unwrap().lock().unwrap().read_only,
-            "read_only must be true after set-read-only");
+        assert!(
+            ed.buffers.get(key).unwrap().lock().unwrap().read_only,
+            "read_only must be true after set-read-only"
+        );
 
         scripting::eval(&format!("(buffer/set-read-only {} false)", key));
-        assert!(!ed.buffers.get(key).unwrap().lock().unwrap().read_only,
-            "read_only must be false after clearing");
+        assert!(
+            !ed.buffers.get(key).unwrap().lock().unwrap().read_only,
+            "read_only must be false after clearing"
+        );
     });
 }
 
@@ -133,14 +155,18 @@ fn read_only_getter_reflects_flag() {
 #[test]
 fn set_ephemeral_reflects_flag() {
     janet_test!(ed, {
-        let key = ed.view_tree.focused_window()
+        let key = ed
+            .view_tree
+            .focused_window()
             .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
 
         assert!(!ed.buffers.get(key).unwrap().lock().unwrap().ephemeral);
         scripting::eval(&format!("(buffer/set-ephemeral {} true)", key));
-        assert!(ed.buffers.get(key).unwrap().lock().unwrap().ephemeral,
-            "ephemeral must be true after set-ephemeral");
+        assert!(
+            ed.buffers.get(key).unwrap().lock().unwrap().ephemeral,
+            "ephemeral must be true after set-ephemeral"
+        );
     });
 }
 
@@ -149,17 +175,23 @@ fn set_ephemeral_reflects_flag() {
 #[test]
 fn log_message_creates_messages_buffer() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            r#"(editor/log-message "hello from sprint 2")"#,
-        );
+        let result = scripting::eval(r#"(editor/log-message "hello from sprint 2")"#);
         assert_eq!(result, "ok");
 
-        let msg_buf = ed.buffers.iter().find(|(_, b)| b.lock().unwrap().name == "*Messages*");
-        assert!(msg_buf.is_some(), "*Messages* buffer must be created by log-message");
+        let msg_buf = ed
+            .buffers
+            .iter()
+            .find(|(_, b)| b.lock().unwrap().name == "*Messages*");
+        assert!(
+            msg_buf.is_some(),
+            "*Messages* buffer must be created by log-message"
+        );
         let (_, buf_arc) = msg_buf.unwrap();
         let buf = buf_arc.lock().unwrap();
-        assert!(buf.slice(0, buf.len()).contains("hello from sprint 2"),
-            "*Messages* buffer must contain the logged text");
+        assert!(
+            buf.slice(0, buf.len()).contains("hello from sprint 2"),
+            "*Messages* buffer must contain the logged text"
+        );
     });
 }
 
@@ -168,12 +200,20 @@ fn log_message_marks_buffer_read_only_and_ephemeral() {
     janet_test!(ed, {
         scripting::eval(r#"(editor/log-message "flags test")"#);
 
-        let (_, buf_arc) = ed.buffers.iter()
+        let (_, buf_arc) = ed
+            .buffers
+            .iter()
             .find(|(_, b)| b.lock().unwrap().name == "*Messages*")
             .unwrap();
         let buf = buf_arc.lock().unwrap();
-        assert!(buf.read_only,  "*Messages* must be read-only after log-message");
-        assert!(buf.ephemeral,  "*Messages* must be ephemeral after log-message");
+        assert!(
+            buf.read_only,
+            "*Messages* must be read-only after log-message"
+        );
+        assert!(
+            buf.ephemeral,
+            "*Messages* must be ephemeral after log-message"
+        );
     });
 }
 
@@ -191,8 +231,10 @@ fn log_message_emits_buffer_message_appended_event() {
         scripting::eval(r#"(editor/log-message "event test")"#);
         ed.events.drain_and_dispatch();
 
-        assert!(*fired.lock().unwrap(),
-            "buffer-message-appended event must fire after editor/log-message");
+        assert!(
+            *fired.lock().unwrap(),
+            "buffer-message-appended event must fire after editor/log-message"
+        );
     });
 }
 
@@ -203,14 +245,22 @@ fn warn_creates_warnings_buffer_with_text() {
     janet_test!(ed, {
         scripting::eval(r#"(editor/warn "deprecated option")"#);
 
-        let warn_buf = ed.buffers.iter().find(|(_, b)| b.lock().unwrap().name == "*Warnings*");
-        assert!(warn_buf.is_some(), "*Warnings* buffer must be created by editor/warn");
+        let warn_buf = ed
+            .buffers
+            .iter()
+            .find(|(_, b)| b.lock().unwrap().name == "*Warnings*");
+        assert!(
+            warn_buf.is_some(),
+            "*Warnings* buffer must be created by editor/warn"
+        );
         let (_, buf_arc) = warn_buf.unwrap();
         let buf = buf_arc.lock().unwrap();
-        assert!(buf.slice(0, buf.len()).contains("deprecated option"),
-            "*Warnings* buffer must contain the warning text");
-        assert!(buf.read_only,  "*Warnings* must be read-only");
-        assert!(buf.ephemeral,  "*Warnings* must be ephemeral");
+        assert!(
+            buf.slice(0, buf.len()).contains("deprecated option"),
+            "*Warnings* buffer must contain the warning text"
+        );
+        assert!(buf.read_only, "*Warnings* must be read-only");
+        assert!(buf.ephemeral, "*Warnings* must be ephemeral");
     });
 }
 
@@ -227,8 +277,10 @@ fn warn_emits_warning_emitted_event() {
         scripting::eval(r#"(editor/warn "some warning")"#);
         ed.events.drain_and_dispatch();
 
-        assert!(*fired.lock().unwrap(),
-            "warning-emitted event must fire after editor/warn");
+        assert!(
+            *fired.lock().unwrap(),
+            "warning-emitted event must fire after editor/warn"
+        );
     });
 }
 
@@ -239,12 +291,20 @@ fn show_help_creates_help_buffer_with_text() {
     janet_test!(ed, {
         scripting::eval(r#"(editor/show-help "This is help text.")"#);
 
-        let help_buf = ed.buffers.iter().find(|(_, b)| b.lock().unwrap().name == "*Help*");
-        assert!(help_buf.is_some(), "*Help* buffer must be created by show-help");
+        let help_buf = ed
+            .buffers
+            .iter()
+            .find(|(_, b)| b.lock().unwrap().name == "*Help*");
+        assert!(
+            help_buf.is_some(),
+            "*Help* buffer must be created by show-help"
+        );
         let (_, buf_arc) = help_buf.unwrap();
         let buf = buf_arc.lock().unwrap();
-        assert!(buf.slice(0, buf.len()).contains("This is help text."),
-            "*Help* buffer must contain the provided text");
+        assert!(
+            buf.slice(0, buf.len()).contains("This is help text."),
+            "*Help* buffer must contain the provided text"
+        );
         assert!(buf.read_only, "*Help* must be read-only");
         assert!(buf.ephemeral, "*Help* must be ephemeral");
     });
@@ -255,15 +315,21 @@ fn show_help_focuses_help_buffer_in_window() {
     janet_test!(ed, {
         scripting::eval(r#"(editor/show-help "focus test")"#);
 
-        let help_key = ed.buffers.iter()
+        let help_key = ed
+            .buffers
+            .iter()
             .find(|(_, b)| b.lock().unwrap().name == "*Help*")
             .map(|(k, _)| k)
             .unwrap();
-        let focused_key = ed.view_tree.focused_window()
+        let focused_key = ed
+            .view_tree
+            .focused_window()
             .and_then(|wid| ed.view_tree.buffer(wid))
             .unwrap();
-        assert_eq!(focused_key, help_key,
-            "show-help must focus the *Help* buffer in the current window");
+        assert_eq!(
+            focused_key, help_key,
+            "show-help must focus the *Help* buffer in the current window"
+        );
     });
 }
 
@@ -280,7 +346,9 @@ fn show_help_emits_help_shown_event() {
         scripting::eval(r#"(editor/show-help "event test")"#);
         ed.events.drain_and_dispatch();
 
-        assert!(*fired.lock().unwrap(),
-            "help-shown event must fire after editor/show-help");
+        assert!(
+            *fired.lock().unwrap(),
+            "help-shown event must fire after editor/show-help"
+        );
     });
 }

@@ -10,7 +10,10 @@
 mod tests;
 
 use std::collections::HashMap;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 pub type WorkId = u64;
 
@@ -100,7 +103,11 @@ pub struct ProgressReporter {
 impl ProgressReporter {
     /// Report that `done` out of `total` units have been processed.
     pub fn report(&self, done: u64, total: u64) {
-        self.sink.emit(WorkEvent::Progress { id: self.work_id, done, total });
+        self.sink.emit(WorkEvent::Progress {
+            id: self.work_id,
+            done,
+            total,
+        });
     }
 }
 
@@ -120,7 +127,9 @@ struct ClosureWork {
 }
 
 impl Work for ClosureWork {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn execute(
         self: Box<Self>,
@@ -166,17 +175,23 @@ impl WorkScheduler {
         self.next_id += 1;
         let cancel = CancellationToken::new();
         let cancel_token = cancel.clone();
-        self.items.insert(id, WorkItem {
-            name: work.name().to_string(),
-            progress: WorkProgress::default(),
-            cancel,
-            status: WorkStatus::Running,
-        });
+        self.items.insert(
+            id,
+            WorkItem {
+                name: work.name().to_string(),
+                progress: WorkProgress::default(),
+                cancel,
+                status: WorkStatus::Running,
+            },
+        );
 
         let progress_sink = host.sink();
         let done_sink = progress_sink.clone();
         host.spawn(Box::new(move || {
-            let reporter = ProgressReporter { work_id: id, sink: progress_sink };
+            let reporter = ProgressReporter {
+                work_id: id,
+                sink: progress_sink,
+            };
             match Box::new(work).execute(reporter, cancel_token) {
                 Ok(()) => done_sink.emit(WorkEvent::Completed { id }),
                 Err(error) => done_sink.emit(WorkEvent::Failed { id, error }),
@@ -190,7 +205,13 @@ impl WorkScheduler {
     where
         F: FnOnce(ProgressReporter, CancellationToken) -> Result<(), String> + Send + 'static,
     {
-        self.submit(ClosureWork { name, f: Box::new(f) }, host)
+        self.submit(
+            ClosureWork {
+                name,
+                f: Box::new(f),
+            },
+            host,
+        )
     }
 
     /// Register an externally-driven task as a tracked work item.  The
@@ -199,12 +220,15 @@ impl WorkScheduler {
     pub fn register_task(&mut self, task_id: u64, name: &str) -> WorkId {
         let id = self.next_id;
         self.next_id += 1;
-        self.items.insert(id, WorkItem {
-            name: name.to_string(),
-            progress: WorkProgress::default(),
-            cancel: CancellationToken::new(),
-            status: WorkStatus::Running,
-        });
+        self.items.insert(
+            id,
+            WorkItem {
+                name: name.to_string(),
+                progress: WorkProgress::default(),
+                cancel: CancellationToken::new(),
+                status: WorkStatus::Running,
+            },
+        );
         self.task_work.insert(task_id, id);
         id
     }
@@ -213,12 +237,15 @@ impl WorkScheduler {
     pub fn register_process(&mut self, process_id: u64, cmd: &str) -> WorkId {
         let id = self.next_id;
         self.next_id += 1;
-        self.items.insert(id, WorkItem {
-            name: cmd.to_string(),
-            progress: WorkProgress::default(),
-            cancel: CancellationToken::new(),
-            status: WorkStatus::Running,
-        });
+        self.items.insert(
+            id,
+            WorkItem {
+                name: cmd.to_string(),
+                progress: WorkProgress::default(),
+                cancel: CancellationToken::new(),
+                status: WorkStatus::Running,
+            },
+        );
         self.process_work.insert(process_id, id);
         id
     }
@@ -238,18 +265,20 @@ impl WorkScheduler {
     /// Mark a work item completed (called when its completion event arrives).
     pub fn mark_completed(&mut self, id: WorkId) {
         if let Some(item) = self.items.get_mut(&id)
-            && item.status == WorkStatus::Running {
-                item.status = WorkStatus::Completed;
-                item.progress.done = item.progress.total.max(1);
-            }
+            && item.status == WorkStatus::Running
+        {
+            item.status = WorkStatus::Completed;
+            item.progress.done = item.progress.total.max(1);
+        }
     }
 
     /// Mark a work item failed.
     pub fn mark_failed(&mut self, id: WorkId, error: String) {
         if let Some(item) = self.items.get_mut(&id)
-            && item.status == WorkStatus::Running {
-                item.status = WorkStatus::Failed(error);
-            }
+            && item.status == WorkStatus::Running
+        {
+            item.status = WorkStatus::Failed(error);
+        }
     }
 
     /// Update the progress counters of a work item.
@@ -302,7 +331,9 @@ impl WorkScheduler {
 
     /// Return all tracked work items as `(id, name, status, progress)` tuples.
     pub fn list(&self) -> Vec<(WorkId, &str, &WorkStatus, &WorkProgress)> {
-        let mut v: Vec<_> = self.items.iter()
+        let mut v: Vec<_> = self
+            .items
+            .iter()
             .map(|(&id, item)| (id, item.name.as_str(), &item.status, &item.progress))
             .collect();
         v.sort_by_key(|&(id, _, _, _)| id);
@@ -310,6 +341,9 @@ impl WorkScheduler {
     }
 
     pub fn active_count(&self) -> usize {
-        self.items.values().filter(|i| i.status == WorkStatus::Running).count()
+        self.items
+            .values()
+            .filter(|i| i.status == WorkStatus::Running)
+            .count()
     }
 }

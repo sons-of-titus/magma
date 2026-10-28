@@ -9,9 +9,9 @@
 //!   (semantic/register-provider lang type)       → nil
 //!   (semantic/diagnostics buf-id)               → array of [line col severity message]
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::semantic::{LspLanguageProvider, TreesitterLanguageProvider};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -47,13 +47,23 @@ unsafe extern "C-unwind" fn c_semantic_symbols(argc: i32, argv: *mut Janet) -> J
             return janet_wrap_array(janet_array(0));
         };
         let text = match ed.buffers.get(buf_id) {
-            Some(arc) => { let b = arc.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()).to_string() }
+            Some(arc) => {
+                let b = arc.lock().unwrap_or_else(|e| e.into_inner());
+                b.slice(0, b.len()).to_string()
+            }
             None => return janet_wrap_array(janet_array(0)),
         };
         let symbols = ed.semantic.symbols_for_buffer(&lang, &text);
         let arr = janet_array(symbols.len() as i32);
         for sym in &symbols {
-            push_symbol_entry(arr, &sym.name, sym.kind.as_str(), &sym.file, sym.line, sym.column);
+            push_symbol_entry(
+                arr,
+                &sym.name,
+                sym.kind.as_str(),
+                &sym.file,
+                sym.line,
+                sym.column,
+            );
         }
         janet_wrap_array(arr)
     })
@@ -69,7 +79,14 @@ unsafe extern "C-unwind" fn c_semantic_definitions(argc: i32, argv: *mut Janet) 
         let defs = ed.semantic.definitions(&name);
         let arr = janet_array(defs.len() as i32);
         for sym in &defs {
-            push_symbol_entry(arr, &sym.name, sym.kind.as_str(), &sym.file, sym.line, sym.column);
+            push_symbol_entry(
+                arr,
+                &sym.name,
+                sym.kind.as_str(),
+                &sym.file,
+                sym.line,
+                sym.column,
+            );
         }
         janet_wrap_array(arr)
     })
@@ -119,7 +136,10 @@ unsafe extern "C-unwind" fn c_semantic_index_buffer(argc: i32, argv: *mut Janet)
         let (text, path) = match ed.buffers.get(buf_id) {
             Some(arc) => {
                 let b = arc.lock().unwrap_or_else(|e| e.into_inner());
-                (b.slice(0, b.len()).to_string(), b.path.clone().unwrap_or_default())
+                (
+                    b.slice(0, b.len()).to_string(),
+                    b.path.clone().unwrap_or_default(),
+                )
             }
             None => return conv::nil(),
         };
@@ -137,10 +157,8 @@ unsafe extern "C-unwind" fn c_semantic_register_provider(argc: i32, argv: *mut J
         };
         let provider_type = conv::get_str(argc, argv, 1).unwrap_or_else(|| "lsp".to_string());
         let provider: Box<dyn kernel::semantic::LanguageProvider> = match provider_type.as_str() {
-            "treesitter" | "ts" =>
-                Box::new(TreesitterLanguageProvider::new(lang.clone())),
-            _ =>
-                Box::new(LspLanguageProvider::new(lang.clone())),
+            "treesitter" | "ts" => Box::new(TreesitterLanguageProvider::new(lang.clone())),
+            _ => Box::new(LspLanguageProvider::new(lang.clone())),
         };
         ed.semantic.register_provider(&lang, provider);
         conv::nil()
@@ -202,9 +220,21 @@ unsafe extern "C-unwind" fn c_index_stats(argc: i32, _argv: *mut Janet) -> Janet
     with_editor(|ed| unsafe {
         let stats = ed.index.stats();
         let tbl = janet_table(0);
-        janet_table_put(tbl, conv::keyword("files"), conv::integer(stats.files as i32));
-        janet_table_put(tbl, conv::keyword("symbols"), conv::integer(stats.symbols as i32));
-        janet_table_put(tbl, conv::keyword("pending"), conv::integer(stats.pending as i32));
+        janet_table_put(
+            tbl,
+            conv::keyword("files"),
+            conv::integer(stats.files as i32),
+        );
+        janet_table_put(
+            tbl,
+            conv::keyword("symbols"),
+            conv::integer(stats.symbols as i32),
+        );
+        janet_table_put(
+            tbl,
+            conv::keyword("pending"),
+            conv::integer(stats.pending as i32),
+        );
         janet_wrap_table(tbl)
     })
 }

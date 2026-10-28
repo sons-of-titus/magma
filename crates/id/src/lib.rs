@@ -80,4 +80,3 @@ impl MarkId {
         self.0
     }
 }
-

@@ -17,7 +17,9 @@ pub struct TreesitterLanguageProvider {
 
 impl TreesitterLanguageProvider {
     pub fn new(language_name: impl Into<String>) -> Self {
-        TreesitterLanguageProvider { language_name: language_name.into() }
+        TreesitterLanguageProvider {
+            language_name: language_name.into(),
+        }
     }
 
     /// Generic tree-sitter capture query for common top-level symbols.
@@ -28,9 +30,18 @@ impl TreesitterLanguageProvider {
     fn symbol_queries() -> &'static [(&'static str, &'static str)] {
         &[
             ("(function_item name: (identifier) @function)", "function"),
-            ("(function_declaration name: (identifier) @function)", "function"),
-            ("(method_declaration name: (field_identifier) @method)", "method"),
-            ("(method_definition name: (property_identifier) @method)", "method"),
+            (
+                "(function_declaration name: (identifier) @function)",
+                "function",
+            ),
+            (
+                "(method_declaration name: (field_identifier) @method)",
+                "method",
+            ),
+            (
+                "(method_definition name: (property_identifier) @method)",
+                "method",
+            ),
             ("(struct_item name: (type_identifier) @struct)", "struct"),
             ("(enum_item name: (type_identifier) @enum)", "enum"),
             ("(impl_item type: (type_identifier) @class)", "class"),
@@ -45,22 +56,33 @@ impl TreesitterLanguageProvider {
 impl LanguageProvider for TreesitterLanguageProvider {
     fn parse(&self, text: &str) -> ParseResult {
         match ts_registry::parse_text(&self.language_name, text) {
-            Some(errors) => ParseResult { success: errors.is_empty(), errors },
-            None => ParseResult { success: true, errors: vec![] },
+            Some(errors) => ParseResult {
+                success: errors.is_empty(),
+                errors,
+            },
+            None => ParseResult {
+                success: true,
+                errors: vec![],
+            },
         }
     }
 
     fn symbols(&self, text: &str) -> Vec<Symbol> {
         let text_bytes = text.as_bytes();
         let mut out: Vec<Symbol> = Vec::new();
-        let mut seen_spans: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+        let mut seen_spans: std::collections::HashSet<(usize, usize)> =
+            std::collections::HashSet::new();
 
         for (query_src, default_kind) in Self::symbol_queries() {
             let Some(captures) = ts_registry::run_query(&self.language_name, text, query_src)
-            else { continue; };
+            else {
+                continue;
+            };
 
             for (start, end, capture_name) in captures {
-                if seen_spans.contains(&(start, end)) { continue; }
+                if seen_spans.contains(&(start, end)) {
+                    continue;
+                }
                 seen_spans.insert((start, end));
 
                 let name = match std::str::from_utf8(&text_bytes[start..end]) {
@@ -69,29 +91,36 @@ impl LanguageProvider for TreesitterLanguageProvider {
                 };
                 let kind = match capture_name.as_str() {
                     "function" => SymbolKind::Function,
-                    "method"   => SymbolKind::Method,
-                    "struct"   => SymbolKind::Struct,
-                    "enum"     => SymbolKind::Enum,
-                    "class"    => SymbolKind::Class,
-                    "module"   => SymbolKind::Module,
+                    "method" => SymbolKind::Method,
+                    "struct" => SymbolKind::Struct,
+                    "enum" => SymbolKind::Enum,
+                    "class" => SymbolKind::Class,
+                    "module" => SymbolKind::Module,
                     "constant" => SymbolKind::Constant,
                     "variable" => SymbolKind::Variable,
-                    _          => match *default_kind {
+                    _ => match *default_kind {
                         "function" => SymbolKind::Function,
-                        "method"   => SymbolKind::Method,
-                        "struct"   => SymbolKind::Struct,
-                        "enum"     => SymbolKind::Enum,
-                        "class"    => SymbolKind::Class,
-                        "module"   => SymbolKind::Module,
+                        "method" => SymbolKind::Method,
+                        "struct" => SymbolKind::Struct,
+                        "enum" => SymbolKind::Enum,
+                        "class" => SymbolKind::Class,
+                        "module" => SymbolKind::Module,
                         "constant" => SymbolKind::Constant,
-                        _          => SymbolKind::Unknown,
+                        _ => SymbolKind::Unknown,
                     },
                 };
                 let before = &text[..start];
-                let line   = before.chars().filter(|&c| c == '\n').count();
+                let line = before.chars().filter(|&c| c == '\n').count();
                 let last_nl = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
-                let column  = before[last_nl..].chars().count();
-                out.push(Symbol { name, kind, file: String::new(), line, column, documentation: None });
+                let column = before[last_nl..].chars().count();
+                out.push(Symbol {
+                    name,
+                    kind,
+                    file: String::new(),
+                    line,
+                    column,
+                    documentation: None,
+                });
             }
         }
         out

@@ -2,7 +2,8 @@
 // Only tests that do not require the Janet VM to be initialised.
 
 use kernel::command::execute_command;
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 
 // ── Command registration ──────────────────────────────────────────────────────
 

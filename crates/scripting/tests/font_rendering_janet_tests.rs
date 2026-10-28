@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── editor/set-font ───────────────────────────────────────────────────────────
@@ -144,9 +145,7 @@ fn editor_set_font_fallback_updates_list() {
 #[test]
 fn editor_set_font_context_stores_override() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            r#"(font/set-context "prose" {:family "Georgia" :size 18})"#,
-        );
+        let result = scripting::eval(r#"(font/set-context "prose" {:family "Georgia" :size 18})"#);
         assert_eq!(result, "ok");
         let ctx = ed.font_config.context_overrides.get("prose").unwrap();
         assert_eq!(ctx.family.as_deref(), Some("Georgia"));

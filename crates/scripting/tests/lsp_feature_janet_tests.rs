@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── C function registration ─────────────────────────────────────────────
@@ -54,9 +55,7 @@ fn lsp_apply_edit_c_function_registered() {
 #[test]
 fn lsp_request_with_params_registered() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            r#"(lsp/request "rust" "textDocument/hover" "{\"pos\":{}}")"#,
-        );
+        let result = scripting::eval(r#"(lsp/request "rust" "textDocument/hover" "{\"pos\":{}}")"#);
         assert_eq!(result, "ok", "lsp/request with params should return ok");
     });
 }
@@ -84,7 +83,10 @@ fn lsp_hover_command_stays_registered() {
     // Hover text is consumed by the kernel (dwell card / status message);
     // the manual trigger command remains for explicit invocation.
     janet_test!(ed, {
-        let described = ed.commands.list().into_iter()
+        let described = ed
+            .commands
+            .list()
+            .into_iter()
             .any(|name| name == "lsp-hover");
         assert!(described, "lsp-hover command must stay registered");
     });
@@ -96,7 +98,10 @@ fn lsp_hover_command_stays_registered() {
 fn lsp_definition_event_has_subscribers() {
     janet_test!(ed, {
         let count = ed.events.subscriber_count("lsp-definition");
-        assert!(count > 0, "lsp-definition should be subscribed in lsp.janet");
+        assert!(
+            count > 0,
+            "lsp-definition should be subscribed in lsp.janet"
+        );
     });
 }
 
@@ -107,7 +112,10 @@ fn lsp_code_actions_command_stays_registered() {
     // Actions open the kernel's quick-fix picker on arrival; the trigger
     // command (alt-return) remains.
     janet_test!(ed, {
-        let described = ed.commands.list().into_iter()
+        let described = ed
+            .commands
+            .list()
+            .into_iter()
             .any(|name| name == "lsp-code-actions");
         assert!(described, "lsp-code-actions command must stay registered");
     });
@@ -120,7 +128,10 @@ fn lsp_completion_command_is_defined() {
     // Completion results are consumed by the kernel popup merge now; the
     // manual trigger command remains for explicit use.
     janet_test!(ed, {
-        let described = ed.commands.list().into_iter()
+        let described = ed
+            .commands
+            .list()
+            .into_iter()
             .any(|name| name == "lsp-completion");
         assert!(described, "lsp-completion command must stay registered");
     });
@@ -132,7 +143,10 @@ fn lsp_completion_command_is_defined() {
 fn lsp_rename_result_event_has_subscribers() {
     janet_test!(ed, {
         let count = ed.events.subscriber_count("lsp-rename-result");
-        assert!(count > 0, "lsp-rename-result should be subscribed in lsp.janet");
+        assert!(
+            count > 0,
+            "lsp-rename-result should be subscribed in lsp.janet"
+        );
     });
 }
 
@@ -173,10 +187,16 @@ fn lsp_position_counts_utf16_code_units() {
         // UTF-16 columns: after 'a'=1, after 😀=3, after 'ab'=4; é is 1 unit, … is 1 unit.
         let checks = [
             ("(= ((buffer/lsp-position K 0) 0) 0)", "line of BOF"),
-            ("(= ((buffer/lsp-position K 5) 1) 3)", "col after emoji = 3 utf16 units"),
+            (
+                "(= ((buffer/lsp-position K 5) 1) 3)",
+                "col after emoji = 3 utf16 units",
+            ),
             ("(= ((buffer/lsp-position K 7) 0) 1)", "line of x = 1"),
             ("(= ((buffer/lsp-position K 8) 1) 1)", "col of é = 1"),
-            ("(= ((buffer/lsp-position K 13) 1) 3)", "col at EOF: x+é+… = 3 units"),
+            (
+                "(= ((buffer/lsp-position K 13) 1) 3)",
+                "col at EOF: x+é+… = 3 units",
+            ),
         ];
         for (expr, why) in checks {
             let e = expr.replace('K', &key.to_string());

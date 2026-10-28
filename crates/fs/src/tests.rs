@@ -88,7 +88,10 @@ fn atomic_write_replaces_content_and_leaves_no_temp_file() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|name| name.contains("magma-tmp"))
         .collect();
-    assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+    assert!(
+        leftovers.is_empty(),
+        "temp files left behind: {leftovers:?}"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -106,8 +109,13 @@ fn async_operations_round_trip() {
         .unwrap();
 
     runtime.block_on(async {
-        fs.write_async(&dir_string(&file), "async body").await.unwrap();
-        assert_eq!(fs.read_async(&dir_string(&file)).await.unwrap(), "async body");
+        fs.write_async(&dir_string(&file), "async body")
+            .await
+            .unwrap();
+        assert_eq!(
+            fs.read_async(&dir_string(&file)).await.unwrap(),
+            "async body"
+        );
         assert!(fs.exists_async(&dir_string(&file)).await);
         let entries = fs.dir_async(&dir_string(&dir)).await.unwrap();
         assert_eq!(entries, vec!["a.txt"]);
@@ -149,7 +157,10 @@ fn io_errors_map_to_the_matching_variant() {
     let other = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
 
     assert!(matches!(FsError::from(not_found), FsError::NotFound(_)));
-    assert!(matches!(FsError::from(denied), FsError::PermissionDenied(_)));
+    assert!(matches!(
+        FsError::from(denied),
+        FsError::PermissionDenied(_)
+    ));
     assert!(matches!(FsError::from(other), FsError::IoError(_)));
 }
 

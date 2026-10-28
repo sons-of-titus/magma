@@ -10,8 +10,8 @@
 //! will still be present when the layer is re-activated later.
 use std::collections::HashMap;
 
-pub type KeySequence  = String;
-pub type CommandName  = String;
+pub type KeySequence = String;
+pub type CommandName = String;
 
 #[derive(Debug, Clone)]
 struct KeymapLayer {
@@ -41,7 +41,9 @@ impl Default for KeymapManager {
 impl KeymapManager {
     pub fn new() -> Self {
         KeymapManager {
-            global: KeymapLayer { bindings: HashMap::new() },
+            global: KeymapLayer {
+                bindings: HashMap::new(),
+            },
             layers: HashMap::new(),
             active: Vec::new(),
             buffer_local: HashMap::new(),
@@ -64,7 +66,9 @@ impl KeymapManager {
         }
         self.layers
             .entry(layer.to_string())
-            .or_insert_with(|| KeymapLayer { bindings: HashMap::new() })
+            .or_insert_with(|| KeymapLayer {
+                bindings: HashMap::new(),
+            })
             .bindings
             .insert(key.into(), command.into());
     }
@@ -72,7 +76,9 @@ impl KeymapManager {
     pub fn set_buffer_local(&mut self, buffer_id: u64, key: &str, command: &str) {
         self.buffer_local
             .entry(buffer_id)
-            .or_insert_with(|| KeymapLayer { bindings: HashMap::new() })
+            .or_insert_with(|| KeymapLayer {
+                bindings: HashMap::new(),
+            })
             .bindings
             .insert(key.into(), command.into());
     }
@@ -102,7 +108,9 @@ impl KeymapManager {
     pub fn push_layer(&mut self, layer: &str) {
         self.layers
             .entry(layer.to_string())
-            .or_insert_with(|| KeymapLayer { bindings: HashMap::new() });
+            .or_insert_with(|| KeymapLayer {
+                bindings: HashMap::new(),
+            });
         if !self.active.contains(&layer.to_string()) {
             self.active.push(layer.to_string());
         }
@@ -129,15 +137,17 @@ impl KeymapManager {
     pub fn resolve_for_buffer(&self, key: &str, buffer_id: Option<u64>) -> Option<CommandName> {
         if let Some(bid) = buffer_id
             && let Some(layer) = self.buffer_local.get(&bid)
-                && let Some(cmd) = layer.bindings.get(key) {
-                    return Some(cmd.clone());
-                }
+            && let Some(cmd) = layer.bindings.get(key)
+        {
+            return Some(cmd.clone());
+        }
 
         for name in self.active.iter().rev() {
             if let Some(layer) = self.layers.get(name)
-                && let Some(cmd) = layer.bindings.get(key) {
-                    return Some(cmd.clone());
-                }
+                && let Some(cmd) = layer.bindings.get(key)
+            {
+                return Some(cmd.clone());
+            }
         }
 
         self.global.bindings.get(key).cloned()
@@ -147,9 +157,16 @@ impl KeymapManager {
 
     pub fn list_layer(&self, layer: &str) -> Vec<(String, String)> {
         if layer == "global" {
-            self.global.bindings.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            self.global
+                .bindings
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         } else if let Some(l) = self.layers.get(layer) {
-            l.bindings.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            l.bindings
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         } else {
             Vec::new()
         }

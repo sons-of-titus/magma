@@ -4,8 +4,8 @@
 //! independence, and multi-cursor single transactions.
 
 use crate::kernel::command::{self, builtin};
-use crate::kernel::storage::disk::DiskFileSystem;
 use crate::kernel::state::Editor;
+use crate::kernel::storage::disk::DiskFileSystem;
 use crate::tests::helpers;
 
 fn editor_with(content: &str) -> (Editor, usize) {
@@ -19,7 +19,12 @@ fn editor_with(content: &str) -> (Editor, usize) {
 }
 
 fn buffer_of(ed: &Editor, key: usize) -> String {
-    ed.buffers.get(key).unwrap().lock().unwrap().slice(0, usize::MAX)
+    ed.buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .slice(0, usize::MAX)
 }
 
 // ── Undo grouping and cursor restoration (§4) ──────────────────────────────
@@ -36,7 +41,11 @@ fn discrete_edits_are_separate_undo_steps() {
     let view = ed.views.get_mut(&key).unwrap();
     assert!(view.undo());
     let cursor_after_undo = view.cursor_offset();
-    assert_eq!(buffer_of(&ed, key), "ab", "one undo = one discrete edit (no merge window)");
+    assert_eq!(
+        buffer_of(&ed, key),
+        "ab",
+        "one undo = one discrete edit (no merge window)"
+    );
     assert_eq!(cursor_after_undo, 2, "undo restores the edit position");
 }
 
@@ -86,7 +95,15 @@ fn undo_redo_branch_is_discarded_explicitly() {
 
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(0, "X"); // new edit: redo branch ("two") is gone by policy
-    assert!(!ed.views.get(&key).unwrap().buffer.lock().unwrap().can_redo());
+    assert!(
+        !ed.views
+            .get(&key)
+            .unwrap()
+            .buffer
+            .lock()
+            .unwrap()
+            .can_redo()
+    );
     assert_eq!(buffer_of(&ed, key), "Xone ");
 }
 
@@ -118,7 +135,10 @@ fn marks_are_correct_after_edits_and_undo() {
     };
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(0, ">> ");
-    assert_eq!(ed.buffers.get(key).unwrap().lock().unwrap().mark_pos(mark), Some(9));
+    assert_eq!(
+        ed.buffers.get(key).unwrap().lock().unwrap().mark_pos(mark),
+        Some(9)
+    );
 
     let view = ed.views.get_mut(&key).unwrap();
     assert!(view.undo());
@@ -152,8 +172,10 @@ fn non_sticky_marks_stay_left_of_insertions() {
 #[test]
 fn modified_is_revision_based() {
     let (mut ed, key) = editor_with("content");
-    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified(),
-        "loaded content is the saved baseline");
+    assert!(
+        !ed.buffers.get(key).unwrap().lock().unwrap().modified(),
+        "loaded content is the saved baseline"
+    );
 
     ed.buffers.get(key).unwrap().lock().unwrap().mark_saved();
     assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
@@ -165,8 +187,10 @@ fn modified_is_revision_based() {
 
     let view = ed.views.get_mut(&key).unwrap();
     assert!(view.undo());
-    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified(),
-        "returning to the saved revision is clean");
+    assert!(
+        !ed.buffers.get(key).unwrap().lock().unwrap().modified(),
+        "returning to the saved revision is clean"
+    );
 }
 
 #[test]
@@ -182,7 +206,12 @@ fn stale_save_completion_cannot_clear_modified() {
     assert!(ed.buffers.get(key).unwrap().lock().unwrap().modified());
 
     // The completion marks only the revision it wrote.
-    ed.buffers.get(key).unwrap().lock().unwrap().mark_saved_at(snapshot_rev);
+    ed.buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .mark_saved_at(snapshot_rev);
     let buf = ed.buffers.get(key).unwrap().lock().unwrap();
     assert!(buf.modified(), "edits after the snapshot remain unsaved");
     assert_eq!(buf.slice(0, buf.len()), "one two");
@@ -198,11 +227,15 @@ fn atomic_writes_leave_no_torn_or_temp_files() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
     crate::kernel::storage::disk::atomic_write(&path_str, "second write").unwrap();
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "second write");
-    let leftovers: Vec<_> = std::fs::read_dir(&dir).unwrap()
+    let leftovers: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
         .filter(|n| n.contains("magma-tmp"))
         .collect();
-    assert!(leftovers.is_empty(), "temp files must be renamed away: {leftovers:?}");
+    assert!(
+        leftovers.is_empty(),
+        "temp files must be renamed away: {leftovers:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -215,8 +248,15 @@ fn split_windows_have_independent_cursors() {
 
     // The new (focused) window forked the view; move its cursor.
     let focused = ed.view_tree.focused_window().unwrap();
-    assert!(ed.window_views.contains_key(&(focused, key)), "split must fork a view");
-    let forked_cursor_before = ed.window_views.get(&(focused, key)).unwrap().cursor_offset();
+    assert!(
+        ed.window_views.contains_key(&(focused, key)),
+        "split must fork a view"
+    );
+    let forked_cursor_before = ed
+        .window_views
+        .get(&(focused, key))
+        .unwrap()
+        .cursor_offset();
 
     let view = ed.focused_view_mut().unwrap();
     view.set_cursor(9);
@@ -257,10 +297,24 @@ fn typing_queues_a_pending_change_until_publication() {
     let (mut ed, key) = editor_with("hi");
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(2, "!");
-    assert!(ed.buffers.get(key).unwrap().lock().unwrap().has_pending_changes());
+    assert!(
+        ed.buffers
+            .get(key)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .has_pending_changes()
+    );
     ed.publish_buffer_changes();
-    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().has_pending_changes(),
-        "publication drains the buffer's pending transactions");
+    assert!(
+        !ed.buffers
+            .get(key)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .has_pending_changes(),
+        "publication drains the buffer's pending transactions"
+    );
 }
 
 #[test]
@@ -273,7 +327,13 @@ fn change_event_carries_revision_and_edits() {
 
     // The pending queue is empty; verify the payload shape through the
     // Janet-facing accessor instead (documented contract of changes-since).
-    let changes = ed.buffers.get(key).unwrap().lock().unwrap().changes_since(0)
+    let changes = ed
+        .buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .changes_since(0)
         .expect("revision 0 is always retained");
     assert_eq!(changes.len(), 1);
     let (before, after, edits) = &changes[0];
@@ -283,7 +343,13 @@ fn change_event_carries_revision_and_edits() {
 
     let view = ed.views.get_mut(&key).unwrap();
     view.delete(0, 6);
-    let changes = ed.buffers.get(key).unwrap().lock().unwrap().changes_since(1)
+    let changes = ed
+        .buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .changes_since(1)
         .expect("recent revisions are retained");
     assert_eq!(changes.len(), 1);
     let (_, after, edits) = &changes[0];

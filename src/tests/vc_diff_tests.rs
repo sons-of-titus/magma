@@ -6,9 +6,7 @@
 //! The fixture is a real zero-context patch, so each header's lengths match
 //! the lines in its body.
 
-use crate::kernel::command::builtin::vc_hunks::{
-    changed_lines, hunk_covers, parse_hunks,
-};
+use crate::kernel::command::builtin::vc_hunks::{changed_lines, hunk_covers, parse_hunks};
 
 /// Two hunks: a replace-with-addition and a pure deletion (no new-side lines).
 const PATCH: &str = "\
@@ -62,6 +60,9 @@ fn hunk_covers_resolves_the_cursor_line() {
     assert!(hunk_covers(&hunks[0], 2));
     assert!(!hunk_covers(&hunks[0], 3), "past the added block");
     // A pure deletion has no new-side line; it matches where its lines were.
-    assert!(hunk_covers(&hunks[1], 10), "0-based line 10 is new-side line 11");
+    assert!(
+        hunk_covers(&hunks[1], 10),
+        "0-based line 10 is new-side line 11"
+    );
     assert!(!hunk_covers(&hunks[1], 11));
 }

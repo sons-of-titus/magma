@@ -44,7 +44,10 @@ pub struct Cell {
 
 impl Default for Cell {
     fn default() -> Self {
-        Cell { ch: ' ', style: Style::default() }
+        Cell {
+            ch: ' ',
+            style: Style::default(),
+        }
     }
 }
 
@@ -75,7 +78,12 @@ pub(super) struct ParserState {
 
 impl Default for ParserState {
     fn default() -> Self {
-        ParserState { phase: super::ansi::Phase::Ground, private: false, params: String::new(), intermediates: String::new() }
+        ParserState {
+            phase: super::ansi::Phase::Ground,
+            private: false,
+            params: String::new(),
+            intermediates: String::new(),
+        }
     }
 }
 
@@ -238,7 +246,8 @@ impl TerminalScreen {
                 }
             }
             1 => {
-                let end = self.cursor_row as usize * self.cols as usize + self.cursor_col as usize + 1;
+                let end =
+                    self.cursor_row as usize * self.cols as usize + self.cursor_col as usize + 1;
                 let blank = self.blank_with(self.style);
                 for i in 0..end {
                     self.cells[i] = blank[i % self.cols as usize];
@@ -264,7 +273,10 @@ impl TerminalScreen {
             1 => (0, self.cursor_col as usize + 1),
             _ => (0, self.cols as usize),
         };
-        let blank = Cell { ch: ' ', style: self.style };
+        let blank = Cell {
+            ch: ' ',
+            style: self.style,
+        };
         for col in start..end {
             self.put_cell(row as u16, col as u16, blank);
         }
@@ -274,7 +286,9 @@ impl TerminalScreen {
     /// Alternate screen (1049): save the main grid + scrollback, swap in a
     /// blank full-size screen.  Leaving restores exactly what was there.
     pub(super) fn enter_alt(&mut self) {
-        if self.alt.is_some() { return; }
+        if self.alt.is_some() {
+            return;
+        }
         let blank_grid = vec![Cell::default(); self.cells.len()];
         self.alt = Some(AltScreen {
             cells: std::mem::replace(&mut self.cells, blank_grid),
@@ -356,12 +370,20 @@ impl TerminalScreen {
         for (col, cell) in cells.iter().enumerate() {
             text.push(cell.ch);
             let style = if cell.style.reverse {
-                Style { fg: cell.style.bg, bg: cell.style.fg, ..cell.style }
+                Style {
+                    fg: cell.style.bg,
+                    bg: cell.style.fg,
+                    ..cell.style
+                }
             } else {
                 cell.style
             };
             if last != Some(style) {
-                spans.push(Span { start: col as u16, len: 1, style });
+                spans.push(Span {
+                    start: col as u16,
+                    len: 1,
+                    style,
+                });
                 last = Some(style);
             } else if let Some(last_span) = spans.last_mut() {
                 last_span.len += 1;
@@ -376,16 +398,23 @@ impl TerminalScreen {
     /// The last `n` logical lines, oldest first.
     pub fn tail(&self, n: usize) -> Vec<String> {
         let total = self.line_count();
-        (total.saturating_sub(n)..total).map(|i| self.line(i)).collect()
+        (total.saturating_sub(n)..total)
+            .map(|i| self.line(i))
+            .collect()
     }
 
     pub fn tail_styled(&self, n: usize) -> Vec<StyledLine> {
         let total = self.line_count();
-        (total.saturating_sub(n)..total).map(|i| self.styled_line(i)).collect()
+        (total.saturating_sub(n)..total)
+            .map(|i| self.styled_line(i))
+            .collect()
     }
 
     pub fn text(&self) -> String {
-        (0..self.line_count()).map(|i| self.line(i)).collect::<Vec<_>>().join("\n")
+        (0..self.line_count())
+            .map(|i| self.line(i))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     pub fn cursor_screen_row(&self) -> u16 {

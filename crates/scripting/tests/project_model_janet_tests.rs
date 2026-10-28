@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet API tests for the Project Model (Phase 5).
 
 use scripting;
@@ -10,7 +11,11 @@ fn project_current_returns_nil_when_no_project() {
     janet_test!(ed, {
         let r = scripting::eval_result("(project/current)");
         assert!(r.is_ok(), "project/current must not error");
-        assert_eq!(r.unwrap(), "nil", "project/current must return nil without active project");
+        assert_eq!(
+            r.unwrap(),
+            "nil",
+            "project/current must return nil without active project"
+        );
     });
 }
 
@@ -26,7 +31,10 @@ fn project_current_returns_table_after_set_root() {
         let r = scripting::eval_result("(project/current)");
         assert!(r.is_ok(), "project/current must not error");
         let val = r.unwrap();
-        assert_ne!(val, "nil", "project/current must return a table after set-root");
+        assert_ne!(
+            val, "nil",
+            "project/current must return a table after set-root"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     });
@@ -75,7 +83,10 @@ fn detect_project_via_task_api_sets_language() {
         std::fs::write(tmp.join("Cargo.toml"), "[package]").unwrap();
 
         scripting::eval(&format!("(project/set-root \"{}\")", tmp.to_string_lossy()));
-        scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
+        scripting::eval(&format!(
+            "(task/detect-project \"{}\")",
+            tmp.to_string_lossy()
+        ));
 
         assert_eq!(ed.project_manager.project.language, "rust");
         assert!(!ed.project_manager.run_configs.configs.is_empty());
@@ -92,10 +103,16 @@ fn detect_project_populates_run_configs() {
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("Cargo.toml"), "[package]").unwrap();
 
-        scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
+        scripting::eval(&format!(
+            "(task/detect-project \"{}\")",
+            tmp.to_string_lossy()
+        ));
 
-        assert_eq!(ed.project_manager.run_configs.configs.len(), 3,
-            "detect must seed 3 run configs (build, test, run)");
+        assert_eq!(
+            ed.project_manager.run_configs.configs.len(),
+            3,
+            "detect must seed 3 run configs (build, test, run)"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     });
@@ -139,7 +156,10 @@ fn project_current_run_configs_after_detect() {
         std::fs::write(tmp.join("Cargo.toml"), "[package]").unwrap();
 
         scripting::eval(&format!("(project/set-root \"{}\")", tmp.to_string_lossy()));
-        scripting::eval(&format!("(task/detect-project \"{}\")", tmp.to_string_lossy()));
+        scripting::eval(&format!(
+            "(task/detect-project \"{}\")",
+            tmp.to_string_lossy()
+        ));
 
         let rc_r = scripting::eval_result("(length (get (project/current) :run-configs))");
         assert!(rc_r.is_ok());
@@ -147,7 +167,11 @@ fn project_current_run_configs_after_detect() {
         assert_eq!(len, 3, "detected Rust project must have 3 run configs");
 
         let active_r = scripting::eval_result(r#"(get (project/current) :active-config)"#);
-        assert_eq!(active_r.unwrap(), "\"build\"", "first default config is active");
+        assert_eq!(
+            active_r.unwrap(),
+            "\"build\"",
+            "first default config is active"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     });

@@ -26,7 +26,9 @@ fn editor_with(content: &str) -> Editor {
 fn synthetic_doc(lines: usize) -> String {
     let mut s = String::with_capacity(lines * 40);
     for i in 0..lines {
-        s.push_str(&format!("fn item_{i}() {{ let value_{i} = {i} * 2; }} // fn keyword\n"));
+        s.push_str(&format!(
+            "fn item_{i}() {{ let value_{i} = {i} * 2; }} // fn keyword\n"
+        ));
     }
     s
 }
@@ -37,7 +39,9 @@ struct Stats {
 
 impl Stats {
     fn new() -> Self {
-        Stats { samples_ns: Vec::new() }
+        Stats {
+            samples_ns: Vec::new(),
+        }
     }
 
     fn push(&mut self, ns: u64) {
@@ -68,7 +72,11 @@ fn bench_typing(doc_bytes: usize) {
     let lines = doc_bytes / 40;
     let text = synthetic_doc(lines);
     let mut ed = editor_with(&text);
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     let mut stats = Stats::new();
     // Type in the middle of the document.
     let mid = text.len() / 2;
@@ -89,7 +97,11 @@ fn bench_cursor(doc_bytes: usize) {
     let lines = doc_bytes / 40;
     let text = synthetic_doc(lines);
     let mut ed = editor_with(&text);
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     let mut stats = Stats::new();
     let step = (text.len() / SAMPLES).max(1);
     for i in 0..SAMPLES {
@@ -120,7 +132,11 @@ fn bench_render(doc_bytes: usize) {
 fn bench_undo(count: usize) {
     let text = synthetic_doc(200);
     let mut ed = editor_with(&text);
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     for i in 0..count {
         let view = ed.views.get_mut(&key).unwrap();
         let cur = view.cursor_offset();
@@ -157,7 +173,11 @@ fn bench_save_snapshot(doc_bytes: usize) {
     let lines = doc_bytes / 40;
     let text = synthetic_doc(lines);
     let mut ed = editor_with(&text);
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     let mut stats = Stats::new();
     for _ in 0..30 {
         let t0 = Instant::now();

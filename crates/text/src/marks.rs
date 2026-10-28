@@ -6,9 +6,9 @@
 //! (`Affinity::Before`).  There is no eager adjustment and no snapshot
 //! restoration — undo/redo transform marks like any other transaction.
 
-use id::MarkId;
 use super::anchor::{Affinity, Anchor};
 use super::transaction::EditTransaction;
+use id::MarkId;
 
 #[derive(Debug, Clone)]
 pub struct Mark {
@@ -57,7 +57,11 @@ impl MarkSet {
             id,
             anchor: Anchor {
                 offset: pos,
-                affinity: if sticky { Affinity::After } else { Affinity::Before },
+                affinity: if sticky {
+                    Affinity::After
+                } else {
+                    Affinity::Before
+                },
             },
         });
         id

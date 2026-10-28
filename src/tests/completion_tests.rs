@@ -24,12 +24,22 @@ fn type_key(ed: &mut Editor, key: &str) {
 fn typing_two_word_chars_opens_the_popup() {
     let mut ed = editor_with("done door dormant\n");
     type_key(&mut ed, "d");
-    assert!(!ed.completion.visible, "one char is too short for the auto popup");
+    assert!(
+        !ed.completion.visible,
+        "one char is too short for the auto popup"
+    );
 
     type_key(&mut ed, "o");
     assert!(ed.completion.visible, "two word chars must open the popup");
     assert_eq!(ed.completion.prefix, "do");
-    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["done", "door", "dormant"]);
+    assert_eq!(
+        ed.completion
+            .items
+            .iter()
+            .map(|i| i.label.clone())
+            .collect::<Vec<_>>(),
+        vec!["done", "door", "dormant"]
+    );
 }
 
 #[test]
@@ -39,7 +49,14 @@ fn typing_refilters_the_popup_in_place() {
     type_key(&mut ed, "o");
     type_key(&mut ed, "n");
     assert!(ed.completion.visible);
-    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["done"]);
+    assert_eq!(
+        ed.completion
+            .items
+            .iter()
+            .map(|i| i.label.clone())
+            .collect::<Vec<_>>(),
+        vec!["done"]
+    );
 }
 
 #[test]
@@ -61,7 +78,11 @@ fn non_word_input_dismisses_and_inserts() {
 
     type_key(&mut ed, "(");
     assert!(!ed.completion.visible);
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
     assert_eq!(text, "done door\ndo(", "the paren must still insert");
 }
@@ -71,7 +92,14 @@ fn popup_navigation_and_accept() {
     let mut ed = editor_with("dog done\n");
     type_key(&mut ed, "d");
     type_key(&mut ed, "o");
-    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["dog", "done"]);
+    assert_eq!(
+        ed.completion
+            .items
+            .iter()
+            .map(|i| i.label.clone())
+            .collect::<Vec<_>>(),
+        vec!["dog", "done"]
+    );
     assert_eq!(ed.completion.idx, 0);
 
     type_key(&mut ed, "down");
@@ -81,10 +109,16 @@ fn popup_navigation_and_accept() {
 
     type_key(&mut ed, "tab");
     assert!(!ed.completion.visible, "accept closes the popup");
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
-    assert!(text.starts_with("dog done\ndog"),
-        "accept inserts the remaining suffix, got: {text:?}");
+    assert!(
+        text.starts_with("dog done\ndog"),
+        "accept inserts the remaining suffix, got: {text:?}"
+    );
 }
 
 #[test]
@@ -96,7 +130,11 @@ fn escape_dismisses_without_inserting() {
 
     type_key(&mut ed, "esc");
     assert!(!ed.completion.visible);
-    let key = ed.view_tree.focused_window().and_then(|w| ed.view_tree.buffer(w)).unwrap();
+    let key = ed
+        .view_tree
+        .focused_window()
+        .and_then(|w| ed.view_tree.buffer(w))
+        .unwrap();
     let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 20);
     assert_eq!(text, "done door\ndo", "esc must not alter the text");
 }
@@ -112,11 +150,24 @@ fn ctrl_space_triggers_at_any_prefix_length() {
     // ctrl-space routes here through the keymap (janet-loaded); the
     // command itself is the contract the key resolves to.
     let r = crate::kernel::command::execute_command(
-        &mut ed, "completion-trigger", &std::collections::HashMap::new());
+        &mut ed,
+        "completion-trigger",
+        &std::collections::HashMap::new(),
+    );
     r.unwrap();
-    assert!(ed.completion.visible, "completion-trigger must open the popup");
+    assert!(
+        ed.completion.visible,
+        "completion-trigger must open the popup"
+    );
     assert_eq!(ed.completion.prefix, "d");
-    assert_eq!(ed.completion.items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), vec!["done", "door"]);
+    assert_eq!(
+        ed.completion
+            .items
+            .iter()
+            .map(|i| i.label.clone())
+            .collect::<Vec<_>>(),
+        vec!["done", "door"]
+    );
 }
 
 #[test]
@@ -142,8 +193,15 @@ fn word_cache_hits_while_the_revision_is_current_and_rebuilds_after_an_edit() {
     type_key(&mut ed, "a");
     type_key(&mut ed, "l");
     assert!(ed.completion.visible);
-    let cached = ed.completion.word_cache.get(&key).expect("inline scan caches the word set");
-    assert_eq!(cached.revision, ed.buffers.get(key).unwrap().lock().unwrap().revision());
+    let cached = ed
+        .completion
+        .word_cache
+        .get(&key)
+        .expect("inline scan caches the word set");
+    assert_eq!(
+        cached.revision,
+        ed.buffers.get(key).unwrap().lock().unwrap().revision()
+    );
     assert!(cached.words.contains("alphabet"));
 
     // An edit moves the revision; the next trigger must rebuild, not serve
@@ -152,9 +210,19 @@ fn word_cache_hits_while_the_revision_is_current_and_rebuilds_after_an_edit() {
     ed.view_of_buffer_mut(key).unwrap().insert(0, "zeta ");
     type_key(&mut ed, "p");
     type_key(&mut ed, "h");
-    let cached = ed.completion.word_cache.get(&key).expect("re-scan after edit");
-    assert_ne!(cached.revision, stale, "the cache must track the new revision");
-    assert!(cached.words.contains("zeta"), "new text participates in candidates");
+    let cached = ed
+        .completion
+        .word_cache
+        .get(&key)
+        .expect("re-scan after edit");
+    assert_ne!(
+        cached.revision, stale,
+        "the cache must track the new revision"
+    );
+    assert!(
+        cached.words.contains("zeta"),
+        "new text participates in candidates"
+    );
 }
 
 #[test]
@@ -165,20 +233,35 @@ fn stale_background_word_results_are_discarded() {
 
     // The buffer moves on while the scan is in flight.
     ed.view_of_buffer_mut(key).unwrap().insert(0, "new ");
-    assert_ne!(ed.buffers.get(key).unwrap().lock().unwrap().revision(), stale_rev);
+    assert_ne!(
+        ed.buffers.get(key).unwrap().lock().unwrap().revision(),
+        stale_rev
+    );
 
     // The scan result for the obsolete revision must be dropped.
-    crate::kernel::runtime::process_background_event(&mut ed,
+    crate::kernel::runtime::process_background_event(
+        &mut ed,
         crate::kernel::runtime::BackgroundEvent::BufferWords {
-            buf_key: key, revision: stale_rev, words: vec!["stale".into()] });
-    assert!(!ed.completion.word_cache.contains_key(&key),
-        "a result for an obsolete revision must never land");
+            buf_key: key,
+            revision: stale_rev,
+            words: vec!["stale".into()],
+        },
+    );
+    assert!(
+        !ed.completion.word_cache.contains_key(&key),
+        "a result for an obsolete revision must never land"
+    );
 
     // A result matching the current revision lands.
     let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
-    crate::kernel::runtime::process_background_event(&mut ed,
+    crate::kernel::runtime::process_background_event(
+        &mut ed,
         crate::kernel::runtime::BackgroundEvent::BufferWords {
-            buf_key: key, revision: rev, words: vec!["fresh".into()] });
+            buf_key: key,
+            revision: rev,
+            words: vec!["fresh".into()],
+        },
+    );
     assert!(ed.completion.word_cache.contains_key(&key));
 }
 
@@ -190,15 +273,16 @@ use crate::kernel::state::completion::CompletionItem;
 #[test]
 fn lsp_items_parse_from_array_and_list() {
     let arr = parse_lsp_completion_items(
-        r#"[{"label":"dog","kind":3,"insertText":"doggo","detail":"fn(dog)"}]"#);
+        r#"[{"label":"dog","kind":3,"insertText":"doggo","detail":"fn(dog)"}]"#,
+    );
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0].label, "dog");
     assert_eq!(arr[0].insert, "doggo");
     assert_eq!(arr[0].kind, "fn");
     assert_eq!(arr[0].detail, "fn(dog)");
 
-    let list = parse_lsp_completion_items(
-        r#"{"isIncomplete":false,"items":[{"label":"door","kind":6}]}"#);
+    let list =
+        parse_lsp_completion_items(r#"{"isIncomplete":false,"items":[{"label":"door","kind":6}]}"#);
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].insert, "door", "no insertText: insert = label");
     assert_eq!(list[0].kind, "var");
@@ -213,13 +297,39 @@ fn lsp_items_lead_the_popup_and_drop_duplicates() {
     input::dispatch_key(&mut ed, "o");
     assert!(ed.completion.visible);
 
-    merge_lsp_items(&mut ed, vec![
-        CompletionItem { label: "dog".into(), insert: "dog".into(), kind: "fn".into(), detail: String::new() },
-        CompletionItem { label: "done".into(), insert: "done".into(), kind: "var".into(), detail: String::new() },
-    ]);
-    let labels: Vec<&str> = ed.completion.items.iter().map(|i| i.label.as_str()).collect();
-    assert_eq!(labels.first(), Some(&"dog"), "server items keep their order and lead");
-    assert_eq!(labels.iter().filter(|l| **l == "done").count(), 1, "word duplicate dropped");
+    merge_lsp_items(
+        &mut ed,
+        vec![
+            CompletionItem {
+                label: "dog".into(),
+                insert: "dog".into(),
+                kind: "fn".into(),
+                detail: String::new(),
+            },
+            CompletionItem {
+                label: "done".into(),
+                insert: "done".into(),
+                kind: "var".into(),
+                detail: String::new(),
+            },
+        ],
+    );
+    let labels: Vec<&str> = ed
+        .completion
+        .items
+        .iter()
+        .map(|i| i.label.as_str())
+        .collect();
+    assert_eq!(
+        labels.first(),
+        Some(&"dog"),
+        "server items keep their order and lead"
+    );
+    assert_eq!(
+        labels.iter().filter(|l| **l == "done").count(),
+        1,
+        "word duplicate dropped"
+    );
     assert_eq!(ed.completion.idx, 0);
     dismiss(&mut ed);
 }
@@ -229,11 +339,20 @@ fn merge_rejects_items_that_no_longer_match_the_prefix() {
     let mut ed = editor_with("done\n");
     input::dispatch_key(&mut ed, "d");
     input::dispatch_key(&mut ed, "o");
-    merge_lsp_items(&mut ed, vec![
-        CompletionItem { label: "zebra".into(), ..Default::default() },
-    ]);
-    assert!(ed.completion.items.iter().all(|i| i.label.starts_with("do")),
-        "stale-prefix items are filtered on merge");
+    merge_lsp_items(
+        &mut ed,
+        vec![CompletionItem {
+            label: "zebra".into(),
+            ..Default::default()
+        }],
+    );
+    assert!(
+        ed.completion
+            .items
+            .iter()
+            .all(|i| i.label.starts_with("do")),
+        "stale-prefix items are filtered on merge"
+    );
     dismiss(&mut ed);
 }
 
@@ -242,15 +361,27 @@ fn accept_types_the_server_insert_text() {
     let mut ed = editor_with("done\n");
     input::dispatch_key(&mut ed, "d");
     input::dispatch_key(&mut ed, "o");
-    merge_lsp_items(&mut ed, vec![
-        CompletionItem { label: "document".into(), insert: "document_changes".into(),
-                         kind: "fn".into(), detail: String::new() },
-    ]);
+    merge_lsp_items(
+        &mut ed,
+        vec![CompletionItem {
+            label: "document".into(),
+            insert: "document_changes".into(),
+            kind: "fn".into(),
+            detail: String::new(),
+        }],
+    );
     ed.completion.idx = 0;
     accept(&mut ed);
-    assert_eq!(ed.buffers.get(crate::tests::helpers::focused_key(&ed)).unwrap()
-        .lock().unwrap().slice(0, 32), "done\ndocument_changes",
-        "accept inserts insertText, not the label");
+    assert_eq!(
+        ed.buffers
+            .get(crate::tests::helpers::focused_key(&ed))
+            .unwrap()
+            .lock()
+            .unwrap()
+            .slice(0, 32),
+        "done\ndocument_changes",
+        "accept inserts insertText, not the label"
+    );
 }
 
 #[test]
@@ -258,13 +389,25 @@ fn accept_replaces_prefix_when_insert_does_not_extend_it() {
     let mut ed = editor_with("done\n");
     input::dispatch_key(&mut ed, "d");
     input::dispatch_key(&mut ed, "o");
-    merge_lsp_items(&mut ed, vec![
-        CompletionItem { label: "do_thing()".into(), insert: "do_thing($0)".into(),
-                         kind: "snip".into(), detail: String::new() },
-    ]);
+    merge_lsp_items(
+        &mut ed,
+        vec![CompletionItem {
+            label: "do_thing()".into(),
+            insert: "do_thing($0)".into(),
+            kind: "snip".into(),
+            detail: String::new(),
+        }],
+    );
     ed.completion.idx = 0;
     accept(&mut ed);
-    assert_eq!(ed.buffers.get(crate::tests::helpers::focused_key(&ed)).unwrap()
-        .lock().unwrap().slice(0, 32), "done\ndo_thing($0)",
-        "a snippet insert replaces the typed prefix wholesale");
+    assert_eq!(
+        ed.buffers
+            .get(crate::tests::helpers::focused_key(&ed))
+            .unwrap()
+            .lock()
+            .unwrap()
+            .slice(0, 32),
+        "done\ndo_thing($0)",
+        "a snippet insert replaces the typed prefix wholesale"
+    );
 }

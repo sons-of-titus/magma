@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet integration tests for the Debug System (Phase 6).
 
 use scripting;
@@ -18,7 +19,8 @@ fn debug_session_nil_when_no_session() {
 #[test]
 fn debug_breakpoints_empty_for_unknown_file() {
     janet_test!(ed, {
-        let result = scripting::eval_result(r#"(length (debug/breakpoints "/nonexistent.rs"))"#).unwrap();
+        let result =
+            scripting::eval_result(r#"(length (debug/breakpoints "/nonexistent.rs"))"#).unwrap();
         assert_eq!(result, "0");
     });
 }
@@ -40,7 +42,8 @@ fn add_breakpoint_janet_api_returns_line_list() {
     janet_test!(ed, {
         scripting::eval(r#"(debug/add-breakpoint "/tmp/foo.rs" 5)"#);
         scripting::eval(r#"(debug/add-breakpoint "/tmp/foo.rs" 15)"#);
-        let result = scripting::eval_result(r#"(length (debug/breakpoints "/tmp/foo.rs"))"#).unwrap();
+        let result =
+            scripting::eval_result(r#"(length (debug/breakpoints "/tmp/foo.rs"))"#).unwrap();
         assert_eq!(result, "2");
     });
 }
@@ -100,19 +103,27 @@ fn toggle_breakpoint_stores_one_based_line() {
         if let Some(view) = ed.view_of_buffer_mut(key) {
             view.insert(0, "alpha\nbeta\ngamma\ndelta\n");
         }
-        ed.buffers.get_mut(key).unwrap()
-            .lock().unwrap()
-            .path = Some("/tmp/bp_line_base.rs".to_string());
+        ed.buffers.get_mut(key).unwrap().lock().unwrap().path =
+            Some("/tmp/bp_line_base.rs".to_string());
         // Cursor to line index 2 (third line).
-        let offset = ed.buffers.get(key).unwrap().lock().unwrap()
-            .line_start_offset(2).unwrap();
+        let offset = ed
+            .buffers
+            .get(key)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .line_start_offset(2)
+            .unwrap();
         if let Some(view) = ed.view_of_buffer_mut(key) {
             view.set_cursor(offset);
         }
         scripting::eval(r#"(debug/toggle-breakpoint)"#);
         let bps = ed.debug.breakpoints_for("/tmp/bp_line_base.rs");
         assert_eq!(bps.len(), 1, "toggle should add one breakpoint");
-        assert_eq!(bps[0].line, 3, "cursor on 0-based line 2 stores 1-based line 3");
+        assert_eq!(
+            bps[0].line, 3,
+            "cursor on 0-based line 2 stores 1-based line 3"
+        );
         // Second toggle removes it again — the convention must be symmetric.
         scripting::eval(r#"(debug/toggle-breakpoint)"#);
         assert!(ed.debug.breakpoints_for("/tmp/bp_line_base.rs").is_empty());
@@ -126,10 +137,10 @@ fn gutter_click_breakpoint_stores_one_based_line() {
         if let Some(view) = ed.view_of_buffer_mut(key) {
             view.insert(0, "alpha\nbeta\ngamma\ndelta\necho\nfoxtrot\n");
         }
-        ed.buffers.get_mut(key).unwrap()
-            .lock().unwrap()
-            .path = Some("/tmp/bp_gutter.rs".to_string());
-        ed.options.insert("mouse-support".to_string(), "true".to_string());
+        ed.buffers.get_mut(key).unwrap().lock().unwrap().path =
+            Some("/tmp/bp_gutter.rs".to_string());
+        ed.options
+            .insert("mouse-support".to_string(), "true".to_string());
         // Park the cursor at the top so the synced viewport starts at line 0
         // (the insert above left it at the end of the inserted text).
         if let Some(view) = ed.view_of_buffer_mut(key) {
@@ -153,14 +164,16 @@ fn gutter_click_breakpoint_stores_one_based_line() {
 
         let bps = ed.debug.breakpoints_for("/tmp/bp_gutter.rs");
         assert_eq!(bps.len(), 1, "gutter click should add one breakpoint");
-        assert_eq!(bps[0].line, 5, "click on 0-based line 4 stores 1-based line 5");
+        assert_eq!(
+            bps[0].line, 5,
+            "click on 0-based line 4 stores 1-based line 5"
+        );
 
         // Clicking the same row again toggles it off.
         kernel::input::mouse::dispatch_mouse(&mut ed, &surface, &click);
         assert!(ed.debug.breakpoints_for("/tmp/bp_gutter.rs").is_empty());
     });
 }
-
 
 // ── debug/continue / step-in / step-over / step-out without session ───────────
 
@@ -175,7 +188,10 @@ fn step_commands_without_session_are_noop() {
         ];
         for cmd in cmds {
             let result = scripting::eval_result(cmd).unwrap();
-            assert_eq!(result, "nil", "{cmd} should return nil when no session is active");
+            assert_eq!(
+                result, "nil",
+                "{cmd} should return nil when no session is active"
+            );
         }
     });
 }

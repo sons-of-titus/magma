@@ -51,8 +51,11 @@ fn cursor_move_inside_view_keeps_viewport_still() {
     sync_viewport_scroll(&mut ed);
     assert_eq!(cursor_line_of(&ed, buf_id), 5);
     let pane = pane_of(&ed);
-    assert_eq!(pane_scroll_top(&ed, &pane, buf_id, 10), 0,
-        "cursor moving within the viewport must not scroll the text");
+    assert_eq!(
+        pane_scroll_top(&ed, &pane, buf_id, 10),
+        0,
+        "cursor moving within the viewport must not scroll the text"
+    );
 }
 
 #[test]
@@ -78,8 +81,11 @@ fn cursor_below_view_snaps_minimally() {
     set_cursor_line(&mut ed, buf_id, 65);
     sync_viewport_scroll(&mut ed);
     let pane = pane_of(&ed);
-    assert_eq!(pane_scroll_top(&ed, &pane, buf_id, 10), 56,
-        "one row past the bottom edge scrolls the minimum amount");
+    assert_eq!(
+        pane_scroll_top(&ed, &pane, buf_id, 10),
+        56,
+        "one row past the bottom edge scrolls the minimum amount"
+    );
 }
 
 #[test]
@@ -93,15 +99,19 @@ fn cursor_above_view_snaps_up() {
     set_cursor_line(&mut ed, buf_id, 20);
     sync_viewport_scroll(&mut ed);
     let pane = pane_of(&ed);
-    assert_eq!(pane_scroll_top(&ed, &pane, buf_id, 10), 20,
-        "cursor above the viewport pulls the top line up to the cursor");
+    assert_eq!(
+        pane_scroll_top(&ed, &pane, buf_id, 10),
+        20,
+        "cursor above the viewport pulls the top line up to the cursor"
+    );
 }
 
 #[test]
 fn wheel_scrolls_viewport_without_moving_cursor() {
     let mut ed = make_editor_with_buffer("line\n".repeat(100).trim_end());
     set_pane_height(&mut ed, 11);
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let buf_id = focused_key(&ed);
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
@@ -115,11 +125,21 @@ fn wheel_scrolls_viewport_without_moving_cursor() {
     };
     mouse::dispatch_mouse(&mut ed, &surface, &wheel);
 
-    assert_eq!(cursor_line_of(&ed, buf_id), 0, "wheel must not move the cursor");
+    assert_eq!(
+        cursor_line_of(&ed, buf_id),
+        0,
+        "wheel must not move the cursor"
+    );
     let pane = pane_of(&ed);
-    assert_eq!(pane.scroll_offset, 0, "scrolling down from the top clamps at 0");
+    assert_eq!(
+        pane.scroll_offset, 0,
+        "scrolling down from the top clamps at 0"
+    );
 
-    let wheel_up = MouseEvent { kind: MouseEventKind::Scroll(-5), ..wheel };
+    let wheel_up = MouseEvent {
+        kind: MouseEventKind::Scroll(-5),
+        ..wheel
+    };
     mouse::dispatch_mouse(&mut ed, &surface, &wheel_up);
     let pane = pane_of(&ed);
     assert_eq!(pane.scroll_offset, 5, "wheel up reveals earlier lines");
@@ -131,7 +151,8 @@ fn wheel_scrolls_viewport_without_moving_cursor() {
 fn cursor_move_releases_wheel_pin() {
     let mut ed = make_editor_with_buffer("line\n".repeat(100).trim_end());
     set_pane_height(&mut ed, 11);
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let buf_id = focused_key(&ed);
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
@@ -158,7 +179,8 @@ fn cursor_move_releases_wheel_pin() {
 fn click_maps_against_the_scrolled_viewport() {
     let mut ed = make_editor_with_buffer("line\n".repeat(100).trim_end());
     set_pane_height(&mut ed, 11);
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let buf_id = focused_key(&ed);
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
@@ -179,8 +201,11 @@ fn click_maps_against_the_scrolled_viewport() {
         .expect("click inside the viewport resolves");
     let arc = ed.buffers.get(buf_id).unwrap();
     let buf = arc.lock().unwrap();
-    assert_eq!(buf.position_of(offset).line, 12,
-        "click on viewport row 2 with top 10 must hit buffer line 12");
+    assert_eq!(
+        buf.position_of(offset).line,
+        12,
+        "click on viewport row 2 with top 10 must hit buffer line 12"
+    );
 }
 
 #[test]
@@ -193,13 +218,17 @@ fn buffer_switch_rederives_viewport() {
     sync_viewport_scroll(&mut ed);
 
     let other = ed.create_buffer_from_str("other", "alpha\nbeta\n");
-    ed.view_tree.set_buffer(ed.view_tree.focused_window().unwrap(), other);
+    ed.view_tree
+        .set_buffer(ed.view_tree.focused_window().unwrap(), other);
     sync_viewport_scroll(&mut ed);
 
     let pane = pane_of(&ed);
     assert_eq!(pane.scroll_buf, Some(other));
-    assert_eq!(pane_scroll_top(&ed, &pane, other, 10), 0,
-        "a fresh buffer starts at its own cursor, not the old scroll offset");
+    assert_eq!(
+        pane_scroll_top(&ed, &pane, other, 10),
+        0,
+        "a fresh buffer starts at its own cursor, not the old scroll offset"
+    );
 }
 
 #[test]
@@ -210,10 +239,22 @@ fn fold_collapsed_rows_map_clicks_to_visible_lines() {
 
     // Fold lines 2..4 (0-based): the fold header (line 2) occupies one row,
     // lines 3–4 disappear from the viewport.
-    let l2 = ed.buffers.get(buf_id).unwrap().lock().unwrap()
-        .line_start_offset(2).unwrap();
-    let l5 = ed.buffers.get(buf_id).unwrap().lock().unwrap()
-        .line_start_offset(5).unwrap();
+    let l2 = ed
+        .buffers
+        .get(buf_id)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .line_start_offset(2)
+        .unwrap();
+    let l5 = ed
+        .buffers
+        .get(buf_id)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .line_start_offset(5)
+        .unwrap();
     if let Some(view) = ed.view_of_buffer_mut(buf_id) {
         view.add_fold(l2, l5);
     }
@@ -222,20 +263,36 @@ fn fold_collapsed_rows_map_clicks_to_visible_lines() {
     let _pane = pane_of(&ed);
     // Row 0 → line 0, row 1 → line 1, row 2 → fold header line 2,
     // row 3 → line 5 (first line after the fold).
-    assert_eq!(mouse::visible_row_to_abs_line(&ed, buf_id, 0, 1, 10), Some(1));
-    assert_eq!(mouse::visible_row_to_abs_line(&ed, buf_id, 0, 2, 10), Some(2));
-    assert_eq!(mouse::visible_row_to_abs_line(&ed, buf_id, 0, 3, 10), Some(5));
+    assert_eq!(
+        mouse::visible_row_to_abs_line(&ed, buf_id, 0, 1, 10),
+        Some(1)
+    );
+    assert_eq!(
+        mouse::visible_row_to_abs_line(&ed, buf_id, 0, 2, 10),
+        Some(2)
+    );
+    assert_eq!(
+        mouse::visible_row_to_abs_line(&ed, buf_id, 0, 3, 10),
+        Some(5)
+    );
 }
 
 // ── GUI selection idioms ─────────────────────────────────────────────────────
 
 use std::time::Duration;
 
-fn click(ed: &mut Editor, surface: &crate::kernel::render::surface::Surface, x: u16, y: u16, gap_ms: u64) {
+fn click(
+    ed: &mut Editor,
+    surface: &crate::kernel::render::surface::Surface,
+    x: u16,
+    y: u16,
+    gap_ms: u64,
+) {
     std::thread::sleep(Duration::from_millis(gap_ms));
     let ev = MouseEvent {
         kind: MouseEventKind::Click,
-        x, y,
+        x,
+        y,
         button: MouseButton::Left,
         modifiers: String::new(),
     };
@@ -245,7 +302,8 @@ fn click(ed: &mut Editor, surface: &crate::kernel::render::surface::Surface, x: 
 #[test]
 fn double_click_selects_word_under_pointer() {
     let mut ed = make_editor_with_buffer("alpha beta gamma\n");
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let buf_id = focused_key(&ed);
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
@@ -255,7 +313,7 @@ fn double_click_selects_word_under_pointer() {
 
     click(&mut ed, &surface, beta_col, pane.y, 400); // single: plain cursor
     assert!(ed.selection.is_none());
-    click(&mut ed, &surface, beta_col, pane.y, 0);   // double on "beta"
+    click(&mut ed, &surface, beta_col, pane.y, 0); // double on "beta"
     let sel = ed.selection.expect("double click selects");
     let arc = ed.buffers.get(buf_id).unwrap();
     let buf = arc.lock().unwrap();
@@ -265,7 +323,8 @@ fn double_click_selects_word_under_pointer() {
 #[test]
 fn triple_click_selects_the_whole_line() {
     let mut ed = make_editor_with_buffer("one\ntwo\n");
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let buf_id = focused_key(&ed);
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
@@ -283,7 +342,8 @@ fn triple_click_selects_the_whole_line() {
 #[test]
 fn right_click_does_not_move_the_cursor() {
     let mut ed = make_editor_with_buffer("hello\n");
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let buf_id = focused_key(&ed);
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
@@ -297,7 +357,10 @@ fn right_click_does_not_move_the_cursor() {
     };
     mouse::dispatch_mouse(&mut ed, &surface, &ev);
     let offset = ed.view_of_buffer(buf_id).unwrap().cursor_offset();
-    assert_eq!(offset, 0, "secondary click is reserved for the context menu");
+    assert_eq!(
+        offset, 0,
+        "secondary click is reserved for the context menu"
+    );
 }
 
 #[test]
@@ -341,7 +404,10 @@ fn caret_past_right_edge_pans_the_view() {
     let content = content_cols_of(&ed, buf_id);
     assert!(left > 0, "a caret off the right edge must pan the view");
     assert!(left <= 100, "the pan is minimal, never past the caret");
-    assert!(100 - left < content, "the caret must be inside the panned view");
+    assert!(
+        100 - left < content,
+        "the caret must be inside the panned view"
+    );
 }
 
 #[test]
@@ -355,8 +421,11 @@ fn caret_back_left_pans_back_to_the_start() {
 
     set_cursor_offset(&mut ed, buf_id, 0);
     sync_viewport_scroll(&mut ed);
-    assert_eq!(pane_scroll_left(&pane_of(&ed), buf_id), 0,
-        "the caret returning to column 0 scrolls the view back");
+    assert_eq!(
+        pane_scroll_left(&pane_of(&ed), buf_id),
+        0,
+        "the caret returning to column 0 scrolls the view back"
+    );
 }
 
 #[test]
@@ -380,7 +449,8 @@ fn horizontal_scroll_resets_on_buffer_switch() {
 fn horizontal_wheel_pans_and_pins() {
     let mut ed = make_editor_with_buffer(&"x".repeat(200));
     ed.view_tree.panes_mut()[0].width = 20;
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
     let pane = pane_of(&ed);
     let surface = Surface::new(pane.width, pane.height);
 
@@ -393,12 +463,22 @@ fn horizontal_wheel_pans_and_pins() {
     };
     mouse::dispatch_mouse(&mut ed, &surface, &wheel);
     let pane = pane_of(&ed);
-    assert_eq!(pane.scroll_left, 5, "wheel pan moves the first visible column");
+    assert_eq!(
+        pane.scroll_left, 5,
+        "wheel pan moves the first visible column"
+    );
     assert!(pane.scroll_left_pinned);
 
-    let back = MouseEvent { kind: MouseEventKind::ScrollX(50), ..wheel };
+    let back = MouseEvent {
+        kind: MouseEventKind::ScrollX(50),
+        ..wheel
+    };
     mouse::dispatch_mouse(&mut ed, &surface, &back);
-    assert_eq!(pane_of(&ed).scroll_left, 0, "panning back clamps at column 0");
+    assert_eq!(
+        pane_of(&ed).scroll_left,
+        0,
+        "panning back clamps at column 0"
+    );
 }
 
 #[test]
@@ -417,7 +497,11 @@ fn click_maps_through_the_horizontal_scroll() {
     let pane = pane_of(&ed);
     // Five cells into the visible text, which is column 15 after the pan.
     let off = mouse::resolve_click_to_offset(&ed, buf_id, &pane, pane.x + gutter + 5, pane.y);
-    assert_eq!(off, Some(15), "a click maps to scroll_left + clicked column");
+    assert_eq!(
+        off,
+        Some(15),
+        "a click maps to scroll_left + clicked column"
+    );
 }
 
 #[test]
@@ -438,6 +522,8 @@ fn render_shifts_content_by_the_horizontal_scroll() {
     render_frame(&ed, &mut surface);
 
     let cell = surface.cell(gutter, pane.y).expect("first content cell");
-    assert_eq!(cell.ch, 'A',
-        "after panning 10 columns, 'A' (column 10) is the first visible glyph");
+    assert_eq!(
+        cell.ch, 'A',
+        "after panning 10 columns, 'A' (column 10) is the first visible glyph"
+    );
 }

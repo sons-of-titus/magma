@@ -4,8 +4,13 @@ use super::*;
 /// removes only that root.  collect_from() prunes siblings, so tests
 /// must never point it at a shared directory.
 fn temp_root(tag: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("magma-crash-test-{tag}-{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let root = std::env::temp_dir().join(format!(
+        "magma-crash-test-{tag}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     std::fs::create_dir_all(&root).unwrap();
     root
 }
@@ -20,10 +25,18 @@ fn snapshot_roundtrip_preserves_content_and_label() {
     let sessions = collect_from(&root);
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].snapshots.len(), 2);
-    let scratch = sessions[0].snapshots.iter().find(|s| s.label == "*scratch*").unwrap();
+    let scratch = sessions[0]
+        .snapshots
+        .iter()
+        .find(|s| s.label == "*scratch*")
+        .unwrap();
     assert_eq!(scratch.content, "unsaved work");
     assert_eq!(scratch.path, None);
-    let main = sessions[0].snapshots.iter().find(|s| s.label == "main.rs").unwrap();
+    let main = sessions[0]
+        .snapshots
+        .iter()
+        .find(|s| s.label == "main.rs")
+        .unwrap();
     assert_eq!(main.path.as_deref(), Some("/proj/src/main.rs"));
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -129,6 +142,9 @@ fn collect_recoverable_reads_the_crash_root_under_the_given_state_dir() {
 fn new_session_dir_lives_under_the_given_state_dir() {
     let dir = new_session_dir(Path::new("/state"));
     assert!(dir.starts_with("/state/crash"));
-    assert!(dir.file_name().is_some_and(|n| n.to_string_lossy().contains('-')));
+    assert!(
+        dir.file_name()
+            .is_some_and(|n| n.to_string_lossy().contains('-'))
+    );
     assert!(new_session_dir(Path::new("/other")).starts_with("/other/crash"));
 }

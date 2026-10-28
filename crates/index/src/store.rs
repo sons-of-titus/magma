@@ -42,7 +42,8 @@ pub fn load(path: &Path) -> HashMap<String, FileRecord> {
         return HashMap::new();
     };
     let mut lines = text.lines();
-    let header_ok = lines.next()
+    let header_ok = lines
+        .next()
         .and_then(|l| l.strip_prefix(HEADER))
         .and_then(|rest| rest.trim().strip_prefix("v"))
         .and_then(|v| v.parse::<u32>().ok())

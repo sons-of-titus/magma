@@ -47,12 +47,15 @@ fn console_lines_split_and_drop_the_oldest_past_the_cap() {
 fn stopping_resets_frames_scopes_and_watches() {
     let mut s = DebugSession::new(1, "adapter".into());
     s.set_frames(vec![frame(1, 10)]);
-    s.set_variables(100, vec![Variable {
-        name: "x".into(),
-        value: "1".into(),
-        type_name: Some("u8".into()),
-        variables_reference: 0,
-    }]);
+    s.set_variables(
+        100,
+        vec![Variable {
+            name: "x".into(),
+            value: "1".into(),
+            type_name: Some("u8".into()),
+            variables_reference: 0,
+        }],
+    );
     s.scope_ref = Some(100);
     s.stopped_line = Some(("/proj/src/main.rs".into(), 10));
 
@@ -78,10 +81,19 @@ fn frames_are_looked_up_by_id() {
 #[test]
 fn threads_and_verified_breakpoints_replace_wholesale() {
     let mut s = DebugSession::new(1, "adapter".into());
-    s.set_threads(vec![Thread { id: 1, name: "main".into() }]);
+    s.set_threads(vec![Thread {
+        id: 1,
+        name: "main".into(),
+    }]);
     s.set_threads(vec![
-        Thread { id: 2, name: "worker".into() },
-        Thread { id: 3, name: "idle".into() },
+        Thread {
+            id: 2,
+            name: "worker".into(),
+        },
+        Thread {
+            id: 3,
+            name: "idle".into(),
+        },
     ]);
     assert_eq!(s.threads.len(), 2);
     assert_eq!(s.threads[0].id, 2);

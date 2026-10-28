@@ -108,7 +108,10 @@ fn lsp_diagnostics_dispatch_updates_the_buffer_and_semantic_store() {
     let buf = buf.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(buf.get_diagnostics().len(), 1);
     assert!(buf.get_diagnostics()[0].display().contains("bad thing"));
-    assert_eq!(ed.semantic.diagnostics_for_path("/tmp/lsp_event.rs").len(), 1);
+    assert_eq!(
+        ed.semantic.diagnostics_for_path("/tmp/lsp_event.rs").len(),
+        1
+    );
 }
 
 #[test]
@@ -116,10 +119,13 @@ fn lsp_completion_dispatch_reaches_the_event_bus() {
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
     let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let cap = captured.clone();
-    ed.events.on(crate::kernel::event::keys::events::LSP_COMPLETION, move |data| {
-        *cap.lock().unwrap_or_else(|e| e.into_inner()) = data.get("items").cloned();
-        None
-    });
+    ed.events.on(
+        crate::kernel::event::keys::events::LSP_COMPLETION,
+        move |data| {
+            *cap.lock().unwrap_or_else(|e| e.into_inner()) = data.get("items").cloned();
+            None
+        },
+    );
 
     process_background_event(
         &mut ed,
@@ -132,7 +138,10 @@ fn lsp_completion_dispatch_reaches_the_event_bus() {
     ed.events.drain_and_dispatch();
 
     assert_eq!(
-        captured.lock().unwrap_or_else(|e| e.into_inner()).as_deref(),
+        captured
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_deref(),
         Some("alpha\nbeta"),
     );
 }

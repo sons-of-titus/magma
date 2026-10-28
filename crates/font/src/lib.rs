@@ -89,7 +89,8 @@ impl FontConfig {
             if let Ok(bytes) = std::fs::read(&path)
                 && bytes.len() > 1000
             {
-                self.loaded_fonts.insert(SYSTEM_MONO_ALIAS.to_string(), bytes);
+                self.loaded_fonts
+                    .insert(SYSTEM_MONO_ALIAS.to_string(), bytes);
                 self.family = SYSTEM_MONO_ALIAS.to_string();
                 return true;
             }

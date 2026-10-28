@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 fn setup_background_editor() -> kernel::state::Editor {
@@ -22,10 +23,7 @@ fn http_request_returns_positive_integer() {
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(
-        r#"(net/http-request "GET" "http://example.com")"#,
-    )
-    .unwrap();
+    let r = scripting::eval_result(r#"(net/http-request "GET" "http://example.com")"#).unwrap();
     let n: i64 = r.parse().expect("http-request must return a number");
     assert!(n > 0, "request-id must be positive, got {n}");
 }
@@ -38,7 +36,11 @@ fn http_request_increments_next_net_id() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let before = ed.io.next_net_id;
     scripting::eval(r#"(net/http-request "GET" "http://example.com")"#);
-    assert_eq!(ed.io.next_net_id, before + 1, "next_net_id must increment after http-request");
+    assert_eq!(
+        ed.io.next_net_id,
+        before + 1,
+        "next_net_id must increment after http-request"
+    );
 }
 
 // ── net/http-get ─────────────────────────────────────────────────────────
@@ -49,8 +51,7 @@ fn http_get_returns_integer() {
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(r#"(net/http-get "http://example.com")"#)
-        .unwrap();
+    let r = scripting::eval_result(r#"(net/http-get "http://example.com")"#).unwrap();
     let n: i64 = r.parse().expect("http-get must return a number");
     assert!(n > 0, "request-id must be positive");
 }
@@ -63,10 +64,7 @@ fn http_post_returns_integer() {
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(
-        r#"(net/http-post "http://example.com" "test-body")"#,
-    )
-    .unwrap();
+    let r = scripting::eval_result(r#"(net/http-post "http://example.com" "test-body")"#).unwrap();
     let n: i64 = r.parse().expect("http-post must return a number");
     assert!(n > 0, "request-id must be positive");
 }
@@ -113,10 +111,7 @@ fn tcp_broadcast_non_existent_server_returns_nil_without_crash() {
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(
-        r#"(net/tcp-broadcast 9999999 "hello")"#,
-    )
-    .unwrap();
+    let r = scripting::eval_result(r#"(net/tcp-broadcast 9999999 "hello")"#).unwrap();
     assert_eq!(r, "nil", "broadcast to non-existent server must return nil");
 }
 
@@ -128,10 +123,7 @@ fn tcp_send_to_non_existent_server_returns_nil_without_crash() {
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(
-        r#"(net/tcp-send-to 9999999 1 "hello")"#,
-    )
-    .unwrap();
+    let r = scripting::eval_result(r#"(net/tcp-send-to 9999999 1 "hello")"#).unwrap();
     assert_eq!(r, "nil");
 }
 
@@ -158,7 +150,10 @@ fn ssh_fs_open_function_exists() {
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval_result(r#"(truthy? ssh-fs/open)"#).unwrap();
-    assert_eq!(r, "true", "ssh-fs/open must be defined in the Janet environment");
+    assert_eq!(
+        r, "true",
+        "ssh-fs/open must be defined in the Janet environment"
+    );
 }
 
 // ── ssh-fs/read function exists ───────────────────────────────────────────
@@ -170,7 +165,10 @@ fn ssh_fs_read_function_exists() {
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval_result(r#"(truthy? ssh-fs/read)"#).unwrap();
-    assert_eq!(r, "true", "ssh-fs/read must be defined in the Janet environment");
+    assert_eq!(
+        r, "true",
+        "ssh-fs/read must be defined in the Janet environment"
+    );
 }
 
 // ── net/on-response function exists ──────────────────────────────────────
@@ -246,10 +244,7 @@ fn tcp_connect_returns_positive_integer() {
     let mut ed = setup_background_editor();
     scripting::init(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(
-        r#"(net/tcp-connect "127.0.0.1" 19998)"#,
-    )
-    .unwrap();
+    let r = scripting::eval_result(r#"(net/tcp-connect "127.0.0.1" 19998)"#).unwrap();
     let n: i64 = r.parse().expect("tcp-connect must return a number");
     assert!(n > 0, "conn-id must be positive");
     scripting::eval(&format!("(net/tcp-close {n})"));

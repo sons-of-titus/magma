@@ -41,10 +41,15 @@ fn delete_selection_removes_chars() {
     ed.views.get_mut(&key).unwrap().set_cursor(0);
     ed.selection = Some(crate::kernel::state::mode::Selection::char(0));
     // select "hello" by walking the cursor right
-    for _ in 0..4 { helpers::run(&mut ed, "cursor-right"); }
+    for _ in 0..4 {
+        helpers::run(&mut ed, "cursor-right");
+    }
     helpers::run(&mut ed, "delete-selection");
-    assert!(helpers::buf_text(&ed).starts_with(" world"),
-        "got: {}", helpers::buf_text(&ed));
+    assert!(
+        helpers::buf_text(&ed).starts_with(" world"),
+        "got: {}",
+        helpers::buf_text(&ed)
+    );
     assert_eq!(visual_anchor(&ed), None, "selection is consumed");
 }
 
@@ -58,7 +63,11 @@ fn yank_selection_copies_and_clears() {
     helpers::run(&mut ed, "yank-selection");
     assert_eq!(ed.editing.yanked_text.as_deref(), Some("he"));
     assert_eq!(visual_anchor(&ed), None);
-    assert_eq!(helpers::buf_text(&ed), "hello world", "yank does not delete");
+    assert_eq!(
+        helpers::buf_text(&ed),
+        "hello world",
+        "yank does not delete"
+    );
 }
 
 #[test]

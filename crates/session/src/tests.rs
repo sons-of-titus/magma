@@ -18,7 +18,10 @@ fn the_session_file_lives_under_dot_magma() {
 fn write_then_read_round_trips_every_field() {
     let root = temp_dir("roundtrip");
     let state = SessionState {
-        buffers: vec![SessionBuffer { path: "/a.rs".into(), cursor: 12 }],
+        buffers: vec![SessionBuffer {
+            path: "/a.rs".into(),
+            cursor: 12,
+        }],
         focused: Some("/a.rs".into()),
         breakpoints: vec![SessionBreakpoint {
             file: "/a.rs".into(),
@@ -49,7 +52,10 @@ fn the_file_is_pretty_json_with_a_trailing_newline() {
 
     let text = std::fs::read_to_string(session_file(&root)).unwrap();
     assert!(text.ends_with('\n'));
-    assert!(text.contains("{\n"), "expected pretty-printed JSON, got {text:?}");
+    assert!(
+        text.contains("{\n"),
+        "expected pretty-printed JSON, got {text:?}"
+    );
     assert!(serde_json::from_str::<SessionState>(&text).is_ok());
 
     std::fs::remove_dir_all(&root).ok();
@@ -82,23 +88,30 @@ fn every_field_defaults_when_absent() {
 
 #[test]
 fn a_breakpoint_without_the_enabled_flag_is_enabled() {
-    let state: SessionState = serde_json::from_str(
-        r#"{"breakpoints":[{"file":"/a.rs","line":3}]}"#).unwrap();
+    let state: SessionState =
+        serde_json::from_str(r#"{"breakpoints":[{"file":"/a.rs","line":3}]}"#).unwrap();
     assert!(state.breakpoints[0].enabled);
 }
 
 #[test]
 fn an_explicitly_disabled_breakpoint_stays_disabled() {
-    let state: SessionState = serde_json::from_str(
-        r#"{"breakpoints":[{"file":"/a.rs","line":3,"enabled":false}]}"#).unwrap();
+    let state: SessionState =
+        serde_json::from_str(r#"{"breakpoints":[{"file":"/a.rs","line":3,"enabled":false}]}"#)
+            .unwrap();
     assert!(!state.breakpoints[0].enabled);
 }
 
 #[test]
 fn writing_twice_replaces_the_previous_session() {
     let root = temp_dir("replace");
-    let first = SessionState { focused: Some("/first.rs".into()), ..Default::default() };
-    let second = SessionState { focused: Some("/second.rs".into()), ..Default::default() };
+    let first = SessionState {
+        focused: Some("/first.rs".into()),
+        ..Default::default()
+    };
+    let second = SessionState {
+        focused: Some("/second.rs".into()),
+        ..Default::default()
+    };
 
     write(&root, &first).unwrap();
     write(&root, &second).unwrap();

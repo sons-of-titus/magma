@@ -1,7 +1,7 @@
 use tokio::io::AsyncWriteExt;
 
-use logging::info;
 use kernel::boot::{self, BootOptions};
+use logging::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -33,10 +33,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str())
         .unwrap_or("127.0.0.1:7890");
 
-    let boot = boot::bootstrap(BootOptions {
-        interactive: false,
-        reopen_last_project: false,
-    }, None)?;
+    let boot = boot::bootstrap(
+        BootOptions {
+            interactive: false,
+            reopen_last_project: false,
+        },
+        None,
+    )?;
 
     info!("Starting Magma server on {addr} (headless)");
     let result = boot.runtime.block_on(async move {

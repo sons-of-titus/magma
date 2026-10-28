@@ -12,4 +12,6 @@ pub mod session;
 pub mod types;
 
 pub use session::DebugSession;
-pub use types::{Breakpoint, FrameId, MemoryRegion, SessionId, StackFrame, Thread, ThreadId, Variable};
+pub use types::{
+    Breakpoint, FrameId, MemoryRegion, SessionId, StackFrame, Thread, ThreadId, Variable,
+};

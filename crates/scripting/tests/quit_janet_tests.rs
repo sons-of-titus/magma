@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Quit through the Janet command surface — the guarded Rust `quit` command
 // is what any keymap or plugin binding reaches.
 
@@ -20,8 +21,13 @@ fn quit_refuses_when_dirty_and_is_catchable_from_janet() {
             "(do (var res \"quit\") \
               (try (editor/run-command \"quit\") \
                 ([e] (set res \"refused\"))) \
-              res)");
-        assert_eq!(caught.unwrap(), "\"refused\"", "dirty quit must not go through");
+              res)",
+        );
+        assert_eq!(
+            caught.unwrap(),
+            "\"refused\"",
+            "dirty quit must not go through"
+        );
         assert!(ed.running, "refusal keeps the editor alive");
 
         let r = scripting::eval("(editor/run-command \"force-quit\")");

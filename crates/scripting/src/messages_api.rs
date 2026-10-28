@@ -1,20 +1,17 @@
 //! Janet API functions for the message log, help buffer, and warnings (Sprint 2).
 //! Registered as `extern "C-unwind"` functions via evil-janet.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 
 /// Find or create a special buffer by name, returning its slab key.
 ///
 /// The buffer is marked ephemeral on first creation.  The caller is
 /// responsible for setting read_only before and after writing.
-fn get_or_create_special(
-    ed: &mut kernel::state::Editor,
-    name: &str,
-) -> usize {
+fn get_or_create_special(ed: &mut kernel::state::Editor, name: &str) -> usize {
     for (key, arc) in &ed.buffers {
         if arc.lock().unwrap_or_else(|e| e.into_inner()).name == name {
             return key;
@@ -42,10 +39,13 @@ unsafe extern "C-unwind" fn c_editor_log_message(argc: i32, argv: *mut Janet) ->
             buf.read_only = true;
             buf.ephemeral = true;
         }
-        ed.events.emit_typed(keys::events::BUFFER_MESSAGE_APPENDED, BufferMessageAppendedPayload {
-            buffer_id: key.to_string(),
-            text,
-        });
+        ed.events.emit_typed(
+            keys::events::BUFFER_MESSAGE_APPENDED,
+            BufferMessageAppendedPayload {
+                buffer_id: key.to_string(),
+                text,
+            },
+        );
         conv::nil()
     })
 }
@@ -90,10 +90,13 @@ unsafe extern "C-unwind" fn c_editor_warn(argc: i32, argv: *mut Janet) -> Janet 
             buf.read_only = true;
             buf.ephemeral = true;
         }
-        ed.events.emit_typed(keys::events::WARNING_EMITTED, WarningEmittedPayload {
-            buffer_id: key.to_string(),
-            text,
-        });
+        ed.events.emit_typed(
+            keys::events::WARNING_EMITTED,
+            WarningEmittedPayload {
+                buffer_id: key.to_string(),
+                text,
+            },
+        );
         conv::nil()
     })
 }
@@ -119,9 +122,12 @@ unsafe extern "C-unwind" fn c_editor_show_help(argc: i32, argv: *mut Janet) -> J
         if let Some(win) = ed.view_tree.focused_window_mut() {
             win.buffer_id = Some(key);
         }
-        ed.events.emit_typed(keys::events::HELP_SHOWN, HelpShownPayload {
-            buffer_id: key.to_string(),
-        });
+        ed.events.emit_typed(
+            keys::events::HELP_SHOWN,
+            HelpShownPayload {
+                buffer_id: key.to_string(),
+            },
+        );
         conv::nil()
     })
 }

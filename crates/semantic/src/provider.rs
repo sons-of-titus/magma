@@ -26,16 +26,16 @@ pub enum SymbolKind {
 impl SymbolKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            SymbolKind::Function  => "function",
-            SymbolKind::Method    => "method",
-            SymbolKind::Class     => "class",
-            SymbolKind::Struct    => "struct",
-            SymbolKind::Enum      => "enum",
-            SymbolKind::Variable  => "variable",
-            SymbolKind::Constant  => "constant",
-            SymbolKind::Module    => "module",
+            SymbolKind::Function => "function",
+            SymbolKind::Method => "method",
+            SymbolKind::Class => "class",
+            SymbolKind::Struct => "struct",
+            SymbolKind::Enum => "enum",
+            SymbolKind::Variable => "variable",
+            SymbolKind::Constant => "constant",
+            SymbolKind::Module => "module",
             SymbolKind::Interface => "interface",
-            SymbolKind::Unknown   => "unknown",
+            SymbolKind::Unknown => "unknown",
         }
     }
 }
@@ -83,12 +83,12 @@ pub enum CompletionKind {
 impl CompletionKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            CompletionKind::Text     => "text",
+            CompletionKind::Text => "text",
             CompletionKind::Function => "function",
             CompletionKind::Variable => "variable",
-            CompletionKind::Keyword  => "keyword",
-            CompletionKind::Snippet  => "snippet",
-            CompletionKind::Unknown  => "unknown",
+            CompletionKind::Keyword => "keyword",
+            CompletionKind::Snippet => "snippet",
+            CompletionKind::Unknown => "unknown",
         }
     }
 }

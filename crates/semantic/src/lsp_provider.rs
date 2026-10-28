@@ -4,9 +4,7 @@
 //! response return empty results immediately.  The actual data arrives via
 //! BackgroundEvents that are emitted on the event bus.
 
-use super::provider::{
-    CompletionItem, Diagnostic, LanguageProvider, ParseResult, Symbol,
-};
+use super::provider::{CompletionItem, Diagnostic, LanguageProvider, ParseResult, Symbol};
 
 /// A language provider backed by an LSP server.
 pub struct LspLanguageProvider {
@@ -15,13 +13,18 @@ pub struct LspLanguageProvider {
 
 impl LspLanguageProvider {
     pub fn new(language_id: impl Into<String>) -> Self {
-        LspLanguageProvider { language_id: language_id.into() }
+        LspLanguageProvider {
+            language_id: language_id.into(),
+        }
     }
 }
 
 impl LanguageProvider for LspLanguageProvider {
     fn parse(&self, _text: &str) -> ParseResult {
-        ParseResult { success: true, errors: vec![] }
+        ParseResult {
+            success: true,
+            errors: vec![],
+        }
     }
 
     fn symbols(&self, _text: &str) -> Vec<Symbol> {

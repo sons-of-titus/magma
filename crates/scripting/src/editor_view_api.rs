@@ -1,8 +1,8 @@
 //! Janet API — editor view: set-running, theme, cursor, buffer navigation, input handling.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_editor_set_running(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -22,9 +22,21 @@ unsafe extern "C-unwind" fn c_editor_set_theme(argc: i32, argv: *mut Janet) -> J
             Some(k) => k,
             None => conv::signal_err("editor/set-theme requires a key"),
         };
-        let r = if argc > 1 { conv::get_int(argc, argv, 1).unwrap_or(0) as u8 } else { 0 };
-        let g = if argc > 2 { conv::get_int(argc, argv, 2).unwrap_or(0) as u8 } else { 0 };
-        let b = if argc > 3 { conv::get_int(argc, argv, 3).unwrap_or(0) as u8 } else { 0 };
+        let r = if argc > 1 {
+            conv::get_int(argc, argv, 1).unwrap_or(0) as u8
+        } else {
+            0
+        };
+        let g = if argc > 2 {
+            conv::get_int(argc, argv, 2).unwrap_or(0) as u8
+        } else {
+            0
+        };
+        let b = if argc > 3 {
+            conv::get_int(argc, argv, 3).unwrap_or(0) as u8
+        } else {
+            0
+        };
         ed.theme.insert(key, (r, g, b));
         conv::nil()
     })
@@ -94,11 +106,9 @@ unsafe extern "C-unwind" fn c_editor_on_input(argc: i32, argv: *mut Janet) -> Ja
 }
 
 unsafe extern "C-unwind" fn c_editor_on_input_fn(_argc: i32, _argv: *mut Janet) -> Janet {
-    with_editor(|ed| {
-        match &ed.on_input_fn {
-            Some(name) => conv::string(name),
-            None => conv::nil(),
-        }
+    with_editor(|ed| match &ed.on_input_fn {
+        Some(name) => conv::string(name),
+        None => conv::nil(),
     })
 }
 
@@ -106,7 +116,9 @@ pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
             name: c"editor/set-running".as_ptr() as *const _,
-            cfun: Some(c_editor_set_running as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_set_running as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Set the running flag (false to quit)".as_ptr() as *const _,
         },
         JanetReg {
@@ -126,28 +138,40 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"editor/focused-buffer".as_ptr() as *const _,
-            cfun: Some(c_editor_focused_buffer as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_focused_buffer as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return the slab key of the focused buffer".as_ptr() as *const _,
         },
         JanetReg {
             name: c"editor/buffer-list".as_ptr() as *const _,
-            cfun: Some(c_editor_buffer_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_buffer_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return a list of all buffer slab keys".as_ptr() as *const _,
         },
         JanetReg {
             name: c"editor/consume-input".as_ptr() as *const _,
-            cfun: Some(c_editor_consume_input as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Signal that the current key event is consumed by the on-input interceptor".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_consume_input as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation:
+                c"Signal that the current key event is consumed by the on-input interceptor"
+                    .as_ptr() as *const _,
         },
         JanetReg {
             name: c"editor/on-input".as_ptr() as *const _,
             cfun: Some(c_editor_on_input as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Register a raw input interceptor called before keymap dispatch".as_ptr() as *const _,
+            documentation: c"Register a raw input interceptor called before keymap dispatch"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"editor/on-input-fn".as_ptr() as *const _,
-            cfun: Some(c_editor_on_input_fn as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return the currently registered input interceptor name, or nil".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_on_input_fn as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Return the currently registered input interceptor name, or nil"
+                .as_ptr() as *const _,
         },
     ]
 }

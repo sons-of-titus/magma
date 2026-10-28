@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── editor/set-cursor-shape ───────────────────────────────────────────
@@ -33,8 +34,8 @@ fn editor_set_cursor_shape_underline() {
 #[test]
 fn editor_cursor_shape_returns_current() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(do (editor/set-cursor-shape \"beam\") (editor/cursor-shape))");
+        let result =
+            scripting::eval("(do (editor/set-cursor-shape \"beam\") (editor/cursor-shape))");
         assert_eq!(result, "ok");
         assert_eq!(ed.cursor_shape, "beam");
     });

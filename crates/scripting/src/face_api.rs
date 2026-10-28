@@ -1,12 +1,12 @@
 //! Janet API for face (named style) registry, scope→face mapping,
 //! and the make-style helper (Sprint 6).
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::render::surface::Style;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
+use kernel::render::surface::Style;
 
 /// Look up a keyword key in a struct or table via janet_in.
 unsafe fn lookup(ds: Janet, key_name: &str) -> Janet {
@@ -17,7 +17,9 @@ unsafe fn lookup(ds: Janet, key_name: &str) -> Janet {
 unsafe fn rgb_from_val(v: Janet) -> Option<(u8, u8, u8)> {
     if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
         let arr = &*janet_unwrap_array(v);
-        if arr.count < 3 { return None; }
+        if arr.count < 3 {
+            return None;
+        }
         let r = janet_unwrap_integer(arr.data.add(0).read()) as u8;
         let g = janet_unwrap_integer(arr.data.add(1).read()) as u8;
         let b = janet_unwrap_integer(arr.data.add(2).read()) as u8;
@@ -25,7 +27,9 @@ unsafe fn rgb_from_val(v: Janet) -> Option<(u8, u8, u8)> {
     } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
         let tup = janet_unwrap_tuple(v);
         let head = &*janet_tuple_head(tup);
-        if head.length < 3 { return None; }
+        if head.length < 3 {
+            return None;
+        }
         let r = janet_unwrap_integer(tup.add(0).read()) as u8;
         let g = janet_unwrap_integer(tup.add(1).read()) as u8;
         let b = janet_unwrap_integer(tup.add(2).read()) as u8;
@@ -42,14 +46,18 @@ unsafe fn arr_from_ds(ds: Janet, key: &str) -> Option<(u8, u8, u8)> {
 
 unsafe fn bool_from_ds(ds: Janet, key: &str) -> Option<bool> {
     let v = lookup(ds, key);
-    if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 { return None; }
+    if janet_checktype(v, JanetType_JANET_BOOLEAN) == 0 {
+        return None;
+    }
     Some(janet_unwrap_boolean(v) != 0)
 }
 
 unsafe fn parse_style(v: Janet) -> Style {
     let is_ds = janet_checktype(v, JanetType_JANET_STRUCT) != 0
         || janet_checktype(v, JanetType_JANET_TABLE) != 0;
-    if !is_ds { return Style::default(); }
+    if !is_ds {
+        return Style::default();
+    }
     let default = Style::default();
     Style {
         fg: arr_from_ds(v, "fg").unwrap_or(default.fg),
@@ -77,7 +85,11 @@ unsafe fn style_to_table(s: &Style) -> Janet {
     janet_table_put(tbl, conv::keyword("bold"), conv::boolean(s.bold));
     janet_table_put(tbl, conv::keyword("italic"), conv::boolean(s.italic));
     janet_table_put(tbl, conv::keyword("underline"), conv::boolean(s.underline));
-    janet_table_put(tbl, conv::keyword("strikethrough"), conv::boolean(s.strikethrough));
+    janet_table_put(
+        tbl,
+        conv::keyword("strikethrough"),
+        conv::boolean(s.strikethrough),
+    );
     janet_table_put(tbl, conv::keyword("dim"), conv::boolean(s.dim));
     janet_wrap_table(tbl)
 }
@@ -89,9 +101,16 @@ unsafe extern "C-unwind" fn c_editor_define_face(argc: i32, argv: *mut Janet) ->
         let Some(name) = conv::get_str(argc, argv, 0) else {
             conv::signal_err("editor/define-face requires a face name")
         };
-        let style = if argc > 1 { parse_style(*argv.add(1)) } else { Style::default() };
+        let style = if argc > 1 {
+            parse_style(*argv.add(1))
+        } else {
+            Style::default()
+        };
         ed.faces.insert(name.clone(), style);
-        ed.events.emit_typed(keys::events::FACE_CHANGED, FaceChangedPayload { face: name });
+        ed.events.emit_typed(
+            keys::events::FACE_CHANGED,
+            FaceChangedPayload { face: name },
+        );
         conv::nil()
     })
 }
@@ -156,7 +175,9 @@ pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
             name: c"face/define".as_ptr() as *const _,
-            cfun: Some(c_editor_define_face as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_define_face as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Define or redefine a named face (style)".as_ptr() as *const _,
         },
         JanetReg {
@@ -166,18 +187,26 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"face/make-style".as_ptr() as *const _,
-            cfun: Some(c_editor_make_style as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Create a one-off style and return an integer handle".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_make_style as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Create a one-off style and return an integer handle".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"face/scope-face".as_ptr() as *const _,
-            cfun: Some(c_editor_scope_face as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_scope_face as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Map a scope prefix to a face name".as_ptr() as *const _,
         },
         JanetReg {
             name: c"face/resolve-scope".as_ptr() as *const _,
-            cfun: Some(c_editor_resolve_scope as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Resolve a scope string to the best-matching face name".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_resolve_scope as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Resolve a scope string to the best-matching face name".as_ptr()
+                as *const _,
         },
     ]
 }

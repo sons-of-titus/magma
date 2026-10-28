@@ -1,13 +1,12 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet API tests for the Task System (Phase 4).
 
-use scripting;
 use kernel::task::TaskStatus;
+use scripting;
 
 fn setup_background_editor() -> kernel::state::Editor {
-    let mut ed = kernel::state::Editor::new(
-        Box::new(kernel::storage::disk::DiskFileSystem::new()),
-    );
+    let mut ed = kernel::state::Editor::new(Box::new(kernel::storage::disk::DiskFileSystem::new()));
     kernel::command::builtin::register_builtin_commands(&mut ed);
     let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
     let (bg_sender, _bg_receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -53,7 +52,9 @@ fn task_define_multiple_tasks() {
 fn task_define_with_deps_array() {
     janet_test!(ed, {
         let dep_id: u64 = scripting::eval_result(r#"(task/define "lint" "cargo clippy")"#)
-            .unwrap().parse().unwrap();
+            .unwrap()
+            .parse()
+            .unwrap();
         scripting::eval(&format!(r#"(task/define "ci" "echo ci" @[{}])"#, dep_id));
         let ci_id = ed.task_scheduler.task_by_name("ci").unwrap();
         let ci_task = ed.task_scheduler.tasks.get(&ci_id).unwrap();
@@ -67,7 +68,9 @@ fn task_define_with_deps_array() {
 fn task_status_pending_after_define() {
     janet_test!(ed, {
         let id: u64 = scripting::eval_result(r#"(task/define "build" "cargo build")"#)
-            .unwrap().parse().unwrap();
+            .unwrap()
+            .parse()
+            .unwrap();
         let status = scripting::eval_result(&format!("(task/status {})", id)).unwrap();
         assert_eq!(status, ":pending");
     });
@@ -118,7 +121,9 @@ fn task_list_entries_have_expected_keys() {
 fn task_output_nil_for_pending_task() {
     janet_test!(ed, {
         let id: u64 = scripting::eval_result(r#"(task/define "build" "cargo build")"#)
-            .unwrap().parse().unwrap();
+            .unwrap()
+            .parse()
+            .unwrap();
         let r = scripting::eval_result(&format!("(nil? (task/output {}))", id)).unwrap();
         assert_eq!(r, "true");
     });
@@ -138,7 +143,9 @@ fn task_cancel_unknown_id_is_noop() {
 fn task_cancel_pending_task_sets_cancelled() {
     janet_test!(ed, {
         let id: u64 = scripting::eval_result(r#"(task/define "build" "cargo build")"#)
-            .unwrap().parse().unwrap();
+            .unwrap()
+            .parse()
+            .unwrap();
         scripting::eval(&format!("(task/cancel {})", id));
         let status = scripting::eval_result(&format!("(task/status {})", id)).unwrap();
         assert_eq!(status, ":cancelled");
@@ -152,7 +159,10 @@ fn task_cancel_pending_task_sets_cancelled() {
 fn task_on_complete_requires_function() {
     janet_test!(ed, {
         let r = scripting::eval(r#"(task/on-complete 1 "not-a-function")"#);
-        assert_ne!(r, "ok", "task/on-complete with non-function must signal error");
+        assert_ne!(
+            r, "ok",
+            "task/on-complete with non-function must signal error"
+        );
     });
 }
 
@@ -187,8 +197,11 @@ fn task_run_succeeds_with_background() {
     assert_eq!(r, "ok", "task/run with background must succeed");
 
     let id = ed.task_scheduler.task_by_name("echo-test").unwrap();
-    assert_eq!(ed.task_scheduler.status(id), Some(&TaskStatus::Running),
-        "task must be Running after task/run");
+    assert_eq!(
+        ed.task_scheduler.status(id),
+        Some(&TaskStatus::Running),
+        "task must be Running after task/run"
+    );
 }
 
 #[test]
@@ -222,7 +235,10 @@ fn task_detect_project_cargo_seeds_configs() {
         let _ = std::fs::remove_file(dir.join("package.json"));
         let _ = std::fs::remove_file(dir.join("Makefile"));
 
-        scripting::eval(&format!(r#"(task/detect-project "{}")"#, dir.to_string_lossy()));
+        scripting::eval(&format!(
+            r#"(task/detect-project "{}")"#,
+            dir.to_string_lossy()
+        ));
         assert!(ed.project_manager.run_configs.named("build").is_some());
         assert!(ed.project_manager.run_configs.named("test").is_some());
         assert!(ed.project_manager.run_configs.named("run").is_some());

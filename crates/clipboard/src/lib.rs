@@ -16,7 +16,9 @@ impl Default for Clipboard {
 impl Clipboard {
     pub fn new() -> Self {
         let clip = arboard::Clipboard::new().ok();
-        Clipboard { inner: Mutex::new(clip) }
+        Clipboard {
+            inner: Mutex::new(clip),
+        }
     }
 
     pub fn get_text(&self) -> Option<String> {
@@ -30,8 +32,9 @@ impl Clipboard {
 
     pub fn set_text(&self, text: &str) {
         if let Ok(mut guard) = self.inner.lock()
-            && let Some(ref mut clip) = *guard {
-                let _ = clip.set_text(text);
-            }
+            && let Some(ref mut clip) = *guard
+        {
+            let _ = clip.set_text(text);
+        }
     }
 }

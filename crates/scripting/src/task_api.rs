@@ -10,14 +10,14 @@
 //!   (task/output id)                       → {:stdout :stderr :exit-code :duration-ms} or nil
 //!   (task/detect-project root)             → nil
 
-use std::sync::{LazyLock, Mutex};
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 
 /// Send+Sync wrapper for Janet function references.
 #[derive(Clone, Copy)]
@@ -29,14 +29,17 @@ unsafe impl Sync for JanetSend {}
 /// context captured at registration — a callback must run with its
 /// registrar's trust, not whatever context happens to be current when the
 /// task finishes (F-28).
-static TASK_COMPLETE_CALLBACKS: LazyLock<Mutex<HashMap<u64, (JanetSend, super::extension_api::ExecContext)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static TASK_COMPLETE_CALLBACKS: LazyLock<
+    Mutex<HashMap<u64, (JanetSend, super::extension_api::ExecContext)>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Drop all stored callbacks — called at the start of `janet_bridge::init()`.
 pub fn reset_task_complete_callbacks() {
     if let Ok(mut cbs) = TASK_COMPLETE_CALLBACKS.lock() {
         for (JanetSend(fn_val), _) in cbs.values() {
-            unsafe { janet_gcunroot(*fn_val); }
+            unsafe {
+                janet_gcunroot(*fn_val);
+            }
         }
         cbs.clear();
     }
@@ -71,7 +74,9 @@ unsafe extern "C-unwind" fn c_task_define(argc: i32, argv: *mut Janet) -> Janet 
             }
         }
 
-        let id = ed.task_scheduler.define(name, command, HashMap::new(), deps);
+        let id = ed
+            .task_scheduler
+            .define(name, command, HashMap::new(), deps);
         conv::integer(id as i32)
     })
 }
@@ -105,15 +110,21 @@ unsafe extern "C-unwind" fn c_task_run(argc: i32, argv: *mut Janet) -> Janet {
             Err(e) => conv::signal_err(&e),
         };
 
-        let task_name = ed.task_scheduler.tasks.get(&id)
+        let task_name = ed
+            .task_scheduler
+            .tasks
+            .get(&id)
             .map(|t| t.name.clone())
             .unwrap_or_default();
         // Phase 9: register task in work scheduler so progress can be observed
         ed.scheduler.register_task(id, &task_name);
-        ed.events.emit_typed(keys::events::TASK_STARTED, TaskStartedPayload {
-            id: id.to_string(),
-            name: task_name,
-        });
+        ed.events.emit_typed(
+            keys::events::TASK_STARTED,
+            TaskStartedPayload {
+                id: id.to_string(),
+                name: task_name,
+            },
+        );
 
         conv::integer(id as i32)
     })
@@ -131,7 +142,11 @@ unsafe extern "C-unwind" fn c_task_cancel(argc: i32, argv: *mut Janet) -> Janet 
         // Cancel legacy task/spawn task
         ed.io.tasks.remove(&id);
         // Clean up on-complete callback (new system)
-        if let Some((JanetSend(fn_val), _)) = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+        if let Some((JanetSend(fn_val), _)) = TASK_COMPLETE_CALLBACKS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id)
+        {
             janet_gcunroot(fn_val);
         }
         // Clean up task/spawn stored function (legacy)
@@ -157,7 +172,9 @@ unsafe extern "C-unwind" fn c_task_on_complete(argc: i32, argv: *mut Janet) -> J
         }
         janet_gcroot(fn_val);
         let ctx = super::extension_api::current_context();
-        TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner())
+        TASK_COMPLETE_CALLBACKS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(id, (JanetSend(fn_val), ctx));
         conv::nil()
     })
@@ -169,11 +186,11 @@ unsafe extern "C-unwind" fn c_task_status(argc: i32, argv: *mut Janet) -> Janet 
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         let kw = match ed.task_scheduler.status(id) {
             None => "not-found",
-            Some(kernel::task::TaskStatus::Pending)    => "pending",
-            Some(kernel::task::TaskStatus::Running)    => "running",
-            Some(kernel::task::TaskStatus::Completed)  => "completed",
-            Some(kernel::task::TaskStatus::Failed(_))  => "failed",
-            Some(kernel::task::TaskStatus::Cancelled)  => "cancelled",
+            Some(kernel::task::TaskStatus::Pending) => "pending",
+            Some(kernel::task::TaskStatus::Running) => "running",
+            Some(kernel::task::TaskStatus::Completed) => "completed",
+            Some(kernel::task::TaskStatus::Failed(_)) => "failed",
+            Some(kernel::task::TaskStatus::Cancelled) => "cancelled",
         };
         conv::keyword(kw)
     })
@@ -186,17 +203,17 @@ unsafe extern "C-unwind" fn c_task_list(_argc: i32, _argv: *mut Janet) -> Janet 
         let arr = janet_wrap_array(janet_array(count as i32));
         for task in ed.task_scheduler.tasks.values() {
             let status_kw = match &task.status {
-                kernel::task::TaskStatus::Pending   => "pending",
-                kernel::task::TaskStatus::Running   => "running",
+                kernel::task::TaskStatus::Pending => "pending",
+                kernel::task::TaskStatus::Running => "running",
                 kernel::task::TaskStatus::Completed => "completed",
                 kernel::task::TaskStatus::Failed(_) => "failed",
                 kernel::task::TaskStatus::Cancelled => "cancelled",
             };
             let tbl = janet_wrap_table(janet_table(4));
             let t = janet_unwrap_table(tbl);
-            janet_table_put(t, conv::keyword("id"),      conv::integer(task.id as i32));
-            janet_table_put(t, conv::keyword("name"),    conv::string(&task.name));
-            janet_table_put(t, conv::keyword("status"),  conv::keyword(status_kw));
+            janet_table_put(t, conv::keyword("id"), conv::integer(task.id as i32));
+            janet_table_put(t, conv::keyword("name"), conv::string(&task.name));
+            janet_table_put(t, conv::keyword("status"), conv::keyword(status_kw));
             janet_table_put(t, conv::keyword("command"), conv::string(&task.command));
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
@@ -213,10 +230,14 @@ unsafe extern "C-unwind" fn c_task_output(argc: i32, argv: *mut Janet) -> Janet 
             Some(out) => {
                 let tbl = janet_wrap_table(janet_table(4));
                 let t = janet_unwrap_table(tbl);
-                janet_table_put(t, conv::keyword("stdout"),      conv::string(&out.stdout));
-                janet_table_put(t, conv::keyword("stderr"),      conv::string(&out.stderr));
-                janet_table_put(t, conv::keyword("exit-code"),   conv::integer(out.exit_code));
-                janet_table_put(t, conv::keyword("duration-ms"), conv::integer(out.duration_ms as i32));
+                janet_table_put(t, conv::keyword("stdout"), conv::string(&out.stdout));
+                janet_table_put(t, conv::keyword("stderr"), conv::string(&out.stderr));
+                janet_table_put(t, conv::keyword("exit-code"), conv::integer(out.exit_code));
+                janet_table_put(
+                    t,
+                    conv::keyword("duration-ms"),
+                    conv::integer(out.duration_ms as i32),
+                );
                 tbl
             }
         }
@@ -248,15 +269,16 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
 
 /// Called from `JanetRuntime::execute_task_complete_callback` when a task finishes.
 /// Fires the stored callback with the task output as argument.
-pub(crate) fn execute_task_complete_callback(
-    ed: &mut kernel::state::Editor,
-    task_id: u64,
-) {
+pub(crate) fn execute_task_complete_callback(ed: &mut kernel::state::Editor, task_id: u64) {
     let entry = {
-        let mut cbs = TASK_COMPLETE_CALLBACKS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cbs = TASK_COMPLETE_CALLBACKS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         cbs.remove(&task_id)
     };
-    let Some((JanetSend(fn_ref), ctx)) = entry else { return };
+    let Some((JanetSend(fn_ref), ctx)) = entry else {
+        return;
+    };
 
     unsafe {
         janet_gcunroot(fn_ref);
@@ -264,10 +286,14 @@ pub(crate) fn execute_task_complete_callback(
             Some(out) => {
                 let tbl = janet_wrap_table(janet_table(4));
                 let t = janet_unwrap_table(tbl);
-                janet_table_put(t, conv::keyword("stdout"),      conv::string(&out.stdout));
-                janet_table_put(t, conv::keyword("stderr"),      conv::string(&out.stderr));
-                janet_table_put(t, conv::keyword("exit-code"),   conv::integer(out.exit_code));
-                janet_table_put(t, conv::keyword("duration-ms"), conv::integer(out.duration_ms as i32));
+                janet_table_put(t, conv::keyword("stdout"), conv::string(&out.stdout));
+                janet_table_put(t, conv::keyword("stderr"), conv::string(&out.stderr));
+                janet_table_put(t, conv::keyword("exit-code"), conv::integer(out.exit_code));
+                janet_table_put(
+                    t,
+                    conv::keyword("duration-ms"),
+                    conv::integer(out.duration_ms as i32),
+                );
                 tbl
             }
             None => conv::nil(),
@@ -276,7 +302,9 @@ pub(crate) fn execute_task_complete_callback(
             let func = janet_unwrap_function(fn_ref);
             let args = [arg];
             let fiber = janet_fiber(func, 64, 1, args.as_ptr());
-            if fiber.is_null() { return; }
+            if fiber.is_null() {
+                return;
+            }
             let mut out: Janet = std::mem::zeroed();
             janet_continue(fiber, janet_wrap_nil(), &mut out);
         });

@@ -33,7 +33,11 @@ fn insertion_strictly_after_anchor_shifts_by_len() {
 #[test]
 fn insertion_exactly_at_anchor_respects_affinity() {
     let edit = Edit::insert(6, "XY");
-    assert_eq!(moved(at(6, Affinity::Before), &edit), 6, "Before stays left");
+    assert_eq!(
+        moved(at(6, Affinity::Before), &edit),
+        6,
+        "Before stays left"
+    );
     assert_eq!(moved(at(6, Affinity::After), &edit), 8, "After rides right");
 }
 
@@ -63,11 +67,23 @@ fn deletion_ending_at_anchor_collapses_to_start() {
 fn replacement_anchor_on_boundaries_lands_on_span_edges() {
     // "hello world" → "hell[]rld": old byte 8 ('r') survives at new offset 6.
     let edit = Edit::replace(4..8, "[]");
-    assert_eq!(moved(at(8, Affinity::After), &edit), 6, "rides surviving text");
-    assert_eq!(moved(at(8, Affinity::Before), &edit), 4, "hugs replaced text");
+    assert_eq!(
+        moved(at(8, Affinity::After), &edit),
+        6,
+        "rides surviving text"
+    );
+    assert_eq!(
+        moved(at(8, Affinity::Before), &edit),
+        4,
+        "hugs replaced text"
+    );
     assert_eq!(moved(at(4, Affinity::Before), &edit), 4);
     assert_eq!(moved(at(4, Affinity::After), &edit), 6);
-    assert_eq!(moved(at(6, Affinity::After), &edit), 6, "inside deleted span");
+    assert_eq!(
+        moved(at(6, Affinity::After), &edit),
+        6,
+        "inside deleted span"
+    );
 }
 
 #[test]
@@ -107,9 +123,9 @@ fn multi_edit_transaction_transforms_every_region() {
     // "abZefghQQij".
     let edits = vec![Edit::replace(2..4, "Z"), Edit::insert(8, "QQ")];
     let cases: &[(usize, Affinity, usize)] = &[
-        (0, Affinity::Before, 0),   // before all
-        (3, Affinity::After, 3),    // inside first: s + L = 2 + 1
-        (6, Affinity::Before, 5),   // gap between edits: 6 + (-1)
+        (0, Affinity::Before, 0),  // before all
+        (3, Affinity::After, 3),   // inside first: s + L = 2 + 1
+        (6, Affinity::Before, 5),  // gap between edits: 6 + (-1)
         (8, Affinity::After, 9),   // on second edit's start: 8 - 1 + 2
         (10, Affinity::After, 11), // after all: 10 - 1 + 2
     ];
@@ -153,16 +169,16 @@ fn undo_returns_typed_cursor_to_insertion_start() {
     // Undo (inverse transaction) must bring it exactly back to 0.
     let mut doc = Document::new();
     let txn = doc
-        .commit(
-            crate::kernel::text_engine::transaction::TransactionBuilder::new()
-                .insert(0, "abc"),
-        )
+        .commit(crate::kernel::text_engine::transaction::TransactionBuilder::new().insert(0, "abc"))
         .unwrap()
         .unwrap();
     let cursor = txn.transform_anchor(at(0, Affinity::After));
     assert_eq!(cursor.offset, 3);
 
-    let undo = doc.commit(txn.invert(TransactionOrigin::Undo)).unwrap().unwrap();
+    let undo = doc
+        .commit(txn.invert(TransactionOrigin::Undo))
+        .unwrap()
+        .unwrap();
     assert_eq!(doc.text(), "");
     assert_eq!(undo.transform_anchor(cursor).offset, 0);
 }

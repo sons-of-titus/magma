@@ -3,11 +3,11 @@
 
 use std::path::PathBuf;
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 use kernel::storage::WorkspaceManager;
 
 /// (project/workspace?) → {:root "..." :members [...]} or nil
@@ -21,13 +21,21 @@ unsafe extern "C-unwind" fn c_project_workspace(_argc: i32, _argv: *mut Janet) -
         };
         let tbl = janet_wrap_table(janet_table(2));
         let t = janet_unwrap_table(tbl);
-        janet_table_put(t, conv::keyword("root"), conv::string(&ws.root.to_string_lossy()));
+        janet_table_put(
+            t,
+            conv::keyword("root"),
+            conv::string(&ws.root.to_string_lossy()),
+        );
         let members_arr = janet_wrap_array(janet_array(ws.members.len() as i32));
         for m in &ws.members {
             let mtbl = janet_wrap_table(janet_table(2));
             let mt = janet_unwrap_table(mtbl);
             janet_table_put(mt, conv::keyword("name"), conv::string(&m.name));
-            janet_table_put(mt, conv::keyword("root"), conv::string(&m.root.to_string_lossy()));
+            janet_table_put(
+                mt,
+                conv::keyword("root"),
+                conv::string(&m.root.to_string_lossy()),
+            );
             janet_array_push(janet_unwrap_array(members_arr), mtbl);
         }
         janet_table_put(t, conv::keyword("members"), members_arr);
@@ -52,7 +60,11 @@ unsafe extern "C-unwind" fn c_project_workspace_members(_argc: i32, _argv: *mut 
             let tbl = janet_wrap_table(janet_table(2));
             let t = janet_unwrap_table(tbl);
             janet_table_put(t, conv::keyword("name"), conv::string(&m.name));
-            janet_table_put(t, conv::keyword("root"), conv::string(&m.root.to_string_lossy()));
+            janet_table_put(
+                t,
+                conv::keyword("root"),
+                conv::string(&m.root.to_string_lossy()),
+            );
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
         arr
@@ -86,14 +98,26 @@ unsafe extern "C-unwind" fn c_project_set_workspace_members(argc: i32, argv: *mu
             let root_ptr = janet_in(elem, conv::keyword("root"));
             let name = if janet_checktype(name_ptr, JanetType_JANET_STRING) != 0 {
                 let ptr = janet_unwrap_string(name_ptr);
-                if ptr.is_null() { continue; }
-                std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
-            } else { continue; };
+                if ptr.is_null() {
+                    continue;
+                }
+                std::ffi::CStr::from_ptr(ptr as *const i8)
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                continue;
+            };
             let root_str = if janet_checktype(root_ptr, JanetType_JANET_STRING) != 0 {
                 let ptr = janet_unwrap_string(root_ptr);
-                if ptr.is_null() { continue; }
-                std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy().into_owned()
-            } else { continue; };
+                if ptr.is_null() {
+                    continue;
+                }
+                std::ffi::CStr::from_ptr(ptr as *const i8)
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                continue;
+            };
             members.push(kernel::state::ProjectMember {
                 name,
                 root: PathBuf::from(root_str),
@@ -135,24 +159,34 @@ unsafe extern "C-unwind" fn c_project_set_current_member(argc: i32, argv: *mut J
         let project_name = ed.project_manager.project.name.clone().unwrap_or_default();
         // Save current project state to the registry
         if let Some(ref cur) = ed.project_manager.current_project.clone() {
-            ed.project_manager.projects.insert(cur.clone(), ed.project_manager.project.clone());
+            ed.project_manager
+                .projects
+                .insert(cur.clone(), ed.project_manager.project.clone());
         }
         // Load the member project state from registry or create fresh
-        let member_state = ed.project_manager.projects.get(&name).cloned().unwrap_or_else(|| {
-            kernel::project::Project {
+        let member_state = ed
+            .project_manager
+            .projects
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| kernel::project::Project {
                 root: Some(member_root.clone()),
                 name: Some(name.clone()),
                 ..Default::default()
-            }
-        });
+            });
         ed.project_manager.project = member_state;
         ed.project_manager.current_project = Some(name.clone());
-        ed.project_manager.projects.insert(name.clone(), ed.project_manager.project.clone());
-        ed.events.emit_typed(keys::events::PROJECT_MEMBER_FOCUSED, ProjectMemberFocusedPayload {
-            name,
-            root: member_root.to_string_lossy().into_owned(),
-            project_name,
-        });
+        ed.project_manager
+            .projects
+            .insert(name.clone(), ed.project_manager.project.clone());
+        ed.events.emit_typed(
+            keys::events::PROJECT_MEMBER_FOCUSED,
+            ProjectMemberFocusedPayload {
+                name,
+                root: member_root.to_string_lossy().into_owned(),
+                project_name,
+            },
+        );
         conv::nil()
     })
 }
@@ -170,10 +204,13 @@ unsafe extern "C-unwind" fn c_workspace_save(_argc: i32, _argv: *mut Janet) -> J
             Ok(()) => {
                 let snapshot = WorkspaceManager::snapshot(ed);
                 let count = snapshot.buffers.len();
-                ed.events.emit_typed(keys::events::WORKSPACE_SAVED, WorkspaceSavedPayload {
-                    path: path.to_string_lossy().into_owned(),
-                    buffer_count: count.to_string(),
-                });
+                ed.events.emit_typed(
+                    keys::events::WORKSPACE_SAVED,
+                    WorkspaceSavedPayload {
+                        path: path.to_string_lossy().into_owned(),
+                        buffer_count: count.to_string(),
+                    },
+                );
                 let tbl = janet_wrap_table(janet_table(1));
                 let t = janet_unwrap_table(tbl);
                 janet_table_put(t, conv::keyword("status"), conv::string("ok"));
@@ -199,10 +236,13 @@ unsafe extern "C-unwind" fn c_workspace_restore(_argc: i32, _argv: *mut Janet) -
         let path = WorkspaceManager::workspace_dir().join("workspace.json");
         match WorkspaceManager::restore(ed) {
             Ok(count) => {
-                ed.events.emit_typed(keys::events::WORKSPACE_RESTORED, WorkspaceRestoredPayload {
-                    path: path.to_string_lossy().into_owned(),
-                    buffer_count: count.to_string(),
-                });
+                ed.events.emit_typed(
+                    keys::events::WORKSPACE_RESTORED,
+                    WorkspaceRestoredPayload {
+                        path: path.to_string_lossy().into_owned(),
+                        buffer_count: count.to_string(),
+                    },
+                );
                 let tbl = janet_wrap_table(janet_table(2));
                 let t = janet_unwrap_table(tbl);
                 janet_table_put(t, conv::keyword("status"), conv::string("ok"));
@@ -311,47 +351,68 @@ pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
             name: c"project/workspace?".as_ptr() as *const _,
-            cfun: Some(c_project_workspace as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_workspace as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return the workspace descriptor or nil".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/workspace-members".as_ptr() as *const _,
-            cfun: Some(c_project_workspace_members as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_workspace_members
+                    as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return workspace member subprojects".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/set-workspace-members".as_ptr() as *const _,
-            cfun: Some(c_project_set_workspace_members as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_set_workspace_members
+                    as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Set the workspace member list".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/set-current-member".as_ptr() as *const _,
-            cfun: Some(c_project_set_current_member as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_set_current_member
+                    as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Switch the active workspace member".as_ptr() as *const _,
         },
         JanetReg {
             name: c"workspace/save".as_ptr() as *const _,
             cfun: Some(c_workspace_save as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Snapshot editor state to ~/.magma/workspace/workspace.json".as_ptr() as *const _,
+            documentation: c"Snapshot editor state to ~/.magma/workspace/workspace.json".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"workspace/restore".as_ptr() as *const _,
-            cfun: Some(c_workspace_restore as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Restore editor state from ~/.magma/workspace/workspace.json".as_ptr() as *const _,
+            cfun: Some(
+                c_workspace_restore as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Restore editor state from ~/.magma/workspace/workspace.json".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"workspace/session-save".as_ptr() as *const _,
-            cfun: Some(c_workspace_session_save as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_workspace_session_save as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Save the current state as a named session".as_ptr() as *const _,
         },
         JanetReg {
             name: c"workspace/session-load".as_ptr() as *const _,
-            cfun: Some(c_workspace_session_load as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_workspace_session_load as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Load a named session and apply it to the editor".as_ptr() as *const _,
         },
         JanetReg {
             name: c"workspace/session-list".as_ptr() as *const _,
-            cfun: Some(c_workspace_session_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_workspace_session_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return an array of saved session names".as_ptr() as *const _,
         },
     ]

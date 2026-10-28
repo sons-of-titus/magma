@@ -1,8 +1,8 @@
 //! Janet API functions for the keymap system — registered as `extern "C"` via evil-janet.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 /// (keymap/set key command &opt layer)
 unsafe extern "C-unwind" fn c_keymap_set(argc: i32, argv: *mut Janet) -> Janet {
@@ -36,9 +36,10 @@ unsafe extern "C-unwind" fn c_keymap_unset(argc: i32, argv: *mut Janet) -> Janet
 unsafe extern "C-unwind" fn c_keymap_describe(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         if let Some(key) = conv::get_str(argc, argv, 0)
-            && let Some(cmd) = ed.keymaps.describe(&key) {
-                return conv::string(&cmd);
-            }
+            && let Some(cmd) = ed.keymaps.describe(&key)
+        {
+            return conv::string(&cmd);
+        }
         conv::nil()
     })
 }
@@ -67,11 +68,7 @@ unsafe extern "C-unwind" fn c_keymap_list(argc: i32, argv: *mut Janet) -> Janet 
                     janet_array_push(janet_unwrap_array(pair), conv::string(v));
                     janet_array_push(janet_unwrap_array(arr), pair);
                 }
-                janet_table_put(
-                    janet_unwrap_table(tbl),
-                    conv::keyword(layer),
-                    arr,
-                );
+                janet_table_put(janet_unwrap_table(tbl), conv::keyword(layer), arr);
             }
             tbl
         }
@@ -134,7 +131,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"keymap/push-layer".as_ptr() as *const _,
-            cfun: Some(c_keymap_push_layer as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_keymap_push_layer as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Activate a keymap layer".as_ptr() as *const _,
         },
         JanetReg {
@@ -144,7 +143,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"keymap/list-layers".as_ptr() as *const _,
-            cfun: Some(c_keymap_list_layers as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_keymap_list_layers as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"List active layers".as_ptr() as *const _,
         },
     ]

@@ -29,7 +29,9 @@ fn editor_with(content: &str) -> Editor {
 fn synthetic_doc(lines: usize) -> String {
     let mut s = String::with_capacity(lines * 40);
     for i in 0..lines {
-        s.push_str(&format!("fn item_{i}() {{ let value_{i} = {i} * 2; }} // fn keyword\n"));
+        s.push_str(&format!(
+            "fn item_{i}() {{ let value_{i} = {i} * 2; }} // fn keyword\n"
+        ));
     }
     s
 }
@@ -40,7 +42,9 @@ struct Stats {
 
 impl Stats {
     fn new() -> Self {
-        Stats { samples_ns: Vec::new() }
+        Stats {
+            samples_ns: Vec::new(),
+        }
     }
 
     fn push(&mut self, ns: u64) {
@@ -68,7 +72,10 @@ fn main() {
     println!("── Frame pipeline (kernel render boundary) ─────────────");
 
     // Surface render of 80x40 visible cells, document size swept.
-    for (label, lines) in [("render 80x40 @ 1k lines", 1_000), ("render 80x40 @ 100k lines", 100_000)] {
+    for (label, lines) in [
+        ("render 80x40 @ 1k lines", 1_000),
+        ("render 80x40 @ 100k lines", 100_000),
+    ] {
         let ed = editor_with(&synthetic_doc(lines));
         let mut stats = Stats::new();
         for _ in 0..300 {
@@ -149,7 +156,10 @@ fn main() {
         let t = Instant::now();
         let rec = index::record_from_text("big.rs", 1, &doc);
         let elapsed = t.elapsed();
-        println!("{lines:>7}-line extraction {:>10.1}ms ({} symbols)",
-            elapsed.as_secs_f64() * 1000.0, rec.symbols.len());
+        println!(
+            "{lines:>7}-line extraction {:>10.1}ms ({} symbols)",
+            elapsed.as_secs_f64() * 1000.0,
+            rec.symbols.len()
+        );
     }
 }

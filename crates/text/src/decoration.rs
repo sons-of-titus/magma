@@ -7,9 +7,22 @@
 #[derive(Debug, Clone)]
 pub enum Decoration {
     /// Text overlaid at a buffer position without displacing existing content.
-    InlineText { line: usize, col: usize, text: String, face: String },
+    InlineText {
+        line: usize,
+        col: usize,
+        text: String,
+        face: String,
+    },
     /// Text appended after the last character on the line (padded by one space).
-    EndOfLine { line: usize, text: String, face: String },
+    EndOfLine {
+        line: usize,
+        text: String,
+        face: String,
+    },
     /// Text rendered in a left-margin column reserved by `render_frame`.
-    LinePrefix { line: usize, text: String, face: String },
+    LinePrefix {
+        line: usize,
+        text: String,
+        face: String,
+    },
 }

@@ -4,9 +4,9 @@
 //!   (toolchain/find name) → path string or nil
 //!   (toolchain/find-extended name) → path string or nil
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 /// (toolchain/find name) → path or nil
 /// Resolve an executable against $PATH so scripts can give a clear

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use kernel::command::args::ArgValue;
-use kernel::command::CommandResult;
 use super::ScriptRuntime;
+use kernel::command::CommandResult;
+use kernel::command::args::ArgValue;
+use std::collections::HashMap;
 
 pub struct NullRuntime;
 
@@ -32,7 +32,11 @@ impl ScriptRuntime for NullRuntime {
         Err(format!("Scripting runtime not available: {expr}"))
     }
 
-    fn load_file(&mut self, _editor: &mut kernel::state::Editor, _path: &str) -> Result<(), String> {
+    fn load_file(
+        &mut self,
+        _editor: &mut kernel::state::Editor,
+        _path: &str,
+    ) -> Result<(), String> {
         Err("Scripting runtime not available".to_string())
     }
 

@@ -1,7 +1,7 @@
 //! Janet API for overlay (floating window) management (Sprint 11).
 
-use evil_janet::*;
 use super::{conv, with_editor};
+use evil_janet::*;
 use kernel::state::Overlay;
 
 /// (editor/overlay-create x y w h buf-id) → overlay-id
@@ -22,7 +22,15 @@ unsafe extern "C-unwind" fn c_overlay_create(argc: i32, argv: *mut Janet) -> Jan
         };
         let id = ed.next_overlay_id;
         ed.next_overlay_id += 1;
-        ed.overlays.push(Overlay { id, x, y, width: w, height: h, buffer_id: buf_id, z_order: 0 });
+        ed.overlays.push(Overlay {
+            id,
+            x,
+            y,
+            width: w,
+            height: h,
+            buffer_id: buf_id,
+            z_order: 0,
+        });
         conv::integer(id as i32)
     })
 }
@@ -45,8 +53,8 @@ unsafe extern "C-unwind" fn c_overlay_destroy(argc: i32, argv: *mut Janet) -> Ja
 unsafe extern "C-unwind" fn c_overlay_move(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let x  = conv::get_int(argc, argv, 1).unwrap_or(0) as u16;
-        let y  = conv::get_int(argc, argv, 2).unwrap_or(0) as u16;
+        let x = conv::get_int(argc, argv, 1).unwrap_or(0) as u16;
+        let y = conv::get_int(argc, argv, 2).unwrap_or(0) as u16;
         if let Some(ov) = ed.overlays.iter_mut().find(|o| o.id == id) {
             ov.x = x;
             ov.y = y;
@@ -63,11 +71,15 @@ unsafe extern "C-unwind" fn c_overlay_list(_argc: i32, _argv: *mut Janet) -> Jan
         let arr = janet_array(ed.overlays.len() as i32);
         for ov in &ed.overlays {
             let tbl = janet_table(6);
-            janet_table_put(tbl, conv::keyword("id"),      conv::integer(ov.id as i32));
-            janet_table_put(tbl, conv::keyword("x"),       conv::integer(ov.x as i32));
-            janet_table_put(tbl, conv::keyword("y"),       conv::integer(ov.y as i32));
-            janet_table_put(tbl, conv::keyword("width"),   conv::integer(ov.width as i32));
-            janet_table_put(tbl, conv::keyword("height"),  conv::integer(ov.height as i32));
+            janet_table_put(tbl, conv::keyword("id"), conv::integer(ov.id as i32));
+            janet_table_put(tbl, conv::keyword("x"), conv::integer(ov.x as i32));
+            janet_table_put(tbl, conv::keyword("y"), conv::integer(ov.y as i32));
+            janet_table_put(tbl, conv::keyword("width"), conv::integer(ov.width as i32));
+            janet_table_put(
+                tbl,
+                conv::keyword("height"),
+                conv::integer(ov.height as i32),
+            );
             janet_table_put(tbl, conv::keyword("z-order"), conv::integer(ov.z_order));
             janet_array_push(arr, janet_wrap_table(tbl));
         }

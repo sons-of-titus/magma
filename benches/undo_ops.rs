@@ -1,8 +1,6 @@
 use kernel::text_engine::edit::Edit;
 use kernel::text_engine::revision::Revision;
-use kernel::text_engine::transaction::{
-    CommittedEdit, EditTransaction, TransactionOrigin,
-};
+use kernel::text_engine::transaction::{CommittedEdit, EditTransaction, TransactionOrigin};
 use kernel::text_engine::undo::UndoHistory;
 
 fn insert_txn(rev: u64, offset: usize, text: &str) -> EditTransaction {
@@ -53,7 +51,11 @@ fn main() {
     {
         let mut tree = UndoHistory::new();
         for i in 0..500u64 {
-            tree.record(insert_txn(i, i as usize, "hello"), i as usize, i as usize + 5);
+            tree.record(
+                insert_txn(i, i as usize, "hello"),
+                i as usize,
+                i as usize + 5,
+            );
         }
         let start = std::time::Instant::now();
         for _ in 0..500 {

@@ -9,12 +9,12 @@
 
 use std::cell::RefCell;
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::extension::{Capability, ExtensionManifest};
+use evil_janet::*;
 use kernel::event::keys;
 use kernel::event::payload::{ExtensionDeclaredPayload, ExtensionUndeclaredPayload};
+use kernel::extension::{Capability, ExtensionManifest};
 
 thread_local! {
     /// Execution contexts, outermost first.  Core (empty stack) is
@@ -35,9 +35,7 @@ pub(crate) enum ExecContext {
 }
 
 pub(crate) fn current_context() -> ExecContext {
-    CONTEXT_STACK.with(|s| {
-        s.borrow().last().cloned().unwrap_or(ExecContext::Core)
-    })
+    CONTEXT_STACK.with(|s| s.borrow().last().cloned().unwrap_or(ExecContext::Core))
 }
 
 pub(crate) fn push_context(ctx: ExecContext) {
@@ -45,7 +43,9 @@ pub(crate) fn push_context(ctx: ExecContext) {
 }
 
 pub(crate) fn pop_context() {
-    CONTEXT_STACK.with(|s| { s.borrow_mut().pop(); });
+    CONTEXT_STACK.with(|s| {
+        s.borrow_mut().pop();
+    });
 }
 
 /// Run `f` inside `ctx`, restoring the previous context afterwards.
@@ -61,12 +61,10 @@ pub(super) fn check_capability(cap: &Capability) -> bool {
     match current_context() {
         ExecContext::Core => true,
         ExecContext::Revoked(_) => false,
-        ExecContext::Extension(ref name) => {
-            super::EDITOR_PTR.with(|cell| match cell.get() {
-                Some(ptr) => unsafe { (&*ptr).extension_registry.has_capability(name, cap) },
-                None => false,
-            })
-        }
+        ExecContext::Extension(ref name) => super::EDITOR_PTR.with(|cell| match cell.get() {
+            Some(ptr) => unsafe { (&*ptr).extension_registry.has_capability(name, cap) },
+            None => false,
+        }),
     }
 }
 
@@ -108,8 +106,7 @@ unsafe extern "C-unwind" fn c_extension_declare(argc: i32, argv: *mut Janet) -> 
                     if janet_checktype(elem, JanetType_JANET_KEYWORD) != 0 {
                         let ptr = janet_unwrap_keyword(elem);
                         if !ptr.is_null() {
-                            let s = std::ffi::CStr::from_ptr(ptr as *const i8)
-                                .to_string_lossy();
+                            let s = std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy();
                             if let Some(cap) = Capability::from_str(&s) {
                                 capabilities.push(cap);
                             }
@@ -119,17 +116,17 @@ unsafe extern "C-unwind" fn c_extension_declare(argc: i32, argv: *mut Janet) -> 
             }
         }
 
-        let manifest = ExtensionManifest::new(name.clone(), version.clone(), capabilities, entry_point);
+        let manifest =
+            ExtensionManifest::new(name.clone(), version.clone(), capabilities, entry_point);
         ed.extension_registry.register(manifest);
 
         // Activate the extension context for this loading session
-        crate::extension_api::push_context(
-            ExecContext::Extension(name.clone()));
+        crate::extension_api::push_context(ExecContext::Extension(name.clone()));
 
-        ed.events.emit_typed(keys::events::EXTENSION_DECLARED, ExtensionDeclaredPayload {
-            name,
-            version,
-        });
+        ed.events.emit_typed(
+            keys::events::EXTENSION_DECLARED,
+            ExtensionDeclaredPayload { name, version },
+        );
 
         conv::keyword("ok")
     })
@@ -155,7 +152,10 @@ unsafe extern "C-unwind" fn c_extension_undeclare(_argc: i32, _argv: *mut Janet)
             }
         });
         if let Some(name) = revoked {
-            ed.events.emit_typed(keys::events::EXTENSION_UNDECLARED, ExtensionUndeclaredPayload { name });
+            ed.events.emit_typed(
+                keys::events::EXTENSION_UNDECLARED,
+                ExtensionUndeclaredPayload { name },
+            );
         }
         conv::nil()
     })
@@ -219,9 +219,13 @@ unsafe fn manifest_to_janet(manifest: &kernel::extension::ExtensionManifest) -> 
     unsafe {
         let tbl = janet_wrap_table(janet_table(4));
         let t = janet_unwrap_table(tbl);
-        janet_table_put(t, conv::keyword("name"),        conv::string(&manifest.name));
-        janet_table_put(t, conv::keyword("version"),     conv::string(&manifest.version));
-        janet_table_put(t, conv::keyword("entry-point"), conv::string(&manifest.entry_point));
+        janet_table_put(t, conv::keyword("name"), conv::string(&manifest.name));
+        janet_table_put(t, conv::keyword("version"), conv::string(&manifest.version));
+        janet_table_put(
+            t,
+            conv::keyword("entry-point"),
+            conv::string(&manifest.entry_point),
+        );
 
         let cap_arr = janet_wrap_array(janet_array(manifest.capabilities.len() as i32));
         for cap in &manifest.capabilities {
@@ -236,28 +240,40 @@ pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
             name: c"extension/declare".as_ptr() as *const _,
-            cfun: Some(c_extension_declare as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Register an extension manifest and activate its capability context".as_ptr() as *const _,
+            cfun: Some(
+                c_extension_declare as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Register an extension manifest and activate its capability context"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"extension/undeclare".as_ptr() as *const _,
-            cfun: Some(c_extension_undeclare as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_extension_undeclare as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Clear the active extension context after loading".as_ptr() as *const _,
         },
         JanetReg {
             name: c"extension/manifest".as_ptr() as *const _,
-            cfun: Some(c_extension_manifest as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return the manifest table for the currently-active extension, or nil".as_ptr() as *const _,
+            cfun: Some(
+                c_extension_manifest as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Return the manifest table for the currently-active extension, or nil"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"extension/list".as_ptr() as *const _,
             cfun: Some(c_extension_list as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return an array of all registered extension manifests".as_ptr() as *const _,
+            documentation: c"Return an array of all registered extension manifests".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"extension/capabilities".as_ptr() as *const _,
-            cfun: Some(c_extension_capabilities as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Return the capability keywords declared by the named extension".as_ptr() as *const _,
+            cfun: Some(
+                c_extension_capabilities as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Return the capability keywords declared by the named extension"
+                .as_ptr() as *const _,
         },
     ]
 }

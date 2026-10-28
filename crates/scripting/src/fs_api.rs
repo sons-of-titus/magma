@@ -1,7 +1,7 @@
 //! Janet C functions for filesystem primitives (Sprint 12).
 
-use evil_janet::*;
 use super::conv;
+use evil_janet::*;
 use kernel::extension::Capability;
 
 /// (fs/cwd) → string

@@ -10,9 +10,7 @@
 use super::line_index::LineIndex;
 use super::revision::Revision;
 use super::rope::Rope;
-use super::transaction::{
-    CommittedEdit, EditTransaction, TransactionBuilder, TransactionError,
-};
+use super::transaction::{CommittedEdit, EditTransaction, TransactionBuilder, TransactionError};
 
 /// Transactions retained for incremental consumers.  Past this window,
 /// `changes_since` reports `None` and consumers must re-sync from scratch.
@@ -96,9 +94,7 @@ impl Document {
         if seen < oldest {
             return None;
         }
-        let pos = self
-            .history
-            .partition_point(|t| t.revision_before < seen);
+        let pos = self.history.partition_point(|t| t.revision_before < seen);
         Some(&self.history[pos..])
     }
 
@@ -145,7 +141,10 @@ impl Document {
             .iter()
             .map(|edit| CommittedEdit {
                 edit: edit.clone(),
-                old_text: self.rope.slice(edit.range.start, edit.range.end).into_owned(),
+                old_text: self
+                    .rope
+                    .slice(edit.range.start, edit.range.end)
+                    .into_owned(),
             })
             .collect();
 

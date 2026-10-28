@@ -138,7 +138,9 @@ impl Buffer {
     }
 
     pub fn lines(&self) -> Vec<String> {
-        (0..self.line_count()).filter_map(|i| self.line(i)).collect()
+        (0..self.line_count())
+            .filter_map(|i| self.line(i))
+            .collect()
     }
 
     pub fn char_at(&self, offset: usize) -> Option<char> {
@@ -171,7 +173,8 @@ impl Buffer {
         let li = self.doc.line_index();
         let line = li.line_of(offset);
         let start = li.line_start(line).unwrap_or(0);
-        let column: usize = self.doc_text_slice(start, offset)
+        let column: usize = self
+            .doc_text_slice(start, offset)
             .chars()
             .map(|c| c.len_utf16())
             .sum();
@@ -186,7 +189,11 @@ impl Buffer {
         let line = li.line_of(offset);
         let start = li.line_start(line).unwrap_or(0);
         let column = self.doc.chars_between(start, offset);
-        Position { line, column, offset }
+        Position {
+            line,
+            column,
+            offset,
+        }
     }
 
     // ── The mutation gateway (§2.1) ──
@@ -240,13 +247,15 @@ impl Buffer {
     ) -> Option<EditTransaction> {
         let len = self.doc.len();
         let mut cursor_after = cursor_before;
-        let builder = edits.iter().fold(TransactionBuilder::new(), |b, &(off, text)| {
-            let off = off.min(len);
-            if off <= cursor_before {
-                cursor_after += text.len();
-            }
-            b.insert(off, text)
-        });
+        let builder = edits
+            .iter()
+            .fold(TransactionBuilder::new(), |b, &(off, text)| {
+                let off = off.min(len);
+                if off <= cursor_before {
+                    cursor_after += text.len();
+                }
+                b.insert(off, text)
+            });
         self.commit(builder, cursor_before, cursor_after)
     }
 
@@ -323,11 +332,10 @@ impl Buffer {
                 .iter()
                 .map(|ce| ce.edit.clone())
                 .collect();
-            let builder =
-                edits.into_iter().fold(
-                    TransactionBuilder::new().with_origin(TransactionOrigin::Redo),
-                    TransactionBuilder::push,
-                );
+            let builder = edits.into_iter().fold(
+                TransactionBuilder::new().with_origin(TransactionOrigin::Redo),
+                TransactionBuilder::push,
+            );
             let _ = self.commit(builder, restore, restore);
         }
         self.undo.finish_redo(end);
@@ -391,50 +399,39 @@ impl Buffer {
     /// `None` when `rev` has fallen out of the retention window and the
     /// caller must re-sync from the document.
     #[allow(clippy::type_complexity)]
-    pub fn changes_since(
-        &self,
-        rev: u64,
-    ) -> Option<Vec<(u64, u64, Vec<(usize, usize, usize)>)>> {
+    pub fn changes_since(&self, rev: u64) -> Option<Vec<(u64, u64, Vec<(usize, usize, usize)>)>> {
         use crate::revision::Revision;
-        self.doc
-            .changes_since(Revision(rev))
-            .map(|txns| {
-                txns.iter()
-                    .map(|t| {
-                        (
-                            t.revision_before.0,
-                            t.revision_after.0,
-                            t.edits
-                                .iter()
-                                .map(|ce| {
-                                    (
-                                        ce.edit.start(),
-                                        ce.edit.end(),
-                                        ce.edit.start() + ce.edit.inserted_len(),
-                                    )
-                                })
-                                .collect(),
-                        )
-                    })
-                    .collect()
-            })
+        self.doc.changes_since(Revision(rev)).map(|txns| {
+            txns.iter()
+                .map(|t| {
+                    (
+                        t.revision_before.0,
+                        t.revision_after.0,
+                        t.edits
+                            .iter()
+                            .map(|ce| {
+                                (
+                                    ce.edit.start(),
+                                    ce.edit.end(),
+                                    ce.edit.start() + ce.edit.inserted_len(),
+                                )
+                            })
+                            .collect(),
+                    )
+                })
+                .collect()
+        })
     }
 
     // ── Diagnostics ──
 
     /// Replace the LSP-owned diagnostics for this buffer.
-    pub fn set_lsp_diagnostics(
-        &mut self,
-        diagnostics: Vec<crate::diagnostic::Diagnostic>,
-    ) {
+    pub fn set_lsp_diagnostics(&mut self, diagnostics: Vec<crate::diagnostic::Diagnostic>) {
         self.lsp_diagnostics = diagnostics;
     }
 
     /// Replace the tool-owned (build/compiler) diagnostics for this buffer.
-    pub fn set_tool_diagnostics(
-        &mut self,
-        diagnostics: Vec<crate::diagnostic::Diagnostic>,
-    ) {
+    pub fn set_tool_diagnostics(&mut self, diagnostics: Vec<crate::diagnostic::Diagnostic>) {
         self.tool_diagnostics = diagnostics;
     }
 
@@ -468,4 +465,3 @@ impl Buffer {
         self.marks.len()
     }
 }
-

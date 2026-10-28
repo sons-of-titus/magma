@@ -1,7 +1,7 @@
 //! Janet API for UI customisation: theme loading and per-buffer header lines.
 
-use evil_janet::*;
 use super::{conv, with_editor};
+use evil_janet::*;
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,9 @@ unsafe extern "C-unwind" fn c_buffer_set_header_line(argc: i32, argv: *mut Janet
 /// Return the current header line text for the buffer, or nil if none is set.
 unsafe extern "C-unwind" fn c_buffer_header_line(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
-        let Some(buf_key) = (unsafe { conv::get_int(argc, argv, 0) }) else { return conv::nil(); };
+        let Some(buf_key) = (unsafe { conv::get_int(argc, argv, 0) }) else {
+            return conv::nil();
+        };
         if let Some(arc) = ed.buffers.get(buf_key as usize) {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             match &buf.header_line {

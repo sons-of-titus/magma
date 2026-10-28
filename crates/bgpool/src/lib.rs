@@ -62,9 +62,11 @@ impl Lane {
     fn slots(&self) -> usize {
         match self {
             Lane::Foreground => 2,
-            Lane::Indexing => {
-                (std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) - 1).max(1)
-            }
+            Lane::Indexing => (std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+                - 1)
+            .max(1),
             Lane::Maintenance => 1,
         }
     }
@@ -79,7 +81,11 @@ impl<E> Pool<E> {
             superseded: Mutex::new(std::collections::HashMap::new()),
             tickets: std::sync::atomic::AtomicU64::new(0),
         };
-        Self { runtime, sender, lanes: Arc::new(lanes) }
+        Self {
+            runtime,
+            sender,
+            lanes: Arc::new(lanes),
+        }
     }
 
     /// Submit blocking work on a priority lane with an optional coalesce
@@ -89,10 +95,17 @@ impl<E> Pool<E> {
     where
         F: FnOnce() + Send + 'static,
     {
-        let ticket = self.lanes.tickets.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let ticket = self
+            .lanes
+            .tickets
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let coalesce_key = coalesce.map(|k| (lane, k.to_string()));
         if let Some(key) = &coalesce_key {
-            let mut guard = self.lanes.superseded.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self
+                .lanes
+                .superseded
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             guard.insert(key.clone(), ticket);
         }
         let semaphore = lane.semaphore(&self.lanes);

@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── agent/status ──────────────────────────────────────────────────────────────
@@ -44,29 +45,29 @@ fn agent_list_initially_empty() {
 #[test]
 fn agent_on_event_accepts_thought_callback() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            r#"(event/on "agent-thought" (fn [p] nil))"#
+        let result = scripting::eval(r#"(event/on "agent-thought" (fn [p] nil))"#);
+        assert!(
+            !result.contains("error"),
+            "event/on agent-thought failed: {result}"
         );
-        assert!(!result.contains("error"), "event/on agent-thought failed: {result}");
     });
 }
 
 #[test]
 fn agent_on_event_accepts_result_callback() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            r#"(event/on "agent-result" (fn [p] nil))"#
+        let result = scripting::eval(r#"(event/on "agent-result" (fn [p] nil))"#);
+        assert!(
+            !result.contains("error"),
+            "event/on agent-result failed: {result}"
         );
-        assert!(!result.contains("error"), "event/on agent-result failed: {result}");
     });
 }
 
 #[test]
 fn agent_on_event_janet_helper_works() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            r#"(agent/on-event "action" (fn [p] nil))"#
-        );
+        let result = scripting::eval(r#"(agent/on-event "action" (fn [p] nil))"#);
         assert!(!result.contains("error"), "agent/on-event failed: {result}");
     });
 }

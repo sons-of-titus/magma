@@ -153,4 +153,3 @@ pub(super) fn sync_debug(app: &AppWindow, state: &mut AppState) {
     app.set_debug_console(ModelRc::new(VecModel::from(snapshot.console)));
     app.set_debug_console_total(snapshot.console_total as i32);
 }
-

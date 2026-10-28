@@ -1,8 +1,8 @@
 //! Janet API — register: get, set, yanked-text.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_register_get(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
@@ -50,7 +50,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"register/yanked-text".as_ptr() as *const _,
-            cfun: Some(c_register_yanked_text as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_register_yanked_text as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return the last yanked/deleted text".as_ptr() as *const _,
         },
     ]

@@ -1,9 +1,9 @@
 //! Janet API for buffer decoration layers (Sprint 11b).
 
-use evil_janet::*;
 use super::{conv, with_editor};
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 
 /// (buffer/decor-set-inline buf layer line col text face)
 unsafe extern "C-unwind" fn c_decor_set_inline(argc: i32, argv: *mut Janet) -> Janet {
@@ -12,16 +12,19 @@ unsafe extern "C-unwind" fn c_decor_set_inline(argc: i32, argv: *mut Janet) -> J
             conv::signal_err("buffer/decor-set-inline requires a buffer key")
         };
         let layer = conv::get_str(argc, argv, 1).unwrap_or_default();
-        let line  = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
-        let col   = conv::get_int(argc, argv, 3).unwrap_or(0) as usize;
-        let text  = conv::get_str(argc, argv, 4).unwrap_or_default();
-        let face  = conv::get_str(argc, argv, 5).unwrap_or_default();
+        let line = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
+        let col = conv::get_int(argc, argv, 3).unwrap_or(0) as usize;
+        let text = conv::get_str(argc, argv, 4).unwrap_or_default();
+        let face = conv::get_str(argc, argv, 5).unwrap_or_default();
         if let Some(view) = ed.view_of_buffer_mut(buf_key) {
             view.decor_set_inline(&layer, line, col, text, face.clone());
-            ed.events.emit_typed(keys::events::DECORATION_CHANGED, DecorationChangedPayload {
-                buffer: buf_key.to_string(),
-                layer,
-            });
+            ed.events.emit_typed(
+                keys::events::DECORATION_CHANGED,
+                DecorationChangedPayload {
+                    buffer: buf_key.to_string(),
+                    layer,
+                },
+            );
         }
         conv::nil()
     })
@@ -34,15 +37,18 @@ unsafe extern "C-unwind" fn c_decor_set_eol(argc: i32, argv: *mut Janet) -> Jane
             conv::signal_err("buffer/decor-set-eol requires a buffer key")
         };
         let layer = conv::get_str(argc, argv, 1).unwrap_or_default();
-        let line  = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
-        let text  = conv::get_str(argc, argv, 3).unwrap_or_default();
-        let face  = conv::get_str(argc, argv, 4).unwrap_or_default();
+        let line = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
+        let text = conv::get_str(argc, argv, 3).unwrap_or_default();
+        let face = conv::get_str(argc, argv, 4).unwrap_or_default();
         if let Some(view) = ed.view_of_buffer_mut(buf_key) {
             view.decor_set_eol(&layer, line, text, face);
-            ed.events.emit_typed(keys::events::DECORATION_CHANGED, DecorationChangedPayload {
-                buffer: buf_key.to_string(),
-                layer,
-            });
+            ed.events.emit_typed(
+                keys::events::DECORATION_CHANGED,
+                DecorationChangedPayload {
+                    buffer: buf_key.to_string(),
+                    layer,
+                },
+            );
         }
         conv::nil()
     })
@@ -55,15 +61,18 @@ unsafe extern "C-unwind" fn c_decor_set_prefix(argc: i32, argv: *mut Janet) -> J
             conv::signal_err("buffer/decor-set-prefix requires a buffer key")
         };
         let layer = conv::get_str(argc, argv, 1).unwrap_or_default();
-        let line  = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
-        let text  = conv::get_str(argc, argv, 3).unwrap_or_default();
-        let face  = conv::get_str(argc, argv, 4).unwrap_or_default();
+        let line = conv::get_int(argc, argv, 2).unwrap_or(0) as usize;
+        let text = conv::get_str(argc, argv, 3).unwrap_or_default();
+        let face = conv::get_str(argc, argv, 4).unwrap_or_default();
         if let Some(view) = ed.view_of_buffer_mut(buf_key) {
             view.decor_set_prefix(&layer, line, text, face);
-            ed.events.emit_typed(keys::events::DECORATION_CHANGED, DecorationChangedPayload {
-                buffer: buf_key.to_string(),
-                layer,
-            });
+            ed.events.emit_typed(
+                keys::events::DECORATION_CHANGED,
+                DecorationChangedPayload {
+                    buffer: buf_key.to_string(),
+                    layer,
+                },
+            );
         }
         conv::nil()
     })
@@ -109,33 +118,38 @@ unsafe extern "C-unwind" fn c_decor_get(argc: i32, argv: *mut Janet) -> Janet {
         };
         let decorations = match view.decoration_layers.get(&layer) {
             Some(v) => v,
-            None    => return janet_wrap_array(janet_array(0)),
+            None => return janet_wrap_array(janet_array(0)),
         };
         let arr = janet_array(decorations.len() as i32);
         for d in decorations {
             use kernel::text_engine::Decoration;
             let tbl = janet_table(5);
             match d {
-                Decoration::InlineText { line, col, text, face } => {
-                    janet_table_put(tbl, conv::keyword("type"),  conv::keyword("inline"));
-                    janet_table_put(tbl, conv::keyword("line"),  conv::integer(*line as i32));
-                    janet_table_put(tbl, conv::keyword("col"),   conv::integer(*col as i32));
-                    janet_table_put(tbl, conv::keyword("text"),  conv::string(text));
-                    janet_table_put(tbl, conv::keyword("face"),  conv::string(face));
+                Decoration::InlineText {
+                    line,
+                    col,
+                    text,
+                    face,
+                } => {
+                    janet_table_put(tbl, conv::keyword("type"), conv::keyword("inline"));
+                    janet_table_put(tbl, conv::keyword("line"), conv::integer(*line as i32));
+                    janet_table_put(tbl, conv::keyword("col"), conv::integer(*col as i32));
+                    janet_table_put(tbl, conv::keyword("text"), conv::string(text));
+                    janet_table_put(tbl, conv::keyword("face"), conv::string(face));
                 }
                 Decoration::EndOfLine { line, text, face } => {
-                    janet_table_put(tbl, conv::keyword("type"),  conv::keyword("eol"));
-                    janet_table_put(tbl, conv::keyword("line"),  conv::integer(*line as i32));
-                    janet_table_put(tbl, conv::keyword("col"),   conv::integer(0));
-                    janet_table_put(tbl, conv::keyword("text"),  conv::string(text));
-                    janet_table_put(tbl, conv::keyword("face"),  conv::string(face));
+                    janet_table_put(tbl, conv::keyword("type"), conv::keyword("eol"));
+                    janet_table_put(tbl, conv::keyword("line"), conv::integer(*line as i32));
+                    janet_table_put(tbl, conv::keyword("col"), conv::integer(0));
+                    janet_table_put(tbl, conv::keyword("text"), conv::string(text));
+                    janet_table_put(tbl, conv::keyword("face"), conv::string(face));
                 }
                 Decoration::LinePrefix { line, text, face } => {
-                    janet_table_put(tbl, conv::keyword("type"),  conv::keyword("prefix"));
-                    janet_table_put(tbl, conv::keyword("line"),  conv::integer(*line as i32));
-                    janet_table_put(tbl, conv::keyword("col"),   conv::integer(0));
-                    janet_table_put(tbl, conv::keyword("text"),  conv::string(text));
-                    janet_table_put(tbl, conv::keyword("face"),  conv::string(face));
+                    janet_table_put(tbl, conv::keyword("type"), conv::keyword("prefix"));
+                    janet_table_put(tbl, conv::keyword("line"), conv::integer(*line as i32));
+                    janet_table_put(tbl, conv::keyword("col"), conv::integer(0));
+                    janet_table_put(tbl, conv::keyword("text"), conv::string(text));
+                    janet_table_put(tbl, conv::keyword("face"), conv::string(face));
                 }
             }
             janet_array_push(arr, janet_wrap_table(tbl));
@@ -151,7 +165,8 @@ unsafe extern "C-unwind" fn c_decor_count(argc: i32, argv: *mut Janet) -> Janet 
             return conv::integer(0);
         };
         let layer = conv::get_str(argc, argv, 1).unwrap_or_default();
-        let count = ed.view_of_buffer(buf_key)
+        let count = ed
+            .view_of_buffer(buf_key)
             .map(|v| v.decor_count_layer(&layer))
             .unwrap_or(0);
         conv::integer(count as i32)
@@ -173,7 +188,8 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"buffer/decor-set-prefix".as_ptr() as *const _,
             cfun: Some(c_decor_set_prefix),
-            documentation: c"Set a line-prefix decoration in the gutter margin".as_ptr() as *const _,
+            documentation: c"Set a line-prefix decoration in the gutter margin".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"buffer/decor-clear-layer".as_ptr() as *const _,

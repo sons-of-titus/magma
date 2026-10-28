@@ -18,13 +18,26 @@ pub struct IndexedSymbol {
 /// Language family for extraction pattern selection.
 fn family(language: &str) -> &'static [&'static str] {
     match language {
-        "rust" => &["fn", "struct", "enum", "trait", "impl", "mod", "type", "const"],
+        "rust" => &[
+            "fn", "struct", "enum", "trait", "impl", "mod", "type", "const",
+        ],
         "python" => &["def", "class"],
-        "javascript" | "typescript" => &["function", "class", "const", "let", "var", "interface", "type", "enum"],
+        "javascript" | "typescript" => &[
+            "function",
+            "class",
+            "const",
+            "let",
+            "var",
+            "interface",
+            "type",
+            "enum",
+        ],
         "go" => &["func", "type", "package"],
         "c" | "cpp" => &["struct", "class", "enum", "union", "namespace", "typedef"],
         "java" | "kotlin" | "swift" => &["class", "interface", "enum", "func", "fun"],
-        "janet" | "clojure" | "lisp" | "scheme" => &["defn", "defmacro", "def", "defprotocol", "defrecord"],
+        "janet" | "clojure" | "lisp" | "scheme" => {
+            &["defn", "defmacro", "def", "defprotocol", "defrecord"]
+        }
         "ruby" => &["def", "class", "module"],
         "zig" => &["fn", "struct", "enum", "union", "error", "const"],
         "nim" => &["proc", "func", "type", "macro", "template"],
@@ -101,13 +114,19 @@ pub fn extract(file: &str, text: &str) -> Vec<IndexedSymbol> {
             }
         }
         for kw in keywords {
-            let Some(rest) = line.strip_prefix(kw) else { continue };
+            let Some(rest) = line.strip_prefix(kw) else {
+                continue;
+            };
             // Private/public markers: `defn-`, `defn+`.
-            let rest = rest.strip_prefix('-').or_else(|| rest.strip_prefix('+')).unwrap_or(rest);
+            let rest = rest
+                .strip_prefix('-')
+                .or_else(|| rest.strip_prefix('+'))
+                .unwrap_or(rest);
             if !rest.starts_with(|c: char| c.is_whitespace() || c == '(') {
                 continue;
             }
-            let name: String = rest.trim_start()
+            let name: String = rest
+                .trim_start()
                 .trim_start_matches('(')
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == '!')
@@ -115,7 +134,11 @@ pub fn extract(file: &str, text: &str) -> Vec<IndexedSymbol> {
             if name.is_empty() || name.parse::<f64>().is_ok() {
                 continue;
             }
-            out.push(IndexedSymbol { name, kind: (*kw).to_string(), line: i });
+            out.push(IndexedSymbol {
+                name,
+                kind: (*kw).to_string(),
+                line: i,
+            });
             break;
         }
     }

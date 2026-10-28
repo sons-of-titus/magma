@@ -5,9 +5,9 @@
 //! rejected on arrival (rework.md §2).  Document sync (`lsp/did-open`,
 //! `lsp/did-change`, `lsp/did-close`) sends real document versions.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::semantic::lsp_proto;
 use kernel::state::Editor;
 
@@ -31,8 +31,14 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
         if ed.lsp.get(&language).is_some() {
             return conv::nil();
         }
-        let Some(bg) = ed.background.clone() else { return conv::nil() };
-        let root = ed.project_manager.project.root.clone()
+        let Some(bg) = ed.background.clone() else {
+            return conv::nil();
+        };
+        let root = ed
+            .project_manager
+            .project
+            .root
+            .clone()
             .map(|p| p.to_string_lossy().into_owned());
 
         // The initialize handshake blocks up to 10s — it must never block
@@ -42,9 +48,16 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
             .name(format!("lsp-init-{language}"))
             .spawn(move || {
                 let result = kernel::semantic::lsp::LspHandle::start(
-                    &command, &args, &language, root, bg.clone()).map(std::sync::Arc::new);
+                    &command,
+                    &args,
+                    &language,
+                    root,
+                    bg.clone(),
+                )
+                .map(std::sync::Arc::new);
                 bg.send_event(kernel::runtime::BackgroundEvent::Lsp(
-                    kernel::semantic::Event::Started { language, result }));
+                    kernel::semantic::Event::Started { language, result },
+                ));
             })
             .map_err(|e| debug!("lsp-init thread: {e}"))
             .ok();
@@ -94,59 +107,66 @@ unsafe extern "C-unwind" fn c_lsp_did_close(argc: i32, argv: *mut Janet) -> Jane
 }
 
 /// (lsp/notify language-id method &opt json-params) → nil
-unsafe extern "C-unwind" fn c_lsp_notify(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    let language = match conv::get_str(argc, argv, 0) {
-        Some(l) => l.to_string(),
-        None => return conv::nil(),
-    };
-    let method = match conv::get_str(argc, argv, 1) {
-        Some(m) => m.to_string(),
-        None => return conv::nil(),
-    };
-    let params: serde_json::Value = match conv::get_str(argc, argv, 2) {
-        Some(p) if !p.is_empty() && p != "{}" =>
-            serde_json::from_str(&p).unwrap_or(serde_json::json!({})),
-        _ => serde_json::json!({}),
-    };
+unsafe extern "C-unwind" fn c_lsp_notify(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let language = match conv::get_str(argc, argv, 0) {
+            Some(l) => l.to_string(),
+            None => return conv::nil(),
+        };
+        let method = match conv::get_str(argc, argv, 1) {
+            Some(m) => m.to_string(),
+            None => return conv::nil(),
+        };
+        let params: serde_json::Value = match conv::get_str(argc, argv, 2) {
+            Some(p) if !p.is_empty() && p != "{}" => {
+                serde_json::from_str(&p).unwrap_or(serde_json::json!({}))
+            }
+            _ => serde_json::json!({}),
+        };
 
-    with_editor(|ed| {
-        if let Some(server) = ed.lsp.get(&language) {
-            server.notify(&method, params);
-        }
-        conv::nil()
-    })
-}}
+        with_editor(|ed| {
+            if let Some(server) = ed.lsp.get(&language) {
+                server.notify(&method, params);
+            }
+            conv::nil()
+        })
+    }
+}
 
 /// (lsp/request language-id method params) → nil
 /// Sends a generic request against the focused buffer's current revision.
 /// The response arrives via the `lsp-response` event.
-unsafe extern "C-unwind" fn c_lsp_request(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    let language = match conv::get_str(argc, argv, 0) {
-        Some(l) => l.to_string(),
-        None => return conv::nil(),
-    };
-    let method = match conv::get_str(argc, argv, 1) {
-        Some(m) => m.to_string(),
-        None => return conv::nil(),
-    };
-    let params: serde_json::Value = match conv::get_str(argc, argv, 2) {
-        Some(p) => serde_json::from_str(&p).unwrap_or(serde_json::json!({})),
-        None => serde_json::json!({}),
-    };
-    with_editor(|ed| {
-        if let Some(server) = ed.lsp.get(&language) {
-            let (buf_key, revision) = focused_revision(ed);
-            server.request(&method, params, buf_key, revision);
-        }
-        conv::nil()
-    })
-}}
+unsafe extern "C-unwind" fn c_lsp_request(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let language = match conv::get_str(argc, argv, 0) {
+            Some(l) => l.to_string(),
+            None => return conv::nil(),
+        };
+        let method = match conv::get_str(argc, argv, 1) {
+            Some(m) => m.to_string(),
+            None => return conv::nil(),
+        };
+        let params: serde_json::Value = match conv::get_str(argc, argv, 2) {
+            Some(p) => serde_json::from_str(&p).unwrap_or(serde_json::json!({})),
+            None => serde_json::json!({}),
+        };
+        with_editor(|ed| {
+            if let Some(server) = ed.lsp.get(&language) {
+                let (buf_key, revision) = focused_revision(ed);
+                server.request(&method, params, buf_key, revision);
+            }
+            conv::nil()
+        })
+    }
+}
 
 /// Focused buffer key and its current revision — the request context every
 /// document-scoped LSP request carries.
 fn focused_revision(ed: &Editor) -> (usize, u64) {
     let buf_key = kernel::input::focused_buffer_id(ed);
-    let revision = ed.buffers.get(buf_key)
+    let revision = ed
+        .buffers
+        .get(buf_key)
         .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
         .unwrap_or(0);
     (buf_key, revision)
@@ -159,17 +179,28 @@ unsafe fn with_server_and_doc(
     ed: &mut Editor,
     argc: i32,
     argv: *mut Janet,
-    f: impl FnOnce(&std::sync::Arc<kernel::semantic::lsp::LspHandle>, usize, &std::sync::Arc<std::sync::Mutex<kernel::text_engine::Buffer>>, String),
+    f: impl FnOnce(
+        &std::sync::Arc<kernel::semantic::lsp::LspHandle>,
+        usize,
+        &std::sync::Arc<std::sync::Mutex<kernel::text_engine::Buffer>>,
+        String,
+    ),
 ) {
     unsafe {
-        let Some(language) = conv::get_str(argc, argv, 0)else { return };
+        let Some(language) = conv::get_str(argc, argv, 0) else {
+            return;
+        };
         let buf_key = if argc > 1 {
             conv::get_int(argc, argv, 1).unwrap_or(-1).max(0) as usize
         } else {
             kernel::input::focused_buffer_id(ed)
         };
-        let Some(server) = ed.lsp.get(&language).cloned() else { return };
-        let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
+        let Some(server) = ed.lsp.get(&language).cloned() else {
+            return;
+        };
+        let Some(arc) = ed.buffers.get(buf_key).cloned() else {
+            return;
+        };
         let uri = {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
             match buf.path.as_deref() {
@@ -197,16 +228,22 @@ unsafe extern "C-unwind" fn c_lsp_hover(argc: i32, argv: *mut Janet) -> Janet {
 /// (lsp/code-actions language-id) → nil
 unsafe extern "C-unwind" fn c_lsp_code_actions(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        request_at_cursor(ed, argc, argv, "textDocument/codeAction", |line, character| {
-            serde_json::json!({
-                "textDocument": { "uri": "" },
-                "range": {
-                    "start": { "line": line, "character": character },
-                    "end": { "line": line, "character": character + 1 },
-                },
-                "context": { "diagnostics": [] },
-            })
-        });
+        request_at_cursor(
+            ed,
+            argc,
+            argv,
+            "textDocument/codeAction",
+            |line, character| {
+                serde_json::json!({
+                    "textDocument": { "uri": "" },
+                    "range": {
+                        "start": { "line": line, "character": character },
+                        "end": { "line": line, "character": character + 1 },
+                    },
+                    "context": { "diagnostics": [] },
+                })
+            },
+        );
         conv::nil()
     })
 }
@@ -214,12 +251,18 @@ unsafe extern "C-unwind" fn c_lsp_code_actions(argc: i32, argv: *mut Janet) -> J
 /// (lsp/completion language-id) → nil
 unsafe extern "C-unwind" fn c_lsp_completion(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        request_at_cursor(ed, argc, argv, "textDocument/completion", |line, character| {
-            serde_json::json!({
-                "textDocument": { "uri": "" },
-                "position": { "line": line, "character": character },
-            })
-        });
+        request_at_cursor(
+            ed,
+            argc,
+            argv,
+            "textDocument/completion",
+            |line, character| {
+                serde_json::json!({
+                    "textDocument": { "uri": "" },
+                    "position": { "line": line, "character": character },
+                })
+            },
+        );
         conv::nil()
     })
 }
@@ -252,13 +295,22 @@ unsafe fn request_at_cursor(
     params: impl FnOnce(usize, usize) -> serde_json::Value,
 ) {
     unsafe {
-        let Some(language) = conv::get_str(argc, argv, 0)else { return };
-        let Some(server) = ed.lsp.get(&language).cloned() else { return };
+        let Some(language) = conv::get_str(argc, argv, 0) else {
+            return;
+        };
+        let Some(server) = ed.lsp.get(&language).cloned() else {
+            return;
+        };
         let buf_key = kernel::input::focused_buffer_id(ed);
-        let Some(arc) = ed.buffers.get(buf_key).cloned() else { return };
+        let Some(arc) = ed.buffers.get(buf_key).cloned() else {
+            return;
+        };
         let (line, character, uri) = {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            let cursor = ed.view_of_buffer(buf_key).map(|v| v.cursor_offset()).unwrap_or(0);
+            let cursor = ed
+                .view_of_buffer(buf_key)
+                .map(|v| v.cursor_offset())
+                .unwrap_or(0);
             let (l, _col_bytes) = buf.line_col_bytes(cursor);
             let (_l, character) = buf.lsp_position(cursor);
             let uri = match buf.path.as_deref() {
@@ -271,9 +323,10 @@ unsafe fn request_at_cursor(
         let mut params = params(line, character);
         if let Some(obj) = params.as_object_mut()
             && let Some(doc) = obj.get_mut("textDocument")
-                && let Some(uri_field) = doc.get_mut("uri") {
-                    *uri_field = serde_json::Value::String(uri);
-                }
+            && let Some(uri_field) = doc.get_mut("uri")
+        {
+            *uri_field = serde_json::Value::String(uri);
+        }
         server.request(method, params, buf_key, revision);
     }
 }
@@ -281,7 +334,7 @@ unsafe fn request_at_cursor(
 /// (lsp/shutdown language-id) → nil
 unsafe extern "C-unwind" fn c_lsp_shutdown(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        if let Some(language) = conv::get_str(argc, argv, 0){
+        if let Some(language) = conv::get_str(argc, argv, 0) {
             if let Some(server) = ed.lsp.get(&language) {
                 server.shutdown();
             }
@@ -298,17 +351,21 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"lsp/start".as_ptr() as *const _,
             cfun: Some(c_lsp_start as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Start an LSP server for a language (initialize is awaited)".as_ptr() as *const _,
+            documentation: c"Start an LSP server for a language (initialize is awaited)".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"lsp/did-open".as_ptr() as *const _,
             cfun: Some(c_lsp_did_open as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Send textDocument/didOpen for a buffer with its current revision as version".as_ptr() as *const _,
+            documentation:
+                c"Send textDocument/didOpen for a buffer with its current revision as version"
+                    .as_ptr() as *const _,
         },
         JanetReg {
             name: c"lsp/did-change".as_ptr() as *const _,
             cfun: Some(c_lsp_did_change as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Send textDocument/didChange (full text, real version) for a buffer".as_ptr() as *const _,
+            documentation: c"Send textDocument/didChange (full text, real version) for a buffer"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"lsp/did-close".as_ptr() as *const _,
@@ -323,32 +380,42 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"lsp/request".as_ptr() as *const _,
             cfun: Some(c_lsp_request as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Send a generic JSON-RPC request; response arrives via lsp-response event".as_ptr() as *const _,
+            documentation:
+                c"Send a generic JSON-RPC request; response arrives via lsp-response event".as_ptr()
+                    as *const _,
         },
         JanetReg {
             name: c"lsp/hover".as_ptr() as *const _,
             cfun: Some(c_lsp_hover as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Request hover information at the cursor; response via lsp-hover event".as_ptr() as *const _,
+            documentation: c"Request hover information at the cursor; response via lsp-hover event"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"lsp/code-actions".as_ptr() as *const _,
             cfun: Some(c_lsp_code_actions as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Request code actions at the cursor; response via lsp-code-actions event".as_ptr() as *const _,
+            documentation:
+                c"Request code actions at the cursor; response via lsp-code-actions event".as_ptr()
+                    as *const _,
         },
         JanetReg {
             name: c"lsp/completion".as_ptr() as *const _,
             cfun: Some(c_lsp_completion as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Request completion at the cursor; response via lsp-completion-items event".as_ptr() as *const _,
+            documentation:
+                c"Request completion at the cursor; response via lsp-completion-items event"
+                    .as_ptr() as *const _,
         },
         JanetReg {
             name: c"lsp/rename".as_ptr() as *const _,
             cfun: Some(c_lsp_rename as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Request rename of the symbol at the cursor; response via lsp-rename-result event".as_ptr() as *const _,
+            documentation:
+                c"Request rename of the symbol at the cursor; response via lsp-rename-result event"
+                    .as_ptr() as *const _,
         },
         JanetReg {
             name: c"lsp/shutdown".as_ptr() as *const _,
             cfun: Some(c_lsp_shutdown as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Shut down a language server (ordered shutdown + exit)".as_ptr() as *const _,
+            documentation: c"Shut down a language server (ordered shutdown + exit)".as_ptr()
+                as *const _,
         },
     ]
 }

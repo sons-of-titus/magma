@@ -92,7 +92,6 @@ pub const ATLAS_CHARS: &str = concat!(
     "\u{044E}\u{044F}\u{0451}",
 );
 
-
 // 95 ASCII + 1 box + 96 Latin-1 = 192 chars → 12 rows of 16
 // ── Data structures ───────────────────────────────────────────────────────────
 
@@ -176,25 +175,33 @@ impl GpuGlyphAtlas {
         // row constant to drift (the old 12-row constant silently clipped
         // the 331-char set the GPU path had grown to).
         let rows = total.div_ceil(ATLAS_COLS);
-        let atlas_width  = ATLAS_COLS * cell_w;
+        let atlas_width = ATLAS_COLS * cell_w;
         let atlas_height = rows * cell_h;
 
         let mut glyphs = HashMap::with_capacity(chars.len());
         for (i, ch) in chars.iter().enumerate() {
             let col = (i as u32) % ATLAS_COLS;
             let row = (i as u32) / ATLAS_COLS;
-            glyphs.insert(*ch, GlyphUv {
-                x: col * cell_w,
-                y: row * cell_h,
-                w: cell_w,
-                h: cell_h,
-            });
+            glyphs.insert(
+                *ch,
+                GlyphUv {
+                    x: col * cell_w,
+                    y: row * cell_h,
+                    w: cell_w,
+                    h: cell_h,
+                },
+            );
         }
 
         let atlas_pixels = vec![255u8; (atlas_width * atlas_height * 4) as usize];
         GpuGlyphAtlas {
-            glyphs, atlas_width, atlas_height, cell_w, cell_h,
-            dirty: true, atlas_pixels,
+            glyphs,
+            atlas_width,
+            atlas_height,
+            cell_w,
+            cell_h,
+            dirty: true,
+            atlas_pixels,
         }
     }
 
@@ -204,7 +211,12 @@ impl GpuGlyphAtlas {
     pub fn rasterize(&mut self, font_bytes: &[u8], font_size: f32) {
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
         self.atlas_pixels = crate::gpu_rasterizer::rasterize_font_atlas(
-            font_bytes, font_size, &chars, self.cell_w, self.cell_h, ATLAS_COLS,
+            font_bytes,
+            font_size,
+            &chars,
+            self.cell_w,
+            self.cell_h,
+            ATLAS_COLS,
         );
         self.dirty = true;
     }
@@ -240,26 +252,38 @@ impl GpuGlyphAtlas {
     }
 
     /// Return the atlas pixel data (RGBA, row-major) for GPU texture upload.
-    pub fn generate_atlas_pixels(&self) -> &[u8] { &self.atlas_pixels }
+    pub fn generate_atlas_pixels(&self) -> &[u8] {
+        &self.atlas_pixels
+    }
 
-    pub fn needs_rebuild(&self) -> bool { self.dirty }
-    pub fn mark_clean(&mut self)        { self.dirty = false; }
-    pub fn mark_dirty(&mut self)        { self.dirty = true; }
-    pub fn contains(&self, ch: char) -> bool { self.glyphs.contains_key(&ch) }
+    pub fn needs_rebuild(&self) -> bool {
+        self.dirty
+    }
+    pub fn mark_clean(&mut self) {
+        self.dirty = false;
+    }
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+    pub fn contains(&self, ch: char) -> bool {
+        self.glyphs.contains_key(&ch)
+    }
 
     /// Normalize a pixel UV to the `[0, 1]` range expected by the shader.
     pub fn normalize(&self, uv: &GlyphUv) -> [f32; 4] {
         [
-            uv.x as f32 / self.atlas_width  as f32,
+            uv.x as f32 / self.atlas_width as f32,
             uv.y as f32 / self.atlas_height as f32,
-            uv.w as f32 / self.atlas_width  as f32,
+            uv.w as f32 / self.atlas_width as f32,
             uv.h as f32 / self.atlas_height as f32,
         ]
     }
 }
 
 impl Default for GpuGlyphAtlas {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Instance builders ─────────────────────────────────────────────────────────
@@ -267,7 +291,12 @@ impl Default for GpuGlyphAtlas {
 /// Fallback UV for characters not in the atlas — maps to the box glyph (□)
 /// if present, otherwise to the space cell (top-left, transparent after
 /// rasterization but guaranteed white in the placeholder atlas).
-const FALLBACK_UV: GlyphUv = GlyphUv { x: 0, y: 0, w: ATLAS_CELL_W, h: ATLAS_CELL_H };
+const FALLBACK_UV: GlyphUv = GlyphUv {
+    x: 0,
+    y: 0,
+    w: ATLAS_CELL_W,
+    h: ATLAS_CELL_H,
+};
 
 /// Convert `Surface` cells to a list of `GlyphInstance`s ready for the GPU.
 ///
@@ -284,16 +313,26 @@ pub fn build_glyph_instances(
 ) -> Vec<GlyphInstance> {
     let rows = surface.height as usize;
     let cols = surface.width as usize;
-    let render_rows = if skip_last_row { rows.saturating_sub(1) } else { rows };
+    let render_rows = if skip_last_row {
+        rows.saturating_sub(1)
+    } else {
+        rows
+    };
     let mut out = Vec::with_capacity(render_rows * cols / 2);
 
     for sy in 0..render_rows {
         for sx in 0..cols {
-            let Some(cell) = surface.cell(sx as u16, sy as u16) else { continue };
-            if cell.ch == ' ' || cell.ch.is_control() { continue }
+            let Some(cell) = surface.cell(sx as u16, sy as u16) else {
+                continue;
+            };
+            if cell.ch == ' ' || cell.ch.is_control() {
+                continue;
+            }
 
             // Try the exact char, then the box fallback, then FALLBACK_UV.
-            let uv = atlas.glyphs.get(&cell.ch)
+            let uv = atlas
+                .glyphs
+                .get(&cell.ch)
                 .or_else(|| atlas.glyphs.get(&'\u{25A1}'))
                 .copied()
                 .unwrap_or(FALLBACK_UV);
@@ -301,7 +340,10 @@ pub fn build_glyph_instances(
             out.push(GlyphInstance {
                 screen_x: origin_x + sx as f32 * char_w,
                 screen_y: origin_y + sy as f32 * line_h,
-                uv_x, uv_y, uv_w, uv_h,
+                uv_x,
+                uv_y,
+                uv_w,
+                uv_h,
                 fg: [
                     cell.style.fg.0 as f32 / 255.0,
                     cell.style.fg.1 as f32 / 255.0,
@@ -328,19 +370,27 @@ pub fn build_rect_instances(
 ) -> Vec<RectInstance> {
     let rows = surface.height as usize;
     let cols = surface.width as usize;
-    let render_rows = if skip_last_row { rows.saturating_sub(1) } else { rows };
+    let render_rows = if skip_last_row {
+        rows.saturating_sub(1)
+    } else {
+        rows
+    };
     let mut out = Vec::new();
 
     for sy in 0..render_rows {
         for sx in 0..cols {
-            let Some(cell) = surface.cell(sx as u16, sy as u16) else { continue };
+            let Some(cell) = surface.cell(sx as u16, sy as u16) else {
+                continue;
+            };
             let bg = [
                 cell.style.bg.0 as f32 / 255.0,
                 cell.style.bg.1 as f32 / 255.0,
                 cell.style.bg.2 as f32 / 255.0,
                 1.0,
             ];
-            if bg == default_bg { continue }
+            if bg == default_bg {
+                continue;
+            }
             out.push(RectInstance {
                 x: origin_x + sx as f32 * char_w,
                 y: origin_y + sy as f32 * line_h,
@@ -357,10 +407,14 @@ pub fn build_rect_instances(
 pub fn glyphs_to_vertices(instances: &[GlyphInstance], char_w: f32, line_h: f32) -> Vec<[f32; 8]> {
     let mut verts = Vec::with_capacity(instances.len() * 6);
     for gi in instances {
-        let x0 = gi.screen_x;        let y0 = gi.screen_y;
-        let x1 = x0 + char_w;        let y1 = y0 + line_h;
-        let u0 = gi.uv_x;            let v0 = gi.uv_y;
-        let u1 = u0 + gi.uv_w;       let v1 = v0 + gi.uv_h;
+        let x0 = gi.screen_x;
+        let y0 = gi.screen_y;
+        let x1 = x0 + char_w;
+        let y1 = y0 + line_h;
+        let u0 = gi.uv_x;
+        let v0 = gi.uv_y;
+        let u1 = u0 + gi.uv_w;
+        let v1 = v0 + gi.uv_h;
         let [r, g, b, a] = gi.fg;
         verts.push([x0, y0, u0, v0, r, g, b, a]);
         verts.push([x0, y1, u0, v1, r, g, b, a]);
@@ -377,15 +431,21 @@ pub fn glyphs_to_vertices(instances: &[GlyphInstance], char_w: f32, line_h: f32)
 /// `atlas_width` / `atlas_height` are used to compute the UV of the solid-white
 /// texel at the atlas origin.  Staying inside that first texel keeps the
 /// constant white sample valid whatever cell geometry the atlas uses.
-pub fn rects_to_vertices(instances: &[RectInstance], atlas_width: u32, atlas_height: u32) -> Vec<[f32; 8]> {
+pub fn rects_to_vertices(
+    instances: &[RectInstance],
+    atlas_width: u32,
+    atlas_height: u32,
+) -> Vec<[f32; 8]> {
     let mut verts = Vec::with_capacity(instances.len() * 6);
-    let u0 = 0.5f32 / atlas_width  as f32;
+    let u0 = 0.5f32 / atlas_width as f32;
     let v0 = 0.5f32 / atlas_height as f32;
     let u1 = u0;
     let v1 = v0;
     for ri in instances {
-        let x0 = ri.x;       let y0 = ri.y;
-        let x1 = x0 + ri.w;  let y1 = y0 + ri.h;
+        let x0 = ri.x;
+        let y0 = ri.y;
+        let x1 = x0 + ri.w;
+        let y1 = y0 + ri.h;
         let [r, g, b, a] = ri.color;
         verts.push([x0, y0, u0, v0, r, g, b, a]);
         verts.push([x0, y1, u0, v1, r, g, b, a]);

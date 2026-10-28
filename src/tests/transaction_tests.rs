@@ -67,10 +67,11 @@ fn normalize_rejects_inverted_ranges() {
 fn empty_builder_commits_nothing() {
     let mut doc = Document::from_string("abc");
     assert!(doc.commit(TransactionBuilder::new()).unwrap().is_none());
-    assert!(doc
-        .commit(TransactionBuilder::new().insert(1, ""))
-        .unwrap()
-        .is_none());
+    assert!(
+        doc.commit(TransactionBuilder::new().insert(1, ""))
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(doc.revision(), Revision(0));
     assert_eq!(doc.history().len(), 0);
 }
@@ -126,11 +127,7 @@ fn builder_origin_is_recorded() {
 #[test]
 fn commit_is_atomic_on_validation_failure() {
     let mut doc = Document::from_string("abc");
-    let result = doc.commit(
-        TransactionBuilder::new()
-            .insert(0, "X")
-            .replace(2..99, "y"),
-    );
+    let result = doc.commit(TransactionBuilder::new().insert(0, "X").replace(2..99, "y"));
     assert!(matches!(result, Err(TransactionError::OutOfBounds { .. })));
     assert_eq!(doc.text(), "abc");
     assert_eq!(doc.revision(), Revision(0));
@@ -141,11 +138,13 @@ fn commit_is_atomic_on_validation_failure() {
 fn commit_rejects_non_char_boundary_offsets() {
     let mut doc = Document::from_string("héllo"); // 'é' occupies bytes 1..3
     assert!(matches!(
-        doc.commit(TransactionBuilder::new().insert(2, "x")).unwrap_err(),
+        doc.commit(TransactionBuilder::new().insert(2, "x"))
+            .unwrap_err(),
         TransactionError::NotCharBoundary { .. }
     ));
     assert!(matches!(
-        doc.commit(TransactionBuilder::new().delete(1..2)).unwrap_err(),
+        doc.commit(TransactionBuilder::new().delete(1..2))
+            .unwrap_err(),
         TransactionError::NotCharBoundary { .. }
     ));
     assert_eq!(doc.text(), "héllo");
@@ -168,30 +167,42 @@ fn inverse_transaction_restores_text_and_bumps_revision() {
     let mut doc = Document::from_string("hello");
     let before = Revision(doc.revision().0);
     let txn = doc
-        .commit(
-            TransactionBuilder::new()
-                .replace(1..3, "EY")
-                .insert(5, "!"),
-        )
+        .commit(TransactionBuilder::new().replace(1..3, "EY").insert(5, "!"))
         .unwrap()
         .unwrap();
     assert_eq!(doc.text(), "hEYlo!");
 
-    let undo = doc.commit(txn.invert(TransactionOrigin::Undo)).unwrap().unwrap();
+    let undo = doc
+        .commit(txn.invert(TransactionOrigin::Undo))
+        .unwrap()
+        .unwrap();
     assert_eq!(doc.text(), "hello");
     assert_eq!(undo.origin, TransactionOrigin::Undo);
     assert_eq!(undo.revision_before, before.next());
     assert_eq!(undo.revision_after, before.next().next());
-    assert_eq!(doc.revision(), before.next().next(), "undo never reuses a revision");
+    assert_eq!(
+        doc.revision(),
+        before.next().next(),
+        "undo never reuses a revision"
+    );
 }
 
 #[test]
 fn revision_chain_is_continuous_across_undo() {
     let mut doc = Document::new();
-    doc.commit(TransactionBuilder::new().insert(0, "a")).unwrap().unwrap();
-    let txn = doc.commit(TransactionBuilder::new().insert(1, "b")).unwrap().unwrap();
-    doc.commit(txn.invert(TransactionOrigin::Undo)).unwrap().unwrap();
-    doc.commit(TransactionBuilder::new().insert(1, "c")).unwrap().unwrap();
+    doc.commit(TransactionBuilder::new().insert(0, "a"))
+        .unwrap()
+        .unwrap();
+    let txn = doc
+        .commit(TransactionBuilder::new().insert(1, "b"))
+        .unwrap()
+        .unwrap();
+    doc.commit(txn.invert(TransactionOrigin::Undo))
+        .unwrap()
+        .unwrap();
+    doc.commit(TransactionBuilder::new().insert(1, "c"))
+        .unwrap()
+        .unwrap();
 
     let history = doc.history();
     assert_eq!(history.len(), 4);
@@ -205,8 +216,12 @@ fn revision_chain_is_continuous_across_undo() {
 #[test]
 fn edits_at_bof_and_eof() {
     let mut doc = Document::from_string("middle");
-    doc.commit(TransactionBuilder::new().insert(0, "start\n")).unwrap().unwrap();
-    doc.commit(TransactionBuilder::new().insert(doc.len(), "\nend")).unwrap().unwrap();
+    doc.commit(TransactionBuilder::new().insert(0, "start\n"))
+        .unwrap()
+        .unwrap();
+    doc.commit(TransactionBuilder::new().insert(doc.len(), "\nend"))
+        .unwrap()
+        .unwrap();
     assert_eq!(doc.text(), "start\nmiddle\nend");
     assert_eq!(doc.revision(), Revision(2));
 }
@@ -215,11 +230,7 @@ fn edits_at_bof_and_eof() {
 fn inverse_edits_are_ascending_and_disjoint() {
     let mut doc = Document::from_string("abcdefghij");
     let txn = doc
-        .commit(
-            TransactionBuilder::new()
-                .replace(2..4, "Z")
-                .insert(8, "QQ"),
-        )
+        .commit(TransactionBuilder::new().replace(2..4, "Z").insert(8, "QQ"))
         .unwrap()
         .unwrap();
     let inv = txn.inverse_edits();
@@ -227,7 +238,13 @@ fn inverse_edits_are_ascending_and_disjoint() {
         assert!(pair[0].end() <= pair[1].start());
     }
     // Applying the inverse via the builder normalizes without error.
-    assert_eq!(inv.len(), txn.invert(TransactionOrigin::Undo).normalize().unwrap().len());
+    assert_eq!(
+        inv.len(),
+        txn.invert(TransactionOrigin::Undo)
+            .normalize()
+            .unwrap()
+            .len()
+    );
 }
 
 #[test]
@@ -240,7 +257,7 @@ fn inverse_ranges_shift_by_preceding_edit_deltas() {
         .commit(
             TransactionBuilder::new()
                 .insert(2, "XY") // delta +2
-                .delete(4..5),   // post-transaction position: 4 + 2
+                .delete(4..5), // post-transaction position: 4 + 2
         )
         .unwrap()
         .unwrap();
@@ -248,7 +265,9 @@ fn inverse_ranges_shift_by_preceding_edit_deltas() {
     let inv = txn.inverse_edits();
     assert_eq!(inv[0].range, 2..4); // where "XY" landed
     assert_eq!(inv[1].range, 6..6); // shifted by the preceding +2
-    doc.commit(txn.invert(TransactionOrigin::Undo)).unwrap().unwrap();
+    doc.commit(txn.invert(TransactionOrigin::Undo))
+        .unwrap()
+        .unwrap();
     assert_eq!(doc.text(), "abcdef");
 }
 

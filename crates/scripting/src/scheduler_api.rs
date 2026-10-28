@@ -7,9 +7,9 @@
 //!   (scheduler/status id)         → keyword
 //!   (scheduler/list)              → array of {:id :name :status :done :total}
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 /// (scheduler/submit name cmd) → work-id
 ///
@@ -92,7 +92,7 @@ unsafe extern "C-unwind" fn c_scheduler_progress(argc: i32, argv: *mut Janet) ->
             Some(p) => {
                 let tbl = janet_wrap_table(janet_table(2));
                 let t = janet_unwrap_table(tbl);
-                janet_table_put(t, conv::keyword("done"),  conv::integer(p.done as i32));
+                janet_table_put(t, conv::keyword("done"), conv::integer(p.done as i32));
                 janet_table_put(t, conv::keyword("total"), conv::integer(p.total as i32));
                 tbl
             }
@@ -109,11 +109,11 @@ unsafe extern "C-unwind" fn c_scheduler_status(argc: i32, argv: *mut Janet) -> J
         let id = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as u64;
         use kernel::scheduler::WorkStatus;
         let kw = match ed.scheduler.status(id) {
-            None                              => "not-found",
-            Some(WorkStatus::Running)         => "running",
-            Some(WorkStatus::Completed)       => "completed",
-            Some(WorkStatus::Failed(_))       => "failed",
-            Some(WorkStatus::Cancelled)       => "cancelled",
+            None => "not-found",
+            Some(WorkStatus::Running) => "running",
+            Some(WorkStatus::Completed) => "completed",
+            Some(WorkStatus::Failed(_)) => "failed",
+            Some(WorkStatus::Cancelled) => "cancelled",
         };
         conv::keyword(kw)
     })
@@ -129,18 +129,26 @@ unsafe extern "C-unwind" fn c_scheduler_list(_argc: i32, _argv: *mut Janet) -> J
         let arr = janet_wrap_array(janet_array(items.len() as i32));
         for (id, name, status, progress) in items {
             let status_kw = match status {
-                WorkStatus::Running    => "running",
-                WorkStatus::Completed  => "completed",
-                WorkStatus::Failed(_)  => "failed",
-                WorkStatus::Cancelled  => "cancelled",
+                WorkStatus::Running => "running",
+                WorkStatus::Completed => "completed",
+                WorkStatus::Failed(_) => "failed",
+                WorkStatus::Cancelled => "cancelled",
             };
             let tbl = janet_wrap_table(janet_table(5));
             let t = janet_unwrap_table(tbl);
-            janet_table_put(t, conv::keyword("id"),     conv::integer(id as i32));
-            janet_table_put(t, conv::keyword("name"),   conv::string(name));
+            janet_table_put(t, conv::keyword("id"), conv::integer(id as i32));
+            janet_table_put(t, conv::keyword("name"), conv::string(name));
             janet_table_put(t, conv::keyword("status"), conv::keyword(status_kw));
-            janet_table_put(t, conv::keyword("done"),   conv::integer(progress.done as i32));
-            janet_table_put(t, conv::keyword("total"),  conv::integer(progress.total as i32));
+            janet_table_put(
+                t,
+                conv::keyword("done"),
+                conv::integer(progress.done as i32),
+            );
+            janet_table_put(
+                t,
+                conv::keyword("total"),
+                conv::integer(progress.total as i32),
+            );
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
         arr

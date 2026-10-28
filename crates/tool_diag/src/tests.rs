@@ -46,8 +46,11 @@ FAILED tests/test_app.py::test_index - AssertionError: bad state
 tests/test_app.py:12: AssertionError: bad state
 make[1]: *** [Makefile:9: all] Error 1";
     let d = parse_tool_output("pytest", text, cwd());
-    assert!(d.iter().any(|t| t.path.ends_with("tests/test_app.py")
-        && t.diag.line == 11), "traceback line maps: {d:?}");
+    assert!(
+        d.iter()
+            .any(|t| t.path.ends_with("tests/test_app.py") && t.diag.line == 11),
+        "traceback line maps: {d:?}"
+    );
     // `make[1]: *** ...` has no leading path shape and must not parse.
     assert!(d.iter().all(|t| !t.path.contains("Makefile")), "{d:?}");
 }
@@ -62,8 +65,7 @@ fn prose_with_colons_does_not_parse() {
 
 #[test]
 fn quickfix_entries_are_one_based() {
-    let d = parse_tool_output("cargo build",
-        "error: boom\n --> src/lib.rs:3:9\n", cwd());
+    let d = parse_tool_output("cargo build", "error: boom\n --> src/lib.rs:3:9\n", cwd());
     let qf = d[0].quickfix();
     assert_eq!(qf.filename, "/repo/src/lib.rs");
     assert_eq!((qf.line, qf.col), (3, 9));

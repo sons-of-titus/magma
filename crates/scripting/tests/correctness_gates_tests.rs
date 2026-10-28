@@ -4,10 +4,11 @@
 // cross-subsystem invariants hold on the integrated editor.
 
 use kernel::command::{self, builtin};
-use kernel::storage::disk::DiskFileSystem;
 use kernel::render::surface::Surface;
 use kernel::state::Editor;
-#[macro_use] mod helpers;
+use kernel::storage::disk::DiskFileSystem;
+#[macro_use]
+mod helpers;
 
 fn editor_with(content: &str) -> (Editor, usize) {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
@@ -32,14 +33,32 @@ fn gate_mutation_one_path_one_revision() {
     let buf = ed.buffers.get(key).unwrap().lock().unwrap();
     assert_eq!(buf.revision(), rev0 + 1, "one keystroke = one revision");
     drop(buf);
-    assert_eq!(helpers::buf_text(&ed), "!seed", "typed at the cursor (offset 0)");
+    assert_eq!(
+        helpers::buf_text(&ed),
+        "!seed",
+        "typed at the cursor (offset 0)"
+    );
 
     // Outside dispatch, a raw mutation queues until publication.
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(0, ">");
-    assert!(ed.buffers.get(key).unwrap().lock().unwrap().has_pending_changes());
+    assert!(
+        ed.buffers
+            .get(key)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .has_pending_changes()
+    );
     ed.publish_buffer_changes();
-    assert!(!ed.buffers.get(key).unwrap().lock().unwrap().has_pending_changes());
+    assert!(
+        !ed.buffers
+            .get(key)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .has_pending_changes()
+    );
     assert_eq!(helpers::buf_text(&ed), ">!seed");
 }
 
@@ -78,13 +97,23 @@ fn gate_persistence_invariant_end_to_end() {
         (buf.slice(0, buf.len()), buf.revision())
     };
     kernel::storage::disk::atomic_write(&path_str, &content).unwrap();
-    ed.buffers.get(key).unwrap().lock().unwrap().mark_saved_at(rev);
+    ed.buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .mark_saved_at(rev);
     assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
 
     // Async-style save of an older revision completes after a newer edit.
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(2, "-stale-snapshot");
-    ed.buffers.get(key).unwrap().lock().unwrap().mark_saved_at(rev);
+    ed.buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .mark_saved_at(rev);
     assert!(
         ed.buffers.get(key).unwrap().lock().unwrap().modified(),
         "stale completion must not clear modified"
@@ -96,7 +125,12 @@ fn gate_persistence_invariant_end_to_end() {
         (buf.slice(0, buf.len()), buf.revision())
     };
     kernel::storage::disk::atomic_write(&path_str, &content).unwrap();
-    ed.buffers.get(key).unwrap().lock().unwrap().mark_saved_at(rev);
+    ed.buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .mark_saved_at(rev);
     assert!(!ed.buffers.get(key).unwrap().lock().unwrap().modified());
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "v1-stale-snapshot");
     let _ = std::fs::remove_dir_all(&dir);
@@ -131,7 +165,11 @@ fn gate_undo_never_loses_or_corrupts_history() {
         steps += 1;
     }
     assert_eq!(steps, 3, "every edit is undoable exactly once");
-    assert_eq!(helpers::buf_text(&ed), "", "history traversal reaches the origin");
+    assert_eq!(
+        helpers::buf_text(&ed),
+        "",
+        "history traversal reaches the origin"
+    );
 }
 
 #[test]
@@ -145,7 +183,10 @@ fn gate_ffi_without_scope_errors_cleanly() {
     assert_ne!(out, "", "eval completes");
     // Whatever the surface result, the process is alive and the VM intact:
     let out2 = scripting::eval("(+ 1 2)");
-    assert_eq!(out2, "ok", "VM is healthy after the uns scoped access attempt");
+    assert_eq!(
+        out2, "ok",
+        "VM is healthy after the uns scoped access attempt"
+    );
     let _ = out;
 }
 
@@ -188,7 +229,10 @@ fn gate_view_invariant_two_windows_one_document() {
         view.set_cursor(4);
     }
     assert_ne!(
-        ed.window_views.get(&(focused, key)).unwrap().cursor_offset(),
+        ed.window_views
+            .get(&(focused, key))
+            .unwrap()
+            .cursor_offset(),
         ed.views.get(&key).unwrap().cursor_offset(),
         "the base view must not follow the forked one"
     );
@@ -199,7 +243,10 @@ fn gate_view_invariant_two_windows_one_document() {
         let cur = view.cursor_offset();
         view.insert(cur, "X");
     }
-    assert!(helpers::buf_text(&ed).starts_with("one\nX"), "edit visible through the shared document");
+    assert!(
+        helpers::buf_text(&ed).starts_with("one\nX"),
+        "edit visible through the shared document"
+    );
 }
 
 #[test]
@@ -221,7 +268,10 @@ fn gate_rendering_never_copies_the_document() {
         }
     }
     assert!(seen.contains("ine-0"), "first line rendered");
-    assert!(!seen.contains("ine-49999"), "no leak from outside the viewport");
+    assert!(
+        !seen.contains("ine-49999"),
+        "no leak from outside the viewport"
+    );
 }
 
 // ── Performance gates (rework.md §8) ─────────────────────────────────────
@@ -238,7 +288,8 @@ fn typing_latency_does_not_scale_with_document_size() {
     assert!(
         large.as_nanos() <= small.as_nanos() * 20 + 2_000_000,
         "typing into a 50k-line doc ({}µs median) must stay within a generous          multiple of a 1k-line doc ({}µs) — O(document) work crept into the          keystroke path",
-        large.as_micros(), small.as_micros(),
+        large.as_micros(),
+        small.as_micros(),
     );
 }
 
@@ -293,6 +344,7 @@ fn render_frame_cost_does_not_scale_with_document_size() {
     assert!(
         large.as_nanos() <= small.as_nanos() * 10 + 5_000_000,
         "rendering 80x40 visible cells ({}µs median at 50k lines) must not          scale with the document ({}µs at 1k lines) — an O(document) frame          path crept back in",
-        large.as_micros(), small.as_micros(),
+        large.as_micros(),
+        small.as_micros(),
     );
 }

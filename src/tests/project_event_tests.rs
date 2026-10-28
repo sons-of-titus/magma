@@ -36,7 +36,9 @@ fn project_events_round_trip_through_the_shared_channel_in_send_order() {
         generation: 2,
         entries: vec![entry("src/lib.rs", 7)],
     }));
-    bg.send_event(BackgroundEvent::Project(ProjectEvent::GrepDone { generation: 2 }));
+    bg.send_event(BackgroundEvent::Project(ProjectEvent::GrepDone {
+        generation: 2,
+    }));
     bg.send_event(BackgroundEvent::Custom("ping".into(), "pong".into()));
 
     let mut seen = Vec::new();
@@ -76,13 +78,19 @@ fn file_search_dispatch_presents_the_finder_buffer() {
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
     let before = ed.buffers.len();
 
-    process_background_event(&mut ed, BackgroundEvent::Project(ProjectEvent::FileSearchListed {
-        pattern: "main".into(),
-        files: vec!["src/main.rs".into(), "src/bin/main.rs".into()],
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Project(ProjectEvent::FileSearchListed {
+            pattern: "main".into(),
+            files: vec!["src/main.rs".into(), "src/bin/main.rs".into()],
+        }),
+    );
 
     assert_eq!(ed.buffers.len(), before + 1, "the finder buffer is created");
-    let key = ed.view_tree.focused_window_mut().and_then(|w| w.buffer_id)
+    let key = ed
+        .view_tree
+        .focused_window_mut()
+        .and_then(|w| w.buffer_id)
         .expect("focused window shows the finder");
     let buf = ed.buffers.get(key).unwrap();
     let buf = buf.lock().unwrap_or_else(|e| e.into_inner());
@@ -95,18 +103,27 @@ fn grep_batches_append_in_generation_order_and_done_resets_the_cursor() {
     ed.search.generation += 1;
     let generation = ed.search.generation;
 
-    process_background_event(&mut ed, BackgroundEvent::Project(ProjectEvent::GrepResultsBatch {
-        generation,
-        entries: vec![entry("a.rs", 1)],
-    }));
-    process_background_event(&mut ed, BackgroundEvent::Project(ProjectEvent::GrepResultsBatch {
-        generation,
-        entries: vec![entry("b.rs", 2)],
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Project(ProjectEvent::GrepResultsBatch {
+            generation,
+            entries: vec![entry("a.rs", 1)],
+        }),
+    );
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Project(ProjectEvent::GrepResultsBatch {
+            generation,
+            entries: vec![entry("b.rs", 2)],
+        }),
+    );
     assert_eq!(ed.search.results.len(), 2);
 
     ed.search.index = 1;
-    process_background_event(&mut ed, BackgroundEvent::Project(ProjectEvent::GrepDone { generation }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Project(ProjectEvent::GrepDone { generation }),
+    );
     assert_eq!(ed.search.index, 0);
 }
 
@@ -116,10 +133,13 @@ fn stale_grep_generations_are_dropped() {
     let stale = ed.search.generation;
     ed.search.generation += 1;
 
-    process_background_event(&mut ed, BackgroundEvent::Project(ProjectEvent::GrepResultsBatch {
-        generation: stale,
-        entries: vec![entry("stale.rs", 1)],
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Project(ProjectEvent::GrepResultsBatch {
+            generation: stale,
+            entries: vec![entry("stale.rs", 1)],
+        }),
+    );
 
     assert!(ed.search.results.is_empty());
 }

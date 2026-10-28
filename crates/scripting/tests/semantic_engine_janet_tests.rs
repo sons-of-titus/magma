@@ -1,8 +1,9 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet API tests for the Semantic Engine.
 
-use scripting;
 use kernel::semantic::{Symbol, SymbolKind};
+use scripting;
 
 // ── C function registration ───────────────────────────────────────────────────
 
@@ -51,7 +52,10 @@ fn semantic_register_provider_lsp() {
     janet_test!(ed, {
         let result = scripting::eval(r#"(semantic/register-provider "rust" "lsp")"#);
         assert_eq!(result, "ok");
-        assert!(ed.semantic.has_provider("rust"), "rust lsp provider should be registered");
+        assert!(
+            ed.semantic.has_provider("rust"),
+            "rust lsp provider should be registered"
+        );
     });
 }
 
@@ -60,7 +64,10 @@ fn semantic_register_provider_treesitter() {
     janet_test!(ed, {
         let result = scripting::eval(r#"(semantic/register-provider "python" "treesitter")"#);
         assert_eq!(result, "ok");
-        assert!(ed.semantic.has_provider("python"), "python ts provider should be registered");
+        assert!(
+            ed.semantic.has_provider("python"),
+            "python ts provider should be registered"
+        );
     });
 }
 
@@ -79,7 +86,11 @@ fn semantic_symbols_returns_empty_array_no_language() {
     janet_test!(ed, {
         // Buffer 0 exists but has no ts_language set → empty array.
         let result = scripting::eval_result("(length (semantic/symbols 0))");
-        assert_eq!(result, Ok("0".to_string()), "no language set → empty symbols");
+        assert_eq!(
+            result,
+            Ok("0".to_string()),
+            "no language set → empty symbols"
+        );
     });
 }
 
@@ -87,7 +98,11 @@ fn semantic_symbols_returns_empty_array_no_language() {
 fn semantic_documentation_returns_nil_for_unknown() {
     janet_test!(ed, {
         let result = scripting::eval_result(r#"(semantic/documentation "nonexistent-sym")"#);
-        assert_eq!(result, Ok("nil".to_string()), "unknown symbol → nil documentation");
+        assert_eq!(
+            result,
+            Ok("nil".to_string()),
+            "unknown symbol → nil documentation"
+        );
     });
 }
 
@@ -103,7 +118,11 @@ fn semantic_references_returns_empty_array_for_unknown() {
 fn semantic_diagnostics_empty_for_no_path() {
     janet_test!(ed, {
         let result = scripting::eval_result("(length (semantic/diagnostics 0))");
-        assert_eq!(result, Ok("0".to_string()), "buffer with no path → empty diagnostics");
+        assert_eq!(
+            result,
+            Ok("0".to_string()),
+            "buffer with no path → empty diagnostics"
+        );
     });
 }
 
@@ -117,8 +136,11 @@ fn semantic_index_buffer_indexes_when_language_set() {
         assert_eq!(result, "ok");
         // LSP provider returns no symbols synchronously, but the project graph should have the file.
         // (buffer 0 has no path so graph entry will have empty path)
-        assert_eq!(ed.semantic.project_graph.file_count(), 1,
-            "project graph should have one entry after indexing");
+        assert_eq!(
+            ed.semantic.project_graph.file_count(),
+            1,
+            "project graph should have one entry after indexing"
+        );
     });
 }
 
@@ -137,18 +159,23 @@ fn register_provider_reflects_in_rust_state() {
 fn semantic_definitions_returns_indexed_symbols() {
     janet_test!(ed, {
         // Manually inject a symbol into the index.
-        ed.semantic.symbol_index.add_symbols("/src/lib.rs", vec![
-            Symbol {
+        ed.semantic.symbol_index.add_symbols(
+            "/src/lib.rs",
+            vec![Symbol {
                 name: "my_special_fn".to_string(),
                 kind: SymbolKind::Function,
                 file: "/src/lib.rs".to_string(),
                 line: 10,
                 column: 0,
                 documentation: None,
-            },
-        ]);
+            }],
+        );
         let result = scripting::eval_result(r#"(length (semantic/definitions "my_special_fn"))"#);
-        assert_eq!(result, Ok("1".to_string()), "indexed symbol should be found");
+        assert_eq!(
+            result,
+            Ok("1".to_string()),
+            "indexed symbol should be found"
+        );
     });
 }
 
@@ -163,7 +190,9 @@ fn semantic_documentation_returns_indexed_doc() {
             column: 0,
             documentation: Some("Does the thing.".to_string()),
         };
-        ed.semantic.symbol_index.add_symbols("/src/lib.rs", vec![sym]);
+        ed.semantic
+            .symbol_index
+            .add_symbols("/src/lib.rs", vec![sym]);
         let result = scripting::eval_result(r#"(semantic/documentation "documented_fn")"#);
         assert_eq!(result, Ok("\"Does the thing.\"".to_string()));
     });
@@ -192,8 +221,11 @@ fn workspace_symbols_find_indexed_declarations() {
     janet_test!(ed, {
         // A real record flows through the store the same way background
         // extraction results do.
-        let rec = kernel::index::record_from_text("alpha.rs", 1,
-            "fn alpha_one() {}\nfn alpha_two() {}\nstruct Beta {}");
+        let rec = kernel::index::record_from_text(
+            "alpha.rs",
+            1,
+            "fn alpha_one() {}\nfn alpha_two() {}\nstruct Beta {}",
+        );
         ed.index.apply(rec);
         ed.index.flush().ok();
 

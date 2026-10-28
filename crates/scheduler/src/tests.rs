@@ -11,11 +11,17 @@ struct TestHost {
 
 impl TestHost {
     fn new() -> Self {
-        Self { events: Arc::new(Mutex::new(Vec::new())), spawned: AtomicUsize::new(0) }
+        Self {
+            events: Arc::new(Mutex::new(Vec::new())),
+            spawned: AtomicUsize::new(0),
+        }
     }
 
     fn events(&self) -> Vec<WorkEvent> {
-        self.events.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -77,7 +83,10 @@ fn complete_and_fail_are_forwarded_from_task_ids() {
     sched.complete_task(7);
     sched.fail_task(8, "exit code 1".into());
     assert_eq!(sched.status(done), Some(&WorkStatus::Completed));
-    assert_eq!(sched.status(broken), Some(&WorkStatus::Failed("exit code 1".into())));
+    assert_eq!(
+        sched.status(broken),
+        Some(&WorkStatus::Failed("exit code 1".into()))
+    );
 }
 
 #[test]
@@ -159,9 +168,21 @@ fn submit_reports_progress_then_completion() {
     assert_eq!(
         host.events(),
         vec![
-            WorkEvent::Progress { id, done: 0, total: 2 },
-            WorkEvent::Progress { id, done: 1, total: 2 },
-            WorkEvent::Progress { id, done: 2, total: 2 },
+            WorkEvent::Progress {
+                id,
+                done: 0,
+                total: 2
+            },
+            WorkEvent::Progress {
+                id,
+                done: 1,
+                total: 2
+            },
+            WorkEvent::Progress {
+                id,
+                done: 2,
+                total: 2
+            },
             WorkEvent::Completed { id },
         ]
     );
@@ -176,7 +197,10 @@ fn submit_reports_failure_with_the_error_message() {
     });
     assert_eq!(
         host.events(),
-        vec![WorkEvent::Failed { id, error: "exit code 3".into() }]
+        vec![WorkEvent::Failed {
+            id,
+            error: "exit code 3".into()
+        }]
     );
     assert_eq!(sched.status(id), Some(&WorkStatus::Running));
 }
@@ -198,7 +222,9 @@ fn a_work_impl_receives_its_own_cancellation_token() {
     }
 
     impl Work for Probe {
-        fn name(&self) -> &str { "probe" }
+        fn name(&self) -> &str {
+            "probe"
+        }
 
         fn execute(
             self: Box<Self>,
@@ -223,7 +249,9 @@ fn cancellation_is_visible_inside_the_running_job() {
     struct CancelsItself;
 
     impl Work for CancelsItself {
-        fn name(&self) -> &str { "self-cancel" }
+        fn name(&self) -> &str {
+            "self-cancel"
+        }
 
         fn execute(
             self: Box<Self>,
@@ -231,12 +259,18 @@ fn cancellation_is_visible_inside_the_running_job() {
             cancel: CancellationToken,
         ) -> Result<(), String> {
             cancel.cancel();
-            if cancel.is_cancelled() { Err("cancelled".into()) } else { Ok(()) }
+            if cancel.is_cancelled() {
+                Err("cancelled".into())
+            } else {
+                Ok(())
+            }
         }
     }
 
     let mut sched = WorkScheduler::new();
     let host = TestHost::new();
     let id = sched.submit(CancelsItself, &host);
-    assert!(matches!(host.events().as_slice(), [WorkEvent::Failed { id: failed, .. }] if *failed == id));
+    assert!(
+        matches!(host.events().as_slice(), [WorkEvent::Failed { id: failed, .. }] if *failed == id)
+    );
 }

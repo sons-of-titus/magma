@@ -1,15 +1,23 @@
-use scripting;
+use kernel::input::event::{MouseButton, MouseEvent, MouseEventKind};
 use kernel::input::mouse;
-use kernel::input::event::{MouseEvent, MouseEventKind, MouseButton};
 use kernel::render::decorations::prefix_margin_width;
-#[macro_use] mod helpers;
+use scripting;
+#[macro_use]
+mod helpers;
 
 /// Compute the screen x where text content begins for a buffer in a pane.
 fn content_start_x(ed: &kernel::state::Editor, buf_id: usize, pane_x: u16) -> u16 {
-    let total_lines = ed.buffers.get(buf_id)
-        .map(|a| a.lock().unwrap().line_count()).unwrap_or(1);
+    let total_lines = ed
+        .buffers
+        .get(buf_id)
+        .map(|a| a.lock().unwrap().line_count())
+        .unwrap_or(1);
     let prefix_margin = prefix_margin_width(ed, buf_id);
-    let prefix_cols = if prefix_margin > 0 { prefix_margin + 1 } else { 0 };
+    let prefix_cols = if prefix_margin > 0 {
+        prefix_margin + 1
+    } else {
+        0
+    };
     let gutter_w = prefix_cols + ed.gutter.total_width(total_lines);
     pane_x + gutter_w as u16
 }
@@ -35,14 +43,22 @@ fn text_click_moves_cursor() {
     };
 
     // Enable mouse support via Janet option.
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
 
     let surface = kernel::render::surface::Surface::new(pane.width, pane.height);
 
     mouse::dispatch_mouse(&mut ed, &surface, &click_event);
 
-    let cursor_offset = ed.views.get(&buf_id).map(|v| v.cursor.offset).unwrap_or(999);
-    assert_eq!(cursor_offset, 6, "click at column 6 should move cursor to byte 6 ('w')");
+    let cursor_offset = ed
+        .views
+        .get(&buf_id)
+        .map(|v| v.cursor.offset)
+        .unwrap_or(999);
+    assert_eq!(
+        cursor_offset, 6,
+        "click at column 6 should move cursor to byte 6 ('w')"
+    );
 }
 
 #[test]
@@ -53,7 +69,11 @@ fn mouse_option_gates_processing() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let buf_id = helpers::focused_key(&ed);
-    let cursor_before = ed.views.get(&buf_id).map(|v| v.cursor.offset).unwrap_or(999);
+    let cursor_before = ed
+        .views
+        .get(&buf_id)
+        .map(|v| v.cursor.offset)
+        .unwrap_or(999);
 
     // Mouse support is disabled by default.
     let pane = ed.view_tree.panes()[0].clone();
@@ -71,9 +91,15 @@ fn mouse_option_gates_processing() {
 
     mouse::dispatch_mouse(&mut ed, &surface, &click_event);
 
-    let cursor_after = ed.views.get(&buf_id).map(|v| v.cursor.offset).unwrap_or(999);
-    assert_eq!(cursor_before, cursor_after,
-        "cursor should not move when mouse-support is not enabled");
+    let cursor_after = ed
+        .views
+        .get(&buf_id)
+        .map(|v| v.cursor.offset)
+        .unwrap_or(999);
+    assert_eq!(
+        cursor_before, cursor_after,
+        "cursor should not move when mouse-support is not enabled"
+    );
 }
 
 #[test]
@@ -87,7 +113,8 @@ fn gutter_click_emits_event() {
     let pane = ed.view_tree.panes()[0].clone();
 
     // Enable mouse support.
-    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
 
     // Register a test gutter provider so the click lands on something.
     ed.gutter.add_provider(Box::new(TestGutterProvider));
@@ -119,11 +146,17 @@ fn gutter_click_emits_event() {
 struct TestGutterProvider;
 
 impl kernel::render::gutter::GutterProvider for TestGutterProvider {
-    fn name(&self) -> &str { ":test" }
-    fn width(&self) -> usize { 2 }
-    fn render(&self, _line: usize, _ctx: &kernel::render::gutter::GutterCtx)
-        -> Option<kernel::render::gutter::GutterCell>
-    {
+    fn name(&self) -> &str {
+        ":test"
+    }
+    fn width(&self) -> usize {
+        2
+    }
+    fn render(
+        &self,
+        _line: usize,
+        _ctx: &kernel::render::gutter::GutterCtx,
+    ) -> Option<kernel::render::gutter::GutterCell> {
         None
     }
 }

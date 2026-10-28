@@ -28,10 +28,16 @@ fn bundled_bootstrap_registers_the_regular_and_bold_faces() {
     let mut fc = FontConfig::default();
     fc.bootstrap_bundled();
     assert_eq!(fc.family, BUNDLED_ALIAS);
-    assert!(fc.loaded_fonts.get(BUNDLED_ALIAS).is_some_and(|b| !b.is_empty()));
-    assert!(fc.loaded_fonts
-        .get(&format!("{BUNDLED_ALIAS}-bold"))
-        .is_some_and(|b| !b.is_empty()));
+    assert!(
+        fc.loaded_fonts
+            .get(BUNDLED_ALIAS)
+            .is_some_and(|b| !b.is_empty())
+    );
+    assert!(
+        fc.loaded_fonts
+            .get(&format!("{BUNDLED_ALIAS}-bold"))
+            .is_some_and(|b| !b.is_empty())
+    );
 }
 
 #[test]
@@ -53,14 +59,27 @@ fn candidates_prefer_home_nerd_fonts_then_system_monospace() {
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
-    assert!(paths.iter().any(|p| p.ends_with("MonacoNerdFontMono-Regular.ttf")));
-    assert!(paths.iter().any(|p| p == "/System/Library/Fonts/Monaco.ttf"));
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.ends_with("MonacoNerdFontMono-Regular.ttf"))
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|p| p == "/System/Library/Fonts/Monaco.ttf")
+    );
     assert!(paths.iter().any(|p| p.contains("DejaVuSansMono.ttf")));
-    assert!(paths.iter().any(|p| p.ends_with("consola.ttf")), "{paths:?}");
+    assert!(
+        paths.iter().any(|p| p.ends_with("consola.ttf")),
+        "{paths:?}"
+    );
 
     if let Some(home) = std::env::var_os("HOME") {
         let first = std::path::PathBuf::from(home).join("Library/Fonts");
-        assert!(paths[0].starts_with(first.to_string_lossy().as_ref()),
-            "a user font outranks the system copies");
+        assert!(
+            paths[0].starts_with(first.to_string_lossy().as_ref()),
+            "a user font outranks the system copies"
+        );
     }
 }

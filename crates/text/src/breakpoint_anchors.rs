@@ -11,7 +11,8 @@ impl Buffer {
     /// Track a DAP breakpoint at a byte offset; the anchor follows edits.
     pub fn attach_breakpoint(&mut self, bp_id: u64, offset: usize) {
         self.detach_breakpoint(bp_id);
-        self.bp_anchors.push((bp_id, Anchor::before(offset.min(self.doc.len()))));
+        self.bp_anchors
+            .push((bp_id, Anchor::before(offset.min(self.doc.len()))));
     }
 
     pub fn detach_breakpoint(&mut self, bp_id: u64) {

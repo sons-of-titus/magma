@@ -1,4 +1,4 @@
-use kernel::render::surface::{Surface, Style};
+use kernel::render::surface::{Style, Surface};
 
 fn main() {
     // Benchmark: Surface::new at 80x24
@@ -62,7 +62,15 @@ fn main() {
     // Benchmark: set_cell at sequential positions
     {
         let mut s = Surface::new(80, 24);
-        let style = Style { fg: (255, 0, 0), bg: (0, 0, 0), bold: false, italic: false, underline: false, strikethrough: false, dim: false };
+        let style = Style {
+            fg: (255, 0, 0),
+            bg: (0, 0, 0),
+            bold: false,
+            italic: false,
+            underline: false,
+            strikethrough: false,
+            dim: false,
+        };
         let start = std::time::Instant::now();
         for y in 0..24 {
             for x in 0..80 {

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use kernel::event::EventBus;
+use std::collections::HashMap;
 
 fn main() {
     // Benchmark: emit + drain_and_dispatch with N subscribers
@@ -87,9 +87,7 @@ fn main() {
     // Benchmark: chained events (handler emits another event)
     {
         let mut bus = EventBus::new();
-        bus.on("first", |_| {
-            None
-        });
+        bus.on("first", |_| None);
         let start = std::time::Instant::now();
         for _ in 0..10_000 {
             bus.emit("first", HashMap::new());
@@ -108,11 +106,15 @@ fn main() {
         let mut bus = EventBus::new();
         bus.on("transform-test", |_| None);
         for i in 0..10 {
-            bus.add_hook("transform-test", kernel::event::HookPhase::Transform, move |data| {
-                let mut d = data.clone();
-                d.insert(format!("k{}", i), format!("v{}", i));
-                Some(d)
-            });
+            bus.add_hook(
+                "transform-test",
+                kernel::event::HookPhase::Transform,
+                move |data| {
+                    let mut d = data.clone();
+                    d.insert(format!("k{}", i), format!("v{}", i));
+                    Some(d)
+                },
+            );
         }
         let start = std::time::Instant::now();
         for _ in 0..1_000 {

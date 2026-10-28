@@ -16,7 +16,9 @@ pub enum Phase {
 }
 
 pub fn feed(screen: &mut TerminalScreen, data: &str) {
-    if data.is_empty() { return; }
+    if data.is_empty() {
+        return;
+    }
     for ch in data.chars() {
         match screen.parser.phase {
             Phase::Ground => match ch {
@@ -87,7 +89,10 @@ pub fn feed(screen: &mut TerminalScreen, data: &str) {
             }
             Phase::Csi => match ch {
                 '0'..='9' | ';' | ':' => screen.parser.params.push(ch),
-                '?' | '>' | '<' | '=' if screen.parser.params.is_empty() && screen.parser.intermediates.is_empty() => {
+                '?' | '>' | '<' | '='
+                    if screen.parser.params.is_empty()
+                        && screen.parser.intermediates.is_empty() =>
+                {
                     screen.parser.private = ch == '?';
                 }
                 '\x20'..='\x2f' => screen.parser.intermediates.push(ch),
@@ -120,9 +125,9 @@ struct CsiRef<'a> {
 
 impl CsiRef<'_> {
     fn parts(&self) -> impl Iterator<Item = Option<u16>> + '_ {
-        self.params.split([':', ';']).map(|p| {
-            if p.is_empty() { None } else { p.parse().ok() }
-        })
+        self.params
+            .split([':', ';'])
+            .map(|p| if p.is_empty() { None } else { p.parse().ok() })
     }
 
     fn param(&self, idx: usize, default: u16) -> u16 {
@@ -140,7 +145,10 @@ fn print_char(screen: &mut TerminalScreen, ch: char) {
         screen.index();
         screen.pending_wrap = false;
     }
-    let cell = Cell { ch, style: screen.style };
+    let cell = Cell {
+        ch,
+        style: screen.style,
+    };
     screen.put_cell(screen.cursor_row, screen.cursor_col, cell);
     if screen.cursor_col + 1 >= screen.cols {
         screen.pending_wrap = true;
@@ -199,7 +207,10 @@ fn dispatch_csi(screen: &mut TerminalScreen, final_byte: char) {
             let n = csi.count(0);
             let end = (screen.cursor_col + n).min(screen.cols);
             let row = screen.cursor_row;
-            let blank = Cell { ch: ' ', style: screen.style };
+            let blank = Cell {
+                ch: ' ',
+                style: screen.style,
+            };
             for col in screen.cursor_col..end {
                 screen.put_cell(row, col, blank);
             }
@@ -209,7 +220,10 @@ fn dispatch_csi(screen: &mut TerminalScreen, final_byte: char) {
         'm' => sgr(screen, csi.params),
         'r' => {
             let top = csi.param(0, 1).saturating_sub(1);
-            let bottom = csi.param(1, screen.rows).saturating_sub(1).min(screen.rows - 1);
+            let bottom = csi
+                .param(1, screen.rows)
+                .saturating_sub(1)
+                .min(screen.rows - 1);
             if top < bottom {
                 screen.scroll_top = top;
                 screen.scroll_bottom = bottom;
@@ -235,7 +249,11 @@ fn set_private_mode(screen: &mut TerminalScreen, csi: &CsiRef<'_>, on: bool) {
             7 => screen.autowrap = on,
             25 => screen.cursor_visible = on,
             47 | 1047 => {
-                if on { screen.enter_alt(); } else { screen.leave_alt(); }
+                if on {
+                    screen.enter_alt();
+                } else {
+                    screen.leave_alt();
+                }
             }
             1049 => {
                 if on {
@@ -302,7 +320,10 @@ fn insert_chars(screen: &mut TerminalScreen, n: u16) {
     let cols = screen.cols as usize;
     let mut line: Vec<Cell> = ((col..cols).map(|c| screen.cell(row, c as u16))).collect();
     line.truncate(cols.saturating_sub(col).saturating_sub(n as usize));
-    let blank = Cell { ch: ' ', style: screen.style };
+    let blank = Cell {
+        ch: ' ',
+        style: screen.style,
+    };
     let mut next = vec![blank; n as usize];
     next.extend(line);
     for (i, cell) in next.into_iter().enumerate() {
@@ -314,17 +335,25 @@ fn delete_chars(screen: &mut TerminalScreen, n: u16) {
     let row = screen.cursor_row;
     let col = screen.cursor_col as usize;
     let cols = screen.cols as usize;
-    let blank = Cell { ch: ' ', style: screen.style };
+    let blank = Cell {
+        ch: ' ',
+        style: screen.style,
+    };
     for c in col..cols {
         let src = c + n as usize;
-        let cell = if src < cols { screen.cell(row, src as u16) } else { blank };
+        let cell = if src < cols {
+            screen.cell(row, src as u16)
+        } else {
+            blank
+        };
         screen.put_cell(row, c as u16, cell);
     }
 }
 
 fn sgr(screen: &mut TerminalScreen, params: &str) {
     let normalized = params.replace(':', ";");
-    let codes: Vec<Option<u16>> = normalized.split(';')
+    let codes: Vec<Option<u16>> = normalized
+        .split(';')
         .map(|p| if p.is_empty() { None } else { p.parse().ok() })
         .collect();
     let mut i = 0;
@@ -337,7 +366,10 @@ fn sgr(screen: &mut TerminalScreen, params: &str) {
             4 => screen.style.underline = true,
             7 => screen.style.reverse = true,
             9 => screen.style.strike = true,
-            22 => { screen.style.bold = false; screen.style.dim = false; }
+            22 => {
+                screen.style.bold = false;
+                screen.style.dim = false;
+            }
             23 => screen.style.italic = false,
             24 => screen.style.underline = false,
             27 => screen.style.reverse = false,
@@ -352,11 +384,17 @@ fn sgr(screen: &mut TerminalScreen, params: &str) {
                 // Extended color: 38;5;n (256) or 38;2;r;g;b, possibly with
                 // empty params from colon form (38;;n after normalization).
                 let mut j = i + 1;
-                while j < codes.len() && codes[j].is_none() { j += 1; }
+                while j < codes.len() && codes[j].is_none() {
+                    j += 1;
+                }
                 let kind = codes.get(j).copied().flatten();
                 let is_fg = codes[i].unwrap() == 38;
                 let mut target = |color: Color| {
-                    if is_fg { screen.style.fg = color; } else { screen.style.bg = color; }
+                    if is_fg {
+                        screen.style.fg = color;
+                    } else {
+                        screen.style.bg = color;
+                    }
                 };
                 match kind {
                     Some(5) => {
@@ -385,8 +423,8 @@ fn sgr(screen: &mut TerminalScreen, params: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{feed, TerminalScreen};
     use super::super::screen::Color;
+    use super::{TerminalScreen, feed};
 
     fn screen() -> TerminalScreen {
         TerminalScreen::with_size(10, 4)
@@ -467,7 +505,11 @@ mod tests {
         feed(&mut s, "\x1b[2Jalt stuff");
         assert_eq!(s.line(0), "alt stuff");
         feed(&mut s, "\x1b[?1049l");
-        assert_eq!(s.line(0), "main", "leaving the alt screen restores the main grid");
+        assert_eq!(
+            s.line(0),
+            "main",
+            "leaving the alt screen restores the main grid"
+        );
     }
 
     #[test]
@@ -544,7 +586,10 @@ mod tests {
         feed(&mut s, "ls\x1b[2m --all\x1b[0m\x1b[6D");
         let styled = s.styled_line(0);
         assert_eq!(styled.text, "ls --all");
-        assert!(styled.spans.iter().any(|sp| sp.style.dim), "the ghost run stays dim");
+        assert!(
+            styled.spans.iter().any(|sp| sp.style.dim),
+            "the ghost run stays dim"
+        );
         assert_eq!(s.cursor_col(), 2);
     }
 }

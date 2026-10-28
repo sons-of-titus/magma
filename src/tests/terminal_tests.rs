@@ -9,7 +9,10 @@ fn screen() -> TerminalScreen {
 }
 
 fn text(s: &TerminalScreen) -> String {
-    (0..s.line_count()).map(|i| s.line(i)).collect::<Vec<_>>().join("|")
+    (0..s.line_count())
+        .map(|i| s.line(i))
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 #[test]
@@ -36,7 +39,10 @@ fn full_clear_then_redraw_represents_vim_like_entry() {
     assert_eq!(s.line(0), "~ VIM", "alt screen shows the TUI");
     assert!(!text(&s).contains("shell prompt"), "main content hidden");
     s.apply("\x1b[?1049l");
-    assert!(text(&s).starts_with("shell prompt"), "leaving restores the main grid");
+    assert!(
+        text(&s).starts_with("shell prompt"),
+        "leaving restores the main grid"
+    );
 }
 
 #[test]
@@ -68,7 +74,10 @@ fn truncated_chunks_parse_across_applies() {
     s.apply("1mred");
     let styled = s.styled_line(0);
     assert_eq!(styled.text, "hello red");
-    assert_eq!(styled.spans[1].style.fg, crate::kernel::terminal::screen::Color::Indexed(1));
+    assert_eq!(
+        styled.spans[1].style.fg,
+        crate::kernel::terminal::screen::Color::Indexed(1)
+    );
 }
 
 #[test]
@@ -84,7 +93,10 @@ fn resize_matches_pty_reflow_contract() {
     let mut s = TerminalScreen::with_size(20, 6);
     s.apply("content");
     s.resize(10, 3);
-    assert!(s.line(0).starts_with("content"), "existing rows survive resize");
+    assert!(
+        s.line(0).starts_with("content"),
+        "existing rows survive resize"
+    );
 }
 
 #[test]

@@ -7,14 +7,14 @@
 //!   (language/for-buffer buf-id)                                         → string or nil
 //!   (language/load name)                                                 → :ok or :error
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::semantic::language_registry::LanguageInfo;
+use evil_janet::*;
 use kernel::event::keys;
 use kernel::event::payload::{
-    LanguageRegisteredPayload, LanguageLoadedPayload, LanguageUnregisteredPayload,
+    LanguageLoadedPayload, LanguageRegisteredPayload, LanguageUnregisteredPayload,
 };
+use kernel::semantic::language_registry::LanguageInfo;
 
 // ── C functions ──────────────────────────────────────────────────────────────
 
@@ -34,8 +34,8 @@ unsafe extern "C-unwind" fn c_language_register(argc: i32, argv: *mut Janet) -> 
             None => conv::signal_err("language/register: name string required"),
         };
         let provider_path = unsafe { conv::get_str(argc, argv, 1) };
-        let syntax_path   = unsafe { conv::get_str(argc, argv, 2) };
-        let config_path   = unsafe { conv::get_str(argc, argv, 3) };
+        let syntax_path = unsafe { conv::get_str(argc, argv, 2) };
+        let config_path = unsafe { conv::get_str(argc, argv, 3) };
 
         let info = LanguageInfo {
             name: name.clone(),
@@ -45,9 +45,10 @@ unsafe extern "C-unwind" fn c_language_register(argc: i32, argv: *mut Janet) -> 
             loaded: false,
         };
         ed.language_registry.register(info);
-        ed.events.emit_typed(keys::events::LANGUAGE_REGISTERED, LanguageRegisteredPayload {
-            name,
-        });
+        ed.events.emit_typed(
+            keys::events::LANGUAGE_REGISTERED,
+            LanguageRegisteredPayload { name },
+        );
         conv::keyword("ok")
     })
 }
@@ -62,9 +63,10 @@ unsafe extern "C-unwind" fn c_language_unregister(argc: i32, argv: *mut Janet) -
             None => return conv::nil(),
         };
         if ed.language_registry.unregister(&name) {
-            ed.events.emit_typed(keys::events::LANGUAGE_UNREGISTERED, LanguageUnregisteredPayload {
-                name,
-            });
+            ed.events.emit_typed(
+                keys::events::LANGUAGE_UNREGISTERED,
+                LanguageUnregisteredPayload { name },
+            );
         }
         conv::nil()
     })
@@ -79,14 +81,26 @@ unsafe extern "C-unwind" fn c_language_list(_argc: i32, _argv: *mut Janet) -> Ja
         let arr = janet_wrap_array(janet_array(langs.len() as i32));
         for info in langs {
             let tbl = janet_wrap_table(janet_table(5));
-            let t   = janet_unwrap_table(tbl);
-            janet_table_put(t, conv::keyword("name"),   conv::string(&info.name));
+            let t = janet_unwrap_table(tbl);
+            janet_table_put(t, conv::keyword("name"), conv::string(&info.name));
             janet_table_put(t, conv::keyword("loaded"), conv::boolean(info.loaded));
-            let pp = info.provider_path.as_deref().map(conv::string).unwrap_or_else(conv::nil);
+            let pp = info
+                .provider_path
+                .as_deref()
+                .map(conv::string)
+                .unwrap_or_else(conv::nil);
             janet_table_put(t, conv::keyword("provider-path"), pp);
-            let sp = info.syntax_path.as_deref().map(conv::string).unwrap_or_else(conv::nil);
+            let sp = info
+                .syntax_path
+                .as_deref()
+                .map(conv::string)
+                .unwrap_or_else(conv::nil);
             janet_table_put(t, conv::keyword("syntax-path"), sp);
-            let cp = info.config_path.as_deref().map(conv::string).unwrap_or_else(conv::nil);
+            let cp = info
+                .config_path
+                .as_deref()
+                .map(conv::string)
+                .unwrap_or_else(conv::nil);
             janet_table_put(t, conv::keyword("config-path"), cp);
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
@@ -103,7 +117,7 @@ unsafe extern "C-unwind" fn c_language_for_buffer(argc: i32, argv: *mut Janet) -
         let buf_id = unsafe { conv::get_int(argc, argv, 0) }.unwrap_or(-1) as usize;
         match ed.ts_languages.get(&buf_id) {
             Some(lang) => conv::string(lang),
-            None       => conv::nil(),
+            None => conv::nil(),
         }
     })
 }
@@ -123,13 +137,15 @@ unsafe extern "C-unwind" fn c_language_load(argc: i32, argv: *mut Janet) -> Jane
 
         // Clone the provider path so we can drop the borrow on ed before
         // calling eval_result (which may re-enter through with_editor).
-        let provider_path = ed.language_registry.get(&name)
+        let provider_path = ed
+            .language_registry
+            .get(&name)
             .and_then(|i| i.provider_path.clone());
 
         let content = match provider_path {
-            None       => return conv::keyword("error"),
+            None => return conv::keyword("error"),
             Some(path) => match std::fs::read_to_string(&path) {
-                Ok(c)  => c,
+                Ok(c) => c,
                 Err(_) => return conv::keyword("error"),
             },
         };
@@ -140,9 +156,10 @@ unsafe extern "C-unwind" fn c_language_load(argc: i32, argv: *mut Janet) -> Jane
         match crate::eval_result(&content) {
             Ok(_) => {
                 ed.language_registry.mark_loaded(&name);
-                ed.events.emit_typed(keys::events::LANGUAGE_LOADED, LanguageLoadedPayload {
-                    name,
-                });
+                ed.events.emit_typed(
+                    keys::events::LANGUAGE_LOADED,
+                    LanguageLoadedPayload { name },
+                );
                 conv::keyword("ok")
             }
             Err(_) => conv::keyword("error"),

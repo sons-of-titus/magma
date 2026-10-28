@@ -7,18 +7,19 @@ use std::path::Path;
 /// `(language, marker files)` in priority order: a repo carrying both
 /// `Cargo.toml` and `Makefile` is a Rust project.
 const DETECTORS: &[(&str, &[&str])] = &[
-    ("rust",   &["Cargo.toml"]),
-    ("go",     &["go.mod"]),
-    ("node",   &["package.json"]),
-    ("make",   &["Makefile"]),
+    ("rust", &["Cargo.toml"]),
+    ("go", &["go.mod"]),
+    ("node", &["package.json"]),
+    ("make", &["Makefile"]),
     ("python", &["pyproject.toml", "setup.py"]),
-    ("cmake",  &["CMakeLists.txt"]),
-    ("maven",  &["pom.xml"]),
+    ("cmake", &["CMakeLists.txt"]),
+    ("maven", &["pom.xml"]),
     ("gradle", &["build.gradle", "build.gradle.kts"]),
 ];
 
 pub fn detect_language(root: &Path) -> Option<&'static str> {
-    DETECTORS.iter()
+    DETECTORS
+        .iter()
         .find(|(_, markers)| markers.iter().any(|m| root.join(m).exists()))
         .map(|(lang, _)| *lang)
 }
@@ -42,7 +43,8 @@ pub fn adapter_candidates(language: &str) -> &'static [&'static str] {
 /// still counts.  The path is returned, not the bare name: a binary resolved
 /// outside `$PATH` cannot be spawned by name.
 pub fn find_adapter(language: &str) -> Option<std::path::PathBuf> {
-    adapter_candidates(language).iter()
+    adapter_candidates(language)
+        .iter()
         .find_map(|candidate| crate::toolchain::find_extended(candidate))
 }
 
@@ -68,14 +70,19 @@ mod tests {
 
     #[test]
     fn rust_candidates_prefer_codelldb_then_lldb_dap() {
-        assert_eq!(adapter_candidates("rust"), &["codelldb", "lldb-dap", "lldb-vscode"]);
+        assert_eq!(
+            adapter_candidates("rust"),
+            &["codelldb", "lldb-dap", "lldb-vscode"]
+        );
     }
 
     #[test]
     fn every_detector_language_has_defaults() {
         for (lang, _) in DETECTORS {
-            assert!(!run_config::defaults_for(lang).is_empty(),
-                "{lang} is detected but has no default run configs");
+            assert!(
+                !run_config::defaults_for(lang).is_empty(),
+                "{lang} is detected but has no default run configs"
+            );
         }
     }
 }

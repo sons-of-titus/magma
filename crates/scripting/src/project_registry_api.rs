@@ -3,9 +3,9 @@
 
 use std::path::PathBuf;
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::event::keys;
 use kernel::event::payload::EmptyPayload;
 use kernel::project;
@@ -32,25 +32,29 @@ unsafe extern "C-unwind" fn c_project_push_recent(argc: i32, argv: *mut Janet) -
 }
 
 /// (project/path-exists? path) → boolean
-unsafe extern "C-unwind" fn c_project_path_exists(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    let path_str = match conv::get_str(argc, argv, 0) {
-        Some(s) => s,
-        None => return conv::nil(),
-    };
-    conv::boolean(std::path::Path::new(&path_str).exists())
-}}
+unsafe extern "C-unwind" fn c_project_path_exists(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let path_str = match conv::get_str(argc, argv, 0) {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
+        conv::boolean(std::path::Path::new(&path_str).exists())
+    }
+}
 
 /// (project/fs-read path) → string or nil
-unsafe extern "C-unwind" fn c_project_fs_read(argc: i32, argv: *mut Janet) -> Janet { unsafe {
-    let path_str = match conv::get_str(argc, argv, 0) {
-        Some(s) => s,
-        None => return conv::nil(),
-    };
-    match std::fs::read_to_string(&path_str) {
-        Ok(content) => conv::string(&content),
-        Err(_) => conv::nil(),
+unsafe extern "C-unwind" fn c_project_fs_read(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let path_str = match conv::get_str(argc, argv, 0) {
+            Some(s) => s,
+            None => return conv::nil(),
+        };
+        match std::fs::read_to_string(&path_str) {
+            Ok(content) => conv::string(&content),
+            Err(_) => conv::nil(),
+        }
     }
-}}
+}
 
 /// (project/buffer-set-project buf project-name) → nil
 unsafe extern "C-unwind" fn c_project_buffer_set_project(argc: i32, argv: *mut Janet) -> Janet {
@@ -64,7 +68,9 @@ unsafe extern "C-unwind" fn c_project_buffer_set_project(argc: i32, argv: *mut J
             None => return conv::nil(),
         };
         if ed.buffers.contains(buf_key) {
-            ed.project_manager.buffer_projects.insert(buf_key, project_name);
+            ed.project_manager
+                .buffer_projects
+                .insert(buf_key, project_name);
         }
         conv::nil()
     })
@@ -116,7 +122,8 @@ unsafe extern "C-unwind" fn c_project_unregister(argc: i32, argv: *mut Janet) ->
         if ed.project_manager.current_project.as_deref() == Some(&name) {
             ed.project_manager.current_project = None;
             ed.project_manager.project = kernel::project::Project::default();
-            ed.events.emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
+            ed.events
+                .emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);
         }
         conv::nil()
     })
@@ -130,7 +137,9 @@ unsafe extern "C-unwind" fn c_project_list(_argc: i32, _argv: *mut Janet) -> Jan
             let tbl = janet_wrap_table(janet_table(2));
             let t = janet_unwrap_table(tbl);
             janet_table_put(t, conv::keyword("name"), conv::string(name));
-            let root_str = proj.root.as_ref()
+            let root_str = proj
+                .root
+                .as_ref()
                 .map(|r| r.to_string_lossy().into_owned())
                 .unwrap_or_default();
             janet_table_put(t, conv::keyword("root"), conv::string(&root_str));
@@ -149,12 +158,17 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"project/push-recent".as_ptr() as *const _,
-            cfun: Some(c_project_push_recent as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Add a project path to the recent list and persist".as_ptr() as *const _,
+            cfun: Some(
+                c_project_push_recent as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Add a project path to the recent list and persist".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"project/path-exists?".as_ptr() as *const _,
-            cfun: Some(c_project_path_exists as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_path_exists as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Check if a file or directory exists".as_ptr() as *const _,
         },
         JanetReg {
@@ -164,12 +178,17 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"project/buffer-set-project".as_ptr() as *const _,
-            cfun: Some(c_project_buffer_set_project as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_buffer_set_project
+                    as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Associate a buffer with a project".as_ptr() as *const _,
         },
         JanetReg {
             name: c"project/buffer-project".as_ptr() as *const _,
-            cfun: Some(c_project_buffer_project as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_buffer_project as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Return the project name for a buffer".as_ptr() as *const _,
         },
         JanetReg {
@@ -179,7 +198,9 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"project/unregister".as_ptr() as *const _,
-            cfun: Some(c_project_unregister as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_project_unregister as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Remove a project from the registry".as_ptr() as *const _,
         },
         JanetReg {

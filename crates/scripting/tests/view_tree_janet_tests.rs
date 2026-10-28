@@ -1,5 +1,6 @@
 use scripting;
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 
 // ── ViewTree through Janet API ─────────────────────────────────────────────
 

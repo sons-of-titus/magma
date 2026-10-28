@@ -9,15 +9,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::kernel::render::decorations::render_overlays;
-use crate::kernel::render::editor_view::{build_visible_rows, VisibleRow};
+use crate::kernel::render::editor_view::{VisibleRow, build_visible_rows};
 use crate::kernel::render::frame::{
     bool_option, compute_scroll_state, frame_panes, gutter_cols, horizontal_extent, int_option,
     pane_scroll_top, prepare_frame, sync_viewport_scroll,
 };
 use crate::kernel::render::host::{FrameHost, PaneMetrics, RenderHost, ViewportHost};
-use crate::kernel::state::Overlay;
 use crate::kernel::render::surface::Surface;
 use crate::kernel::render::view_tree::Pane;
+use crate::kernel::state::Overlay;
 use crate::kernel::state::id::{BufferId, WindowId};
 use crate::kernel::text_engine::{Buffer, BufferView, Position};
 
@@ -55,7 +55,11 @@ impl StubHost {
 
     fn set_cursor(&mut self, key: usize, offset: usize) {
         if let Some(view) = self.views.get_mut(&key) {
-            view.cursor = Position { line: 0, column: 0, offset };
+            view.cursor = Position {
+                line: 0,
+                column: 0,
+                offset,
+            };
         }
     }
 }
@@ -129,7 +133,11 @@ impl FrameHost for StubHost {
 #[test]
 fn options_are_read_through_the_host() {
     let mut host = StubHost::with_text("");
-    assert_eq!(int_option(&host, "tab-width", 4), 4, "missing option falls back");
+    assert_eq!(
+        int_option(&host, "tab-width", 4),
+        4,
+        "missing option falls back"
+    );
     assert!(!bool_option(&host, "number"), "missing flag is false");
 
     host.options.insert("tab-width".into(), "8".into());
@@ -155,7 +163,10 @@ fn scroll_state_is_derived_from_host_buffers_and_views() {
     host.set_cursor(0, 8);
     let state = compute_scroll_state(&host, 0, 2);
     assert_eq!(state.cursor_line, 2, "offset 8 is the third line");
-    assert_eq!(state.scroll_top, 2, "cursor leaves the window, viewport follows");
+    assert_eq!(
+        state.scroll_top, 2,
+        "cursor leaves the window, viewport follows"
+    );
     assert_eq!(state.cursor_vis_row, 0);
 }
 
@@ -174,7 +185,11 @@ fn gutter_and_horizontal_extent_use_only_the_host() {
     let mut host = StubHost::with_text("aaa\nbb\nccc");
     host.gutter = 4;
 
-    assert_eq!(gutter_cols(&host, 0, 3), 4, "gutter width comes from the host");
+    assert_eq!(
+        gutter_cols(&host, 0, 3),
+        4,
+        "gutter width comes from the host"
+    );
 
     host.panes.push(Pane {
         buffer_id: Some(0),
@@ -258,5 +273,10 @@ fn build_visible_rows_extracts_lines_without_editor() {
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].text, "a\n");
     assert!(!rows[0].fold);
-    let _ = VisibleRow { start: 0, end: 0, text: String::new(), fold: false };
+    let _ = VisibleRow {
+        start: 0,
+        end: 0,
+        text: String::new(),
+        fold: false,
+    };
 }

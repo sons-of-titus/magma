@@ -32,7 +32,10 @@ pub enum TransactionOrigin {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TransactionError {
     #[error("edits overlap: {first:?} and {second:?}")]
-    OverlappingEdits { first: Range<usize>, second: Range<usize> },
+    OverlappingEdits {
+        first: Range<usize>,
+        second: Range<usize>,
+    },
     #[error("invalid range (end before start): {0:?}")]
     InvalidRange(Range<usize>),
     #[error("range {range:?} out of bounds for document of {len} bytes")]
@@ -90,11 +93,7 @@ impl TransactionBuilder {
     /// Sort, drop no-ops, merge abutting ranges, reject overlaps.
     /// Pure: needs no text access.
     pub fn normalize(self) -> Result<Vec<Edit>, TransactionError> {
-        let mut edits: Vec<Edit> = self
-            .edits
-            .into_iter()
-            .filter(|e| !e.is_noop())
-            .collect();
+        let mut edits: Vec<Edit> = self.edits.into_iter().filter(|e| !e.is_noop()).collect();
         for e in &edits {
             if e.range.end < e.range.start {
                 return Err(TransactionError::InvalidRange(e.range.clone()));
@@ -152,8 +151,8 @@ impl EditTransaction {
             .map(|ce| {
                 let start = (ce.edit.start() as isize + delta).max(0) as usize;
                 let end = start + ce.edit.inserted_len();
-                delta += ce.edit.inserted_len() as isize
-                    - (ce.edit.end() - ce.edit.start()) as isize;
+                delta +=
+                    ce.edit.inserted_len() as isize - (ce.edit.end() - ce.edit.start()) as isize;
                 Edit::replace(start..end, &ce.old_text)
             })
             .collect()
@@ -161,9 +160,10 @@ impl EditTransaction {
 
     /// A builder holding the inverse edits with the given origin.
     pub fn invert(&self, origin: TransactionOrigin) -> TransactionBuilder {
-        self.inverse_edits()
-            .into_iter()
-            .fold(TransactionBuilder::new().with_origin(origin), TransactionBuilder::push)
+        self.inverse_edits().into_iter().fold(
+            TransactionBuilder::new().with_origin(origin),
+            TransactionBuilder::push,
+        )
     }
 
     /// Transform an anchor from `revision_before` coordinates to

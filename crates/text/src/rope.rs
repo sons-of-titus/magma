@@ -1,11 +1,11 @@
 //! Rope backed by `ropey::Rope`.
+use ropey::Rope as RopeyRope;
 ///
 /// The public API is byte-offset based to match the rest of the buffer layer.
 /// Internally all operations convert byte offsets to char indices before
 /// calling into ropey.  Byte offsets that fall in the middle of a multi-byte
 /// sequence are silently snapped to the nearest preceding char boundary.
 use std::borrow::Cow;
-use ropey::Rope as RopeyRope;
 
 #[derive(Clone, Debug)]
 pub struct Rope {
@@ -20,11 +20,15 @@ impl Default for Rope {
 
 impl Rope {
     pub fn new() -> Self {
-        Rope { inner: RopeyRope::new() }
+        Rope {
+            inner: RopeyRope::new(),
+        }
     }
 
     pub fn from_string(s: &str) -> Self {
-        Rope { inner: RopeyRope::from_str(s) }
+        Rope {
+            inner: RopeyRope::from_str(s),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -36,35 +40,49 @@ impl Rope {
     }
 
     pub fn insert(&mut self, byte_offset: usize, text: &str) {
-        if text.is_empty() { return; }
+        if text.is_empty() {
+            return;
+        }
         let char_idx = self.byte_to_char_idx(byte_offset);
         self.inner.insert(char_idx, text);
     }
 
     pub fn delete(&mut self, start: usize, end: usize) {
-        if start >= end { return; }
+        if start >= end {
+            return;
+        }
         let end = end.min(self.inner.len_bytes());
-        if start >= end { return; }
+        if start >= end {
+            return;
+        }
         let start_char = self.byte_to_char_idx(start);
-        let end_char   = self.byte_to_char_idx(end);
+        let end_char = self.byte_to_char_idx(end);
         if start_char < end_char {
             self.inner.remove(start_char..end_char);
         }
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Cow<'_, str> {
-        if start >= end { return Cow::Borrowed(""); }
+        if start >= end {
+            return Cow::Borrowed("");
+        }
         let end = end.min(self.inner.len_bytes());
-        if start >= end { return Cow::Borrowed(""); }
+        if start >= end {
+            return Cow::Borrowed("");
+        }
         let start_char = self.byte_to_char_idx(start);
-        let end_char   = self.byte_to_char_idx(end);
+        let end_char = self.byte_to_char_idx(end);
         Cow::Owned(self.inner.slice(start_char..end_char).to_string())
     }
 
     pub fn char_at(&self, byte_offset: usize) -> Option<char> {
-        if byte_offset >= self.inner.len_bytes() { return None; }
+        if byte_offset >= self.inner.len_bytes() {
+            return None;
+        }
         let char_idx = self.byte_to_char_idx(byte_offset);
-        if char_idx >= self.inner.len_chars() { return None; }
+        if char_idx >= self.inner.len_chars() {
+            return None;
+        }
         Some(self.inner.char(char_idx))
     }
 
@@ -73,10 +91,13 @@ impl Rope {
     }
 
     pub fn line(&self, n: usize) -> Option<Cow<'_, str>> {
-        if n >= self.inner.len_lines() { return None; }
+        if n >= self.inner.len_lines() {
+            return None;
+        }
         let raw = self.inner.line(n).to_string();
         // ropey includes the line terminator; strip it.
-        let trimmed = raw.strip_suffix('\n')
+        let trimmed = raw
+            .strip_suffix('\n')
             .map(|s| s.strip_suffix('\r').unwrap_or(s))
             .unwrap_or(&raw)
             .to_string();
@@ -84,7 +105,9 @@ impl Rope {
     }
 
     pub fn line_start_offset(&self, n: usize) -> Option<usize> {
-        if n >= self.inner.len_lines() { return None; }
+        if n >= self.inner.len_lines() {
+            return None;
+        }
         let char_idx = self.inner.line_to_char(n);
         Some(self.inner.char_to_byte(char_idx))
     }
@@ -92,7 +115,9 @@ impl Rope {
     /// Line containing the character at `byte_offset` (the byte at a `\n`
     /// belongs to the line it terminates).  Clamped; an empty rope is line 0.
     pub fn line_of(&self, byte_offset: usize) -> usize {
-        if self.inner.len_bytes() == 0 { return 0; }
+        if self.inner.len_bytes() == 0 {
+            return 0;
+        }
         let clamped = byte_offset.min(self.inner.len_bytes());
         self.inner.byte_to_line(clamped)
     }
@@ -101,7 +126,9 @@ impl Rope {
     /// ropey 1.6 has no direct query; a byte is a boundary iff it is the
     /// start byte of its own char.
     pub fn is_char_boundary(&self, byte_offset: usize) -> bool {
-        if byte_offset > self.inner.len_bytes() { return false; }
+        if byte_offset > self.inner.len_bytes() {
+            return false;
+        }
         let char_idx = self.inner.byte_to_char(byte_offset);
         self.inner.char_to_byte(char_idx) == byte_offset
     }
@@ -110,7 +137,9 @@ impl Rope {
     /// clamped to the rope length.
     pub fn floor_boundary(&self, byte_offset: usize) -> usize {
         let len = self.inner.len_bytes();
-        if byte_offset >= len { return len; }
+        if byte_offset >= len {
+            return len;
+        }
         let char_idx = self.inner.byte_to_char(byte_offset);
         self.inner.char_to_byte(char_idx)
     }
@@ -124,8 +153,7 @@ impl Rope {
     /// chunks plus the absolute byte offset of the first one.  Mid-char
     /// offsets snap down to the chunk's content start (char_indices walks
     /// from the chunk start; callers skipping to `from` is their call).
-    pub(crate) fn chunks_from(&self, byte_offset: usize)
-        -> (ropey::iter::Chunks<'_>, usize) {
+    pub(crate) fn chunks_from(&self, byte_offset: usize) -> (ropey::iter::Chunks<'_>, usize) {
         let off = byte_offset.min(self.inner.len_bytes());
         let (chunks, byte_start, _, _) = self.inner.chunks_at_byte(off);
         (chunks, byte_start)
@@ -151,8 +179,12 @@ impl Rope {
     /// byte), it is snapped to the nearest preceding boundary.
     fn byte_to_char_idx(&self, byte_offset: usize) -> usize {
         let len_bytes = self.inner.len_bytes();
-        if byte_offset == 0       { return 0; }
-        if byte_offset >= len_bytes { return self.inner.len_chars(); }
+        if byte_offset == 0 {
+            return 0;
+        }
+        if byte_offset >= len_bytes {
+            return self.inner.len_chars();
+        }
 
         // chunks_at_byte returns the chunk that contains byte_offset together
         // with the byte and char indices of that chunk's start.
@@ -163,7 +195,9 @@ impl Rope {
             let local = byte_offset - chunk_byte_start;
             // Walk back from local to the nearest char boundary.
             let mut b = local.min(chunk.len());
-            while b > 0 && !chunk.is_char_boundary(b) { b -= 1; }
+            while b > 0 && !chunk.is_char_boundary(b) {
+                b -= 1;
+            }
             chunk_char_start + chunk[..b].chars().count()
         } else {
             self.inner.len_chars()
@@ -231,8 +265,8 @@ mod tests {
     fn line_start_offset() {
         let r = Rope::from_string("abc\ndefg\nhi");
         assert_eq!(r.line_start_offset(0), Some(0));
-        assert_eq!(r.line_start_offset(1), Some(4));  // after 'abc\n'
-        assert_eq!(r.line_start_offset(2), Some(9));  // after 'defg\n'
+        assert_eq!(r.line_start_offset(1), Some(4)); // after 'abc\n'
+        assert_eq!(r.line_start_offset(2), Some(9)); // after 'defg\n'
         assert_eq!(r.line_start_offset(3), None);
     }
 
@@ -247,7 +281,7 @@ mod tests {
     #[test]
     fn multibyte_insert_and_slice() {
         let mut r = Rope::new();
-        r.insert(0, "héllo");  // 'é' = 2 bytes
+        r.insert(0, "héllo"); // 'é' = 2 bytes
         assert_eq!(r.len(), 6);
         assert_eq!(&*r.slice(0, r.len()), "héllo");
     }
@@ -255,7 +289,7 @@ mod tests {
     #[test]
     fn multibyte_delete() {
         let mut r = Rope::from_string("héllo");
-        r.delete(1, 3);  // delete 'é'
+        r.delete(1, 3); // delete 'é'
         assert_eq!(&*r.slice(0, r.len()), "hllo");
     }
 
@@ -263,8 +297,8 @@ mod tests {
     fn char_at_multibyte() {
         let r = Rope::from_string("héllo");
         assert_eq!(r.char_at(0), Some('h'));
-        assert_eq!(r.char_at(1), Some('é'));  // 'é' starts at byte 1
-        assert_eq!(r.char_at(3), Some('l'));  // after 'é'
+        assert_eq!(r.char_at(1), Some('é')); // 'é' starts at byte 1
+        assert_eq!(r.char_at(3), Some('l')); // after 'é'
     }
 
     #[test]
@@ -273,8 +307,11 @@ mod tests {
         // byte 2 is the second byte of 'é' (not a char boundary)
         // slice(2, 5) should snap 2 → 1 and give "éll"
         let s = r.slice(2, 5);
-        assert!(s.starts_with('é') || s.starts_with('l'),
-            "non-boundary slice must not panic and must return valid UTF-8, got {:?}", s);
+        assert!(
+            s.starts_with('é') || s.starts_with('l'),
+            "non-boundary slice must not panic and must return valid UTF-8, got {:?}",
+            s
+        );
     }
 
     #[test]

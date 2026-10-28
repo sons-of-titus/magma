@@ -7,9 +7,9 @@
 
 use std::collections::HashMap;
 
+use super::project_graph::ProjectGraph;
 use super::provider::{CompletionItem, Diagnostic, DiagnosticSeverity, LanguageProvider, Symbol};
 use super::symbol_index::{SymbolIndex, SymbolRef};
-use super::project_graph::ProjectGraph;
 
 /// Central coordinator for language intelligence features.
 #[derive(Default)]
@@ -25,7 +25,9 @@ pub struct SemanticEngine {
 }
 
 impl SemanticEngine {
-    pub fn new() -> Self { SemanticEngine::default() }
+    pub fn new() -> Self {
+        SemanticEngine::default()
+    }
 
     /// Register a language provider.  Replaces any existing provider for the language.
     pub fn register_provider(&mut self, language_id: &str, provider: Box<dyn LanguageProvider>) {
@@ -113,15 +115,25 @@ impl SemanticEngine {
 
     /// Error count for a path.
     pub fn error_count(&self, path: &str) -> usize {
-        self.diagnostics.get(path)
-            .map(|v| v.iter().filter(|d| d.severity == DiagnosticSeverity::Error).count())
+        self.diagnostics
+            .get(path)
+            .map(|v| {
+                v.iter()
+                    .filter(|d| d.severity == DiagnosticSeverity::Error)
+                    .count()
+            })
             .unwrap_or(0)
     }
 
     /// Warning count for a path.
     pub fn warning_count(&self, path: &str) -> usize {
-        self.diagnostics.get(path)
-            .map(|v| v.iter().filter(|d| d.severity == DiagnosticSeverity::Warning).count())
+        self.diagnostics
+            .get(path)
+            .map(|v| {
+                v.iter()
+                    .filter(|d| d.severity == DiagnosticSeverity::Warning)
+                    .count()
+            })
             .unwrap_or(0)
     }
 }
@@ -154,8 +166,22 @@ mod tests {
     fn update_and_query_diagnostics() {
         let mut engine = SemanticEngine::new();
         let diags = vec![
-            Diagnostic { message: "err".into(), severity: DiagnosticSeverity::Error, line: 0, column: 0, end_line: 0, end_column: 3 },
-            Diagnostic { message: "warn".into(), severity: DiagnosticSeverity::Warning, line: 1, column: 0, end_line: 1, end_column: 4 },
+            Diagnostic {
+                message: "err".into(),
+                severity: DiagnosticSeverity::Error,
+                line: 0,
+                column: 0,
+                end_line: 0,
+                end_column: 3,
+            },
+            Diagnostic {
+                message: "warn".into(),
+                severity: DiagnosticSeverity::Warning,
+                line: 1,
+                column: 0,
+                end_line: 1,
+                end_column: 4,
+            },
         ];
         engine.update_diagnostics("/a.rs", diags);
         assert_eq!(engine.error_count("/a.rs"), 1);
@@ -166,10 +192,17 @@ mod tests {
     #[test]
     fn update_diagnostics_empty_removes_entry() {
         let mut engine = SemanticEngine::new();
-        engine.update_diagnostics("/c.rs", vec![Diagnostic {
-            message: "err".into(), severity: DiagnosticSeverity::Error,
-            line: 0, column: 0, end_line: 0, end_column: 0,
-        }]);
+        engine.update_diagnostics(
+            "/c.rs",
+            vec![Diagnostic {
+                message: "err".into(),
+                severity: DiagnosticSeverity::Error,
+                line: 0,
+                column: 0,
+                end_line: 0,
+                end_column: 0,
+            }],
+        );
         assert_eq!(engine.diagnostics.len(), 1);
         engine.update_diagnostics("/c.rs", vec![]);
         assert_eq!(engine.diagnostics.len(), 0);
@@ -179,11 +212,35 @@ mod tests {
     fn completions_for_prefix_from_index() {
         let mut engine = SemanticEngine::new();
         use crate::provider::{Symbol, SymbolKind};
-        engine.symbol_index.add_symbols("/a.rs", vec![
-            Symbol { name: "format_str".into(), kind: SymbolKind::Function, file: String::new(), line: 0, column: 0, documentation: None },
-            Symbol { name: "format_int".into(), kind: SymbolKind::Function, file: String::new(), line: 1, column: 0, documentation: None },
-            Symbol { name: "parse_str".into(),  kind: SymbolKind::Function, file: String::new(), line: 2, column: 0, documentation: None },
-        ]);
+        engine.symbol_index.add_symbols(
+            "/a.rs",
+            vec![
+                Symbol {
+                    name: "format_str".into(),
+                    kind: SymbolKind::Function,
+                    file: String::new(),
+                    line: 0,
+                    column: 0,
+                    documentation: None,
+                },
+                Symbol {
+                    name: "format_int".into(),
+                    kind: SymbolKind::Function,
+                    file: String::new(),
+                    line: 1,
+                    column: 0,
+                    documentation: None,
+                },
+                Symbol {
+                    name: "parse_str".into(),
+                    kind: SymbolKind::Function,
+                    file: String::new(),
+                    line: 2,
+                    column: 0,
+                    documentation: None,
+                },
+            ],
+        );
         let comps = engine.completions_for_prefix("format");
         assert_eq!(comps, vec!["format_int", "format_str"]);
     }

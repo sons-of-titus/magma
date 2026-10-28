@@ -1,8 +1,8 @@
 //! Janet C functions for HTTP requests (Sprint 13).
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 use kernel::extension::Capability;
 
 unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet {
@@ -42,7 +42,11 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
+                        id,
+                        status,
+                        body,
+                    });
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
@@ -81,7 +85,11 @@ unsafe extern "C-unwind" fn c_http_get(argc: i32, argv: *mut Janet) -> Janet {
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
+                        id,
+                        status,
+                        body,
+                    });
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
@@ -113,7 +121,9 @@ unsafe extern "C-unwind" fn c_http_post(argc: i32, argv: *mut Janet) -> Janet {
         debug_http!("→ id={id} POST {url} body_len={}", body.len());
         bg.spawn_blocking(move || {
             let result = (|| -> Result<(u16, String), String> {
-                let resp = ureq::post(&url).send_string(&body).map_err(|e| e.to_string())?;
+                let resp = ureq::post(&url)
+                    .send_string(&body)
+                    .map_err(|e| e.to_string())?;
                 let status = resp.status();
                 let text = resp.into_string().map_err(|e| e.to_string())?;
                 Ok((status, text))
@@ -121,7 +131,11 @@ unsafe extern "C-unwind" fn c_http_post(argc: i32, argv: *mut Janet) -> Janet {
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse { id, status, body });
+                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
+                        id,
+                        status,
+                        body,
+                    });
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
@@ -138,7 +152,8 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"net/http-request".as_ptr(),
             cfun: Some(c_http_request as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Fire an HTTP request; emits http-response or http-error event".as_ptr(),
+            documentation: c"Fire an HTTP request; emits http-response or http-error event"
+                .as_ptr(),
         },
         JanetReg {
             name: c"net/http-get".as_ptr(),
@@ -148,7 +163,8 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"net/http-post".as_ptr(),
             cfun: Some(c_http_post as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"POST body to the given URL; emits http-response or http-error event".as_ptr(),
+            documentation: c"POST body to the given URL; emits http-response or http-error event"
+                .as_ptr(),
         },
     ]
 }

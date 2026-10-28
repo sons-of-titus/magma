@@ -37,8 +37,16 @@ fn zwj_emoji_family_is_one_cell() {
     let clusters: Vec<&str> = grapheme_iter(&text).collect();
     assert_eq!(clusters.len(), 2);
     assert_eq!(clusters[0], family);
-    assert_eq!(prev_grapheme(&text, family.len() + 1), family.len(), "left from EOF lands on 'x'");
-    assert_eq!(prev_grapheme(&text, family.len()), 0, "left from 'x' jumps the whole family");
+    assert_eq!(
+        prev_grapheme(&text, family.len() + 1),
+        family.len(),
+        "left from EOF lands on 'x'"
+    );
+    assert_eq!(
+        prev_grapheme(&text, family.len()),
+        0,
+        "left from 'x' jumps the whole family"
+    );
 }
 
 #[test]
@@ -46,7 +54,11 @@ fn cjk_wide_characters_take_two_cells() {
     let glyphs = no_glyphs();
     let text = "中x";
     assert_eq!(grapheme_cell_width("中", 4, 0, &glyphs), 2);
-    assert_eq!(cell_column(text, 3, 4, &glyphs), 2, "'x' at cell 2 after CJK");
+    assert_eq!(
+        cell_column(text, 3, 4, &glyphs),
+        2,
+        "'x' at cell 2 after CJK"
+    );
     assert_eq!(line_cells("中中", 4, &glyphs), 4);
 }
 
@@ -67,8 +79,16 @@ fn offsets_snap_to_grapheme_boundaries() {
     assert_eq!(floor_grapheme(text, 2), 1, "mid-emoji snaps to its start");
     assert_eq!(floor_grapheme(text, 5), 5, "'b' stays");
     assert_eq!(floor_grapheme(text, 99), text.len());
-    assert_eq!(prev_grapheme(text, 3), 1, "left from mid-emoji lands before it");
-    assert_eq!(next_grapheme(text, 2), 5, "right from mid-emoji lands after it");
+    assert_eq!(
+        prev_grapheme(text, 3),
+        1,
+        "left from mid-emoji lands before it"
+    );
+    assert_eq!(
+        next_grapheme(text, 2),
+        5,
+        "right from mid-emoji lands after it"
+    );
 }
 
 #[test]
@@ -115,8 +135,12 @@ fn wide_glyphs_render_aligned_in_two_surface_cells() {
 
     // 'a' at content col 0 (cursor may cover it); '中' at cols 1-2; 'b' at
     // col 3 — the 'b' cell proves the wide glyph consumed two columns.
-    let cjk_x = (0..20u16).find(|&x| surface.cell(x, 0).map(|c| c.ch) == Some('中'))
+    let cjk_x = (0..20u16)
+        .find(|&x| surface.cell(x, 0).map(|c| c.ch) == Some('中'))
         .expect("row renders 中");
-    assert_eq!(surface.cell(cjk_x + 2, 0).map(|c| c.ch), Some('b'),
-        "'b' must land after the wide glyph's two cells");
+    assert_eq!(
+        surface.cell(cjk_x + 2, 0).map(|c| c.ch),
+        Some('b'),
+        "'b' must land after the wide glyph's two cells"
+    );
 }

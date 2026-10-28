@@ -28,7 +28,9 @@ pub struct SessionBreakpoint {
     pub enabled: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct SessionState {

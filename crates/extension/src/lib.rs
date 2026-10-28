@@ -22,20 +22,20 @@ pub enum Capability {
 impl Capability {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Capability::Filesystem       => "filesystem",
-            Capability::Network          => "network",
+            Capability::Filesystem => "filesystem",
+            Capability::Network => "network",
             Capability::ProcessExecution => "process-execution",
-            Capability::EditorAccess     => "editor-access",
+            Capability::EditorAccess => "editor-access",
         }
     }
 
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "filesystem"        => Some(Capability::Filesystem),
-            "network"           => Some(Capability::Network),
+            "filesystem" => Some(Capability::Filesystem),
+            "network" => Some(Capability::Network),
             "process-execution" => Some(Capability::ProcessExecution),
-            "editor-access"     => Some(Capability::EditorAccess),
+            "editor-access" => Some(Capability::EditorAccess),
             _ => None,
         }
     }
@@ -137,7 +137,8 @@ mod tests {
     fn register_and_get() {
         let mut reg = ExtensionRegistry::new();
         reg.register(ExtensionManifest::new(
-            "test-ext", "1.0",
+            "test-ext",
+            "1.0",
             vec![Capability::Filesystem],
             "test.janet",
         ));
@@ -148,7 +149,10 @@ mod tests {
     fn has_capability_true_when_declared() {
         let mut reg = ExtensionRegistry::new();
         reg.register(ExtensionManifest::new(
-            "ext", "1.0", vec![Capability::Network], "e.janet",
+            "ext",
+            "1.0",
+            vec![Capability::Network],
+            "e.janet",
         ));
         assert!(reg.has_capability("ext", &Capability::Network));
         assert!(!reg.has_capability("ext", &Capability::Filesystem));

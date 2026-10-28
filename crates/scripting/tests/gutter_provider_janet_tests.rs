@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Janet API tests for the GutterProvider architecture (Phase 7).
 
 use scripting;
@@ -10,8 +11,14 @@ fn add_provider_registers_provider() {
     janet_test!(ed, {
         // gutter.janet pre-registers ":line-numbers" etc. via gutter/add-provider.
         let names: Vec<&str> = ed.gutter.providers.iter().map(|p| p.name()).collect();
-        assert!(names.contains(&":line-numbers"), "line-numbers should be registered");
-        assert!(names.contains(&":diagnostics"), "diagnostics should be registered");
+        assert!(
+            names.contains(&":line-numbers"),
+            "line-numbers should be registered"
+        );
+        assert!(
+            names.contains(&":diagnostics"),
+            "diagnostics should be registered"
+        );
     });
 }
 
@@ -19,10 +26,22 @@ fn add_provider_registers_provider() {
 fn add_provider_preserves_insertion_order() {
     janet_test!(ed, {
         let names: Vec<&str> = ed.gutter.providers.iter().map(|p| p.name()).collect();
-        let bp_pos   = names.iter().position(|&n| n == ":breakpoints").unwrap_or(usize::MAX);
-        let ln_pos   = names.iter().position(|&n| n == ":line-numbers").unwrap_or(usize::MAX);
-        let fold_pos = names.iter().position(|&n| n == ":folding").unwrap_or(usize::MAX);
-        assert!(bp_pos < ln_pos, "breakpoints should come before line-numbers");
+        let bp_pos = names
+            .iter()
+            .position(|&n| n == ":breakpoints")
+            .unwrap_or(usize::MAX);
+        let ln_pos = names
+            .iter()
+            .position(|&n| n == ":line-numbers")
+            .unwrap_or(usize::MAX);
+        let fold_pos = names
+            .iter()
+            .position(|&n| n == ":folding")
+            .unwrap_or(usize::MAX);
+        assert!(
+            bp_pos < ln_pos,
+            "breakpoints should come before line-numbers"
+        );
         assert!(ln_pos < fold_pos, "line-numbers should come before folding");
     });
 }
@@ -41,7 +60,12 @@ fn add_provider_replaces_existing_by_name() {
     janet_test!(ed, {
         scripting::eval(r#"(gutter/add-provider "dup-provider")"#);
         scripting::eval(r#"(gutter/add-provider "dup-provider")"#);
-        let count = ed.gutter.providers.iter().filter(|p| p.name() == "dup-provider").count();
+        let count = ed
+            .gutter
+            .providers
+            .iter()
+            .filter(|p| p.name() == "dup-provider")
+            .count();
         assert_eq!(count, 1);
     });
 }
@@ -68,9 +92,14 @@ fn provider_update_stores_cells_in_sign_cache() {
         let key = ed.create_buffer("test.rs");
         scripting::eval(r#"(gutter/add-provider "my-marks")"#);
         let cells = r#"@[{:line 3 :text "●" :face "default"}]"#.to_string();
-        scripting::eval(&format!(r#"(gutter/provider-update "my-marks" {key} {cells})"#));
+        scripting::eval(&format!(
+            r#"(gutter/provider-update "my-marks" {key} {cells})"#
+        ));
         let cached = ed.gutter.cached_cell("my-marks", key, 3);
-        assert!(cached.is_some(), "cell should be cached after provider-update");
+        assert!(
+            cached.is_some(),
+            "cell should be cached after provider-update"
+        );
         assert_eq!(cached.unwrap().text, "●");
     });
 }
@@ -82,8 +111,12 @@ fn provider_update_replaces_previous_cells() {
         scripting::eval(r#"(gutter/add-provider "my-marks")"#);
         let ca = r#"@[{:line 0 :text "A" :face "default"}]"#.to_string();
         let cb = r#"@[{:line 0 :text "B" :face "default"}]"#.to_string();
-        scripting::eval(&format!(r#"(gutter/provider-update "my-marks" {key} {ca})"#));
-        scripting::eval(&format!(r#"(gutter/provider-update "my-marks" {key} {cb})"#));
+        scripting::eval(&format!(
+            r#"(gutter/provider-update "my-marks" {key} {ca})"#
+        ));
+        scripting::eval(&format!(
+            r#"(gutter/provider-update "my-marks" {key} {cb})"#
+        ));
         let cached = ed.gutter.cached_cell("my-marks", key, 0).unwrap();
         assert_eq!(cached.text, "B");
     });
@@ -95,14 +128,15 @@ fn provider_update_emits_gutter_provider_updated_event() {
         let key = ed.create_buffer("test.rs");
         let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let counter2 = counter.clone();
-        ed.commands.register_fn("count-gutter-updated", "", vec![], move |_ed, _args| {
-            counter2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(())
-        });
+        ed.commands
+            .register_fn("count-gutter-updated", "", vec![], move |_ed, _args| {
+                counter2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            });
         scripting::eval(r#"(gutter/add-provider "evt-provider")"#);
         scripting::eval(
             r#"(event/on "gutter-provider-updated"
-                 (fn [_] (editor/run-command "count-gutter-updated")))"#
+                 (fn [_] (editor/run-command "count-gutter-updated")))"#,
         );
         scripting::eval(&format!(
             r#"(gutter/provider-update "evt-provider" {key} [])"#
@@ -149,7 +183,10 @@ fn set_fold_icons_defaults_from_gutter_janet() {
 fn set_line_number_format_stores_fn_name() {
     janet_test!(ed, {
         scripting::eval(r#"(gutter/set-line-number-format "gutter-lnum-relative")"#);
-        assert_eq!(ed.gutter.line_number_fn.as_deref(), Some("gutter-lnum-relative"));
+        assert_eq!(
+            ed.gutter.line_number_fn.as_deref(),
+            Some("gutter-lnum-relative")
+        );
     });
 }
 

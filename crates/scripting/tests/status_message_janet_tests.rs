@@ -1,8 +1,9 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // editor/echo — Janet-side transient status + durable log.
 
-use scripting;
 use kernel::state::MessageKind;
+use scripting;
 
 #[test]
 fn echo_defaults_to_info_and_logs() {
@@ -13,7 +14,9 @@ fn echo_defaults_to_info_and_logs() {
         assert_eq!(msg.kind, MessageKind::Info);
         assert_eq!(msg.text, "indexing done");
 
-        let messages = ed.buffers.iter()
+        let messages = ed
+            .buffers
+            .iter()
             .find(|(_, arc)| arc.lock().unwrap().name == "*Messages*")
             .map(|(_, arc)| {
                 let buf = arc.lock().unwrap();

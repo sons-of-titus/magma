@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 // Every builtins/*.janet file must at least parse.
 //
 // A malformed builtin fails silently at editor startup (the loader logs and
@@ -58,7 +59,10 @@ fn every_builtin_file_parses() {
                 Err(e) => failures.push(format!("{display}: eval error: {e}")),
             }
         }
-        assert!(failures.is_empty(), "builtin files that fail to parse:\n{}",
-            failures.join("\n"));
+        assert!(
+            failures.is_empty(),
+            "builtin files that fail to parse:\n{}",
+            failures.join("\n")
+        );
     });
 }

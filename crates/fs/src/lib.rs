@@ -49,10 +49,23 @@ pub trait FileSystem: Send + Sync {
 /// Async versions of file system operations, using tokio::fs.
 /// Spawned on the tokio runtime to avoid blocking the main thread.
 pub trait AsyncFileSystem: Send + Sync {
-    fn read_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, FsError>> + Send>>;
-    fn write_async(&self, path: &str, content: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), FsError>> + Send>>;
-    fn exists_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>>;
-    fn dir_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, FsError>> + Send>>;
+    fn read_async(
+        &self,
+        path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, FsError>> + Send>>;
+    fn write_async(
+        &self,
+        path: &str,
+        content: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), FsError>> + Send>>;
+    fn exists_async(
+        &self,
+        path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>>;
+    fn dir_async(
+        &self,
+        path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, FsError>> + Send>>;
 }
 
 #[derive(Debug, Clone)]
@@ -78,9 +91,10 @@ pub fn atomic_write(path: &str, content: &str) -> Result<(), FsError> {
     std::fs::rename(&tmp, target)?;
     #[cfg(unix)]
     if let Some(parent) = target.parent()
-        && let Ok(dir) = std::fs::File::open(parent) {
-            let _ = dir.sync_all();
-        }
+        && let Ok(dir) = std::fs::File::open(parent)
+    {
+        let _ = dir.sync_all();
+    }
     Ok(())
 }
 
@@ -121,14 +135,19 @@ impl FileSystem for DiskFileSystem {
 }
 
 impl AsyncFileSystem for DiskFileSystem {
-    fn read_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, FsError>> + Send>> {
+    fn read_async(
+        &self,
+        path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, FsError>> + Send>> {
         let path = path.to_string();
-        Box::pin(async move {
-            Ok(tokio::fs::read_to_string(&path).await?)
-        })
+        Box::pin(async move { Ok(tokio::fs::read_to_string(&path).await?) })
     }
 
-    fn write_async(&self, path: &str, content: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), FsError>> + Send>> {
+    fn write_async(
+        &self,
+        path: &str,
+        content: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), FsError>> + Send>> {
         let path = path.to_string();
         let content = content.to_string();
         Box::pin(async move {
@@ -139,12 +158,19 @@ impl AsyncFileSystem for DiskFileSystem {
         })
     }
 
-    fn exists_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>> {
+    fn exists_async(
+        &self,
+        path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>> {
         let path = path.to_string();
         Box::pin(async move { tokio::fs::try_exists(&path).await.unwrap_or(false) })
     }
 
-    fn dir_async(&self, path: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, FsError>> + Send>> {
+    fn dir_async(
+        &self,
+        path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<String>, FsError>> + Send>>
+    {
         let path = path.to_string();
         Box::pin(async move {
             let mut entries = Vec::new();

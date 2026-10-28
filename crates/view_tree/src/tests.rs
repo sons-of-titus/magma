@@ -87,7 +87,11 @@ fn focus_cycles_and_ignores_unknown_ids() {
     let second = t.split_horizontal(first).unwrap();
 
     t.focus(WindowId(999));
-    assert_eq!(t.focused_window(), Some(first), "unknown ids do not move focus");
+    assert_eq!(
+        t.focused_window(),
+        Some(first),
+        "unknown ids do not move focus"
+    );
 
     t.focus_next();
     assert_eq!(t.focused_window(), Some(second));

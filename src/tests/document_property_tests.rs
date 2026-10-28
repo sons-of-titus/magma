@@ -40,8 +40,21 @@ impl Rng {
 /// Unicode stress palette: ASCII, newlines, 2-byte, 3-byte, 4-byte code
 /// points, a combining sequence, and multi-char chunks.
 const CHUNKS: &[&str] = &[
-    "a", "b", " ", "\n", "hello", "world\n", "é", "中", "😀", "é\u{301}", "x\ny", "ab\n",
-    "\n\n", "ß", "𝕄",
+    "a",
+    "b",
+    " ",
+    "\n",
+    "hello",
+    "world\n",
+    "é",
+    "中",
+    "😀",
+    "é\u{301}",
+    "x\ny",
+    "ab\n",
+    "\n\n",
+    "ß",
+    "𝕄",
 ];
 
 fn boundaries(text: &str) -> Vec<usize> {
@@ -114,11 +127,14 @@ fn sample_anchors(rng: &mut Rng, text: &str, count: usize) -> Vec<Anchor> {
     }
     idxs.sort_unstable();
     idxs.dedup();
-    idxs
-        .into_iter()
+    idxs.into_iter()
         .map(|i| Anchor {
             offset: b[i],
-            affinity: if rng.flip() { Affinity::Before } else { Affinity::After },
+            affinity: if rng.flip() {
+                Affinity::Before
+            } else {
+                Affinity::After
+            },
         })
         .collect()
 }
@@ -140,10 +156,13 @@ fn check_line_index(doc: &Document, reference: &str) {
     let expected_count = if reference.is_empty() {
         1
     } else {
-        reference.lines().count()
-            + usize::from(reference.ends_with('\n'))
+        reference.lines().count() + usize::from(reference.ends_with('\n'))
     };
-    assert_eq!(li.line_count(), expected_count, "line count for {reference:?}");
+    assert_eq!(
+        li.line_count(),
+        expected_count,
+        "line count for {reference:?}"
+    );
 
     let newline_offsets: Vec<usize> = reference
         .bytes()
@@ -154,12 +173,19 @@ fn check_line_index(doc: &Document, reference: &str) {
 
     for offset in boundaries(reference) {
         let expected = newline_offsets.partition_point(|&p| p < offset);
-        assert_eq!(li.line_of(offset), expected, "line_of({offset}) in {reference:?}");
+        assert_eq!(
+            li.line_of(offset),
+            expected,
+            "line_of({offset}) in {reference:?}"
+        );
     }
 
     for (line, content) in reference.lines().enumerate() {
         let span = li.line_span(line).expect("line span in range");
-        assert_eq!(&reference[span], content, "line {line} span in {reference:?}");
+        assert_eq!(
+            &reference[span], content,
+            "line {line} span in {reference:?}"
+        );
     }
     // Line k starts right after the (k-1)-th '\n'; a trailing '\n' starts
     // one final empty line.
@@ -167,13 +193,23 @@ fn check_line_index(doc: &Document, reference: &str) {
         let want = if line == 0 {
             0
         } else {
-            newline_offsets.get(line - 1).map(|&p| p + 1).unwrap_or(reference.len())
+            newline_offsets
+                .get(line - 1)
+                .map(|&p| p + 1)
+                .unwrap_or(reference.len())
         };
-        assert_eq!(li.line_start(line), Some(want), "line_start({line}) in {reference:?}");
+        assert_eq!(
+            li.line_start(line),
+            Some(want),
+            "line_start({line}) in {reference:?}"
+        );
     }
 }
 
-fn check_txn_structure(txn_edits: &[crate::kernel::text_engine::transaction::CommittedEdit], pre_ref: &str) {
+fn check_txn_structure(
+    txn_edits: &[crate::kernel::text_engine::transaction::CommittedEdit],
+    pre_ref: &str,
+) {
     for pair in txn_edits.windows(2) {
         assert!(
             pair[0].edit.end() < pair[1].edit.start(),
@@ -181,7 +217,11 @@ fn check_txn_structure(txn_edits: &[crate::kernel::text_engine::transaction::Com
         );
     }
     for ce in txn_edits {
-        assert_eq!(ce.old_text, &pre_ref[ce.edit.start()..ce.edit.end()], "old_text capture");
+        assert_eq!(
+            ce.old_text,
+            &pre_ref[ce.edit.start()..ce.edit.end()],
+            "old_text capture"
+        );
     }
 }
 
@@ -215,7 +255,11 @@ fn random_edit_sequences_match_string_reference() {
             let ctx = format!("seed {seed} iter {it}");
             assert_eq!(doc.text(), reference, "text ({ctx})");
             assert_eq!(doc.revision(), Revision(expected_rev), "revision ({ctx})");
-            assert_eq!(txn.revision_before.0, expected_rev - 1, "txn before ({ctx})");
+            assert_eq!(
+                txn.revision_before.0,
+                expected_rev - 1,
+                "txn before ({ctx})"
+            );
             assert_eq!(txn.revision_after.0, expected_rev, "txn after ({ctx})");
             assert_eq!(doc.history().len() as u64, expected_rev, "history ({ctx})");
             check_txn_structure(&txn.edits, &pre_ref);
@@ -226,10 +270,17 @@ fn random_edit_sequences_match_string_reference() {
                 let m = txn.transform_anchor(*a);
                 if let Some(shift) = unaffected_shift(&edits, a.offset) {
                     let want = (a.offset as i64 + shift) as usize;
-                    assert_eq!(m.offset, want, "unaffected anchor {} {:?} ({ctx})", a.offset, a.affinity);
+                    assert_eq!(
+                        m.offset, want,
+                        "unaffected anchor {} {:?} ({ctx})",
+                        a.offset, a.affinity
+                    );
                 }
                 assert!(m.offset <= reference.len(), "anchor in bounds ({ctx})");
-                assert!(reference.is_char_boundary(m.offset), "anchor on char boundary ({ctx})");
+                assert!(
+                    reference.is_char_boundary(m.offset),
+                    "anchor on char boundary ({ctx})"
+                );
                 match a.affinity {
                     Affinity::Before => moved_before.push(m.offset),
                     Affinity::After => moved_after.push(m.offset),
@@ -250,7 +301,9 @@ fn random_edit_sequences_match_string_reference() {
 
             let chain = doc.history();
             assert!(
-                chain.windows(2).all(|w| w[0].revision_after == w[1].revision_before),
+                chain
+                    .windows(2)
+                    .all(|w| w[0].revision_after == w[1].revision_before),
                 "revision chain continuous ({ctx})"
             );
         }
@@ -287,9 +340,16 @@ fn undo_round_trips_restore_text_and_anchors() {
 
                 let ctx = format!("seed {seed} iter {it}");
                 assert_eq!(doc.text(), reference, "undo text ({ctx})");
-                assert_eq!(doc.text(), pre_forward, "undo restores pre-commit text ({ctx})");
+                assert_eq!(
+                    doc.text(),
+                    pre_forward,
+                    "undo restores pre-commit text ({ctx})"
+                );
                 assert_eq!(undo.origin, TransactionOrigin::Undo);
-                assert_eq!(undo.revision_before, txn.revision_after, "undo continues the chain ({ctx})");
+                assert_eq!(
+                    undo.revision_before, txn.revision_after,
+                    "undo continues the chain ({ctx})"
+                );
 
                 for a in &anchors {
                     let after_forward = txn.transform_anchor(*a);
@@ -357,8 +417,8 @@ fn large_documents_and_huge_lines() {
 
     let mut edits = [
         Edit::insert(0, "BOF"),
-        Edit::insert(reference.len(), "!"),              // at EOF
-        Edit::replace(50_000..50_010, "middle"),          // inside the huge line
+        Edit::insert(reference.len(), "!"),      // at EOF
+        Edit::replace(50_000..50_010, "middle"), // inside the huge line
         Edit::replace(huge_line.len() - 2..huge_line.len() + 3, "SEAM"), // across the '\n'
     ];
     edits.sort_by_key(|e| (e.start(), e.end()));
@@ -386,9 +446,15 @@ fn empty_to_content_and_back() {
     assert_eq!(doc.revision(), Revision(1));
     check_line_index(&doc, "héllo\nwörld");
 
-    doc.commit(txn.invert(TransactionOrigin::Undo)).unwrap().unwrap();
+    doc.commit(txn.invert(TransactionOrigin::Undo))
+        .unwrap()
+        .unwrap();
     assert_eq!(doc.text(), "");
-    assert_eq!(doc.revision(), Revision(2), "undo bumps; revisions never reused");
+    assert_eq!(
+        doc.revision(),
+        Revision(2),
+        "undo bumps; revisions never reused"
+    );
     check_line_index(&doc, "");
 }
 
@@ -398,7 +464,10 @@ fn empty_to_content_and_back() {
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
 }
@@ -408,9 +477,13 @@ const MULTI_BYTE: &str = "héllo wörld — こんにちは 안녕 👋ificaçã
 /// Mirror of the buffer's floor-boundary snap, for the shadow model.
 fn snap(model: &str, pos: usize) -> usize {
     let pos = pos.min(model.len());
-    if model.is_char_boundary(pos) { return pos; }
+    if model.is_char_boundary(pos) {
+        return pos;
+    }
     let mut p = pos;
-    while p > 0 && !model.is_char_boundary(p) { p -= 1; }
+    while p > 0 && !model.is_char_boundary(p) {
+        p -= 1;
+    }
     p
 }
 
@@ -449,14 +522,20 @@ fn random_multibyte_edits_match_a_string_model_and_undo_restores() {
                     model.insert_str(s, frag);
                 }
                 1 if len > 0 => {
-                    let end = snap(&model, pos.max(s).saturating_add(1 + (rng.next() as usize) % 7));
+                    let end = snap(
+                        &model,
+                        pos.max(s).saturating_add(1 + (rng.next() as usize) % 7),
+                    );
                     expect_commit = end > s;
                     buf.delete(s, end);
                     model.replace_range(s..end, "");
                 }
                 2 => {
                     let frag = "é中!";
-                    let end = snap(&model, pos.max(s).saturating_add(1 + (rng.next() as usize) % 5));
+                    let end = snap(
+                        &model,
+                        pos.max(s).saturating_add(1 + (rng.next() as usize) % 5),
+                    );
                     buf.replace(s, end, frag);
                     model.replace_range(s..end.min(model.len()), frag);
                 }
@@ -464,13 +543,20 @@ fn random_multibyte_edits_match_a_string_model_and_undo_restores() {
             }
             buf.revision()
         };
-        assert_eq!(new_rev == last_rev + 1, expect_commit,
-            "a non-empty transaction is exactly one revision; an empty one is none");
+        assert_eq!(
+            new_rev == last_rev + 1,
+            expect_commit,
+            "a non-empty transaction is exactly one revision; an empty one is none"
+        );
         last_rev = new_rev;
 
         {
             let buf = arc.lock().unwrap();
-            assert_eq!(buf.slice(0, buf.len()), model, "buffer must match the model after op {op}");
+            assert_eq!(
+                buf.slice(0, buf.len()),
+                model,
+                "buffer must match the model after op {op}"
+            );
             // Multibyte integrity: every char boundary in the model must
             // yield the same char from the buffer.
             for (i, c) in model.char_indices() {
@@ -482,11 +568,16 @@ fn random_multibyte_edits_match_a_string_model_and_undo_restores() {
     // Undo the entire history: the buffer must return to the loaded text.
     loop {
         let restored = arc.lock().unwrap().undo();
-        if restored.is_none() { break; }
+        if restored.is_none() {
+            break;
+        }
     }
     let buf = arc.lock().unwrap();
-    assert_eq!(buf.slice(0, buf.len()), MULTI_BYTE,
-        "undoing all groups must restore the initial content exactly");
+    assert_eq!(
+        buf.slice(0, buf.len()),
+        MULTI_BYTE,
+        "undoing all groups must restore the initial content exactly"
+    );
 }
 
 #[test]
@@ -504,7 +595,9 @@ fn changes_since_reports_truncation_instead_of_partial_feeds() {
         let text = format!("{i}\n");
         let end = buf.len();
         buf.insert(end, &text);
-        if first_rev.is_none() { first_rev = Some(buf.revision()); }
+        if first_rev.is_none() {
+            first_rev = Some(buf.revision());
+        }
     }
     let buf = arc.lock().unwrap();
     assert_eq!(
@@ -517,7 +610,9 @@ fn changes_since_reports_truncation_instead_of_partial_feeds() {
         "anything before the retained window is None"
     );
     let recent = buf.revision() - 4;
-    let feed = buf.changes_since(recent).expect("recent revisions are retained");
+    let feed = buf
+        .changes_since(recent)
+        .expect("recent revisions are retained");
     assert_eq!(feed.len(), 4, "the feed covers exactly the requested range");
 }
 
@@ -528,13 +623,21 @@ fn multi_cursor_insert_restores_the_cursor_after_its_own_text() {
     let arc = ed.buffers.get(key).unwrap().clone();
 
     // Three cursors at 0, 1, 2 — cursor tracked is 0.
-    let txn = arc.lock().unwrap().insert_many(&[(0, "X"), (1, "Y"), (2, "Z")], 0).unwrap();
+    let txn = arc
+        .lock()
+        .unwrap()
+        .insert_many(&[(0, "X"), (1, "Y"), (2, "Z")], 0)
+        .unwrap();
     assert_eq!(txn.edits.len(), 3);
     // Undo must restore cursor_after faithfully via the recorded entry.
     let mut buf = arc.lock().unwrap();
     assert_eq!(buf.slice(0, buf.len()), "XaYcZb");
     let undo = buf.undo();
-    assert_eq!(undo, Some(0), "cursor restores to its own position, not shifted by others' inserts");
+    assert_eq!(
+        undo,
+        Some(0),
+        "cursor restores to its own position, not shifted by others' inserts"
+    );
 }
 
 // ── R-23: the live Buffer IS the Document gateway ────────────────────────────
@@ -549,7 +652,9 @@ fn buffer_edits_are_observable_through_the_document_change_feed() {
     buf.delete(11, 12); // remove one char of "gamma"
 
     // The gateway recorded both commits as transactions with revisions.
-    let feed = buf.changes_since(rev_before).expect("recent edits stay in the window");
+    let feed = buf
+        .changes_since(rev_before)
+        .expect("recent edits stay in the window");
     assert_eq!(feed.len(), 2);
     let (r0_before, r0_after, edits0) = feed[0].clone();
     assert_eq!(r0_before, rev_before);
@@ -561,7 +666,11 @@ fn buffer_edits_are_observable_through_the_document_change_feed() {
     // Content agrees with the rope after both commits.
     assert_eq!(buf.slice(0, buf.len()), "alphaX betagamma\n");
     let (_, r1_after, _) = feed[1].clone();
-    assert_eq!(buf.revision(), r1_after, "one revision transition per commit");
+    assert_eq!(
+        buf.revision(),
+        r1_after,
+        "one revision transition per commit"
+    );
 }
 
 #[test]

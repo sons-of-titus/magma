@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── editor/define-face ─────────────────────────────────────────────────
@@ -6,8 +7,8 @@ use scripting;
 #[test]
 fn editor_define_face_inserts_face_into_registry() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(face/define \"test-face\" {:fg [255 0 0] :bg [0 0 0] :bold true})");
+        let result =
+            scripting::eval("(face/define \"test-face\" {:fg [255 0 0] :bg [0 0 0] :bold true})");
         assert_eq!(result, "ok");
 
         let face = ed.faces.get("test-face");
@@ -21,8 +22,7 @@ fn editor_define_face_inserts_face_into_registry() {
 #[test]
 fn editor_define_face_without_table_creates_default_style() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(face/define \"default-face\")");
+        let result = scripting::eval("(face/define \"default-face\")");
         assert_eq!(result, "ok");
 
         let face = ed.faces.get("default-face");
@@ -34,8 +34,7 @@ fn editor_define_face_without_table_creates_default_style() {
 fn editor_define_face_emits_face_changed_event() {
     janet_test!(ed, {
         let _sub_count_before = ed.events.subscriber_count("face-changed");
-        let result = scripting::eval(
-            "(face/define \"my-face\" {:fg [100 200 100]})");
+        let result = scripting::eval("(face/define \"my-face\" {:fg [100 200 100]})");
         assert_eq!(result, "ok");
         assert!(ed.faces.contains_key("my-face"));
     });
@@ -46,10 +45,11 @@ fn editor_define_face_emits_face_changed_event() {
 #[test]
 fn editor_face_returns_nil_for_unknown() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(face/get \"nonexistent\")");
-        assert!(result.contains("nil") || result == "ok",
-            "should handle missing face gracefully");
+        let result = scripting::eval("(face/get \"nonexistent\")");
+        assert!(
+            result.contains("nil") || result == "ok",
+            "should handle missing face gracefully"
+        );
     });
 }
 
@@ -58,7 +58,8 @@ fn editor_face_returns_table_for_defined_face() {
     janet_test!(ed, {
         let result = scripting::eval(
             "(do (face/define \"test-face\" {:fg [10 20 30] :bold true})
-                 (face/get \"test-face\"))");
+                 (face/get \"test-face\"))",
+        );
         assert_eq!(result, "ok");
         let face = ed.faces.get("test-face").unwrap();
         assert_eq!(face.fg, (10, 20, 30));
@@ -71,8 +72,7 @@ fn editor_face_returns_table_for_defined_face() {
 #[test]
 fn editor_make_style_returns_integer_handle() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(face/make-style {:fg [255 0 0] :bg [0 0 0] :bold true})");
+        let result = scripting::eval("(face/make-style {:fg [255 0 0] :bg [0 0 0] :bold true})");
         assert_eq!(result, "ok");
     });
 }
@@ -82,8 +82,7 @@ fn editor_make_style_returns_integer_handle() {
 #[test]
 fn editor_scope_face_registers_mapping() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(face/scope-face \"keyword\" \"keyword-face\")");
+        let result = scripting::eval("(face/scope-face \"keyword\" \"keyword-face\")");
         assert_eq!(result, "ok");
 
         assert!(!ed.scope_faces.is_empty());
@@ -95,7 +94,8 @@ fn editor_resolve_scope_returns_mapped_face() {
     janet_test!(ed, {
         let result = scripting::eval(
             "(do (face/scope-face \"keyword\" \"keyword-face\")
-                 (face/resolve-scope \"keyword.control\"))");
+                 (face/resolve-scope \"keyword.control\"))",
+        );
         assert_eq!(result, "ok");
     });
 }
@@ -103,8 +103,7 @@ fn editor_resolve_scope_returns_mapped_face() {
 #[test]
 fn editor_resolve_scope_returns_nil_for_unmapped() {
     janet_test!(ed, {
-        let result = scripting::eval(
-            "(face/resolve-scope \"unknown.scope\")");
+        let result = scripting::eval("(face/resolve-scope \"unknown.scope\")");
         assert_eq!(result, "ok");
     });
 }
@@ -119,8 +118,10 @@ fn buffer_set_highlights_with_face_names() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let result = scripting::eval(
-        &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"] [6 11 \"string-face\"]])", key));
+    let result = scripting::eval(&format!(
+        "(buffer/set-highlights {} [[0 5 \"keyword-face\"] [6 11 \"string-face\"]])",
+        key
+    ));
     assert_eq!(result, "ok");
 
     let hl = ed.views.get(&key).unwrap().highlights.clone();
@@ -137,8 +138,7 @@ fn buffer_set_highlights_without_face_defaults_to_highlight() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let result = scripting::eval(
-        &format!("(buffer/set-highlights {} [[0 5]])", key));
+    let result = scripting::eval(&format!("(buffer/set-highlights {} [[0 5]])", key));
     assert_eq!(result, "ok");
 
     let hl = ed.views.get(&key).unwrap().highlights.clone();
@@ -154,10 +154,11 @@ fn buffer_set_highlights_empty_clears() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let _ = scripting::eval(
-        &format!("(buffer/set-highlights {} [[0 5 \"keyword-face\"]])", key));
-    let _ = scripting::eval(
-        &format!("(buffer/set-highlights {})", key));
+    let _ = scripting::eval(&format!(
+        "(buffer/set-highlights {} [[0 5 \"keyword-face\"]])",
+        key
+    ));
+    let _ = scripting::eval(&format!("(buffer/set-highlights {})", key));
     assert!(ed.views.get(&key).unwrap().highlights.is_empty());
 }
 
@@ -171,8 +172,10 @@ fn buffer_set_highlights_layer_stores_per_layer() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let result = scripting::eval(
-        &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
+    let result = scripting::eval(&format!(
+        "(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])",
+        key
+    ));
     assert_eq!(result, "ok");
 
     let view = ed.views.get(&key).unwrap();
@@ -190,10 +193,14 @@ fn buffer_clear_highlights_layer_removes_named_layer() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let _ = scripting::eval(
-        &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
-    let result = scripting::eval(
-        &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
+    let _ = scripting::eval(&format!(
+        "(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])",
+        key
+    ));
+    let result = scripting::eval(&format!(
+        "(buffer/clear-highlights-layer {} \"syntax\")",
+        key
+    ));
     assert_eq!(result, "ok");
 
     let view = ed.views.get(&key).unwrap();
@@ -208,12 +215,18 @@ fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let key = helpers::focused_key(&ed);
 
-    let _ = scripting::eval(
-        &format!("(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])", key));
-    let _ = scripting::eval(
-        &format!("(buffer/set-highlights-layer {} \"search\" [[2 4 \"search-face\"]])", key));
-    let _ = scripting::eval(
-        &format!("(buffer/clear-highlights-layer {} \"syntax\")", key));
+    let _ = scripting::eval(&format!(
+        "(buffer/set-highlights-layer {} \"syntax\" [[0 5 \"keyword-face\"]])",
+        key
+    ));
+    let _ = scripting::eval(&format!(
+        "(buffer/set-highlights-layer {} \"search\" [[2 4 \"search-face\"]])",
+        key
+    ));
+    let _ = scripting::eval(&format!(
+        "(buffer/clear-highlights-layer {} \"syntax\")",
+        key
+    ));
 
     let view = ed.views.get(&key).unwrap();
     assert!(!view.highlight_layers.contains_key("syntax"));
@@ -225,17 +238,47 @@ fn buffer_clear_highlights_layer_does_not_affect_other_layers() {
 #[test]
 fn default_faces_exist_after_init() {
     janet_test!(ed, {
-        assert!(ed.faces.contains_key("keyword-face"), "keyword-face should exist");
-        assert!(ed.faces.contains_key("string-face"), "string-face should exist");
-        assert!(ed.faces.contains_key("comment-face"), "comment-face should exist");
+        assert!(
+            ed.faces.contains_key("keyword-face"),
+            "keyword-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("string-face"),
+            "string-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("comment-face"),
+            "comment-face should exist"
+        );
         assert!(ed.faces.contains_key("type-face"), "type-face should exist");
-        assert!(ed.faces.contains_key("function-face"), "function-face should exist");
-        assert!(ed.faces.contains_key("variable-face"), "variable-face should exist");
-        assert!(ed.faces.contains_key("constant-face"), "constant-face should exist");
-        assert!(ed.faces.contains_key("operator-face"), "operator-face should exist");
-        assert!(ed.faces.contains_key("punctuation-face"), "punctuation-face should exist");
-        assert!(ed.faces.contains_key("error-face"), "error-face should exist");
-        assert!(ed.faces.contains_key("warning-face"), "warning-face should exist");
+        assert!(
+            ed.faces.contains_key("function-face"),
+            "function-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("variable-face"),
+            "variable-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("constant-face"),
+            "constant-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("operator-face"),
+            "operator-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("punctuation-face"),
+            "punctuation-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("error-face"),
+            "error-face should exist"
+        );
+        assert!(
+            ed.faces.contains_key("warning-face"),
+            "warning-face should exist"
+        );
     });
 }
 
@@ -253,20 +296,27 @@ fn syntax_highlight_buffer_rust_produces_ranges() {
     }
 
     // Check that syntax/highlight-buffer produces a layer
-    let result = scripting::eval(&format!(
-        "(syntax/highlight-buffer {})", key
-    ));
+    let result = scripting::eval(&format!("(syntax/highlight-buffer {})", key));
     assert_eq!(result, "ok", "syntax/highlight-buffer must not error");
 
     // Check that the view has a "syntax" layer with keyword-face ranges
     // Check that the view has a "syntax" layer with keyword-face ranges
     let view = ed.views.get(&key).unwrap();
     let layers = view.highlight_layers.keys().collect::<Vec<_>>();
-    assert!(layers.contains(&&"syntax".to_string()), "view must have a 'syntax' highlight layer");
+    assert!(
+        layers.contains(&&"syntax".to_string()),
+        "view must have a 'syntax' highlight layer"
+    );
     if let Some(ranges) = view.highlight_layers.get("syntax") {
-        assert!(!ranges.is_empty(), "syntax layer must have highlight ranges for fn and let");
+        assert!(
+            !ranges.is_empty(),
+            "syntax layer must have highlight ranges for fn and let"
+        );
         let has_keyword = ranges.iter().any(|r| r.2 == "keyword-face");
-        assert!(has_keyword, "ranges must include keyword-face for 'fn' and 'let'");
+        assert!(
+            has_keyword,
+            "ranges must include keyword-face for 'fn' and 'let'"
+        );
     }
 }
 
@@ -285,13 +335,23 @@ fn syntax_highlight_uses_language_path_for_generated_buffers() {
         }
         assert!(
             scripting::eval_result(&format!("(buffer/language-path {key})"))
-                .unwrap_or_default().contains("/test/main.rs"),
-            "buffer/language-path must expose the inferred language source");
-        assert_eq!(scripting::eval(&format!("(syntax/highlight-buffer {key})")), "ok");
+                .unwrap_or_default()
+                .contains("/test/main.rs"),
+            "buffer/language-path must expose the inferred language source"
+        );
+        assert_eq!(
+            scripting::eval(&format!("(syntax/highlight-buffer {key})")),
+            "ok"
+        );
         let view = ed.views.get(&key).unwrap();
-        let ranges = view.highlight_layers.get("syntax")
+        let ranges = view
+            .highlight_layers
+            .get("syntax")
             .expect("the language path must drive highlighting without a file path");
-        assert!(ranges.iter().any(|r| r.2 == "keyword-face"), "rust keywords highlighted");
+        assert!(
+            ranges.iter().any(|r| r.2 == "keyword-face"),
+            "rust keywords highlighted"
+        );
     });
 }
 
@@ -337,7 +397,10 @@ fn highlight_follows_rust_path_typing() {
         ed.events.drain_and_dispatch();
 
         let view = ed.views.get(&key).unwrap();
-        let ranges = view.highlight_layers.get("syntax").expect("syntax layer exists");
+        let ranges = view
+            .highlight_layers
+            .get("syntax")
+            .expect("syntax layer exists");
         assert!(
             ranges.iter().any(|r| r.2 == "keyword-face" && r.0 == 0),
             "keyword range for 'fn' must still be present after typing: {ranges:?}"
@@ -364,11 +427,11 @@ fn dirty_range_splice_equals_full_rescan() {
 
         // Two incremental edits through the canonical path.
         let view = ed.views.get_mut(&key).unwrap();
-        view.insert(text.len() - 2, "x");       // edit near the end
+        view.insert(text.len() - 2, "x"); // edit near the end
         ed.publish_buffer_changes();
         ed.events.drain_and_dispatch();
         let view = ed.views.get_mut(&key).unwrap();
-        view.insert(4, "let z = 9;\n");         // edit near the start
+        view.insert(4, "let z = 9;\n"); // edit near the start
         ed.publish_buffer_changes();
         ed.events.drain_and_dispatch();
 
@@ -393,9 +456,9 @@ fn dirty_range_splice_equals_full_rescan() {
             .unwrap()
             .clone();
 
-        assert_eq!(after_dirty, after_full,
-            "incrementally spliced ranges must equal a full rescan");
+        assert_eq!(
+            after_dirty, after_full,
+            "incrementally spliced ranges must equal a full rescan"
+        );
     });
 }
-
-

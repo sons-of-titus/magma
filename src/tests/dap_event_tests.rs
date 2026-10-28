@@ -88,11 +88,14 @@ fn dap_output_dispatch_reaches_the_session_console() {
     let sid = ed.debug.new_session("fake".into());
     ed.frame_dirty = false;
 
-    process_background_event(&mut ed, BackgroundEvent::Dap(DapEvent::Output {
-        session_id: sid,
-        category: "stdout".into(),
-        output: "hello\n".into(),
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Dap(DapEvent::Output {
+            session_id: sid,
+            category: "stdout".into(),
+            output: "hello\n".into(),
+        }),
+    );
 
     assert!(ed.frame_dirty, "dispatch must invalidate the frame");
     let session = ed.debug.sessions.get(&sid).expect("session survives");

@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 /// Resolve `bin` against explicit search paths (the testable core).
 pub fn find_in(bin: &str, paths: &[PathBuf]) -> Option<PathBuf> {
-    paths.iter()
+    paths
+        .iter()
         .map(|dir| dir.join(bin))
         .find(|p| is_executable(p))
 }
@@ -27,13 +28,20 @@ fn well_known_dirs() -> Vec<PathBuf> {
         "/usr/local/opt/llvm/bin",
         "/usr/local/bin",
         "/opt/local/bin",
-    ].iter().map(PathBuf::from).collect();
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
 
     if let Some(home) = std::env::var_os("HOME") {
         let ext = PathBuf::from(home).join(".vscode").join("extensions");
         if let Ok(entries) = std::fs::read_dir(ext) {
             for entry in entries.flatten() {
-                if entry.file_name().to_string_lossy().starts_with("vadimcn.vscode-lldb") {
+                if entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("vadimcn.vscode-lldb")
+                {
                     dirs.push(entry.path().join("adapter"));
                 }
             }
@@ -54,8 +62,10 @@ pub fn find_extended(bin: &str) -> Option<PathBuf> {
 #[cfg(target_os = "macos")]
 fn xcrun_find(bin: &str) -> Option<PathBuf> {
     let out = std::process::Command::new("xcrun")
-        .arg("--find").arg(bin)
-        .output().ok()?;
+        .arg("--find")
+        .arg(bin)
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -114,15 +124,24 @@ mod tests {
     #[test]
     fn well_known_dirs_include_keg_only_llvm() {
         let dirs = well_known_dirs();
-        assert!(dirs.iter().any(|d| d == Path::new("/opt/homebrew/opt/llvm/bin")),
-            "Homebrew's keg-only LLVM bin must be searched");
-        assert!(dirs.iter().any(|d| d == Path::new("/usr/local/opt/llvm/bin")),
-            "Intel Homebrew LLVM bin must be searched");
+        assert!(
+            dirs.iter()
+                .any(|d| d == Path::new("/opt/homebrew/opt/llvm/bin")),
+            "Homebrew's keg-only LLVM bin must be searched"
+        );
+        assert!(
+            dirs.iter()
+                .any(|d| d == Path::new("/usr/local/opt/llvm/bin")),
+            "Intel Homebrew LLVM bin must be searched"
+        );
     }
 
     #[test]
     fn extended_search_resolves_path_binaries() {
-        assert!(find_extended("sh").is_some(), "a $PATH binary still resolves");
+        assert!(
+            find_extended("sh").is_some(),
+            "a $PATH binary still resolves"
+        );
     }
 
     #[test]

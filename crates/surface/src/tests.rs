@@ -1,7 +1,10 @@
 use super::*;
 
 fn red() -> Style {
-    Style { fg: (255, 0, 0), ..Style::default() }
+    Style {
+        fg: (255, 0, 0),
+        ..Style::default()
+    }
 }
 
 #[test]
@@ -59,7 +62,11 @@ fn clear_resets_characters_and_styles() {
 fn fill_style_paints_the_background_but_keeps_characters() {
     let mut s = Surface::new(2, 1);
     s.set_text(0, 0, "hi", None);
-    let bg = Style { fg: (0, 0, 0), bg: (30, 30, 46), ..Style::default() };
+    let bg = Style {
+        fg: (0, 0, 0),
+        bg: (30, 30, 46),
+        ..Style::default()
+    };
     s.fill_style(bg);
 
     assert_eq!(s.rows()[0].iter().map(|c| c.ch).collect::<String>(), "hi");

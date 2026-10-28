@@ -1,14 +1,15 @@
 //! Janet API for font configuration — family, size, fallbacks, glyph-width overrides.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
-use kernel::event::payload::*;
+use evil_janet::*;
 use kernel::event::keys;
+use kernel::event::payload::*;
 
 fn emit_font_changed(ed: &mut kernel::state::Editor) {
     ed.font_changed = true;
-    ed.events.emit_typed(keys::events::FONT_CHANGED, EmptyPayload);
+    ed.events
+        .emit_typed(keys::events::FONT_CHANGED, EmptyPayload);
 }
 
 /// (editor/set-font family size) → nil
@@ -36,9 +37,7 @@ unsafe extern "C-unwind" fn c_editor_set_font(argc: i32, argv: *mut Janet) -> Ja
 
 /// (editor/font-size) → number
 unsafe extern "C-unwind" fn c_editor_font_size(_argc: i32, _argv: *mut Janet) -> Janet {
-    with_editor(|ed| unsafe {
-        janet_wrap_number(ed.font_config.size as f64)
-    })
+    with_editor(|ed| unsafe { janet_wrap_number(ed.font_config.size as f64) })
 }
 
 /// (editor/set-font-size n) → nil
@@ -238,8 +237,8 @@ unsafe extern "C-unwind" fn c_editor_set_glyph_width_range(argc: i32, argv: *mut
             conv::signal_err("editor/set-glyph-width-range: all args must be integers")
         }
         let start = janet_unwrap_number(v0) as u32;
-        let end   = janet_unwrap_number(v1) as u32;
-        let w     = (janet_unwrap_number(v2) as i32).clamp(0, 255) as u8;
+        let end = janet_unwrap_number(v1) as u32;
+        let w = (janet_unwrap_number(v2) as i32).clamp(0, 255) as u8;
         for cp in start..=end {
             if let Some(c) = char::from_u32(cp) {
                 ed.font_config.glyph_widths.insert(c, w);
@@ -298,43 +297,63 @@ pub fn register() -> Vec<JanetReg> {
         },
         JanetReg {
             name: c"font/set-size".as_ptr() as *const _,
-            cfun: Some(c_editor_set_font_size as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_set_font_size as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Set font size; minimum 4".as_ptr() as *const _,
         },
         JanetReg {
             name: c"font/load".as_ptr() as *const _,
             cfun: Some(c_editor_load_font as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Load a .ttf/.otf font file from disk under an alias".as_ptr() as *const _,
+            documentation: c"Load a .ttf/.otf font file from disk under an alias".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"font/set-fallback".as_ptr() as *const _,
-            cfun: Some(c_editor_set_font_fallback as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_set_font_fallback as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Set the ordered fallback font alias list".as_ptr() as *const _,
         },
         JanetReg {
             name: c"font/set-context".as_ptr() as *const _,
-            cfun: Some(c_editor_set_font_context as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Set per-context font override (:prose, :code, :status, …)".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_set_font_context as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Set per-context font override (:prose, :code, :status, …)".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"font/set-ligatures".as_ptr() as *const _,
-            cfun: Some(c_editor_set_ligatures as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            cfun: Some(
+                c_editor_set_ligatures as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
             documentation: c"Enable or disable font ligatures".as_ptr() as *const _,
         },
         JanetReg {
             name: c"font/set-glyph-width".as_ptr() as *const _,
-            cfun: Some(c_editor_set_glyph_width as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Override display-column width for one character or codepoint".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_set_glyph_width as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Override display-column width for one character or codepoint".as_ptr()
+                as *const _,
         },
         JanetReg {
             name: c"font/set-glyph-width-range".as_ptr() as *const _,
-            cfun: Some(c_editor_set_glyph_width_range as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Override display-column width for an inclusive codepoint range".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_set_glyph_width_range
+                    as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Override display-column width for an inclusive codepoint range"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"font/set-nerd-font".as_ptr() as *const _,
-            cfun: Some(c_editor_set_nerd_font as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Pre-populate Nerd Font glyph-width overrides (width=2)".as_ptr() as *const _,
+            cfun: Some(
+                c_editor_set_nerd_font as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Pre-populate Nerd Font glyph-width overrides (width=2)".as_ptr()
+                as *const _,
         },
     ]
 }

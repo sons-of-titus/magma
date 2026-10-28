@@ -82,26 +82,47 @@ fn vc_events_round_trip_through_the_shared_channel_in_send_order() {
 fn status_dispatch_stores_the_latest_status() {
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
 
-    process_background_event(&mut ed, BackgroundEvent::Vc(VcEvent::StatusFetched {
-        backend_idx: 1,
-        root: "/repo".into(),
-        result: Ok(status("feature")),
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Vc(VcEvent::StatusFetched {
+            backend_idx: 1,
+            root: "/repo".into(),
+            result: Ok(status("feature")),
+        }),
+    );
 
-    assert_eq!(ed.vc.last_status.as_ref().map(|s| s.branch.as_str()), Some("feature"));
+    assert_eq!(
+        ed.vc.last_status.as_ref().map(|s| s.branch.as_str()),
+        Some("feature")
+    );
 }
 
 #[test]
 fn branches_and_stashes_dispatch_replace_the_window_state() {
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
 
-    process_background_event(&mut ed, BackgroundEvent::Vc(VcEvent::BranchesReady {
-        branches: vec!["main".into()],
-    }));
-    process_background_event(&mut ed, BackgroundEvent::Vc(VcEvent::StashListed {
-        result: Ok(vec![StashEntry { index: 0, message: "wip".into() }]),
-    }));
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Vc(VcEvent::BranchesReady {
+            branches: vec!["main".into()],
+        }),
+    );
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Vc(VcEvent::StashListed {
+            result: Ok(vec![StashEntry {
+                index: 0,
+                message: "wip".into(),
+            }]),
+        }),
+    );
 
     assert_eq!(ed.vc.branches, vec!["main".to_string()]);
-    assert_eq!(ed.vc.stashes, vec![StashEntry { index: 0, message: "wip".into() }]);
+    assert_eq!(
+        ed.vc.stashes,
+        vec![StashEntry {
+            index: 0,
+            message: "wip".into()
+        }]
+    );
 }

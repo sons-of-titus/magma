@@ -26,27 +26,47 @@ fn digits_are_insertable() {
 
 #[test]
 fn symbols_are_insertable() {
-    for s in ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "=", "+", " "] {
+    for s in [
+        "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "=", "+", " ",
+    ] {
         assert!(is_insertable(s), "{s:?} should be insertable");
     }
 }
 
 #[test]
 fn f_letter_is_insertable() {
-    assert!(is_insertable("f"), "bare 'f' must be insertable (vim motion)");
+    assert!(
+        is_insertable("f"),
+        "bare 'f' must be insertable (vim motion)"
+    );
 }
 
 #[test]
 fn function_keys_not_insertable() {
-    for k in ["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12"] {
+    for k in [
+        "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+    ] {
         assert!(!is_insertable(k), "{k:?} should not be insertable");
     }
 }
 
 #[test]
 fn named_keys_not_insertable() {
-    for k in ["esc","backspace","delete","tab","return",
-              "left","right","up","down","home","end","page-up","page-down"] {
+    for k in [
+        "esc",
+        "backspace",
+        "delete",
+        "tab",
+        "return",
+        "left",
+        "right",
+        "up",
+        "down",
+        "home",
+        "end",
+        "page-up",
+        "page-down",
+    ] {
         assert!(!is_insertable(k), "{k:?} should not be insertable");
     }
 }

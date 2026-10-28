@@ -17,7 +17,11 @@ fn record(path: &str) -> store::FileRecord {
         size: 2,
         hash: 3,
         language: "rust".into(),
-        symbols: vec![IndexedSymbol { name: "f".into(), kind: "fn".into(), line: 0 }],
+        symbols: vec![IndexedSymbol {
+            name: "f".into(),
+            kind: "fn".into(),
+            line: 0,
+        }],
     }
 }
 
@@ -35,10 +39,19 @@ fn rust_declarations_are_indexed() {
 
 #[test]
 fn python_and_janet_families() {
-    let py = extract::extract("app.py", "class Thing:\n    def method(self):\n        pass\n# def hidden()\n");
-    assert_eq!(py.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["Thing", "method"]);
+    let py = extract::extract(
+        "app.py",
+        "class Thing:\n    def method(self):\n        pass\n# def hidden()\n",
+    );
+    assert_eq!(
+        py.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        vec!["Thing", "method"]
+    );
 
-    let jl = extract::extract("plugin.janet", "(defn- helper [x] x)\n(def value 1)\n# (defn commented [])\n");
+    let jl = extract::extract(
+        "plugin.janet",
+        "(defn- helper [x] x)\n(def value 1)\n# (defn commented [])\n",
+    );
     assert!(jl.iter().any(|s| s.name == "helper"));
     assert!(jl.iter().any(|s| s.name == "value"));
     assert!(!jl.iter().any(|s| s.name == "commented"));
@@ -53,7 +66,10 @@ fn unknown_languages_index_nothing() {
 fn numbers_and_garbage_are_rejected() {
     let src = "fn 123() {}\nfn (weird) {}\nstruct ____ok {}";
     let syms = extract::extract("x.rs", src);
-    assert_eq!(syms.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["weird", "____ok"]);
+    assert_eq!(
+        syms.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        vec!["weird", "____ok"]
+    );
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -84,7 +100,10 @@ fn save_creates_missing_parent_directories_and_sorts_records() {
     let written = std::fs::read_to_string(&path).unwrap();
     let lines: Vec<&str> = written.lines().collect();
     assert!(lines[1].contains("\"a.rs\""));
-    assert!(lines[2].contains("\"b.rs\""), "records are written in path order");
+    assert!(
+        lines[2].contains("\"b.rs\""),
+        "records are written in path order"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -97,7 +116,10 @@ fn a_foreign_schema_version_discards_everything() {
     let good = serde_json::to_string(&record("a.rs")).unwrap();
     std::fs::write(&path, format!("MAGMA-INDEX v99\n{good}\n")).unwrap();
 
-    assert!(store::load(&path).is_empty(), "a foreign schema version must not load");
+    assert!(
+        store::load(&path).is_empty(),
+        "a foreign schema version must not load"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -151,7 +173,11 @@ fn the_index_path_is_per_root_and_uses_the_given_state_dir() {
 
     let elsewhere = store::index_path_for_root("/project/a", Path::new("/other"));
     assert_ne!(a, elsewhere);
-    assert_eq!(a.file_name(), elsewhere.file_name(), "root hash, not state dir, names the file");
+    assert_eq!(
+        a.file_name(),
+        elsewhere.file_name(),
+        "root hash, not state dir, names the file"
+    );
 }
 
 // ── Records and stats ────────────────────────────────────────────────────────
@@ -165,11 +191,14 @@ fn record_from_text_stamps_size_hash_language_and_symbols() {
     assert_eq!(rec.size, text.len() as u64);
     assert_eq!(rec.hash, store::content_hash(text));
     assert_eq!(rec.language, "rs");
-    assert_eq!(rec.symbols, vec![IndexedSymbol {
-        name: "alpha".into(),
-        kind: "fn".into(),
-        line: 0,
-    }]);
+    assert_eq!(
+        rec.symbols,
+        vec![IndexedSymbol {
+            name: "alpha".into(),
+            kind: "fn".into(),
+            line: 0,
+        }]
+    );
 }
 
 #[test]
@@ -181,7 +210,14 @@ fn record_from_text_handles_a_path_without_an_extension() {
 
 #[test]
 fn stats_default_to_zero() {
-    assert_eq!(IndexStats::default(), IndexStats { files: 0, symbols: 0, pending: 0 });
+    assert_eq!(
+        IndexStats::default(),
+        IndexStats {
+            files: 0,
+            symbols: 0,
+            pending: 0
+        }
+    );
 }
 
 // ── Event vocabulary ─────────────────────────────────────────────────────────
@@ -194,7 +230,11 @@ fn event_payloads_carry_the_walk_and_record() {
         ignored_files: vec![],
     };
     match indexed.clone() {
-        Event::ProjectIndexed { project_name, files, ignored_files: _ } => {
+        Event::ProjectIndexed {
+            project_name,
+            files,
+            ignored_files: _,
+        } => {
             assert_eq!(project_name, "demo");
             assert_eq!(files, vec!["src/main.rs".to_string()]);
         }

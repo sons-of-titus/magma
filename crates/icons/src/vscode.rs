@@ -34,9 +34,10 @@ fn find_manifest(dir: &Path) -> Result<PathBuf, String> {
     for file in files {
         if let Ok(bytes) = std::fs::read(&file)
             && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes)
-                && v.get("iconDefinitions").is_some() {
-                    return Ok(file);
-                }
+            && v.get("iconDefinitions").is_some()
+        {
+            return Ok(file);
+        }
     }
     Err(format!("no icon-theme manifest in {}", dir.display()))
 }
@@ -77,16 +78,13 @@ fn parse_manifest(manifest_path: &Path) -> Result<IconPack, String> {
                     .get("fontColor")
                     .and_then(|v| v.as_str())
                     .and_then(parse_hex_color);
-                IconKind::Glyph {
-                    glyph: cp,
-                    color,
-                }
+                IconKind::Glyph { glyph: cp, color }
             })
     };
 
     let mapping = |obj: Option<&serde_json::Map<String, serde_json::Value>>,
-                       strip_dots: bool,
-                       out: &mut HashMap<String, IconKind>| {
+                   strip_dots: bool,
+                   out: &mut HashMap<String, IconKind>| {
         if let Some(obj) = obj {
             for (key, val) in obj {
                 let Some(id) = val.as_str() else { continue };

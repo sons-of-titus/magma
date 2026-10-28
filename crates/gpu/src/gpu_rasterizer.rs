@@ -23,8 +23,8 @@ pub fn rasterize_font_atlas(
     cell_h: u32,
     cols: u32,
 ) -> Vec<u8> {
-    let rows   = (chars.len() as u32).div_ceil(cols);
-    let width  = cols * cell_w;
+    let rows = (chars.len() as u32).div_ceil(cols);
+    let width = cols * cell_w;
     let height = rows * cell_h;
     let mut pixels = vec![0u8; (width * height * 4) as usize];
 
@@ -36,26 +36,28 @@ pub fn rasterize_font_atlas(
         // Font load failed — return all-white placeholder.
         return vec![255u8; (width * height * 4) as usize];
     };
-    let scale  = PxScale::from(font_size);
+    let scale = PxScale::from(font_size);
     let scaled = font.as_scaled(scale);
     let ascent = scaled.ascent();
 
     for (i, &ch) in chars.iter().enumerate() {
-        let col    = (i as u32) % cols;
-        let row    = (i as u32) / cols;
+        let col = (i as u32) % cols;
+        let row = (i as u32) / cols;
         let cell_x = col * cell_w;
         let cell_y = row * cell_h;
 
-        let glyph_id  = scaled.glyph_id(ch);
+        let glyph_id = scaled.glyph_id(ch);
         let h_advance = scaled.h_advance(glyph_id);
         // Centre glyph horizontally; clamp so it never starts left of the cell.
-        let h_offset  = ((cell_w as f32 - h_advance) / 2.0).max(0.0);
+        let h_offset = ((cell_w as f32 - h_advance) / 2.0).max(0.0);
 
         let glyph = glyph_id.with_scale_and_position(
             scale,
             ab_glyph::point(cell_x as f32 + h_offset, cell_y as f32 + ascent),
         );
-        let Some(outlined) = font.outline_glyph(glyph) else { continue };
+        let Some(outlined) = font.outline_glyph(glyph) else {
+            continue;
+        };
 
         // ab_glyph's draw() yields u32 coordinates relative to the outline's
         // bounding box; `bounds()` carries the absolute placement (including
@@ -68,15 +70,19 @@ pub fn rasterize_font_atlas(
         let cell_x1 = cell_x0 + cell_w as i64;
         let cell_y1 = cell_y0 + cell_h as i64;
         outlined.draw(|px, py, cov| {
-            if cov < 0.004 { return }
+            if cov < 0.004 {
+                return;
+            }
             let x = min_x + px as i64;
             let y = min_y + py as i64;
             // Stay inside the glyph's own cell: a face wider than the cell
             // must be clipped, not painted over its neighbour's glyph.
-            if x < cell_x0 || y < cell_y0 || x >= cell_x1 || y >= cell_y1 { return }
+            if x < cell_x0 || y < cell_y0 || x >= cell_x1 || y >= cell_y1 {
+                return;
+            }
             let idx = ((y * width as i64 + x) * 4) as usize;
             // White glyph with coverage alpha; colour is applied by the shader.
-            pixels[idx]     = 255;
+            pixels[idx] = 255;
             pixels[idx + 1] = 255;
             pixels[idx + 2] = 255;
             pixels[idx + 3] = (cov * 255.0).min(255.0) as u8;
@@ -87,12 +93,19 @@ pub fn rasterize_font_atlas(
 
 /// Fill one atlas cell with solid white (used to guarantee a white pixel for
 /// background rect sampling regardless of what the font provides for space).
-fn fill_cell_white(pixels: &mut [u8], cell_x: u32, cell_y: u32, cell_w: u32, cell_h: u32, atlas_w: u32) {
+fn fill_cell_white(
+    pixels: &mut [u8],
+    cell_x: u32,
+    cell_y: u32,
+    cell_w: u32,
+    cell_h: u32,
+    atlas_w: u32,
+) {
     for y in cell_y..cell_y + cell_h {
         for x in cell_x..cell_x + cell_w {
             let idx = ((y * atlas_w + x) * 4) as usize;
             if idx + 3 < pixels.len() {
-                pixels[idx]     = 255;
+                pixels[idx] = 255;
                 pixels[idx + 1] = 255;
                 pixels[idx + 2] = 255;
                 pixels[idx + 3] = 255;

@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 fn setup_background_editor() -> kernel::state::Editor {
@@ -36,11 +37,12 @@ fn process_spawn_errors_on_bad_command() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    let r = scripting::eval(
-        r#"(try (process/spawn "nonexistent_command_xyz_12345") ([e] "caught"))"#,
+    let r =
+        scripting::eval(r#"(try (process/spawn "nonexistent_command_xyz_12345") ([e] "caught"))"#);
+    assert_eq!(
+        r, "ok",
+        "process/spawn with a bad command must be catchable"
     );
-    assert_eq!(r, "ok",
-        "process/spawn with a bad command must be catchable");
 }
 
 #[test]
@@ -52,14 +54,15 @@ fn process_spawn_adds_to_process_table() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let before = ed.io.processes.len();
-    let r = scripting::eval(
-        r#"(try (do (process/spawn "echo test") "ok") ([e] "caught"))"#,
-    );
+    let r = scripting::eval(r#"(try (do (process/spawn "echo test") "ok") ([e] "caught"))"#);
     assert_eq!(r, "ok", "process/spawn echo must succeed");
 
     let after = ed.io.processes.len();
-    assert_eq!(after, before + 1,
-        "process/spawn must add an entry to the process table");
+    assert_eq!(
+        after,
+        before + 1,
+        "process/spawn must add an entry to the process table"
+    );
 }
 
 #[test]
@@ -70,17 +73,16 @@ fn process_spawn_records_cmd_and_running() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    scripting::eval(
-        r#"(try (process/spawn "echo hello-world") ([e] nil))"#,
-    );
+    scripting::eval(r#"(try (process/spawn "echo hello-world") ([e] nil))"#);
 
     let state = ed.io.processes.values().next();
     assert!(state.is_some(), "process must exist after spawn");
     let state = state.unwrap();
-    assert!(state.cmd.contains("echo hello-world"),
-        "process cmd must contain the spawned command");
-    assert!(state.running,
-        "process must be marked running after spawn");
+    assert!(
+        state.cmd.contains("echo hello-world"),
+        "process cmd must contain the spawned command"
+    );
+    assert!(state.running, "process must be marked running after spawn");
 }
 
 // ── process/list ─────────────────────────────────────────────────────
@@ -94,8 +96,10 @@ fn process_list_returns_empty_array_by_default() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval("(= 0 (length (process/list)))");
-    assert_eq!(r, "ok",
-        "process/list must return an empty array when no processes exist");
+    assert_eq!(
+        r, "ok",
+        "process/list must return an empty array when no processes exist"
+    );
 }
 
 #[test]
@@ -106,13 +110,10 @@ fn process_list_returns_spawned_processes() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    scripting::eval(
-        r#"(try (process/spawn "echo list-test") ([e] nil))"#,
-    );
+    scripting::eval(r#"(try (process/spawn "echo list-test") ([e] nil))"#);
 
     let r = scripting::eval("(> (length (process/list)) 0)");
-    assert_eq!(r, "ok",
-        "process/list must return non-empty after a spawn");
+    assert_eq!(r, "ok", "process/list must return non-empty after a spawn");
 }
 
 // ── process/stdin ────────────────────────────────────────────────────
@@ -125,11 +126,8 @@ fn process_stdin_noops_for_missing_id() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    let r = scripting::eval(
-        r#"(process/stdin 99999 "test input")"#,
-    );
-    assert_eq!(r, "ok",
-        "process/stdin with nonexistent id must not error");
+    let r = scripting::eval(r#"(process/stdin 99999 "test input")"#);
+    assert_eq!(r, "ok", "process/stdin with nonexistent id must not error");
 }
 
 // ── process/kill ─────────────────────────────────────────────────────
@@ -143,8 +141,7 @@ fn process_kill_noops_for_missing_id() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(r#"(process/kill 99999)"#);
-    assert_eq!(r, "ok",
-        "process/kill with nonexistent id must not error");
+    assert_eq!(r, "ok", "process/kill with nonexistent id must not error");
 }
 
 // ── task/spawn ───────────────────────────────────────────────────────
@@ -158,8 +155,7 @@ fn task_spawn_requires_function() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval("(task/spawn)");
-    assert_ne!(r, "ok",
-        "task/spawn without args must signal an error");
+    assert_ne!(r, "ok", "task/spawn without args must signal an error");
 }
 
 #[test]
@@ -170,11 +166,8 @@ fn task_spawn_returns_integer_id() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    let r = scripting::eval(
-        r#"(def tid (task/spawn (fn [] "hi"))) (not= nil tid)"#,
-    );
-    assert_eq!(r, "ok",
-        "task/spawn must return a non-nil integer ID");
+    let r = scripting::eval(r#"(def tid (task/spawn (fn [] "hi"))) (not= nil tid)"#);
+    assert_eq!(r, "ok", "task/spawn must return a non-nil integer ID");
 }
 
 #[test]
@@ -186,12 +179,13 @@ fn task_spawn_adds_to_task_table() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let before = ed.io.tasks.len();
-    scripting::eval(
-        r#"(task/spawn (fn [] "task-table-test"))"#,
-    );
+    scripting::eval(r#"(task/spawn (fn [] "task-table-test"))"#);
 
-    assert_eq!(ed.io.tasks.len(), before + 1,
-        "task/spawn must add an entry to the task table");
+    assert_eq!(
+        ed.io.tasks.len(),
+        before + 1,
+        "task/spawn must add an entry to the task table"
+    );
 }
 
 #[test]
@@ -202,13 +196,10 @@ fn task_spawn_marks_task_running() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    scripting::eval(
-        r#"(task/spawn (fn [] "running-test"))"#,
-    );
+    scripting::eval(r#"(task/spawn (fn [] "running-test"))"#);
 
     for state in ed.io.tasks.values() {
-        assert!(state.running,
-            "task must be marked running after spawn");
+        assert!(state.running, "task must be marked running after spawn");
     }
 }
 
@@ -223,8 +214,7 @@ fn task_cancel_noops_for_missing_id() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     let r = scripting::eval(r#"(task/cancel 99999)"#);
-    assert_eq!(r, "ok",
-        "task/cancel with nonexistent id must not error");
+    assert_eq!(r, "ok", "task/cancel with nonexistent id must not error");
 }
 
 #[test]
@@ -235,20 +225,18 @@ fn task_cancel_removes_task() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    scripting::eval(
-        r#"(def tid (task/spawn (fn [] "cancel-test")))"#,
-    );
+    scripting::eval(r#"(def tid (task/spawn (fn [] "cancel-test")))"#);
 
     let before = ed.io.tasks.len();
     assert!(before > 0, "task must exist before cancel");
 
     let ids: Vec<u64> = ed.io.tasks.keys().copied().collect();
     if let Some(&id) = ids.first() {
-        scripting::eval(
-            &format!("(task/cancel {})", id),
+        scripting::eval(&format!("(task/cancel {})", id));
+        assert!(
+            !ed.io.tasks.contains_key(&id),
+            "task must be removed after cancel"
         );
-        assert!(!ed.io.tasks.contains_key(&id),
-            "task must be removed after cancel");
     }
 }
 
@@ -262,9 +250,9 @@ fn editor_shell_is_deprecated_but_still_works() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
-    let r = scripting::eval(
-        r#"(editor/shell "echo deprecation-test")"#,
+    let r = scripting::eval(r#"(editor/shell "echo deprecation-test")"#);
+    assert_eq!(
+        r, "ok",
+        "editor/shell must still work for backward compatibility"
     );
-    assert_eq!(r, "ok",
-        "editor/shell must still work for backward compatibility");
 }

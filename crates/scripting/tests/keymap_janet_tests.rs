@@ -1,8 +1,9 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use kernel::command::builtin;
-use kernel::storage::disk::DiskFileSystem;
 use kernel::keymap::KeymapManager;
 use kernel::state::Editor;
+use kernel::storage::disk::DiskFileSystem;
 use scripting;
 
 /// Create an editor with a clean keymap state after Janet init.
@@ -20,7 +21,9 @@ fn make_clean_editor() -> Box<Editor> {
 
 #[test]
 fn set_global_binding() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/set "ctrl-s" "save-buffer")"#);
@@ -30,7 +33,9 @@ fn set_global_binding() {
 
 #[test]
 fn set_multiple_global_bindings() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -45,7 +50,9 @@ fn set_multiple_global_bindings() {
 
 #[test]
 fn set_overwrites_previous_global_binding() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -58,7 +65,9 @@ fn set_overwrites_previous_global_binding() {
 
 #[test]
 fn set_with_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/set "h" "cursor-left" "editor")"#);
@@ -75,7 +84,9 @@ fn set_with_layer() {
 
 #[test]
 fn set_with_global_layer_is_global() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/set "ctrl-q" "quit" "global")"#);
@@ -87,7 +98,9 @@ fn set_with_global_layer_is_global() {
 
 #[test]
 fn unset_global() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -99,7 +112,9 @@ fn unset_global() {
 
 #[test]
 fn unset_with_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -114,7 +129,9 @@ fn unset_with_layer() {
 
 #[test]
 fn unset_with_global_layer_is_global() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -126,7 +143,9 @@ fn unset_with_global_layer_is_global() {
 
 #[test]
 fn unset_nonexistent_key_is_safe() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/unset "never-set")"#);
@@ -135,7 +154,9 @@ fn unset_nonexistent_key_is_safe() {
 
 #[test]
 fn unset_nonexistent_layer_is_safe() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/unset "h" "nonexistent-layer")"#);
@@ -146,7 +167,9 @@ fn unset_nonexistent_layer_is_safe() {
 
 #[test]
 fn describe_bound_key() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -159,7 +182,9 @@ fn describe_bound_key() {
 
 #[test]
 fn describe_unbound_key() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/describe "nonexistent-key")"#);
@@ -169,7 +194,9 @@ fn describe_unbound_key() {
 
 #[test]
 fn describe_with_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -185,7 +212,9 @@ fn describe_with_layer() {
 
 #[test]
 fn list_all_layers() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -198,7 +227,9 @@ fn list_all_layers() {
 
 #[test]
 fn list_specific_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -211,7 +242,9 @@ fn list_specific_layer() {
 
 #[test]
 fn list_global_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -224,7 +257,9 @@ fn list_global_layer() {
 
 #[test]
 fn list_nonexistent_layer_returns_empty() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/list "nobody-home")"#);
@@ -235,7 +270,9 @@ fn list_nonexistent_layer_returns_empty() {
 
 #[test]
 fn push_activates_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -247,19 +284,26 @@ fn push_activates_layer() {
 
 #[test]
 fn push_is_idempotent_via_janet() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
     scripting::eval(r#"(keymap/push-layer "editor")"#);
     scripting::eval(r#"(keymap/push-layer "editor")"#);
     // Only one active entry
-    assert_eq!(ed.keymaps.active_layers(), vec!["global".to_string(), "editor".to_string()]);
+    assert_eq!(
+        ed.keymaps.active_layers(),
+        vec!["global".to_string(), "editor".to_string()]
+    );
 }
 
 #[test]
 fn pop_deactivates_layer() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -273,7 +317,9 @@ fn pop_deactivates_layer() {
 
 #[test]
 fn pop_inactive_layer_is_safe_via_janet() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/pop-layer "never-pushed")"#);
@@ -284,7 +330,9 @@ fn pop_inactive_layer_is_safe_via_janet() {
 
 #[test]
 fn list_layers_returns_global_and_active() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -293,12 +341,17 @@ fn list_layers_returns_global_and_active() {
 
     let r = scripting::eval(r#"(keymap/list-layers)"#);
     assert_eq!(r, "ok", "keymap/list-layers must not error");
-    assert_eq!(ed.keymaps.active_layers(), vec!["global", "editor", "insert"]);
+    assert_eq!(
+        ed.keymaps.active_layers(),
+        vec!["global", "editor", "insert"]
+    );
 }
 
 #[test]
 fn list_layers_only_global_when_none_active() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval(r#"(keymap/list-layers)"#);
@@ -310,7 +363,9 @@ fn list_layers_only_global_when_none_active() {
 
 #[test]
 fn layer_priority_via_janet() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -324,17 +379,19 @@ fn layer_priority_via_janet() {
 
     // Push vim layer
     scripting::eval(r#"(keymap/push-layer "editor")"#);
-    assert_eq!(ed.keymaps.resolve("h"),       Some("cursor-left".into()));
-    assert_eq!(ed.keymaps.resolve("ctrl-q"),  Some("vim-quit".into()));
+    assert_eq!(ed.keymaps.resolve("h"), Some("cursor-left".into()));
+    assert_eq!(ed.keymaps.resolve("ctrl-q"), Some("vim-quit".into()));
 
     // Unset layer binding via Janet
     scripting::eval(r#"(keymap/unset "ctrl-q" "editor")"#);
-    assert_eq!(ed.keymaps.resolve("ctrl-q"),  Some("global-quit".into()));
+    assert_eq!(ed.keymaps.resolve("ctrl-q"), Some("global-quit".into()));
 }
 
 #[test]
 fn full_lifecycle_via_janet() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 
@@ -371,7 +428,9 @@ fn full_lifecycle_via_janet() {
 
 #[test]
 fn keymap_list_after_modifications() {
-    let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = scripting::JANET_VM_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut ed = make_clean_editor();
     let _editor_scope = scripting::EditorScope::new(&mut ed);
 

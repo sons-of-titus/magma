@@ -1,8 +1,8 @@
 //! Janet API — plugin-state: get, set, del.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_plugin_state_get(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {

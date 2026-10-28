@@ -1,8 +1,8 @@
 //! Janet API — clipboard: get, set.
 
-use evil_janet::*;
 use super::conv;
 use super::with_editor;
+use evil_janet::*;
 
 unsafe extern "C-unwind" fn c_clipboard_get(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| match ed.clipboard.get_text() {

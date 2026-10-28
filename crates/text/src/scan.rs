@@ -94,8 +94,7 @@ impl Buffer {
 
     /// Chunk-fed `(byte offset, char)` pairs over `[from, to)` — the
     /// substrate for depth-matching braces and word walks.
-    pub fn char_span(&self, from: usize, to: usize)
-        -> impl Iterator<Item = (usize, char)> + '_ {
+    pub fn char_span(&self, from: usize, to: usize) -> impl Iterator<Item = (usize, char)> + '_ {
         let end = to.min(self.len());
         let start = from.min(end);
         let (chunks, chunk0) = self.rope_handle().chunks_from(start);
@@ -125,7 +124,11 @@ mod tests {
     fn char_predicates_scan_forward_and_back() {
         let b = buf("hello wörld");
         assert_eq!(b.find_char_from(0, |c| c == 'w'), Some(6));
-        assert_eq!(b.find_char_from(7, |c| c == 'r'), Some(9), "ö is 2 bytes but 1 char");
+        assert_eq!(
+            b.find_char_from(7, |c| c == 'r'),
+            Some(9),
+            "ö is 2 bytes but 1 char"
+        );
         assert_eq!(b.rfind_char_before(6, |c| c == 'l'), Some(3));
         assert_eq!(b.find_char_from(0, |c| c == 'z'), None);
     }
@@ -137,7 +140,11 @@ mod tests {
         assert_eq!(b.find_sub_from(1, "abc"), Some(4));
         assert_eq!(b.find_sub_from(5, "abc"), Some(8));
         assert_eq!(b.rfind_sub_before(11, "abc"), Some(8));
-        assert_eq!(b.rfind_sub_before(8, "abc"), Some(4), "match must end before the limit");
+        assert_eq!(
+            b.rfind_sub_before(8, "abc"),
+            Some(4),
+            "match must end before the limit"
+        );
         assert_eq!(b.find_sub_from(0, "abd"), None);
     }
 
@@ -178,8 +185,11 @@ mod tests {
         let b = buf("héllo wörld héllo");
         assert_eq!(b.find_sub_from(1, "héllo"), Some(14));
         assert_eq!(b.rfind_sub_before(20, "héllo"), Some(14));
-        assert_eq!(b.rfind_sub_before(19, "héllo"), Some(0),
-            "the second match ends past the limit; the prefix one still qualifies");
+        assert_eq!(
+            b.rfind_sub_before(19, "héllo"),
+            Some(0),
+            "the second match ends past the limit; the prefix one still qualifies"
+        );
     }
 
     #[test]

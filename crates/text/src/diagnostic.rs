@@ -17,20 +17,20 @@ pub enum DiagnosticSeverity {
 impl DiagnosticSeverity {
     pub fn as_str(&self) -> &'static str {
         match self {
-            DiagnosticSeverity::Error   => "error",
+            DiagnosticSeverity::Error => "error",
             DiagnosticSeverity::Warning => "warning",
-            DiagnosticSeverity::Info    => "info",
-            DiagnosticSeverity::Hint    => "hint",
+            DiagnosticSeverity::Info => "info",
+            DiagnosticSeverity::Hint => "hint",
         }
     }
 
     /// Single-char severity code for gutter marks and display strings.
     pub fn code(&self) -> char {
         match self {
-            DiagnosticSeverity::Error   => 'E',
+            DiagnosticSeverity::Error => 'E',
             DiagnosticSeverity::Warning => 'W',
-            DiagnosticSeverity::Info    => 'I',
-            DiagnosticSeverity::Hint    => 'H',
+            DiagnosticSeverity::Info => 'I',
+            DiagnosticSeverity::Hint => 'H',
         }
     }
 }
@@ -54,8 +54,13 @@ impl Diagnostic {
     /// shows diagnostics as text goes through here — buffers, Janet
     /// queries, and event payloads carry this format.
     pub fn display(&self) -> String {
-        format!("[{}] line {}:{} {}",
-            self.severity.code(), self.line + 1, self.column + 1, self.message)
+        format!(
+            "[{}] line {}:{} {}",
+            self.severity.code(),
+            self.line + 1,
+            self.column + 1,
+            self.message
+        )
     }
 }
 
@@ -68,7 +73,10 @@ mod tests {
         let d = Diagnostic {
             message: "some error".into(),
             severity: DiagnosticSeverity::Error,
-            line: 0, column: 4, end_line: 0, end_column: 9,
+            line: 0,
+            column: 4,
+            end_line: 0,
+            end_column: 9,
         };
         assert_eq!(d.display(), "[E] line 1:5 some error");
     }

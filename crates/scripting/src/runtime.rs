@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 
-use kernel::command::args::ArgValue;
-use kernel::command::CommandResult;
 use crate::ScriptRuntime;
+use kernel::command::CommandResult;
+use kernel::command::args::ArgValue;
 
 pub struct JanetRuntime;
 
@@ -37,11 +37,7 @@ impl ScriptRuntime for JanetRuntime {
         super::scoped_editor(editor, || super::eval_result(expr))
     }
 
-    fn load_file(
-        &mut self,
-        editor: &mut kernel::state::Editor,
-        path: &str,
-    ) -> Result<(), String> {
+    fn load_file(&mut self, editor: &mut kernel::state::Editor, path: &str) -> Result<(), String> {
         super::scoped_editor(editor, || super::load_file(path))
     }
 
@@ -58,12 +54,10 @@ impl ScriptRuntime for JanetRuntime {
         super::scoped_editor(editor, || super::execute_stored_task_scoped(task_id));
     }
 
-    fn execute_task_complete_callback(
-        &mut self,
-        editor: &mut kernel::state::Editor,
-        task_id: u64,
-    ) {
-        super::scoped_editor(editor, || super::execute_task_complete_callback_scoped(task_id));
+    fn execute_task_complete_callback(&mut self, editor: &mut kernel::state::Editor, task_id: u64) {
+        super::scoped_editor(editor, || {
+            super::execute_task_complete_callback_scoped(task_id)
+        });
     }
 
     fn dispatch_events(&mut self, ed: &mut kernel::state::Editor) {

@@ -1,4 +1,5 @@
-#[macro_use] mod helpers;
+#[macro_use]
+mod helpers;
 use scripting;
 
 // ── selection/ ───────────────────────────────────────────────────────────
@@ -165,7 +166,10 @@ fn module_path_add_and_list() {
 fn ui_load_theme_missing_file_signals_error() {
     janet_test!(ed, {
         let r = scripting::eval(r#"(ui/load-theme "/nonexistent-magma-theme.janet")"#);
-        assert!(r.contains("error") || r.contains("No such file"), "missing theme signals: {r}");
+        assert!(
+            r.contains("error") || r.contains("No such file"),
+            "missing theme signals: {r}"
+        );
     });
 }
 

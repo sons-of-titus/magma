@@ -152,9 +152,15 @@ fn undo_multiple_steps() {
     let mut view = empty_view();
     view.insert(0, "a");
     view.insert(1, "b");
-    let before = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
+    let before = {
+        let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+        b.slice(0, b.len())
+    };
     view.undo();
-    let after = { let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner()); b.slice(0, b.len()) };
+    let after = {
+        let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+        b.slice(0, b.len())
+    };
     assert_ne!(before, after);
 }
 

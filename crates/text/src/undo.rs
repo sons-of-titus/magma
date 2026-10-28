@@ -87,7 +87,10 @@ impl UndoHistory {
     /// Record a committed transaction.  Undo/redo-origin transactions are
     /// re-derivations of existing history and are not recorded.
     pub fn record(&mut self, txn: EditTransaction, cursor_before: usize, cursor_after: usize) {
-        if matches!(txn.origin, TransactionOrigin::Undo | TransactionOrigin::Redo) {
+        if matches!(
+            txn.origin,
+            TransactionOrigin::Undo | TransactionOrigin::Redo
+        ) {
             return;
         }
         let keep = (self.cursor + 1) as usize;

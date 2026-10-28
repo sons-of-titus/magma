@@ -225,7 +225,6 @@ fn load_system_font(family: &str) -> Option<Vec<u8>> {
         if face.families.iter().any(|(n, _)| n == family) {
             if let Some((src, _)) = db.face_source(face.id) {
                 match src {
-                    #[cfg(feature = "fs")]
                     fontdb::Source::File(path) => {
                         if let Ok(bytes) = std::fs::read(path)
                             && bytes.len() > 1000
@@ -236,7 +235,6 @@ fn load_system_font(family: &str) -> Option<Vec<u8>> {
                     fontdb::Source::Binary(data) => {
                         return Some(data.as_ref().as_ref().to_vec());
                     }
-                    #[cfg(all(feature = "fs", feature = "memmap"))]
                     fontdb::Source::SharedFile(_, data) => {
                         return Some(data.as_ref().as_ref().to_vec());
                     }

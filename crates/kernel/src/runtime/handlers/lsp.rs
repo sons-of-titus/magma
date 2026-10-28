@@ -71,6 +71,9 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 }
             }
             ed.semantic.update_diagnostics(&path, diagnostics);
+            if let Some(buf) = buffer_id {
+                crate::inlay_hints::request(ed, buf);
+            }
             ed.events.emit_typed(
                 keys::events::LSP_DIAGNOSTICS,
                 LspDiagnosticsPayload {
@@ -93,6 +96,17 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                     items: items.join("\n"),
                 },
             );
+        }
+        Event::Response {
+            method,
+            result,
+            buf_key,
+            revision,
+            ..
+        } if method == "textDocument/inlayHint" && revision_current(ed, buf_key, revision) => {
+            if let Some(buf) = buf_key {
+                crate::inlay_hints::apply(ed, buf, revision, &result);
+            }
         }
         Event::Response {
             path,

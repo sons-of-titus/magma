@@ -180,11 +180,20 @@ impl LspHandle {
 
     fn request_internal(&self, method: &str, params: Value, ctx: Option<(usize, u64)>) -> u64 {
         let id = self.core.next_id.fetch_add(1, Ordering::Relaxed);
-        self.core
-            .pending
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
+        let superseded = {
+            let mut pending = self.core.pending.lock().unwrap_or_else(|e| e.into_inner());
+            // A newer request for the same buffer+method supersedes the old
+            // one; tell the server to stop computing it instead of letting
+            // stale work queue up behind fresh keystrokes.
+            let superseded: Vec<u64> = pending
+                .iter()
+                .filter(|(_, p)| p.method == method && p.buf_key == ctx.map(|(k, _)| k))
+                .map(|(id, _)| *id)
+                .collect();
+            for old in &superseded {
+                pending.remove(old);
+            }
+            pending.insert(
                 id,
                 Pending {
                     method: method.to_string(),
@@ -193,6 +202,11 @@ impl LspHandle {
                     sent_at: Instant::now(),
                 },
             );
+            superseded
+        };
+        for old in superseded {
+            self.notify("$/cancelRequest", json!({ "id": old }));
+        }
         let _ = self
             .core
             .outbound

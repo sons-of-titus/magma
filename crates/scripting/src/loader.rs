@@ -277,10 +277,6 @@ pub fn init_vm() {
         include_str!("../../../builtins/ui.janet"),
     );
     load_builtin(
-        "builtins/lsp_inlay.janet",
-        include_str!("../../../builtins/lsp_inlay.janet"),
-    );
-    load_builtin(
         "builtins/lsp_diag_eol.janet",
         include_str!("../../../builtins/lsp_diag_eol.janet"),
     );

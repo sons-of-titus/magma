@@ -195,6 +195,8 @@ pub struct Editor {
     pub project_manager: ProjectManager,
     pub io: IoState,
     pub gutter: GutterRegistry,
+    /// Native inlay-hint request bookkeeping (see `crate::inlay_hints`).
+    pub inlay: crate::inlay_hints::InlayState,
     pub semantic: SemanticEngine,
     pub language_registry: LanguageRegistry,
     pub lsp: crate::semantic::lsp::LspRegistry,
@@ -308,6 +310,7 @@ impl Editor {
             project_manager: ProjectManager::default(),
             io: IoState::default(),
             gutter: GutterRegistry::default(),
+            inlay: Default::default(),
             semantic: SemanticEngine::new(),
             language_registry: LanguageRegistry::new(),
             lsp: crate::semantic::lsp::LspRegistry::default(),

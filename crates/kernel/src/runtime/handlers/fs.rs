@@ -105,6 +105,17 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             );
             crate::debug::resync_after_save(ed, &path);
             crate::command::builtin::vc_blame::refresh_blame_after_save(ed, &path);
+            if let Some(buf) = ed
+                .buffers
+                .iter()
+                .find(|(_, a)| {
+                    a.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref()
+                        == Some(path.as_str())
+                })
+                .map(|(k, _)| k)
+            {
+                crate::inlay_hints::request(ed, buf);
+            }
             ed.show_message(crate::state::MessageKind::Info, "saved");
         }
         BackgroundEvent::SaveFailed { buf_key, error } => {

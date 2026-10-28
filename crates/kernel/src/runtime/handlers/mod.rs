@@ -6,6 +6,7 @@
 
 mod agent;
 mod dap;
+mod db;
 mod fs;
 mod index;
 mod lsp;
@@ -79,6 +80,7 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
         | BackgroundEvent::AgentLlmReply { .. }
         | BackgroundEvent::AgentResult { .. }
         | BackgroundEvent::AgentError { .. } => agent::handle(ed, event),
+        BackgroundEvent::Db(_) => db::handle(ed, event),
 
         // ── Free-form ────────────────────────────────────────────────────
         BackgroundEvent::Custom(name, payload) => {

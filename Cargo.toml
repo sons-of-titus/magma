@@ -19,6 +19,7 @@ members = [
     "crates/crash_recovery",
     "crates/tool_diag",
     "crates/debug_model",
+    "crates/db",
     "crates/font",
     "crates/view_tree",
     "crates/row_layout",
@@ -101,6 +102,7 @@ unicode-bidi = "0.3"
 [dev-dependencies]
 paste = "1.0"
 ab_glyph = "0.2"
+db = { path = "crates/db" }
 
 [[bench]]
 name = "buffer_ops"

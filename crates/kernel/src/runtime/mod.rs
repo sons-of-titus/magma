@@ -175,6 +175,8 @@ pub enum BackgroundEvent {
         session_id: u64,
         error: String,
     },
+    /// Database tool work finished (connect, metadata, query).
+    Db(crate::db::DbEvent),
     // ── Phase 9 Concurrency Model ─────────────────────────────────────────────
     /// A directly-submitted work item reported progress.
     WorkProgress {

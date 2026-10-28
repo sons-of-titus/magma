@@ -11,6 +11,7 @@ macro_rules! test_pairs { ($($base:ident),+ $(,)?) => {
 mod anchor_tests;
 mod command_tests;
 mod completion_tests;
+mod db_tests;
 mod diag_version_tests;
 mod document_property_tests;
 mod file_reload_tests;

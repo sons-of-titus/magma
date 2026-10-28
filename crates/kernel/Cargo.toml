@@ -36,6 +36,7 @@ extension = { path = "../extension" }
 net = { path = "../net" }
 clipboard = { path = "../clipboard" }
 agent = { path = "../agent" }
+db = { path = "../db" }
 anyhow = "1.0"
 thiserror = "1.0"
 regex = "1"

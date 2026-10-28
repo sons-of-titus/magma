@@ -36,6 +36,18 @@ pub struct WorkspaceState {
     pub registers: HashMap<String, String>,
     /// Plugin key-value state (`editor.plugin_state`).
     pub plugin_state: HashMap<String, String>,
+    /// Configured database data sources (paths only; no secrets for SQLite).
+    #[serde(default)]
+    pub data_sources: Vec<PersistedDataSource>,
+}
+
+/// One configured database data source, persisted across sessions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedDataSource {
+    pub id: u64,
+    pub name: String,
+    pub kind: String,
+    pub path: String,
 }
 
 // ── WorkspaceManager ─────────────────────────────────────────────────────────
@@ -81,6 +93,17 @@ impl WorkspaceManager {
             options: editor.options.clone(),
             registers: editor.registers.clone(),
             plugin_state: editor.plugin_state.clone(),
+            data_sources: editor
+                .db
+                .sources
+                .iter()
+                .map(|src| PersistedDataSource {
+                    id: src.id,
+                    name: src.name.clone(),
+                    kind: src.kind.as_str().to_string(),
+                    path: src.path.clone(),
+                })
+                .collect(),
         }
     }
 
@@ -116,6 +139,20 @@ impl WorkspaceManager {
         for (k, v) in &state.plugin_state {
             editor.plugin_state.insert(k.clone(), v.clone());
         }
+        editor.db.sources = state
+            .data_sources
+            .iter()
+            .filter_map(|src| {
+                let kind = db::DriverKind::parse(&src.kind)?;
+                Some(db::DataSource {
+                    id: src.id,
+                    name: src.name.clone(),
+                    kind,
+                    path: src.path.clone(),
+                })
+            })
+            .collect();
+        editor.db.next_id_after_restore();
         Ok(count)
     }
 

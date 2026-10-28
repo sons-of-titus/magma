@@ -11,6 +11,7 @@ pub mod boot;
 pub mod icons;
 pub use event;
 pub use extension;
+pub mod db;
 pub mod debug;
 pub mod project;
 pub mod run_config;

@@ -213,6 +213,7 @@ pub struct Editor {
     pub scheduler: WorkScheduler,
     pub extension_registry: ExtensionRegistry,
     pub agent: AgentManager,
+    pub db: crate::db::DbState,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
 
@@ -320,6 +321,7 @@ impl Editor {
             scheduler: WorkScheduler::new(),
             extension_registry: ExtensionRegistry::new(),
             agent: AgentManager::new(),
+            db: Default::default(),
         }
     }
 

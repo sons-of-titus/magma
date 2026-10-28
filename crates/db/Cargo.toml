@@ -1,0 +1,8 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition = "2024"
+description = "Database tool domain model: data sources, metadata discovery, bounded queries"
+
+[dependencies]
+rusqlite = { version = "0.41", features = ["bundled"] }

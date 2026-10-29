@@ -144,3 +144,59 @@ fn project_switch_resets_run_configs_and_restores_the_other_session() {
         std::fs::remove_dir_all(&p2).ok();
     });
 }
+
+#[test]
+fn closed_project_reopens_with_its_session() {
+    janet_test!(ed, {
+        let tmp = std::env::temp_dir().join("session_janet_reopen");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("Cargo.toml"), "[package]").unwrap();
+        let file = tmp.join("src_lib.rs");
+        std::fs::write(&file, "alpha\nbeta\ngamma\n").unwrap();
+        let root = tmp.to_string_lossy().into_owned();
+        let file_path = file.to_string_lossy().into_owned();
+
+        scripting::eval(&format!("(editor/run-command \"open-project\" \"{root}\")"));
+        scripting::eval(&format!(
+            "(editor/run-command \"open-file\" \"{file_path}\")"
+        ));
+
+        // Closing the editor window goes through exactly this teardown: the
+        // launcher maps again and the editor window hides, but the process
+        // keeps running.
+        kernel::workspace::close_editor_session(&mut ed);
+        assert_eq!(
+            ed.project_manager.project.root, None,
+            "closing ends the active project so the launcher can show"
+        );
+        assert!(ed.project_manager.current_project.is_none());
+        assert!(
+            kernel::session::session_file(std::path::Path::new(&root)).exists(),
+            "closing the editor persists the project session"
+        );
+
+        // Reopening from the launcher must restore the recorded session and
+        // re-arm the editor, not bounce straight back to the launcher.
+        scripting::eval(&format!("(editor/run-command \"open-project\" \"{root}\")"));
+        assert_eq!(
+            ed.project_manager.project.root.as_deref(),
+            Some(std::path::Path::new(&root))
+        );
+        assert!(ed.running, "opening a project re-arms the editor session");
+        let focused = ed
+            .view_tree
+            .panes()
+            .iter()
+            .find_map(|p| p.buffer_id)
+            .and_then(|id| ed.buffers.get(id))
+            .and_then(|arc| arc.lock().unwrap_or_else(|e| e.into_inner()).path.clone());
+        assert_eq!(
+            focused.as_deref(),
+            Some(file_path.as_str()),
+            "the session reopens the recorded buffer"
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    });
+}

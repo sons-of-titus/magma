@@ -164,6 +164,7 @@ pub fn init_vm() {
         regs.extend(super::run_config_api::register());
         regs.extend(super::agent_api::register());
         regs.extend(super::language_api::register());
+        regs.extend(super::template_api::register());
         regs.push(evil_janet::JanetReg {
             name: std::ptr::null(),
             cfun: None,
@@ -320,9 +321,23 @@ pub fn init_vm() {
         "builtins/language.janet",
         include_str!("../../../builtins/language.janet"),
     );
+    // The manifest pipeline (plugin/define) references these at compile
+    // time, so they must exist before plugin_system.janet loads.
+    load_builtin(
+        "builtins/template.janet",
+        include_str!("../../../builtins/template.janet"),
+    );
+    load_builtin(
+        "builtins/plugin_templates.janet",
+        include_str!("../../../builtins/plugin_templates.janet"),
+    );
     load_builtin(
         "builtins/plugin_system.janet",
         include_str!("../../../builtins/plugin_system.janet"),
+    );
+    load_builtin(
+        "builtins/plugin_verbs.janet",
+        include_str!("../../../builtins/plugin_verbs.janet"),
     );
     load_builtin(
         "builtins/plugin_images.janet",

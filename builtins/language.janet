@@ -25,6 +25,62 @@
     (def name (get data "name" "?"))
     (editor/log-message (string "[language] unregistered: " name))))
 
+# ── Registration ─────────────────────────────────────────────────────────────
+#
+# language/define is the plugin-facing entry point: it registers the
+# language with the Rust registry (loading and ABI-validating a plugin
+# grammar when one is declared) and wires the user-facing behavior that
+# stays in Janet — the extension→mode map, the tree-sitter highlight
+# query, and the comment/indentation option defaults.
+
+(defn- set-option-default
+  "Set an option only when no user or config value exists."
+  [key value]
+  (when value
+    (def current (option/get key))
+    (when (or (nil? current) (= current ""))
+      (option/set key value))))
+
+(defn language/define
+  "Register a language and wire its behavior.  Spec keys:
+     :id         language name (required)
+     :extensions file extensions mapped to `<id>-mode` (array)
+     :grammar    absolute path to a plugin grammar shared library
+     :syntax     absolute path to the highlight query (conventionally
+                 syntax.scm; drives tree-sitter highlighting for the mode)
+     :config     absolute path to config.janet
+     :comments   {:line \"//\" :block [\"/*\" \"*/\"]}
+     :indentation {:size 4 :style \"spaces\"|\"tabs\"}
+     :plugin     owning plugin name (set by plugin/define)
+   Extension conflicts never override: the first registration wins and the
+   later one is reported."
+  [spec]
+  (def id (get spec :id))
+  (unless id (error "language/define: :id required"))
+  (def mode (string id "-mode"))
+  (def result (language/register spec))
+  # Grammar/query failures are reported by the registration; the wiring
+  # here applies either way.
+  (each ext (get spec :extensions @[])
+    (def existing (get *extension-mode-map* ext))
+    (if (and existing (not (= existing mode)))
+      (editor/warn
+        (string "[language] extension ." ext " already maps to " existing
+                "; refusing to override for " id))
+      (put *extension-mode-map* ext mode)))
+  (when-let [syntax (get spec :syntax)]
+    (ts/load-mode-query mode syntax))
+  (when-let [comments (get spec :comments)]
+    (set-option-default (string id "-comment-prefix") (get comments :line))
+    (when-let [block (get comments :block)]
+      (set-option-default (string id "-comment-open") (get block 0))
+      (set-option-default (string id "-comment-close") (get block 1))))
+  (when-let [indent (get spec :indentation)]
+    (set-option-default (string id "-indent-width")
+                        (if-let [size (get indent :size)] (string size)))
+    (set-option-default (string id "-indent-style") (get indent :style)))
+  result)
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 (defn- language-summary [info]

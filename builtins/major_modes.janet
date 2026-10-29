@@ -113,8 +113,9 @@
   (when last-dot
     (string/slice path (+ last-dot 1))))
 
+# Mutable: language/define adds plugin-declared extensions at registration.
 (def *extension-mode-map*
-  {"rs"    "rust-mode"
+  @{"rs"    "rust-mode"
    "py"    "python-mode"
    "js"    "javascript-mode"
    "ts"    "typescript-mode"

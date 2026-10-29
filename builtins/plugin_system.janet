@@ -1,18 +1,11 @@
 # Plugin System — discovery, manifests, dependency resolution.
 #
-# A plugin is a directory with a manifest and an entry script:
-#
-#   plugins/<name>/
-#     manifest.janet   (plugin/define {:name .. :version .. :deps [..]
-#                                      :languages [..] :capabilities [..]
-#                                      :entry "main.janet"})
-#     main.janet       entry — wires major modes, hooks, commands
-#     syntax.scm       tree-sitter highlight query for the plugin's major
-#                      modes (registered automatically, see plugin/define)
-#     config.janet     default options (optional)
-#
-# Dependencies are resolved depth-first before a plugin loads; unknown or
-# cyclic dependencies are reported, never silently skipped.
+# A plugin is a directory with a manifest.janet calling plugin/define and
+# an entry script (conventionally main.janet); the spec keys are documented
+# on plugin/define below.  Dependencies resolve depth-first before a plugin
+# loads; unknown or cyclic dependencies are reported, never silently
+# skipped.  Template/toolchain contributions are picked up here too — see
+# builtins/plugin_templates.janet.
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,24 +28,34 @@
   "Declare a plugin.  Called from a plugin's manifest.janet; the loader
    binds the plugin's directory as :magma/plugin-dir while the manifest
    evaluates.  Languages the plugin serves are registered with the
-   language registry using the conventional sibling file names."
+   language registry (wiring modes, queries, and option defaults — see
+   language/define); an optional :toolchain spec and every
+   project-templates/<name>/ template register too.
+
+   Spec keys beyond the loader's own:
+     :extensions {\"rust\" [\"rs\"]} — file extensions per language
+     :toolchain  {\"id\" ...}      — a toolchain/register spec table"
   [spec]
   (def root (dyn :magma/plugin-dir ""))
   (def name (get spec :name))
   (unless name (error "plugin/define: :name required"))
   (def entry (get spec :entry "main.janet"))
+  (def ext-map (get spec :extensions @{}))
   (def langs @[])
   (each lang (get spec :languages @[])
     (def syntax (when (file-exists? (string root "/syntax.scm"))
                   (string root "/syntax.scm")))
     (def config (when (file-exists? (string root "/config.janet"))
                   (string root "/config.janet")))
-    (language/register lang syntax config)
-    # The plugin's syntax.scm drives tree-sitter highlighting for its
-    # conventional `<lang>-mode` major mode.
-    (when syntax
-      (ts/load-mode-query (string lang "-mode") syntax))
+    (language/define {:id lang
+                      :syntax syntax
+                      :config config
+                      :extensions (get ext-map lang @[])
+                      :plugin name})
     (array/push langs lang))
+  (when-let [toolchain (get spec :toolchain)]
+    (toolchain/register (merge toolchain {:plugin name})))
+  (plugin/register-templates root name)
   (plugin/register
     name
     (get spec :version "0.0.0")

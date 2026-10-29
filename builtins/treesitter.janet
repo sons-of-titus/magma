@@ -31,7 +31,9 @@
 # is ignored — the mode simply gets no tree-sitter highlighting.
 (defn ts/load-mode-query
   [mode path]
-  (def f (try (file/open path :read) ([_] nil)))
+  # file/open parses its mode keyword per-byte as open flags: :read would
+  # flag-error on the 'e'.  :r is the read mode.
+  (def f (try (file/open path :r) ([_] nil)))
   (when f
     (def query (file/read f :all))
     (file/close f)
@@ -44,16 +46,21 @@
   [buf-id lang]
   (def cur (try (ts/has-tree? buf-id) ([e] false)))
   (unless cur
-    (def grammar-path (get *ts-grammars* lang))
-    # Only tag the buffer with a language that has a registered grammar —
-    # the semantic engine keys symbol indexing off this language, so a
+    # A grammar registered through language/define (plugin languages) is
+    # already loaded in the Rust registry; *ts-grammars* is the manual
+    # path.  Only tag the buffer with a language that really has a grammar
+    # — the semantic engine keys symbol indexing off this language, so a
     # bogus entry (e.g. "fundamental") silently empties the symbol index.
-    (when grammar-path
-      (try
-        (ts/load-grammar grammar-path lang)
-        ([e] (print "ts: failed to load grammar: " e)))
-      (ts/set-language buf-id lang)
-      (ts/parse buf-id))))
+    (if (ts/has-language lang)
+      (do
+        (ts/set-language buf-id lang)
+        (ts/parse buf-id))
+      (when-let [grammar-path (get *ts-grammars* lang)]
+        (try
+          (ts/load-grammar grammar-path lang)
+          ([e] (print "ts: failed to load grammar: " e)))
+        (ts/set-language buf-id lang)
+        (ts/parse buf-id)))))
 
 # Auto-highlight a buffer using tree-sitter.
 # (ts/highlight-buffer buf-id) — runs the mode's query and sets the

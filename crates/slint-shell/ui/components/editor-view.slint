@@ -133,6 +133,11 @@ export component EditorView inherits Rectangle {
     scope := FocusScope {
         width: 100%;
         height: 100%;
+        // This scope is declared after (thus above) the TouchArea, so the
+        // default `focus-on-click` would accept the press, and Slint stops
+        // dispatching it to the items below — the editor never saw the click.
+        // Key focus belongs to the IME field, which the pane focuses itself.
+        focus-on-click: false;
 
         key-pressed(event) => {
             root.key(event.text, event.modifiers.control, event.modifiers.shift,

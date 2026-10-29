@@ -72,6 +72,13 @@ pub enum Event {
         buf_key: Option<usize>,
         revision: u64,
     },
+    /// Raw `textDocument/signatureHelp` result JSON, tagged like [`Event::Hover`].
+    SignatureHelp {
+        path: String,
+        json: String,
+        buf_key: Option<usize>,
+        revision: u64,
+    },
     /// Parsed rename result (WorkspaceEdit JSON).
     RenameResult {
         path: String,

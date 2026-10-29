@@ -94,6 +94,18 @@ pub fn initialize_params(root: Option<&str>) -> Value {
             "textDocument": {
                 "synchronization": { "didSave": true },
                 "hover": { "contentFormat": ["plaintext", "markdown"] },
+                "completion": {
+                    "completionItem": {
+                        "snippetSupport": true,
+                        "labelDetailsSupport": true,
+                        "documentationFormat": ["markdown", "plaintext"],
+                    }
+                },
+                "signatureHelp": {
+                    "signatureInformation": {
+                        "documentationFormat": ["markdown", "plaintext"]
+                    }
+                },
             }
         },
         "rootUri": root.map(path_to_uri),

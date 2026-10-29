@@ -259,6 +259,9 @@ pub fn handle_text_input(ed: &mut crate::state::Editor, key: &str) {
         }
         // Typing a word extends or starts the completion popup.
         crate::completion::auto_trigger_if_word(ed, key);
+        // Call punctuation drives the signature popup: request on `(`/`,`,
+        // drop on `)`.
+        crate::signature::auto_trigger(ed, key);
     }
 }
 

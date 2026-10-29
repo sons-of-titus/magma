@@ -102,6 +102,7 @@ event_payload!(LspResponsePayload {
     method,
     result
 });
+event_payload!(LspSignatureHelpPayload { path, signatures });
 event_payload!(MajorModeChangedPayload { mode, buffer_id });
 event_payload!(ModeChangedPayload { from, to });
 event_payload!(ProcessExitPayload { id, exit_code, cmd });

@@ -1,12 +1,20 @@
 /// One completion candidate.  `label` is what the popup shows; `insert` is
-/// what accept types (LSP `insertText` when the server provides one, the
-/// label otherwise); `kind`/`detail` are display metadata.
+/// what accept types (LSP `textEdit.newText`/`insertText` when the server
+/// provides one, the label otherwise); `kind`/`detail`/`docs` are display
+/// metadata — `detail` carries the signature line servers report.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompletionItem {
     pub label: String,
     pub kind: String,
     pub detail: String,
     pub insert: String,
+    /// Text the typed prefix filters against (LSP `filterText`); empty
+    /// means the label.
+    pub filter: String,
+    /// Server documentation, shown when the item has no signature line.
+    pub docs: String,
+    /// `insert` is LSP snippet syntax; accept expands it into tab stops.
+    pub is_snippet: bool,
 }
 
 impl CompletionItem {

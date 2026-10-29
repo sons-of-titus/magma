@@ -226,6 +226,27 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 LspCompletionItemsPayload { path, items },
             );
         }
+        Event::SignatureHelp {
+            path,
+            json,
+            buf_key,
+            revision,
+        } if revision_current(ed, buf_key, revision) => {
+            // The signature popup is the primary consumer on the focused
+            // buffer; a null/empty response hides it (nothing to show here).
+            let focused = ed
+                .view_tree
+                .focused_window()
+                .and_then(|wid| ed.view_tree.buffer(wid));
+            if focused == buf_key {
+                ed.signature =
+                    crate::signature::parse_signature_help(&json).unwrap_or_default();
+            }
+            ed.events.emit_typed(
+                keys::events::LSP_SIGNATURE_HELP,
+                LspSignatureHelpPayload { path, signatures: json },
+            );
+        }
         Event::RenameResult {
             path,
             edit,

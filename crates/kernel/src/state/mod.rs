@@ -13,6 +13,7 @@ pub mod io;
 pub mod minimap;
 pub mod options;
 pub mod overlay;
+pub mod signature;
 pub mod search;
 pub mod snippet;
 pub mod visual;
@@ -196,6 +197,8 @@ pub struct Editor {
     pub snippet: SnippetState,
     pub multi_cursor: MultiCursorState,
     pub completion: CompletionState,
+    /// Signature help while typing a call's arguments (see `crate::signature`).
+    pub signature: signature::SignatureState,
     pub project_manager: ProjectManager,
     pub io: IoState,
     pub gutter: GutterRegistry,
@@ -312,6 +315,7 @@ impl Editor {
             snippet: SnippetState::default(),
             multi_cursor: MultiCursorState::default(),
             completion: CompletionState::default(),
+            signature: signature::SignatureState::default(),
             project_manager: ProjectManager::default(),
             io: IoState::default(),
             gutter: GutterRegistry::default(),

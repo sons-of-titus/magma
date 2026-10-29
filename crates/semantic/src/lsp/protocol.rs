@@ -175,6 +175,12 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                         buf_key: p.buf_key,
                         revision: p.revision,
                     },
+                    "textDocument/signatureHelp" => Event::SignatureHelp {
+                        path: language_id.to_string(),
+                        json: result.map(|r| r.to_string()).unwrap_or_else(|| "null".into()),
+                        buf_key: p.buf_key,
+                        revision: p.revision,
+                    },
                     "textDocument/rename" => Event::RenameResult {
                         path: language_id.to_string(),
                         edit: result

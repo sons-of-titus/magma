@@ -32,6 +32,7 @@ pub use clipboard;
 pub use net;
 pub mod completion;
 pub mod completion_lsp;
+pub mod completion_words;
 pub mod inlay_hints;
 pub mod snippet;
 pub mod terminal;
@@ -40,6 +41,7 @@ pub mod input;
 pub mod runtime;
 pub mod runtime_dap;
 pub mod server;
+pub mod signature;
 pub mod workspace;
 
 pub use script_runtime::ScriptRuntime;

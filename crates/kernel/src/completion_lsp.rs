@@ -70,7 +70,7 @@ fn lsp_kind_name(kind: u64) -> &'static str {
 }
 
 /// Parse a `textDocument/completion` result (array or CompletionList)
-/// into popup items.
+/// into popup items, keeping the server's relevance order.
 pub fn parse_lsp_completion_items(json: &str) -> Vec<CompletionItem> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
         return Vec::new();
@@ -80,31 +80,66 @@ pub fn parse_lsp_completion_items(json: &str) -> Vec<CompletionItem> {
         .cloned()
         .or_else(|| v.get("items").and_then(|i| i.as_array()).cloned())
         .unwrap_or_default();
-    arr.iter()
-        .filter_map(|item| {
-            let label = item.get("label")?.as_str()?.to_string();
-            let insert = item
-                .get("insertText")
-                .and_then(|t| t.as_str())
-                .unwrap_or(&label)
-                .to_string();
-            Some(CompletionItem {
-                label,
-                insert,
-                kind: item
-                    .get("kind")
-                    .and_then(|k| k.as_u64())
-                    .map(lsp_kind_name)
-                    .unwrap_or_default()
-                    .to_string(),
-                detail: item
-                    .get("detail")
-                    .and_then(|d| d.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-            })
-        })
-        .collect()
+    arr.iter().filter_map(parse_lsp_item).collect()
+}
+
+fn parse_lsp_item(item: &serde_json::Value) -> Option<CompletionItem> {
+    let label = item.get("label")?.as_str()?.to_string();
+    // textEdit wins over insertText: servers use it whenever the insert
+    // differs from what the user typed (method chains, auto-import).
+    let insert = item
+        .pointer("/textEdit/newText")
+        .and_then(|t| t.as_str())
+        .or_else(|| item.get("insertText").and_then(|t| t.as_str()))
+        .unwrap_or(&label)
+        .to_string();
+    let mut detail = item
+        .get("detail")
+        .and_then(|d| d.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if detail.is_empty() {
+        detail = item
+            .pointer("/labelDetails/description")
+            .and_then(|d| d.as_str())
+            .unwrap_or_default()
+            .to_string();
+    }
+    Some(CompletionItem {
+        label,
+        kind: item
+            .get("kind")
+            .and_then(|k| k.as_u64())
+            .map(lsp_kind_name)
+            .unwrap_or_default()
+            .to_string(),
+        detail,
+        insert,
+        filter: item
+            .get("filterText")
+            .and_then(|f| f.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        docs: item
+            .get("documentation")
+            .map(parse_documentation)
+            .unwrap_or_default(),
+        is_snippet: item.get("insertTextFormat").and_then(|f| f.as_u64()) == Some(2),
+    })
+}
+
+/// Flatten `documentation` — a plain string or a `{content, value}` markup
+/// object — to display text.
+fn parse_documentation(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Object(o) => o
+            .get("value")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        _ => String::new(),
+    }
 }
 
 /// Fold server completions (already prefix-filtered by the caller) into the
@@ -120,10 +155,13 @@ pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
         .items
         .get(editor.completion.idx)
         .map(|i| i.label.clone());
-    let mut merged: Vec<CompletionItem> = items
-        .into_iter()
-        .filter(|i| i.label.starts_with(prefix.as_str()) && i.label != prefix)
-        .collect();
+    let prefix_matches = |i: &CompletionItem| {
+        let f = if i.filter.is_empty() { &i.label } else { &i.filter };
+        // Servers match case-insensitively; a case-sensitive filter would
+        // drop their items mid-word ("DO" vs "door").
+        f.to_lowercase().starts_with(&prefix.to_lowercase())
+    };
+    let mut merged: Vec<CompletionItem> = items.into_iter().filter(prefix_matches).collect();
     for existing in editor.completion.items.drain(..) {
         if !merged.iter().any(|i| i.label == existing.label) {
             merged.push(existing);

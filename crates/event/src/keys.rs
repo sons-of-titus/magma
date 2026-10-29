@@ -40,6 +40,7 @@ pub mod events {
     pub const LSP_PROGRESS: &str = "lsp-progress";
     pub const LSP_RENAME_RESULT: &str = "lsp-rename-result";
     pub const LSP_RESPONSE: &str = "lsp-response";
+    pub const LSP_SIGNATURE_HELP: &str = "lsp-signature-help";
     pub const MAJOR_MODE_CHANGED: &str = "major-mode-changed";
     pub const MODE_CHANGED: &str = "mode-changed";
     pub const MOUSE_CLICKED: &str = "mouse-clicked";

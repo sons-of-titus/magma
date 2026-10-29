@@ -10,7 +10,6 @@ use crate::render::gutter::{GutterCtx, GutterRegistry};
 use crate::render::highlight_pass::apply_highlights;
 use crate::render::surface::{Style, Surface};
 use crate::render::view::{CursorPaint, RenderCtx, View, ViewKind};
-use crate::state::Editor;
 use crate::state::id::WindowId;
 
 /// One visible row extracted from a buffer for painting.  Plain data, no
@@ -510,62 +509,16 @@ impl View for EditorView {
         }
 
         if is_focused && stamps {
-            render_insert_completion_popup(editor, surface, row_offset, visible_lines);
-        }
-    }
-}
-
-/// Draw the insert-mode completion popup (top-right of buffer area).
-fn render_insert_completion_popup(
-    editor: &Editor,
-    surface: &mut Surface,
-    row_offset: u16,
-    visible_lines: usize,
-) {
-    if !editor.completion.visible || editor.completion.items.is_empty() {
-        return;
-    }
-    let popup_lines = editor.completion.items.len().min(10);
-    let popup_start = visible_lines.saturating_sub(popup_lines + 1);
-    let popup_width = editor
-        .completion
-        .items
-        .iter()
-        .map(|i| crate::completion::row_cells(editor, &i.label, &i.kind))
-        .max()
-        .unwrap_or(20)
-        .min(60);
-    let popup_x = surface.width.saturating_sub(popup_width as u16 + 2);
-    for i in 0..popup_lines {
-        let abs_row = popup_start + i;
-        if abs_row >= visible_lines || i >= editor.completion.items.len() {
-            break;
-        }
-        let item = &editor.completion.items[i];
-        let is_sel = i == editor.completion.idx;
-        let bg = if is_sel { (80, 80, 180) } else { (40, 40, 40) };
-        let fg = if is_sel {
-            (255, 255, 255)
-        } else {
-            (200, 200, 200)
-        };
-        let s = Style {
-            fg,
-            bg,
-            ..Default::default()
-        };
-        let surf_row = row_offset + abs_row as u16;
-        for x in 0..popup_width + 2 {
-            let sx = popup_x + x as u16;
-            if sx < surface.width {
-                surface.set_cell(sx, surf_row, ' ', Some(s));
+            crate::render::completion_popup::render(editor, surface, row_offset, visible_lines);
+            // Signature help anchors to the caret itself, one row above.
+            if editor.signature.visible
+                && let Some(vis_row) = cursor_vis_row
+                && vis_row < visible_lines
+            {
+                let caret_x = content_x + (cursor_col.saturating_sub(scroll_left)) as u16;
+                let caret_y = row_offset + vis_row as u16;
+                crate::render::signature_popup::render(editor, surface, (caret_x, caret_y));
             }
         }
-        let text = if item.kind.is_empty() {
-            item.label.clone()
-        } else {
-            format!("{} {}", item.label, item.kind)
-        };
-        surface.set_text(popup_x + 1, surf_row, &text, Some(s));
     }
 }

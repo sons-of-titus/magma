@@ -2,6 +2,7 @@
 
 use crate::kernel::input;
 use crate::kernel::state::Editor;
+use crate::kernel::state::completion::CompletionItem;
 use crate::kernel::storage::disk::DiskFileSystem;
 use crate::tests::helpers::make_editor;
 
@@ -178,9 +179,9 @@ fn word_prefix_len_measures_the_current_word() {
         win.buffer_id = Some(key);
     }
     ed.view_of_buffer_mut(key).unwrap().set_cursor(8); // after "hello_wo".len().."hello wo"
-    assert_eq!(crate::kernel::completion::word_prefix_len(&ed), 2);
+    assert_eq!(crate::kernel::completion_words::word_prefix_len(&ed), 2);
     ed.view_of_buffer_mut(key).unwrap().set_cursor(6); // after the space
-    assert_eq!(crate::kernel::completion::word_prefix_len(&ed), 0);
+    assert_eq!(crate::kernel::completion_words::word_prefix_len(&ed), 0);
 }
 
 // ── Revision-keyed word cache (rework: no per-keystroke document copy) ──
@@ -269,7 +270,6 @@ fn stale_background_word_results_are_discarded() {
 
 use crate::kernel::completion::{accept, dismiss};
 use crate::kernel::completion_lsp::{merge_lsp_items, parse_lsp_completion_items};
-use crate::kernel::state::completion::CompletionItem;
 
 #[test]
 fn lsp_items_parse_from_array_and_list() {
@@ -305,13 +305,13 @@ fn lsp_items_lead_the_popup_and_drop_duplicates() {
                 label: "dog".into(),
                 insert: "dog".into(),
                 kind: "fn".into(),
-                detail: String::new(),
+                ..Default::default()
             },
             CompletionItem {
                 label: "done".into(),
                 insert: "done".into(),
                 kind: "var".into(),
-                detail: String::new(),
+                ..Default::default()
             },
         ],
     );
@@ -370,7 +370,7 @@ fn accept_types_the_server_insert_text() {
             label: "document".into(),
             insert: "document_changes".into(),
             kind: "fn".into(),
-            detail: String::new(),
+            ..Default::default()
         }],
     );
     ed.completion.idx = 0;
@@ -395,10 +395,10 @@ fn accept_replaces_prefix_when_insert_does_not_extend_it() {
     merge_lsp_items(
         &mut ed,
         vec![CompletionItem {
-            label: "do_thing()".into(),
-            insert: "do_thing($0)".into(),
+            label: "do_thing".into(),
+            insert: "do_thing()".into(),
             kind: "snip".into(),
-            detail: String::new(),
+            ..Default::default()
         }],
     );
     ed.completion.idx = 0;
@@ -410,7 +410,184 @@ fn accept_replaces_prefix_when_insert_does_not_extend_it() {
             .lock()
             .unwrap()
             .slice(0, 32),
-        "done\ndo_thing($0)",
-        "a snippet insert replaces the typed prefix wholesale"
+        "done\ndo_thing()",
+        "an insert that does not extend the prefix replaces it wholesale"
     );
+}
+
+// ── Rich LSP payload: kinds, signatures, snippets, text edits ────────
+
+const RUST_ANALYZER_PAYLOAD: &str = r#"[
+    {
+        "label": "push",
+        "kind": 2,
+        "detail": "fn push(&mut self, value: T)",
+        "documentation": { "kind": "markdown", "value": "Appends a value." },
+        "filterText": "push",
+        "insertTextFormat": 2,
+        "textEdit": {
+            "range": { "start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2} },
+            "newText": "push(${1:value})"
+        }
+    },
+    {
+        "label": "Vec",
+        "kind": 7,
+        "labelDetails": { "description": "alloc::vec" }
+    }
+]"#;
+
+#[test]
+fn lsp_items_carry_kind_signature_docs_and_snippet_format() {
+    let items = parse_lsp_completion_items(RUST_ANALYZER_PAYLOAD);
+    assert_eq!(items.len(), 2);
+
+    let push = &items[0];
+    assert_eq!(push.label, "push");
+    assert_eq!(push.kind, "method");
+    assert_eq!(push.detail, "fn push(&mut self, value: T)");
+    assert_eq!(push.docs, "Appends a value.");
+    assert!(push.is_snippet, "insertTextFormat 2 marks a snippet");
+    assert_eq!(push.insert, "push(${1:value})", "textEdit.newText wins");
+    assert_eq!(push.filter, "push");
+
+    let vec_item = &items[1];
+    assert_eq!(vec_item.kind, "class");
+    assert_eq!(
+        vec_item.detail, "alloc::vec",
+        "labelDetails.description backs an empty detail"
+    );
+    assert!(!vec_item.is_snippet);
+    assert_eq!(vec_item.insert, "Vec");
+}
+
+#[test]
+fn server_items_keep_their_metadata_and_word_duplicates_drop() {
+    let mut ed = editor_with("done door\n");
+    input::dispatch_key(&mut ed, "d");
+    input::dispatch_key(&mut ed, "o");
+    assert!(ed.completion.visible);
+
+    merge_lsp_items(
+        &mut ed,
+        vec![CompletionItem {
+            kind: "field".into(),
+            detail: "door: Doorway".into(),
+            ..CompletionItem::word("door")
+        }],
+    );
+    let door = ed
+        .completion
+        .items
+        .iter()
+        .find(|i| i.label == "door")
+        .expect("door survives the merge");
+    assert_eq!(
+        door.kind, "field",
+        "the server copy wins with its kind attached"
+    );
+    assert_eq!(door.detail, "door: Doorway");
+    assert_eq!(
+        ed.completion.items.iter().filter(|i| i.label == "door").count(),
+        1,
+        "the bare word duplicate drops"
+    );
+    dismiss(&mut ed);
+}
+
+#[test]
+fn accepting_a_snippet_completion_expands_tabstops() {
+    let mut ed = editor_with("pu");
+    ed.completion.visible = true;
+    ed.completion.prefix = "pu".into();
+    ed.completion.items = vec![CompletionItem {
+        is_snippet: true,
+        insert: "push(${1:value})$0".into(),
+        ..CompletionItem::word("push")
+    }];
+    ed.completion.idx = 0;
+
+    accept(&mut ed);
+    let key = crate::tests::helpers::focused_key(&ed);
+    let text = ed
+        .buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .slice(0, 40);
+    assert_eq!(text, "push(value)", "no $ marker survives accept");
+    assert!(ed.snippet.active, "tab-stop cycling is live");
+    assert_eq!(ed.snippet.tabstops.len(), 2);
+    assert_eq!(
+        ed.view_of_buffer(key).unwrap().cursor_offset(),
+        "push(".len(),
+        "the cursor parks on the first tab stop"
+    );
+    let stop = &ed.snippet.tabstops[0];
+    assert_eq!(
+        &text[stop.offset..stop.offset + stop.text_len],
+        "value",
+        "tab-stop offsets point into the buffer"
+    );
+}
+
+#[test]
+fn accepting_a_textedit_completion_replaces_the_prefix_wholesale() {
+    let mut ed = editor_with("pos");
+    ed.completion.visible = true;
+    ed.completion.prefix = "pos".into();
+    ed.completion.items = vec![CompletionItem {
+        kind: "field".into(),
+        detail: "player.position: Vec2".into(),
+        insert: "player.position".into(),
+        ..CompletionItem::word("position")
+    }];
+    ed.completion.idx = 0;
+
+    accept(&mut ed);
+    let key = crate::tests::helpers::focused_key(&ed);
+    let text = ed
+        .buffers
+        .get(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .slice(0, 40);
+    assert_eq!(text, "player.position");
+    assert_eq!(
+        ed.view_of_buffer(key).unwrap().cursor_offset(),
+        "player.position".len(),
+        "the cursor lands after the replaced text"
+    );
+}
+
+#[test]
+fn merge_filters_on_filter_text_case_insensitively() {
+    let mut ed = editor_with("done\n");
+    input::dispatch_key(&mut ed, "d");
+    input::dispatch_key(&mut ed, "o");
+    merge_lsp_items(
+        &mut ed,
+        vec![
+            CompletionItem {
+                label: "Doorway".into(),
+                filter: "doorway".into(),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "zebra".into(),
+                ..Default::default()
+            },
+        ],
+    );
+    let labels: Vec<&str> = ed
+        .completion
+        .items
+        .iter()
+        .map(|i| i.label.as_str())
+        .collect();
+    assert!(labels.contains(&"Doorway"), "case differences do not drop items");
+    assert!(!labels.contains(&"zebra"), "unrelated items are filtered");
+    dismiss(&mut ed);
 }

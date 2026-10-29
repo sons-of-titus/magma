@@ -259,32 +259,57 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
             return conv::nil();
         }
         let Some(bg) = ed.background.clone() else {
-            ed.project_manager.detect(&root);
-            if ed.project_manager.project.language.is_empty() {
-                ed.show_message(
-                    kernel::state::MessageKind::Info,
-                    "No recognized build system here (Cargo, go, npm, Make, Python, CMake, Maven, Gradle) — create run configurations with the toolbar gear",
+            // No background runtime (tests, headless): detect inline
+            // with the same precedence as the async path.
+            let path = std::path::Path::new(&root);
+            let static_language = kernel::project::detect::detect_language(path);
+            let toolchain = ed.toolchains.detect(path).cloned();
+            let language = static_language
+                .map(str::to_string)
+                .or_else(|| toolchain.as_ref().map(|t| t.language.clone()));
+            if let Some(lang) = &language {
+                ed.project_manager.project.language = lang.clone();
+                ed.project_manager.run_configs.load_or_defaults(path, lang);
+            }
+            if let Some(tc) = &toolchain {
+                kernel::toolchains::merge_run_configs(
+                    &mut ed.project_manager.run_configs.configs,
+                    tc,
                 );
+            }
+            ed.project_manager.sync_active_to_registry();
+            if language.is_none() {
+                ed.show_message(
+                        kernel::state::MessageKind::Info,
+                        "No recognized build system here (Cargo, go, npm, Make, Python, CMake, Maven, Gradle) — create run configurations with the toolbar gear",
+                    );
             }
             return conv::nil();
         };
         let generation = ed.project_manager.project.generation;
         let sender = bg.sender.clone();
         ed.project_manager.project.detecting_tasks = true;
+        // The registry snapshot travels with the closure: registrations
+        // that happen while detection runs cannot mutate a borrowed editor.
+        let toolchains = ed.toolchains.list().to_vec();
         // Coalesced: a rapid re-open supersedes detection still queued.
-        bg.spawn_on(kernel::runtime::Lane::Maintenance, Some("task-detect"), move || {
-            let path = std::path::Path::new(&root);
-            let language = kernel::project::detect::detect_language(path);
-            let mut configs = kernel::run_config::RunConfigManager::default();
-            if let Some(lang) = language {
-                configs.load_or_defaults(path, lang);
-            }
-            let _ = sender.send(kernel::runtime::BackgroundEvent::TasksDetected {
-                generation,
-                language: language.map(str::to_string),
-                configs,
-            });
-        });
+        bg.spawn_on(
+            kernel::runtime::Lane::Maintenance,
+            Some("task-detect"),
+            move || {
+                let mut configs = kernel::run_config::RunConfigManager::default();
+                let language = kernel::toolchains::detect_and_seed(
+                    std::path::Path::new(&root),
+                    &toolchains,
+                    &mut configs,
+                );
+                let _ = sender.send(kernel::runtime::BackgroundEvent::TasksDetected {
+                    generation,
+                    language,
+                    configs,
+                });
+            },
+        );
         conv::nil()
     })
 }

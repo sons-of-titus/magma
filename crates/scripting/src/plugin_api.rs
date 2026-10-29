@@ -36,8 +36,7 @@ unsafe extern "C-unwind" fn c_plugin_register(argc: i32, argv: *mut Janet) -> Ja
         }
         let name = conv::get_str(argc, argv, 0)
             .unwrap_or_else(|| conv::signal_err("plugin/register: name must be a string"));
-        let version =
-            conv::get_str(argc, argv, 1).unwrap_or_else(|| "0.0.0".to_string());
+        let version = conv::get_str(argc, argv, 1).unwrap_or_else(|| "0.0.0".to_string());
         let root = conv::get_str(argc, argv, 2).unwrap_or_default();
         let entry = conv::get_str(argc, argv, 3).unwrap_or_default();
         let deps = conv::get_str_array(argc, argv, 4).unwrap_or_default();
@@ -48,8 +47,7 @@ unsafe extern "C-unwind" fn c_plugin_register(argc: i32, argv: *mut Janet) -> Ja
             .filter_map(|s| Capability::from_str(s))
             .collect();
 
-        let manifest =
-            ExtensionManifest::new(name.clone(), version.clone(), caps, entry.clone());
+        let manifest = ExtensionManifest::new(name.clone(), version.clone(), caps, entry.clone());
         ed.extension_registry.register(manifest);
 
         let record = PluginRecord {
@@ -150,8 +148,8 @@ unsafe extern "C-unwind" fn c_plugin_load(argc: i32, argv: *mut Janet) -> Janet 
         };
 
         // janet_dostring — safe from within a C callback.
-        let result = with_context(ExecContext::Extension(name.clone()), || {
-            unsafe { eval_entry(&source) }
+        let result = with_context(ExecContext::Extension(name.clone()), || unsafe {
+            eval_entry(&source)
         });
         match result {
             Ok(()) => {
@@ -180,16 +178,52 @@ unsafe extern "C-unwind" fn c_plugin_load(argc: i32, argv: *mut Janet) -> Janet 
     })
 }
 
+/// `(plugin/unload name)` → `:ok` or `:error`
+///
+/// Unload a plugin at the registry level: its languages, project templates,
+/// and toolchains are removed, its record is marked not-loaded, and a
+/// `plugin-unloaded` event fires.  Scripts the plugin already registered
+/// (commands, event handlers, keymaps) keep running until the session ends
+/// — the scripting runtime has no per-plugin teardown, so this is an
+/// unregistration, not a sandboxed suspension.
+unsafe extern "C-unwind" fn c_plugin_unload(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let Some(name) = (unsafe { conv::get_str(argc, argv, 0) }) else {
+            return conv::keyword("error");
+        };
+        let Some(record) = ed.plugin_registry.get(&name) else {
+            ed.show_message(
+                kernel::state::MessageKind::Error,
+                format!("plugin not registered: {name}"),
+            );
+            return conv::keyword("error");
+        };
+        if !record.loaded {
+            return conv::keyword("ok");
+        }
+        let langs_removed = ed.language_registry.remove_owner(&name);
+        let templates_removed = ed.templates.remove_owner(&name);
+        let toolchains_removed = ed.toolchains.remove_owner(&name);
+        if let Some(record) = ed.plugin_registry.get_mut(&name) {
+            record.loaded = false;
+        }
+        info!(
+            "plugin unloaded: {name} ({} languages, {} templates, {} toolchains)",
+            langs_removed, templates_removed, toolchains_removed
+        );
+        ed.events.emit(
+            kernel::event::keys::events::PLUGIN_UNLOADED,
+            [("name".to_string(), name)].into_iter().collect(),
+        );
+        conv::keyword("ok")
+    })
+}
+
 /// `(plugin/list)` → array of
 /// `{:name :version :root :entry :deps :languages :capabilities :loaded}`
 unsafe extern "C-unwind" fn c_plugin_list(_argc: i32, _argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        let records: Vec<PluginRecord> = ed
-            .plugin_registry
-            .list()
-            .into_iter()
-            .map(|p| p.clone())
-            .collect();
+        let records: Vec<PluginRecord> = ed.plugin_registry.list().into_iter().cloned().collect();
         let arr = janet_wrap_array(janet_array(records.len() as i32));
         for record in &records {
             let tbl = plugin_record_table(ed, record);
@@ -213,10 +247,7 @@ unsafe extern "C-unwind" fn c_plugin_status(argc: i32, argv: *mut Janet) -> Jane
     })
 }
 
-unsafe fn plugin_record_table(
-    ed: &mut kernel::state::Editor,
-    record: &PluginRecord,
-) -> Janet {
+unsafe fn plugin_record_table(ed: &mut kernel::state::Editor, record: &PluginRecord) -> Janet {
     unsafe {
         let tbl = janet_wrap_table(janet_table(8));
         let t = janet_unwrap_table(tbl);
@@ -281,6 +312,12 @@ pub fn register() -> Vec<JanetReg> {
             ),
             documentation: c"Return a plugin's status table, or nil if not registered".as_ptr()
                 as *const _,
+        },
+        JanetReg {
+            name: c"plugin/unload".as_ptr() as *const _,
+            cfun: Some(c_plugin_unload as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Unload a plugin: remove its languages/templates/toolchains, mark it not loaded, emit plugin-unloaded"
+                .as_ptr() as *const _,
         },
     ]
 }

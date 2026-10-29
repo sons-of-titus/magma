@@ -155,10 +155,9 @@ pub(crate) mod conv {
                 }
                 let mut key_argv = kv.key;
                 let mut val_argv = kv.value;
-                if let (Some(k), Some(val)) = (
-                    get_str(1, &mut key_argv, 0),
-                    get_str(1, &mut val_argv, 0),
-                ) {
+                if let (Some(k), Some(val)) =
+                    (get_str(1, &mut key_argv, 0), get_str(1, &mut val_argv, 0))
+                {
                     out.push((k, val));
                 }
             }
@@ -276,8 +275,6 @@ mod buffer_text_api;
 #[cfg(feature = "janet")]
 mod buffer_word_api;
 #[cfg(feature = "janet")]
-mod syntax_api;
-#[cfg(feature = "janet")]
 mod clipboard_api;
 #[cfg(feature = "janet")]
 mod command_api;
@@ -311,6 +308,8 @@ mod fs_api;
 mod gutter_api;
 #[cfg(feature = "janet")]
 mod icons_api;
+#[cfg(feature = "janet")]
+mod jtable;
 #[cfg(feature = "janet")]
 mod keymap_api;
 #[cfg(feature = "janet")]
@@ -360,7 +359,11 @@ mod semantic_api;
 #[cfg(feature = "janet")]
 mod special_buffer_api;
 #[cfg(feature = "janet")]
+mod syntax_api;
+#[cfg(feature = "janet")]
 mod task_api;
+#[cfg(feature = "janet")]
+mod template_api;
 #[cfg(feature = "janet")]
 mod toolchain_api;
 #[cfg(feature = "janet")]

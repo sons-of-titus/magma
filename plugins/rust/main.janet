@@ -63,7 +63,6 @@
       (format-current-buffer))))
 
 # ── Run configurations ───────────────────────────────────────────────────────
-
-(run-config/register "build" "cargo" @["build"])
-(run-config/register "test" "cargo" @["test"])
-(run-config/register "run" "cargo" @["run"] nil true)
+# Seeded by the rust.cargo toolchain declaration in manifest.janet: marker
+# detection on project-opened installs build/test/run/clean/format/lint,
+# and the plugin's templates live under project-templates/.

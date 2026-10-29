@@ -324,7 +324,8 @@ fn bundled_rust_plugin_discovers_enables_and_contributes() {
         .unwrap_or_default();
         assert_eq!(lang, r#""true""#, "rust language registered and marked loaded");
 
-        // Mode command, formatter command, and run configs all contributed.
+        // Mode command, formatter command, and the toolchain declaring
+        // build/test/run all contributed.
         assert!(
             ed.commands.exists("rust-mode"),
             "rust-mode command should be registered"
@@ -333,9 +334,15 @@ fn bundled_rust_plugin_discovers_enables_and_contributes() {
             ed.commands.exists("rust-format-buffer"),
             "formatter command should be registered"
         );
+        let cargo = ed
+            .toolchains
+            .get("rust.cargo")
+            .expect("cargo toolchain contributed");
+        assert_eq!(cargo.detect_markers, vec!["Cargo.toml".to_string()]);
+        assert!(cargo.actions.contains_key("build"), "build action declared");
         assert!(
-            ed.project_manager.run_configs.named("run").is_some(),
-            "debuggable run config should be contributed"
+            cargo.actions.get("run").is_some_and(|a| a.debuggable),
+            "run action must be debuggable"
         );
         let major_modes = scripting::eval_result(
             r#"(string (if (get *major-modes* "rust-mode") "yes" "no"))"#,

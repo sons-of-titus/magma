@@ -15,6 +15,7 @@ mod process;
 mod project;
 mod session;
 mod task;
+mod templates;
 mod vc;
 
 use crate::state::Editor;
@@ -79,6 +80,9 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
 
         // ── Version control ──────────────────────────────────────────────
         BackgroundEvent::Vc(_) => vc::handle(ed, event),
+
+        // ── Project templates ────────────────────────────────────────────
+        BackgroundEvent::Templates(_) => templates::handle(ed, event),
 
         // ── Agent ────────────────────────────────────────────────────────
         BackgroundEvent::AgentThought { .. }

@@ -42,6 +42,8 @@ pub mod runtime;
 pub mod runtime_dap;
 pub mod server;
 pub mod signature;
+pub mod templates;
+pub mod toolchains;
 pub mod workspace;
 
 pub use script_runtime::ScriptRuntime;

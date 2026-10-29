@@ -238,6 +238,8 @@ pub enum BackgroundEvent {
     },
     /// The version-control subsystem's own event vocabulary.
     Vc(crate::vc::Event),
+    /// The project-template subsystem's own event vocabulary.
+    Templates(crate::templates::TemplateEvent),
     /// An external-change reload read finished off the foreground thread.
     BufferReloaded {
         buf_key: usize,

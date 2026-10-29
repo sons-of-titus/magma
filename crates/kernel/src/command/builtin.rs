@@ -10,8 +10,8 @@ mod debug_cmds;
 mod diagnostics_cmds;
 mod editing;
 mod file;
-mod indent_cmds;
 pub(crate) mod helpers;
+mod indent_cmds;
 mod misc;
 mod motion;
 mod navigation;
@@ -21,6 +21,7 @@ mod run_config_cmds;
 mod scroll_cmds;
 mod search;
 pub mod search_query;
+mod template_cmds;
 pub(crate) mod vc_actions;
 pub mod vc_blame;
 pub mod vc_diff;
@@ -57,4 +58,5 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     diagnostics_cmds::register(editor);
     indent_cmds::register(editor);
     scroll_cmds::register(editor);
+    template_cmds::register(editor);
 }

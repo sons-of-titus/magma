@@ -3,7 +3,7 @@
 use crate::state::Editor;
 
 /// Expand a leading `~` to `$HOME`; anything else passes through unchanged.
-fn expand_tilde(path: &str) -> String {
+pub(crate) fn expand_tilde(path: &str) -> String {
     let is_tilde = path == "~" || path.starts_with("~/");
     if is_tilde && let Ok(home) = std::env::var("HOME") {
         return format!("{home}{}", &path[1..]);

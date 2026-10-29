@@ -112,6 +112,14 @@ pub(super) fn register(editor: &mut Editor) {
             let override_adapter = args.get("adapter").and_then(|a| a.as_string())
                 .filter(|a| !a.is_empty());
             let language = editor.project_manager.project.language.clone();
+            let root = editor.project_manager.project.root.clone()
+                .ok_or_else(|| "no project open".to_string())?;
+            // Plugin toolchains can name the adapter their project type
+            // debugs with; it applies when the built-in candidates do not.
+            let toolchain_adapter = editor
+                .toolchains
+                .detect(&root)
+                .and_then(|t| t.debug_adapter.clone());
             let adapter = match override_adapter {
                 // A bare name is resolved like the candidates (so the
                 // `:dbg-start lldb-dap` the error message suggests works even
@@ -121,14 +129,15 @@ pub(super) fn register(editor: &mut Editor) {
                     .map(|path| path.to_string_lossy().into_owned())
                     .unwrap_or_else(|| a.to_string()),
                 None => detect::find_adapter(&language)
+                    .or_else(|| toolchain_adapter
+                        .as_deref()
+                        .and_then(toolchain::find_extended))
                     .map(|path| path.to_string_lossy().into_owned())
                     .ok_or_else(|| format!(
                         "no debug adapter for {language}: tried {} — install one or run :dbg-start <adapter>",
                         detect::adapter_candidates(&language).join(", ")))?,
             };
 
-            let root = editor.project_manager.project.root.clone()
-                .ok_or_else(|| "no project open".to_string())?;
             crate::debug::spawn_session(editor, &adapter, Some(cfg.to_launch_args(&root)))?;
             editor.show_message(
                 crate::state::MessageKind::Info,

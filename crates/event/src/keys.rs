@@ -84,6 +84,8 @@ pub mod events {
     pub const LANGUAGE_UNREGISTERED: &str = "language-unregistered";
     pub const PLUGIN_REGISTERED: &str = "plugin-registered";
     pub const PLUGIN_LOADED: &str = "plugin-loaded";
+    pub const PLUGIN_UNLOADED: &str = "plugin-unloaded";
+    pub const TEMPLATE_GENERATED: &str = "template-generated";
 }
 
 #[allow(clippy::module_inception)]

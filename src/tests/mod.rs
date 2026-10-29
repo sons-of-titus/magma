@@ -22,6 +22,7 @@ mod insertable_tests;
 mod line_index_tests;
 mod mode_tests;
 mod plugin_system_tests;
+mod plugin_templates_tests;
 mod project_tree_tests;
 mod project_walk_tests;
 mod signature_help_tests;

@@ -13,8 +13,8 @@ pub mod io;
 pub mod minimap;
 pub mod options;
 pub mod overlay;
-pub mod signature;
 pub mod search;
+pub mod signature;
 pub mod snippet;
 pub mod visual;
 
@@ -233,6 +233,12 @@ pub struct Editor {
     pub scheduler: WorkScheduler,
     pub extension_registry: ExtensionRegistry,
     pub plugin_registry: PluginRegistry,
+    /// Plugin-contributed project templates (New Project wizard).
+    pub templates: crate::templates::TemplateRegistry,
+    /// In-flight project generations and their last result.
+    pub template_jobs: crate::templates::TemplateJobs,
+    /// Plugin-registered toolchains / project-type detectors.
+    pub toolchains: crate::toolchains::ToolchainRegistry,
     pub agent: AgentManager,
     pub db: crate::db::DbState,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
@@ -347,6 +353,9 @@ impl Editor {
             scheduler: WorkScheduler::new(),
             extension_registry: ExtensionRegistry::new(),
             plugin_registry: PluginRegistry::new(),
+            templates: crate::templates::TemplateRegistry::default(),
+            template_jobs: crate::templates::TemplateJobs::default(),
+            toolchains: crate::toolchains::ToolchainRegistry::default(),
             agent: AgentManager::new(),
             db: Default::default(),
         }

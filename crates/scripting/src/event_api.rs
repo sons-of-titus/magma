@@ -227,7 +227,6 @@ unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
             let data_val = *argv.add(1);
             if janet_checktype(data_val, JanetType_JANET_TABLE) != 0 {
                 let tbl = &*janet_unwrap_table(data_val);
-                let tbl = &*janet_unwrap_table(data_val);
                 // Iterate over the full backing-array capacity, not just `count`.
                 // Janet uses an open-addressing hash table so live entries can sit
                 // at any position in [0, capacity); iterating only 0..count would

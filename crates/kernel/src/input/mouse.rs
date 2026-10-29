@@ -61,6 +61,7 @@ fn dispatch_click(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
     ed.mouse_state.last_x = event.x;
     ed.mouse_state.last_y = event.y;
     ed.mouse_state.drag_active = false;
+    ed.mouse_state.press_offset = None;
 
     // Only the primary button places the cursor; secondary is the context
     // menu's, middle is unused.
@@ -202,6 +203,11 @@ fn dispatch_text_click(
         }),
         _ => None,
     };
+
+    // Freeze the selection anchor now, in buffer space: later drag events
+    // must not re-derive it from the press cell, whose line changes as soon
+    // as the viewport scrolls to extend the selection.
+    ed.mouse_state.press_offset = Some((buf_id, word_or_line.map_or(offset, |(start, _)| start)));
 
     match word_or_line {
         // Double / triple click: select the range, cursor resting on its
@@ -432,17 +438,26 @@ fn dispatch_drag(ed: &mut Editor, _surface: &Surface, event: &MouseEvent) {
         None => return,
     };
 
-    let current = resolve_click_to_offset(ed, buf_id, &pane, event.x, event.y);
-    let press = resolve_click_to_offset(
-        ed,
-        buf_id,
-        &pane,
-        ed.mouse_state.press_x,
-        ed.mouse_state.press_y,
-    );
-    let (anchor, cursor) = match (press, current) {
-        (Some(p), Some(c)) => (p, c),
-        _ => return,
+    let Some(cursor) = resolve_click_to_offset(ed, buf_id, &pane, event.x, event.y) else {
+        return;
+    };
+    // Anchor in buffer space, captured at press time: the press cell drifts
+    // to another line whenever the viewport scrolls under a held drag.
+    let anchor = match ed.mouse_state.press_offset {
+        Some((buf, offset)) if buf == buf_id => offset,
+        Some(_) => return,
+        None => {
+            match resolve_click_to_offset(
+                ed,
+                buf_id,
+                &pane,
+                ed.mouse_state.press_x,
+                ed.mouse_state.press_y,
+            ) {
+                Some(p) => p,
+                None => return,
+            }
+        }
     };
 
     ed.selection = Some(crate::state::mode::Selection::char(anchor));

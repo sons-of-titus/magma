@@ -62,6 +62,10 @@ pub struct MouseState {
     pub last_x: u16,
     pub last_y: u16,
     pub drag_active: bool,
+    /// Buffer byte offset under the press, as `(buffer id, offset)`.  The
+    /// screen cell cannot anchor a drag: scrolling mid-drag puts a different
+    /// line under it, which used to re-anchor and drop the selected span.
+    pub press_offset: Option<(usize, usize)>,
     /// Multi-click detection: time and cell of the previous press, and the
     /// running count (1 = single, 2 = double, 3+ = line select).
     pub last_click: Option<(std::time::Instant, u16, u16)>,
@@ -78,6 +82,7 @@ impl Default for MouseState {
             last_x: 0,
             last_y: 0,
             drag_active: false,
+            press_offset: None,
             last_click: None,
             click_count: 0,
         }

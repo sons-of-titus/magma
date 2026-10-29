@@ -103,6 +103,65 @@ fn mouse_option_gates_processing() {
 }
 
 #[test]
+fn drag_anchor_survives_scrolling() {
+    let _lock = helpers::acquire_janet_lock();
+    let lines: Vec<String> = (0..40).map(|i| format!("line {i:02}")).collect();
+    let mut ed = helpers::make_editor_with_buffer(&lines.join("\n"));
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    ed.options
+        .insert("mouse-support".to_string(), "true".to_string());
+
+    let buf_id = helpers::focused_key(&ed);
+    let pane = ed.view_tree.panes()[0].clone();
+    let cx = content_start_x(&ed, buf_id, pane.x);
+    let surface = kernel::render::surface::Surface::new(pane.width, pane.height);
+
+    let event = |kind, y: u16| MouseEvent {
+        kind,
+        x: cx,
+        y,
+        button: MouseButton::Left,
+        modifiers: String::new(),
+    };
+
+    // Press on the first row, drag three rows down: anchor 0, cursor line 3.
+    mouse::dispatch_mouse(&mut ed, &surface, &event(MouseEventKind::Click, pane.y));
+    mouse::dispatch_mouse(&mut ed, &surface, &event(MouseEventKind::Drag, pane.y + 3));
+    assert_eq!(
+        ed.selection.as_ref().map(|s| s.anchor),
+        Some(0),
+        "press should anchor the selection at the first line"
+    );
+
+    // Auto-scroll under the held drag: the viewport moves, the press cell
+    // stays where it is.  The anchor must not follow the scrolled text.
+    if let Some(p) = ed.view_tree.pane_mut(pane.id) {
+        p.scroll_offset = 5;
+        p.scroll_pinned = true;
+        p.scroll_buf = Some(buf_id);
+    }
+    mouse::dispatch_mouse(&mut ed, &surface, &event(MouseEventKind::Drag, pane.y + 3));
+
+    let anchor = ed
+        .selection
+        .as_ref()
+        .map(|s| s.anchor)
+        .expect("dragging must keep a selection");
+    assert_eq!(anchor, 0, "scrolling must not re-anchor the selection");
+
+    let cursor = ed.views.get(&buf_id).unwrap().cursor.offset;
+    // Row 3 of a viewport topped at line 5 is line 8; each line is 8 bytes.
+    assert_eq!(
+        cursor,
+        8 * 8,
+        "cursor should follow the line under the pointer"
+    );
+    let (start, end) = ed.selection_range(cursor).unwrap();
+    assert_eq!((start, end), (0, cursor + 1));
+}
+
+#[test]
 fn gutter_click_emits_event() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("line A\nline B\nline C");

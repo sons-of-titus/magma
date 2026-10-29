@@ -27,72 +27,72 @@ pub struct TabStop {
     pub text_len: usize,
 }
 
-/// Parse tab stops from an expanded snippet string.
-/// Returns a list of tab stops sorted by occurrence in the string.
-pub fn parse_tabstops(expanded: &str) -> Vec<TabStop> {
-    let mut stops = Vec::new();
-    let mut offset = 0usize;
-    let bytes = expanded.as_bytes();
-    let len = bytes.len();
-
-    while offset < len {
-        // Look for '$' followed by a digit or '{'
-        if bytes[offset] == b'$' && offset + 1 < len {
-            if bytes[offset + 1] == b'{' {
-                // ${N:text} or ${N}
-                let end = offset + 2;
-                if let Some(close) = expanded[end..].find('}') {
-                    let inner = &expanded[offset + 2..offset + 2 + close];
-                    let (num_str, text) = if let Some(colon) = inner.find(':') {
-                        (&inner[..colon], &inner[colon + 1..])
-                    } else {
-                        (inner, "")
-                    };
-                    if let Ok(number) = num_str.parse::<usize>() {
-                        stops.push(TabStop {
-                            number,
-                            offset, // placeholder: will be adjusted after expansion
-                            text: text.to_string(),
-                            text_len: if text.is_empty() {
-                                0
-                            } else {
-                                expanded[offset..offset + 2 + close + 1].len()
-                            },
-                        });
-                    }
-                    offset += 2 + close + 1;
-                    continue;
-                }
-            } else if bytes[offset + 1].is_ascii_digit() {
-                // $N
-                let num_end = offset + 1;
-                while num_end + 1 < len && bytes[num_end + 1].is_ascii_digit() {
-                    // Just find the full number
-                }
-                // For simple $N, just read one digit
-                if let Ok(number) = (bytes[offset + 1] - b'0').to_string().parse::<usize>() {
-                    stops.push(TabStop {
-                        number,
-                        offset,
-                        text: String::new(),
-                        text_len: 2,
-                    });
-                }
-                offset += 2;
-                continue;
-            }
-        }
-        offset += 1;
-    }
-
-    // Sort by occurrence order (first appearance in string)
-    stops
-}
-
 /// Expand a snippet by trigger word.
 /// Returns `Some(expanded_text)` if the trigger matches a known snippet, or `None`.
 pub fn expand(trigger: &str) -> Option<String> {
     builtin().get(trigger).map(|s| s.to_string())
+}
+
+/// Expand LSP snippet syntax into plain text plus tab stops whose offsets
+/// point into the *expanded* result — what the buffer must insert and where
+/// the cursor cycles, with no `$`/`${}` markers left behind.
+///
+/// Handled: `$N`, `${N}`, `${N:placeholder}`, `$$` as a literal dollar.
+/// Placeholder bodies are taken literally (no nested tab stops).
+pub fn expand_lsp(src: &str) -> (String, Vec<TabStop>) {
+    let mut out = String::with_capacity(src.len());
+    let mut stops = Vec::new();
+    let bytes = src.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() {
+            if bytes[i + 1] == b'$' {
+                out.push('$');
+                i += 2;
+                continue;
+            }
+            if bytes[i + 1].is_ascii_digit() {
+                let mut end = i + 1;
+                while end < bytes.len() && bytes[end].is_ascii_digit() {
+                    end += 1;
+                }
+                let number = src[i + 1..end].parse::<usize>().unwrap_or(0);
+                stops.push(TabStop {
+                    number,
+                    offset: out.len(),
+                    text: String::new(),
+                    text_len: 0,
+                });
+                i = end;
+                continue;
+            }
+            if bytes[i + 1] == b'{' {
+                if let Some(rel) = src[i + 2..].find('}') {
+                    let inner = &src[i + 2..i + 2 + rel];
+                    let (num_str, text) = match inner.find(':') {
+                        Some(c) => (&inner[..c], &inner[c + 1..]),
+                        None => (inner, ""),
+                    };
+                    if let Ok(number) = num_str.parse::<usize>() {
+                        let offset = out.len();
+                        out.push_str(text);
+                        stops.push(TabStop {
+                            number,
+                            offset,
+                            text: text.to_string(),
+                            text_len: text.len(),
+                        });
+                        i += 2 + rel + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        let ch = src[i..].chars().next().unwrap_or('\0');
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    (out, stops)
 }
 
 /// The built-in snippets common to many languages, keyed by trigger.

@@ -124,10 +124,16 @@ fn snippet_expand(editor: &mut Editor, _args: &HashMap<String, ArgValue>) -> Com
     if let Some(expansion) = crate::snippet::expand_snippet(editor, &trigger)
         && let Some(view) = editor.view_of_buffer_mut(buf_id)
     {
-        view.replace(word_start, word_start + trigger.len(), &expansion);
-        view.set_cursor(word_start);
+        let (text, mut stops) = crate::snippet::expand_lsp(&expansion);
+        view.replace(word_start, word_start + trigger.len(), &text);
+        for stop in &mut stops {
+            stop.offset += word_start;
+        }
+        if let Some(first) = stops.first() {
+            view.set_cursor(first.offset);
+        }
         editor.snippet.active = true;
-        editor.snippet.tabstops = crate::snippet::parse_tabstops(&expansion);
+        editor.snippet.tabstops = stops;
         editor.snippet.tabstop_idx = 0;
     }
     emit_cursor_moved(editor);

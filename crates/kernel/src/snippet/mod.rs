@@ -4,7 +4,7 @@
 //! crate; this module keeps the editor-facing entry points that the command
 //! layer already calls.
 
-pub use snippet::{TabStop, parse_tabstops};
+pub use snippet::{TabStop, expand_lsp};
 
 use crate::state::Editor;
 

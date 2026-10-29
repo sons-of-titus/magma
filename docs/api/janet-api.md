@@ -1174,6 +1174,23 @@ immediately and the detected language and configurations apply when ready
 ### `(ts/load-grammar path name)` → true
 
 Load a tree-sitter grammar from a shared library and register it under `name`.
+The library must export `tree_sitter_<name>` (dashes become underscores), the
+generic `tree_sitter_language`, or the symbol named by the registering
+language spec's `:grammar-symbol`.  The grammar is ABI-validated on load; an
+incompatible one is refused with an error rather than failing later parses.
+
+### `(ts/has-language name)` → bool
+
+Return true if a grammar is loaded in the tree-sitter registry under `name`.
+
+### `(ts/grammar-lib-path root lang)` → string or nil
+
+Resolve the grammar shared library a plugin ships for `lang` under plugin
+directory `root`: `root/grammars/tree-sitter-<lang>` plus the running
+platform's extension (`.dylib` on macOS, `.dll` on Windows, `.so`
+elsewhere).  Returns nil when the plugin has no grammar for this platform;
+`plugin/define` applies this convention automatically, so manifests
+normally never call it.  See `docs/grammars.md`.
 
 ### `(ts/set-language buf-id lang-name)` → nil
 
@@ -1782,6 +1799,8 @@ Register a language from a full spec table (or struct):
   {:id "nova"
    :extensions ["nova" "nva"]           ; file extensions → `<id>-mode`
    :grammar "/abs/path/libtree-sitter-nova.dylib"  ; optional plugin grammar
+   :grammar-symbol "tree_sitter_nova"   ; optional, when the export name
+                                        ; deviates from tree_sitter_<id>
    :syntax "/abs/path/highlights.scm"   ; optional highlight query
    :comments {:line "//" :block ["/*" "*/"]}
    :indentation {:size 4 :style "spaces"}
@@ -1807,9 +1826,11 @@ manifests reach it through `plugin/define`.
 
 Remove a language from the registry.  Emits `language-unregistered`.
 
-### `(language/list)` → `[{:name :loaded :syntax-path :config-path} …]`
+### `(language/list)` → `[{…}]`
 
-Return all registered languages, sorted alphabetically by name.
+Return all registered languages, sorted alphabetically by name.  Each entry
+is a table of `:name`, `:loaded`, `:syntax-path`, `:config-path`,
+`:grammar-path`, `:grammar-loaded`, `:extensions`, and `:plugin`.
 
 ```janet
 (each l (language/list)

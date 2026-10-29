@@ -25,7 +25,7 @@ use crate::clipboard::Clipboard;
 use crate::command::CommandRegistry;
 use crate::debug::DebugManager;
 use crate::event::EventBus;
-use crate::extension::ExtensionRegistry;
+use crate::extension::{ExtensionRegistry, PluginRegistry};
 use crate::keymap::KeymapManager;
 use crate::render::view_tree::ViewTree;
 use crate::runtime::BackgroundHandle;
@@ -223,6 +223,7 @@ pub struct Editor {
     pub debug: DebugManager,
     pub scheduler: WorkScheduler,
     pub extension_registry: ExtensionRegistry,
+    pub plugin_registry: PluginRegistry,
     pub agent: AgentManager,
     pub db: crate::db::DbState,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
@@ -335,6 +336,7 @@ impl Editor {
             debug: DebugManager::new(),
             scheduler: WorkScheduler::new(),
             extension_registry: ExtensionRegistry::new(),
+            plugin_registry: PluginRegistry::new(),
             agent: AgentManager::new(),
             db: Default::default(),
         }

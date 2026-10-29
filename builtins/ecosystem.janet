@@ -23,29 +23,7 @@
   nil)
 
 # ── Plugin metadata ───────────────────────────────────────────────────────────
-
-# Each plugin declares (def *plugin-meta* {:name "..." :version "..." :deps [...]}).
-# Call this after loading a plugin to record its metadata and check deps.
-(defn plugin/register-meta [meta]
-  (def log-buf (buffer/find-or-create "*plugins-log*"))
-  (buffer/set-ephemeral log-buf true)
-  (def name (or (meta :name) "<unnamed>"))
-  (def version (or (meta :version) "0.0.0"))
-  (def deps (or (meta :deps) []))
-  # Check that declared deps have been loaded
-  (each dep deps
-    (when (nil? (*loaded-modules* dep))
-      (def msg (string "[plugin] " name " requires " dep " (not loaded)\n"))
-      (buffer/set-read-only log-buf false)
-      (buffer/insert log-buf (buffer/len log-buf) msg)
-      (buffer/set-read-only log-buf true)))
-  (def msg (string "[plugin] loaded " name " " version "\n"))
-  (buffer/set-read-only log-buf false)
-  (buffer/insert log-buf (buffer/len log-buf) msg)
-  (buffer/set-read-only log-buf true)
-  nil)
-
-# Colon verb: show the plugins log buffer
+# Plugin manifests and dependency resolution live in builtins/plugin_system.janet.
 
 # ── Mark ring key bindings ────────────────────────────────────────────────────
 

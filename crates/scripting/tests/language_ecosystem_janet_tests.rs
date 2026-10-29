@@ -43,7 +43,7 @@ fn language_register_increments_list_length() {
 #[test]
 fn language_register_stores_name() {
     janet_test!(ed, {
-        scripting::eval(r#"(language/register "rust" "/path/to/provider.janet")"#);
+        scripting::eval(r#"(language/register "rust")"#);
         let result =
             scripting::eval_result(r#"(get (first (language/list)) :name)"#).unwrap_or_default();
         assert!(
@@ -54,16 +54,20 @@ fn language_register_stores_name() {
 }
 
 #[test]
-fn language_register_stores_provider_path() {
+fn language_register_stores_asset_paths() {
     janet_test!(ed, {
-        scripting::eval(
-            r#"(language/register "rust" "/a/provider.janet" "/a/syntax.scm" "/a/config.janet")"#,
-        );
-        let result = scripting::eval_result(r#"(get (first (language/list)) :provider-path)"#)
+        scripting::eval(r#"(language/register "rust" "/a/syntax.scm" "/a/config.janet")"#);
+        let syntax = scripting::eval_result(r#"(get (first (language/list)) :syntax-path)"#)
+            .unwrap_or_default();
+        let config = scripting::eval_result(r#"(get (first (language/list)) :config-path)"#)
             .unwrap_or_default();
         assert!(
-            result.contains("/a/provider.janet"),
-            "provider-path not found: {result}"
+            syntax.contains("/a/syntax.scm"),
+            "syntax-path not found: {syntax}"
+        );
+        assert!(
+            config.contains("/a/config.janet"),
+            "config-path not found: {config}"
         );
     });
 }
@@ -121,52 +125,6 @@ fn language_for_buffer_returns_language_after_ts_set() {
     });
 }
 
-// ── language/load ─────────────────────────────────────────────────────────────
-
-#[test]
-fn language_load_returns_error_for_unregistered() {
-    janet_test!(ed, {
-        let result = scripting::eval_result(r#"(language/load "nosuchlang")"#).unwrap_or_default();
-        assert_eq!(result, ":error");
-    });
-}
-
-#[test]
-fn language_load_returns_error_for_missing_path() {
-    janet_test!(ed, {
-        scripting::eval(r#"(language/register "go")"#);
-        let result = scripting::eval_result(r#"(language/load "go")"#).unwrap_or_default();
-        assert_eq!(result, ":error");
-    });
-}
-
-#[test]
-fn language_load_marks_language_loaded_on_success() {
-    use std::io::Write as _;
-    janet_test!(ed, {
-        let tmp = std::env::temp_dir().join(format!("magma_jl_load_{}", std::process::id()));
-        std::fs::create_dir_all(&tmp).ok();
-        let provider = tmp.join("provider.janet");
-        let mut f = std::fs::File::create(&provider).unwrap();
-        let _ = f.write_all(b"# empty provider");
-
-        let provider_str = provider.to_str().unwrap();
-        let reg_code = format!(r#"(language/register "testlang" "{provider_str}")"#);
-        scripting::eval(&reg_code);
-
-        let result = scripting::eval_result(r#"(language/load "testlang")"#).unwrap_or_default();
-        std::fs::remove_dir_all(&tmp).ok();
-
-        assert_eq!(result, ":ok", "load returned: {result}");
-
-        let loaded = scripting::eval_result(
-            r#"(get (find (fn [l] (= (get l :name) "testlang")) (language/list)) :loaded)"#,
-        )
-        .unwrap_or_default();
-        assert_eq!(loaded, "true");
-    });
-}
-
 // ── language/list sorted output ───────────────────────────────────────────────
 
 #[test]
@@ -196,28 +154,5 @@ fn language_list_sorted_alphabetically() {
             name2.contains("rust"),
             "index 2 should be rust, got: {name2}"
         );
-    });
-}
-
-// ── discover helper ───────────────────────────────────────────────────────────
-
-#[test]
-fn language_discover_registers_subdirs() {
-    use std::io::Write as _;
-    janet_test!(ed, {
-        let tmp = std::env::temp_dir().join(format!("magma_jl_disc_{}", std::process::id()));
-        let lang_dir = tmp.join("mylang");
-        std::fs::create_dir_all(&lang_dir).unwrap();
-        let mut f = std::fs::File::create(lang_dir.join("provider.janet")).unwrap();
-        let _ = f.write_all(b"# provider");
-
-        let root_str = tmp.to_str().unwrap().replace('\\', "/");
-        let code = format!(r#"(language/discover "{root_str}")"#);
-        scripting::eval(&code);
-        std::fs::remove_dir_all(&tmp).ok();
-
-        let result = scripting::eval_result("(length (language/list))").unwrap_or_default();
-        let count: i32 = result.parse().unwrap_or(0);
-        assert!(count >= 1, "expected at least 1 language, got {result}");
     });
 }

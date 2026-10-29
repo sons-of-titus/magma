@@ -4,6 +4,9 @@
 //! The `ExtensionRegistry` stores manifests and enforces them when Janet C
 //! functions are called while a named extension is the active context.
 
+mod plugin;
+pub use plugin::{PluginRecord, PluginRegistry};
+
 use std::collections::HashMap;
 
 /// Permissions an extension may request.

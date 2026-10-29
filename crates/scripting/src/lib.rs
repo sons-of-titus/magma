@@ -102,6 +102,31 @@ pub(crate) mod conv {
         }
     }
 
+    /// Read a Janet array of strings/keywords into a Vec.  Non-string
+    /// elements are skipped.
+    pub unsafe fn get_str_array(argc: i32, argv: *mut Janet, i: i32) -> Option<Vec<String>> {
+        unsafe {
+            if i >= argc {
+                return None;
+            }
+            let v = *argv.add(i as usize);
+            if janet_checktype(v, JanetType_JANET_ARRAY) == 0 {
+                return None;
+            }
+            let arr = janet_unwrap_array(v);
+            let len = (*arr).count as usize;
+            let mut out = Vec::with_capacity(len);
+            for idx in 0..len {
+                let elem = *(*arr).data.add(idx);
+                let mut tmp_argv = elem;
+                if let Some(s) = get_str(1, &mut tmp_argv, 0) {
+                    out.push(s);
+                }
+            }
+            Some(out)
+        }
+    }
+
     pub fn nil() -> Janet {
         unsafe { janet_wrap_nil() }
     }
@@ -269,6 +294,8 @@ mod net_tcp_api;
 mod option_api;
 #[cfg(feature = "janet")]
 mod overlay_api;
+#[cfg(feature = "janet")]
+mod plugin_api;
 #[cfg(feature = "janet")]
 mod plugin_state_api;
 #[cfg(feature = "janet")]

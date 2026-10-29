@@ -136,6 +136,34 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
         description: "LLM provider for the built-in agent",
         category: OptionCategory::Behavior,
     },
+    OptionSpec {
+        name: "plugins-enabled",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "true",
+        description: "Load plugins from disk at startup (bundled and user directories)",
+        category: OptionCategory::Behavior,
+    },
+    OptionSpec {
+        name: "plugins-root",
+        kind: OptionKind::Str,
+        choices: &[],
+        // Empty means unset: the fallback (~/.config/magma/plugins) is
+        // computed at use time because $HOME is not a compile-time constant.
+        default: "",
+        description: "Directory plugins are installed to and loaded from (empty uses ~/.config/magma/plugins)",
+        category: OptionCategory::Behavior,
+    },
+    // Managed by the per-plugin toggles on the Plugins settings page; shown
+    // as a raw row nowhere.
+    OptionSpec {
+        name: "plugins-disabled",
+        kind: OptionKind::Str,
+        choices: &[],
+        default: "",
+        description: "Plugin names that stay off until the next startup (comma-separated)",
+        category: OptionCategory::Behavior,
+    },
 ];
 
 /// The option's current value: user-set, else the registry default.
@@ -164,7 +192,11 @@ mod tests {
                 "{} needs a description",
                 spec.name
             );
-            assert!(!spec.default.is_empty(), "{} needs a default", spec.name);
+            // Str options may default to "" (unset); their description
+            // documents the computed fallback.
+            if spec.kind != OptionKind::Str {
+                assert!(!spec.default.is_empty(), "{} needs a default", spec.name);
+            }
             if spec.kind == OptionKind::Enum {
                 assert!(
                     spec.choices.contains(&spec.default),

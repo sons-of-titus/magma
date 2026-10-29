@@ -189,8 +189,9 @@ event_payload!(AgentApprovalPayload {
     summary
 });
 event_payload!(LanguageRegisteredPayload { name });
-event_payload!(LanguageLoadedPayload { name });
 event_payload!(LanguageUnregisteredPayload { name });
+event_payload!(PluginRegisteredPayload { name, version });
+event_payload!(PluginLoadedPayload { name });
 event_payload!(MouseClickedPayload {
     buf,
     line,

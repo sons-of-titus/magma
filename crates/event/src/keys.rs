@@ -81,8 +81,9 @@ pub mod events {
     pub const AGENT_ERROR: &str = "agent-error";
     pub const AGENT_APPROVAL: &str = "agent-approval";
     pub const LANGUAGE_REGISTERED: &str = "language-registered";
-    pub const LANGUAGE_LOADED: &str = "language-loaded";
     pub const LANGUAGE_UNREGISTERED: &str = "language-unregistered";
+    pub const PLUGIN_REGISTERED: &str = "plugin-registered";
+    pub const PLUGIN_LOADED: &str = "plugin-loaded";
 }
 
 #[allow(clippy::module_inception)]

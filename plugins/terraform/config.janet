@@ -1,0 +1,7 @@
+(option/set "terraform-indent-width" "2")
+(option/set "terraform-indent-style" "space")
+(option/set "terraform-comment-prefix" "# ")
+(option/set "terraform-lsp-command" "terraform-ls")
+
+# Format with terraform fmt before every save of a terraform buffer
+(option/set "terraform-format-on-save" "false")

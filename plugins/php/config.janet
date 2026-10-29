@@ -1,0 +1,5 @@
+(option/set "php-indent-width" "4")
+(option/set "php-indent-style" "space")
+(option/set "php-comment-prefix" "// ")
+(option/set "php-lsp-command" "intelephense")
+(option/set "php-lsp-args" "--stdio")

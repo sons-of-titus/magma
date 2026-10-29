@@ -159,6 +159,7 @@ pub fn init_vm() {
         regs.extend(super::toolchain_api::register());
         regs.extend(super::scheduler_api::register());
         regs.extend(super::extension_api::register());
+        regs.extend(super::plugin_api::register());
         regs.extend(super::agent_api::register());
         regs.extend(super::language_api::register());
         regs.push(evil_janet::JanetReg {
@@ -341,6 +342,24 @@ pub fn init_vm() {
         "builtins/language.janet",
         include_str!("../../../builtins/language.janet"),
     );
+    load_builtin(
+        "builtins/plugin_system.janet",
+        include_str!("../../../builtins/plugin_system.janet"),
+    );
+    load_builtin(
+        "builtins/plugin_images.janet",
+        include_str!("../../../builtins/plugin_images.janet"),
+    );
+
+    // Discover plugins from the working directory (the bundled plugins/
+    // tree during development) and the user config directory, then enable
+    // the bundled language plugins.
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+    let bootstrap = format!("(plugin/bootstrap \"{}\" \"{}\")", cwd, home);
+    load_builtin("<plugin-bootstrap>", &bootstrap);
 
     let home = std::env::var("HOME").unwrap_or_default();
     if !home.is_empty() {

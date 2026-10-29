@@ -1,0 +1,5 @@
+(option/set "dockerfile-indent-width" "2")
+(option/set "dockerfile-indent-style" "space")
+(option/set "dockerfile-comment-prefix" "# ")
+(option/set "dockerfile-lsp-command" "docker-langserver")
+(option/set "dockerfile-lsp-args" "--stdio")

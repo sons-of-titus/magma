@@ -1,0 +1,356 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Field, Picker, Check, SectionLabel } from "../components/controls.slint";
+import { Button, ToolbarIcon } from "../components/button.slint";
+
+// One template in the browser list; the selected one is also pushed as
+// `detail` for the right-hand pane.
+export struct TemplateItem {
+    id: string,
+    name: string,
+    description: string,
+    category: string,
+    language: string,
+    plugin: string,
+    toolchain: string,
+    // "" when the declared toolchain is available; otherwise the
+    // actionable "not installed" message shown before creating anything.
+    toolchain-status: string,
+    file-count: int,
+    selected: bool,
+}
+
+// One template input the user fills in the form.
+export struct TemplateVar {
+    key: string,
+    label: string,
+    description: string,
+    kind: string,          // "text" | "project-name" | "choice" | "boolean"
+    value: string,
+    choices: [string],
+    required: bool,
+}
+
+export component NewProjectView inherits Rectangle {
+    in property <[TemplateItem]> templates;
+    in property <TemplateItem> detail;
+    in-out property <string> search: "";
+    in-out property <string> project-name: "";
+    in-out property <string> dest-dir: "";
+    in property <[TemplateVar]> vars;
+    in property <string> note: "";
+    in property <string> create-reason: "";
+    in property <bool> can-create: false;
+    in property <bool> generating: false;
+
+    callback close();
+    callback create();
+    callback browse();
+    callback select(int);
+    callback move-selection(int);
+    callback search-changed();
+    callback var-changed(string, string);
+    callback name-changed();
+    callback dest-changed();
+
+    property <length> card-w: 740px;
+    property <length> card-h: 520px;
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000066;
+
+    // The backdrop only closes when nothing is in flight — a stray click
+    // must not abandon a generation.
+    TouchArea {
+        clicked => {
+            if !root.generating {
+                root.close();
+            }
+        }
+    }
+
+    Rectangle {
+        x: (parent.width - card-w) / 2;
+        y: (parent.height - card-h) / 2;
+        width: card-w;
+        height: card-h;
+        background: Theme.surface-panel;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 6px;
+
+        TouchArea { }
+
+        focus := FocusScope {
+            width: 100%;
+            height: 100%;
+            key-pressed(event) => {
+                if event.text == Key.Escape && !root.generating {
+                    root.close();
+                    accept
+                } else if event.text == Key.Return && root.can-create {
+                    root.create();
+                    accept
+                } else if event.text == Key.UpArrow {
+                    root.move-selection(-1);
+                    accept
+                } else if event.text == Key.DownArrow {
+                    root.move-selection(1);
+                    accept
+                } else {
+                    reject
+                }
+            }
+        }
+
+        VerticalLayout {
+            // ── Header ──────────────────────────────────────────────────
+            HorizontalLayout {
+                padding: 14px;
+                padding-bottom: 8px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: "New Project";
+                    color: Theme.text-primary;
+                    font-size: 15px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                ToolbarIcon {
+                    glyph: "✕";
+                    enabled: !root.generating;
+                    clicked => { root.close(); }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                padding-bottom: 14px;
+                spacing: 14px;
+
+                // ── Template browser ────────────────────────────────────
+                VerticalLayout {
+                    width: 250px;
+                    spacing: 8px;
+
+                    Field {
+                        placeholder: "Search templates";
+                        text <=> root.search;
+                        edited => { root.search-changed(); }
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        background: Theme.surface;
+
+                        if root.templates.length == 0 : Text {
+                            text: "No templates match.";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        ScrollView {
+                            VerticalLayout {
+                                padding: 4px;
+                                for t[idx] in root.templates : Rectangle {
+                                    height: 40px;
+                                    border-radius: 3px;
+                                    background: t.selected
+                                        ? Theme.selection
+                                        : (row-touch.has-hover ? Theme.fill : transparent);
+                                    VerticalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+                                        spacing: 1px;
+                                        Text {
+                                            text: t.name;
+                                            color: Theme.text-primary;
+                                            font-size: Theme.font-ui;
+                                            overflow: elide;
+                                        }
+                                        Text {
+                                            text: t.category + (t.language == "" ? "" : "  ·  " + t.language);
+                                            color: Theme.text-faint;
+                                            font-size: 10px;
+                                            overflow: elide;
+                                        }
+                                    }
+                                    row-touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.select(idx); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Detail + form ────────────────────────────────────────
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 8px;
+
+                    if root.detail.id != "" : ScrollView {
+                        vertical-stretch: 1;
+
+                        VerticalLayout {
+                            spacing: 10px;
+
+                            Text {
+                                text: root.detail.name;
+                                color: Theme.text-primary;
+                                font-size: 14px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.detail.description;
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-ui;
+                                wrap: word-wrap;
+                            }
+                            Text {
+                                text: root.detail.plugin + "  ·  " + root.detail.file-count + " files";
+                                color: Theme.text-faint;
+                                font-size: Theme.font-small;
+                            }
+                            if root.detail.toolchain-status != "" : Text {
+                                text: root.detail.toolchain-status;
+                                color: Theme.warning;
+                                font-size: Theme.font-small;
+                                wrap: word-wrap;
+                            }
+
+                            SectionLabel { text: "LOCATION"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Field {
+                                    horizontal-stretch: 1;
+                                    placeholder: "/path/to/parent/folder";
+                                    text <=> root.dest-dir;
+                                    enabled: !root.generating;
+                                    edited => { root.dest-changed(); }
+                                }
+                                Button {
+                                    label: "Browse…";
+                                    enabled: !root.generating;
+                                    clicked => { root.browse(); }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text {
+                                    text: "Name";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-ui;
+                                    vertical-alignment: center;
+                                }
+                                Field {
+                                    width: 220px;
+                                    placeholder: "my-project";
+                                    text <=> root.project-name;
+                                    enabled: !root.generating;
+                                    edited => { root.name-changed(); }
+                                }
+                            }
+
+                            if root.vars.length > 0 : SectionLabel { text: "OPTIONS"; }
+                            for v in root.vars : HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                VerticalLayout {
+                                    width: 150px;
+                                    alignment: v.description == "" ? center : start;
+                                    spacing: 1px;
+                                    Text {
+                                        text: v.label;
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-ui;
+                                        overflow: elide;
+                                    }
+                                    if v.description != "" : Text {
+                                        text: v.description;
+                                        color: Theme.text-faint;
+                                        font-size: 10px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                                if v.kind == "choice" : Picker {
+                                    y: (parent.height - Theme.control-height) / 2;
+                                    choices: v.choices;
+                                    current-value: v.value;
+                                    changed(value) => { root.var-changed(v.key, value); }
+                                }
+                                if v.kind == "boolean" : Check {
+                                    y: (parent.height - Theme.control-height) / 2;
+                                    checked: v.value == "true";
+                                    toggled => { root.var-changed(v.key, self.checked ? "true" : "false"); }
+                                }
+                                if v.kind != "choice" && v.kind != "boolean" : Field {
+                                    y: (parent.height - Theme.control-height) / 2;
+                                    width: 200px;
+                                    placeholder: v.required ? "required" : "optional";
+                                    text: v.value;
+                                    enabled: !root.generating;
+                                    edited => { root.var-changed(v.key, self.text); }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    // ── Footer ───────────────────────────────────────────
+                    HorizontalLayout {
+                        height: 30px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        Text {
+                            vertical-alignment: center;
+                            text: root.generating
+                                ? "Creating project…"
+                                : root.note != "" ? root.note : root.create-reason;
+                            color: root.generating ? Theme.text-muted
+                                : root.note != "" ? Theme.danger : Theme.text-faint;
+                            font-size: Theme.font-small;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            label: "Cancel";
+                            enabled: !root.generating;
+                            clicked => { root.close(); }
+                        }
+                        Button {
+                            label: root.generating ? "Creating…" : "Create";
+                            primary: true;
+                            enabled: root.can-create && !root.generating;
+                            clicked => { root.create(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

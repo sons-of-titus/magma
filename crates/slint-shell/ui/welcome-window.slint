@@ -19,11 +19,13 @@ export component WelcomeWindow inherits Window {
     in property <length> app-font-size: 12px;
 
     callback open-folder();
+    callback new-project();
     callback open-recent(string);
 
     Welcome {
         recents: root.recents;
         open-folder => { root.open-folder(); }
+        new-project => { root.new-project(); }
         open-recent(path) => { root.open-recent(path); }
     }
 }

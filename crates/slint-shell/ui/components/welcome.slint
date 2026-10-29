@@ -4,6 +4,7 @@ import { Button } from "button.slint";
 export component Welcome inherits Rectangle {
     in property <[string]> recents;
     callback open-folder();
+    callback new-project();
     callback open-recent(string);
 
     background: Theme.surface;
@@ -33,11 +34,20 @@ export component Welcome inherits Rectangle {
 
         Rectangle { height: 8px; }
 
-        Button {
-            label: "Open Folder…";
-            primary: true;
-            width: 140px;
-            clicked => { root.open-folder(); }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Button {
+                label: "New Project…";
+                primary: true;
+                width: 140px;
+                clicked => { root.new-project(); }
+            }
+            Button {
+                label: "Open Folder…";
+                width: 140px;
+                clicked => { root.open-folder(); }
+            }
         }
 
         Rectangle { height: 6px; }

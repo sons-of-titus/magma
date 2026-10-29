@@ -11,6 +11,7 @@ mod dracula;
 mod input;
 mod lifecycle;
 mod new_palettes;
+mod new_project;
 mod noctis;
 mod palettes;
 mod pane;
@@ -111,6 +112,8 @@ struct AppState {
     dialog_input: String,
     /// The unsaved-changes dialog raised over a refused quit.
     quit_confirm_visible: bool,
+    /// New Project wizard overlay state.
+    new_project: new_project::NewProjectState,
     /// Save was chosen in that dialog; quit once the dirty set drains
     /// (async writes keep buffers dirty until the write-confirmed events
     /// land).
@@ -139,6 +142,8 @@ struct AppState {
     m_sessions: sync::ModelGate<slint::SharedString>,
     m_git_history: sync::ModelGate<GitHistoryRow>,
     m_menu: sync::ModelGate<MenuItem>,
+    m_new_project_templates: sync::ModelGate<TemplateItem>,
+    m_new_project_vars: sync::ModelGate<TemplateVar>,
     m_hover_lines: sync::ModelGate<slint::SharedString>,
     m_completion_items: sync::ModelGate<slint::SharedString>,
     m_quickfix_items: sync::ModelGate<slint::SharedString>,
@@ -257,6 +262,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dialog_title: String::new(),
         dialog_input: String::new(),
         quit_confirm_visible: false,
+        new_project: new_project::NewProjectState::default(),
         quit_when_clean: false,
         settings_visible: false,
         settings_category: 0,
@@ -279,6 +285,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         m_sessions: sync::ModelGate::new(),
         m_git_history: sync::ModelGate::new(),
         m_menu: sync::ModelGate::new(),
+        m_new_project_templates: sync::ModelGate::new(),
+        m_new_project_vars: sync::ModelGate::new(),
         m_hover_lines: sync::ModelGate::new(),
         m_completion_items: sync::ModelGate::new(),
         m_quickfix_items: sync::ModelGate::new(),
@@ -286,10 +294,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = AppWindow::new()?;
     let welcome = WelcomeWindow::new()?;
-    logging::info!(
-        "milestone: window created at {:?}",
-        boot_clock().elapsed()
-    );
+    logging::info!("milestone: window created at {:?}", boot_clock().elapsed());
 
     {
         let mut s = state.borrow_mut();
@@ -302,6 +307,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The launcher routes into the same actions as the editor menus, then
     // refreshes the editor projection so the new project's first frame is
     // already projected when its window maps.
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        welcome.on_new_project(move || {
+            let mut s = state.borrow_mut();
+            new_project::open(&weak, &mut s);
+            s.editor.frame_dirty = true;
+            sync::refresh(&weak, &mut s);
+        });
+    }
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
@@ -397,11 +412,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if s.quit_when_clean && s.editor.dirty_buffer_names().is_empty() {
                     s.quit_when_clean = false;
                     s.quit_confirm_visible = false;
-                    let _ = kernel::command::execute_command(
-                        &mut s.editor,
-                        "quit",
-                        &HashMap::new(),
-                    );
+                    let _ =
+                        kernel::command::execute_command(&mut s.editor, "quit", &HashMap::new());
                 }
                 s.workspace.maintain(&mut s.editor);
                 let mut changed = false;

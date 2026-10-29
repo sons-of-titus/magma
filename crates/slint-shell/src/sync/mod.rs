@@ -19,6 +19,7 @@ use slint::{ModelRc, VecModel};
 
 use kernel::render::frame::{render_frame_with, sync_viewport_scroll};
 
+use crate::new_project;
 use crate::pane;
 use crate::{AppState, AppWindow, TabItem, logical_size, projection, theme};
 use kernel::render::CursorPaint;
@@ -341,7 +342,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     // ever resized and an open never flashes a partial-size app.  Show the
     // incoming window before hiding the outgoing one — the event loop quits
     // when the last window closes.
-    let now_welcome = ed.project_manager.project.root.is_none();
+    let now_welcome = ed.project_manager.project.root.is_none() && !state.new_project.visible;
     if now_welcome != state.launcher_visible {
         state.launcher_visible = now_welcome;
         if let Some(w) = state.welcome.upgrade() {
@@ -364,6 +365,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     tool_windows::sync_commit(&app, &mut state.editor, &state.message);
     tool_windows::sync_debug(&app, state);
     db::sync(&app, state);
+    new_project::sync(&app, state);
 
     app.set_menu_visible(state.menu_visible);
     app.set_menu_x(state.menu_x);
@@ -403,4 +405,3 @@ fn sync_theme(app: &AppWindow, state: &mut AppState) {
     theme::apply_editor(&mut state.editor, &palette);
     state.theme_name = name;
 }
-

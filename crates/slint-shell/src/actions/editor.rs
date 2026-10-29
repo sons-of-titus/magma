@@ -22,6 +22,32 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 return;
             };
             let mut s = state.borrow_mut();
+            // The New Project wizard is modal while it has no text field
+            // focused: Escape closes, Return creates, arrows move the
+            // template selection, everything else stays out of the buffer.
+            if s.new_project.visible {
+                match key.as_str() {
+                    "esc" if !s.editor.template_jobs.is_generating() => {
+                        crate::new_project::close(&mut s);
+                    }
+                    "return" | "enter"
+                        if s.new_project.can_create && !s.editor.template_jobs.is_generating() =>
+                    {
+                        crate::new_project::command(&weak, &mut s, "new-project:create");
+                        return;
+                    }
+                    "up" => {
+                        crate::new_project::command(&weak, &mut s, "new-project:move:-1");
+                        return;
+                    }
+                    "down" => {
+                        crate::new_project::command(&weak, &mut s, "new-project:move:1");
+                        return;
+                    }
+                    _ => {}
+                }
+                return;
+            }
             // The unsaved-changes dialog is modal: Return saves, Escape
             // cancels, and everything else stays out of the buffer.
             if s.quit_confirm_visible {
@@ -163,6 +189,12 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                         Err(e) => s.message = e,
                     }
                 }
+                "new-project-dialog" => {
+                    crate::new_project::open(&weak, &mut s);
+                }
+                c if c.starts_with("new-project:") => {
+                    crate::new_project::command(&weak, &mut s, c);
+                }
                 c if c.starts_with("quit:") => {
                     crate::lifecycle::confirm_command(&weak, &mut s, c);
                 }
@@ -271,12 +303,12 @@ mod mouse {
         {
             let state = Rc::clone(&state);
             let weak = app.as_weak();
-        app.on_ime_committed(move |text| {
-            let mut s = state.borrow_mut();
-            if s.quit_confirm_visible {
-                return;
-            }
-            kernel::input::dispatch_key(&mut s.editor, &text);
+            app.on_ime_committed(move |text| {
+                let mut s = state.borrow_mut();
+                if s.quit_confirm_visible || s.new_project.visible {
+                    return;
+                }
+                kernel::input::dispatch_key(&mut s.editor, &text);
                 s.editor.dispatch_events_scoped();
                 s.editor.frame_dirty = true;
                 refresh(&weak, &mut s);

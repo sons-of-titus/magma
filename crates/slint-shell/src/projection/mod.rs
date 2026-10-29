@@ -134,6 +134,12 @@ pub fn progress_tasks(ed: &Editor) -> Vec<ProgressTask> {
             detail: "".into(),
         });
     }
+    if let Some(job) = &ed.template_jobs.generating {
+        tasks.push(ProgressTask {
+            label: "Creating project".into(),
+            detail: job.name.as_str().into(),
+        });
+    }
     tasks
 }
 

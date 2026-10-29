@@ -21,6 +21,7 @@ import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.s
 import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint";
 import { DialogView } from "views/dialog-view.slint";
 import { QuitView } from "views/quit-view.slint";
+import { NewProjectView, TemplateItem, TemplateVar } from "views/new-project-view.slint";
 import { HoverCard, CompletionPopup, QuickfixMenu } from "views/overlays.slint";
 import { ComboBox, SpinBox } from "std-widgets.slint";
 export component AppWindow inherits Window {
@@ -192,6 +193,19 @@ export component AppWindow inherits Window {
     in property <string> dialog-title: "";
     in-out property <string> dialog-input: "";
 
+    // ── New Project wizard ───────────────────────────────────────────────
+    in property <bool> new-project-visible: false;
+    in property <[TemplateItem]> new-project-templates;
+    in property <TemplateItem> new-project-detail;
+    in property <[TemplateVar]> new-project-vars;
+    in-out property <string> new-project-search: "";
+    in-out property <string> new-project-name: "";
+    in-out property <string> new-project-dest: "";
+    in property <string> new-project-note: "";
+    in property <string> new-project-create-reason: "";
+    in property <bool> new-project-can-create: false;
+    in property <bool> new-project-generating: false;
+
     // ── Quit confirmation ────────────────────────────────────────────────
     in property <bool> quit-confirm-visible: false;
     in property <string> quit-confirm-message: "";
@@ -297,6 +311,7 @@ export component AppWindow inherits Window {
     MenuBar {
         Menu {
             title: "File";
+            MenuItem { title: "New Project…"; activated => { root.command("new-project-dialog"); } }
             MenuItem { title: "Open Folder…"; activated => { root.command("open-project-dialog"); } }
             MenuSeparator {}
             MenuItem { title: "Save"; activated => { root.command("save-buffer"); } }
@@ -811,6 +826,29 @@ export component AppWindow inherits Window {
         message: root.quit-confirm-message;
         files: root.quit-confirm-files;
         command(cmd) => { root.command(cmd); }
+    }
+
+    // ── New Project wizard overlay ───────────────────────────────────────
+    if root.new-project-visible : NewProjectView {
+        templates: root.new-project-templates;
+        detail: root.new-project-detail;
+        vars: root.new-project-vars;
+        search <=> root.new-project-search;
+        project-name <=> root.new-project-name;
+        dest-dir <=> root.new-project-dest;
+        note: root.new-project-note;
+        create-reason: root.new-project-create-reason;
+        can-create: root.new-project-can-create;
+        generating: root.new-project-generating;
+        close() => { root.command("new-project:close"); }
+        create() => { root.command("new-project:create"); }
+        browse() => { root.command("new-project:browse"); }
+        select(i) => { root.command("new-project:select:" + i); }
+        move-selection(d) => { root.command("new-project:move:" + d); }
+        search-changed() => { root.command("new-project:search-changed"); }
+        var-changed(key, value) => { root.command("new-project:var:" + key + "=" + value); }
+        name-changed() => { root.command("new-project:name-changed"); }
+        dest-changed() => { root.command("new-project:dest-changed"); }
     }
 
     // ── Hover card / completion popup / quickfix menu ────────────────────

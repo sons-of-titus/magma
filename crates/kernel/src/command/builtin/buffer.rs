@@ -162,6 +162,7 @@ pub(super) fn register(editor: &mut Editor) {
                             path: path.to_string(),
                         },
                     );
+                    crate::semantic::fallback_syntax::on_buffer_created(editor, buf_id as usize);
                     return Ok(());
                 } else {
                     // PDF: extract text.
@@ -238,6 +239,7 @@ pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
             path: path.to_string(),
         },
     );
+    crate::semantic::fallback_syntax::on_buffer_created(editor, buf_id as usize);
 }
 
 /// Present find-files results (the async event's sink and the sync path

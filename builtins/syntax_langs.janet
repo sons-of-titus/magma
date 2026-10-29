@@ -1,4 +1,21 @@
-# Language keyword tables for syntax highlighting.
+# Language keyword tables for the native fallback highlighter.
+#
+# Each table registers through the kernel's rule registry
+# (syntax/define-rules); the scanner and the incremental range cache live
+# in the kernel, the language knowledge lives here.
+
+# Line-comment marker per language, applied with the keyword table.
+(def- *comment-markers*
+  {"janet" "#" "rust" "//" "python" "#" "javascript" "//"
+   "typescript" "//" "go" "//" "c" "//" "cpp" "//"
+   "ruby" "#" "sh" "#" "lua" "--" "java" "//" "kotlin" "//"
+   "swift" "//" "haskell" "--" "elixir" "#" "erlang" "%"
+   "nim" "#" "zig" "//" "nix" "#" "clojure" ";" "emacs-lisp" ";"
+   "lisp" ";" "scheme" ";" "fish" "#" "sql" "--" "toml" "#"
+   "yaml" "#" "terraform" "#" "protobuf" "//" "org" "#"})
+
+(defn define-syntax [name keywords]
+  (syntax/define-rules name keywords (get *comment-markers* name)))
 
 (define-syntax "janet"
   ["defn" "defn-" "def" "def-" "var" "let" "if" "when" "unless"

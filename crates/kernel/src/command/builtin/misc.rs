@@ -5,7 +5,7 @@
 //! is community-extension territory — the mode struct and keymap layers
 //! remain as extension substrate, but nothing in the core enters a mode.
 
-use crate::command::args::{ArgSpec, ArgType};
+use crate::command::args::{ArgSpec, ArgType, ArgValue};
 use crate::event::keys;
 use crate::event::payload::*;
 use crate::state::Editor;
@@ -120,6 +120,22 @@ pub(super) fn register(editor: &mut Editor) {
                         .name()
                 );
             }
+            Ok(())
+        },
+    );
+
+    cmds.register_fn(
+        "syntax-highlight",
+        "Re-run fallback syntax highlighting on a buffer",
+        vec![ArgSpec::optional("buffer", ArgType::Integer, ArgValue::Integer(-1))],
+        |editor, args| {
+            let key = args
+                .get("buffer")
+                .and_then(|a| a.as_integer())
+                .filter(|&k| k >= 0)
+                .map(|k| k as usize)
+                .unwrap_or_else(|| get_current_buffer_id(editor));
+            crate::semantic::fallback_syntax::force_highlight(editor, key);
             Ok(())
         },
     );

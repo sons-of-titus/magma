@@ -206,6 +206,8 @@ pub struct Editor {
     pub inlay: crate::inlay_hints::InlayState,
     pub semantic: SemanticEngine,
     pub language_registry: LanguageRegistry,
+    /// Fallback (non-tree-sitter) syntax highlighting state and caches.
+    pub fallback_syntax: crate::semantic::fallback_syntax::FallbackState,
     pub lsp: crate::semantic::lsp::LspRegistry,
     pub index: crate::index::IndexStore,
     /// Active file-icon pack; the Janet-installed default is snapshotted
@@ -322,6 +324,7 @@ impl Editor {
             inlay: Default::default(),
             semantic: SemanticEngine::new(),
             language_registry: LanguageRegistry::new(),
+            fallback_syntax: Default::default(),
             lsp: crate::semantic::lsp::LspRegistry::default(),
             index: crate::index::IndexStore::default(),
             icons: crate::icons::IconPack::empty("default"),

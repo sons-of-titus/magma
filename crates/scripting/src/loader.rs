@@ -148,6 +148,7 @@ pub fn init_vm() {
         regs.extend(super::net_http_api::register());
         regs.extend(super::net_tcp_api::register());
         regs.extend(super::selection_api::register());
+        regs.extend(super::syntax_api::register());
         regs.extend(super::register_api::register());
         regs.extend(super::option_api::register());
         regs.extend(super::plugin_state_api::register());

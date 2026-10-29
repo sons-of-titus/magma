@@ -295,11 +295,10 @@ fn syntax_highlight_buffer_rust_produces_ranges() {
         arc.lock().unwrap().path = Some("/test/main.rs".to_string());
     }
 
-    // Check that syntax/highlight-buffer produces a layer
-    let result = scripting::eval(&format!("(syntax/highlight-buffer {})", key));
-    assert_eq!(result, "ok", "syntax/highlight-buffer must not error");
+    // The syntax-highlight command must produce a layer
+    let result = scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {})"#, key));
+    assert_eq!(result, "ok", "syntax-highlight must not error");
 
-    // Check that the view has a "syntax" layer with keyword-face ranges
     // Check that the view has a "syntax" layer with keyword-face ranges
     let view = ed.views.get(&key).unwrap();
     let layers = view.highlight_layers.keys().collect::<Vec<_>>();
@@ -340,7 +339,7 @@ fn syntax_highlight_uses_language_path_for_generated_buffers() {
             "buffer/language-path must expose the inferred language source"
         );
         assert_eq!(
-            scripting::eval(&format!("(syntax/highlight-buffer {key})")),
+            scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#)),
             "ok"
         );
         let view = ed.views.get(&key).unwrap();
@@ -386,7 +385,7 @@ fn highlight_follows_rust_path_typing() {
             buf.delete(0, len);
             buf.insert(0, "fn one() {}");
         }
-        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
         ed.events.drain_and_dispatch();
 
         // Type " two" at the end through the editor's own input path.
@@ -422,7 +421,7 @@ fn dirty_range_splice_equals_full_rescan() {
             buf.delete(0, len);
             buf.insert(0, text);
         }
-        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
         ed.events.drain_and_dispatch();
 
         // Two incremental edits through the canonical path.
@@ -445,7 +444,7 @@ fn dirty_range_splice_equals_full_rescan() {
             .clone();
 
         // Full rescan of the same final text, into a scratch layer.
-        scripting::eval(&format!("(syntax/highlight-buffer {key})"));
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
         ed.events.drain_and_dispatch();
         let after_full: Vec<(usize, usize, String)> = ed
             .views

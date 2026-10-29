@@ -80,6 +80,7 @@ impl Editor {
     /// Remove a buffer with its views and point every pane that showed it
     /// at a surviving buffer.  The one close path for buffer teardown.
     pub fn drop_buffer(&mut self, key: usize) {
+        crate::semantic::fallback_syntax::on_buffer_dropped(self, key);
         self.buffers.remove(key);
         self.views.remove(&key);
         self.drop_window_views_of_buffer(key);
@@ -127,6 +128,7 @@ impl Editor {
             if self.ts_languages.contains_key(&key) {
                 ts_dirty.push(key);
             }
+            crate::semantic::fallback_syntax::on_transaction(self, key, &txn);
             self.events.emit_typed(
                 crate::event::keys::events::BUFFER_CHANGED,
                 crate::event::payload::BufferChangedPayload {

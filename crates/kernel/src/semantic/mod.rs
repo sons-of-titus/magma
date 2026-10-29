@@ -28,6 +28,7 @@ pub use semantic::{
 pub use semantic::{Event, LspRegistry};
 
 pub mod edit_apply;
+pub mod fallback_syntax;
 pub mod ts_schedule;
 
 pub use edit_apply::{apply_workspace_edit, offset_of_lsp_position};

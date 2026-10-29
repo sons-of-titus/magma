@@ -46,6 +46,11 @@
      :hooks    - table of event-name → handler-fn pairs
      :setup    - zero-arg function called after the mode activates
 
+   The mode command is registered so (editor/run-command \"name\") works,
+   and a direct-callable :activate closure is stored in *major-modes* for
+   event handlers — re-entering the command registry from a handler would
+   create a nested fiber, which Janet silently drops (see AGENTS.md).
+
    Example:
      (major-mode/define \"rust-mode\"
        {:parent \"prog\"
@@ -54,21 +59,24 @@
         :setup (fn [] (option/set-local \"tab-width\" \"4\"))})"
   [name opts]
   ~(do
-     (def mode-entry {:parent  (get ,opts :parent "prog")
-                      :layers  (get ,opts :layers @[])
-                      :hooks   (get ,opts :hooks @{})
-                      :setup   (get ,opts :setup nil)})
+     # Mutable: :activate is attached after construction.
+     (def mode-entry @{:parent  (get ,opts :parent "prog")
+                       :layers  (get ,opts :layers @[])
+                       :hooks   (get ,opts :hooks @{})
+                       :setup   (get ,opts :setup nil)})
+     (put mode-entry :activate
+          (fn []
+            (major-mode/activate ,name (get mode-entry :layers @[]))
+            # Run the optional setup function
+            (when (get mode-entry :setup)
+              ((get mode-entry :setup)))
+            # Wire up mode-specific hooks (registered once per activation)
+            (eachp [ev handler] (get mode-entry :hooks @{})
+              (event/on ev handler))))
      (put *major-modes* ,name mode-entry)
-     # Register the activate command so (editor/run-command "rust-mode") works
+     # Register the activate command so (editor/run-command "name") works
      (command/define ,name
-       (fn [&]
-         (major-mode/activate ,name (get mode-entry :layers @[]))
-         # Run the optional setup function
-         (when (get mode-entry :setup)
-           ((get mode-entry :setup)))
-         # Wire up mode-specific hooks (registered once per activation)
-         (eachp [ev handler] (get mode-entry :hooks @{})
-           (event/on ev handler))))))
+       (fn [&] ((get mode-entry :activate))))))
 
 (command/define "fundamental-mode"
   (fn [&] (major-mode/activate "fundamental" [])))
@@ -166,6 +174,10 @@
       (when ext
         (def mode-name (get *extension-mode-map* ext nil))
         (when mode-name
-          # Only activate if the mode command has been registered by a plugin
-          (when (command/exists? mode-name)
-            (editor/run-command mode-name)))))))
+          # Janet-defined modes activate directly (nested fiber constraint);
+          # core modes fall through to the command registry.
+          (def entry (get *major-modes* mode-name))
+          (if entry
+            ((get entry :activate))
+            (when (command/exists? mode-name)
+              (editor/run-command mode-name))))))))

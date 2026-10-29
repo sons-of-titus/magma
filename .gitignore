@@ -5,3 +5,4 @@ memory/
 .zcode/
 .DS_Store
 plugins/*/grammars/
+xtask/target/

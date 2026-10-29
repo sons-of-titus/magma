@@ -866,6 +866,10 @@ fn http_plugin_sends_request_with_variables_and_headers() {
     let bkey = ed.create_buffer_from_str("api.http", &content);
     let cursor = content.find("\nGET").map(|i| i + 1).unwrap_or(0);
     scripting::eval(&format!("(buffer/set-cursor {bkey} {cursor})"));
+    // http/send operates on the focused buffer; make the request file it.
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(bkey);
+    }
 
     scripting::eval("(http/send)");
 

@@ -149,8 +149,8 @@ R-20 shutdown timeout · R-21 lock poisoning · **R-22 runtime split** ·
 - **Bidi rendering** (`50d3a87`): landed on the R-12 layout-cache
   substrate the roadmap named as its prerequisite.
 
-Still deliberately not planned: collaborative editing (`collab.janet`
-remains a whole-file clobber — a removal candidate, not growth), and
+Still deliberately not planned: collaborative editing (removed —
+untransformed byte offsets corrupt documents when writers race) and
 JetBrains plugin-ecosystem parity.
 
 ---

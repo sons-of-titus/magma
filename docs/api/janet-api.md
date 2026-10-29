@@ -119,6 +119,10 @@ Return the byte offset of the start of `line` (0-based), or nil if out of range.
 
 Return the 0-based line number of the buffer's current cursor position.
 
+### `(buffer/word-under-cursor slab)` → string or nil
+
+Return the word (letters, digits, underscore) at the buffer's cursor position, or nil if the cursor is not on a word.
+
 ### `(buffer/major-mode slab)` → string
 
 Return the major mode name for the buffer (e.g. `"fundamental"`, `"rust-mode"`).
@@ -706,9 +710,13 @@ Subscribe to an event for a single invocation.
 
 Remove a subscription.
 
-### `(event/emit event-name data-table)` → nil
+### `(event/emit event-name &opt data)` → nil
 
-Emit an event with the given data table.
+Queue an event for dispatch.  `data` may be a table or a struct; keys and
+values must be strings or keywords and are delivered to handlers as string
+key-value pairs (handlers read them back with either `:key` or `"key"`).
+The event is dispatched on the next bus drain — not synchronously inside
+the emit call.
 
 ### `(event/list-events)` → table
 
@@ -913,9 +921,10 @@ Apply a WorkspaceEdit JSON object to open buffers.
 
 ## net/ — Network Primitives
 
-### `(net/http-request method url &opt body)` → request-id
+### `(net/http-request method url &opt body headers)` → request-id
 
-Fire an HTTP request. Response arrives via `http-response` or `http-error` event.
+Fire an HTTP request.  `headers` is an optional table of header-name →
+value.  Response arrives via `http-response` or `http-error` event.
 
 ### `(net/http-get url)` → request-id
 
@@ -957,6 +966,13 @@ Send a line to a specific client.
 
 ## process/ — Subprocess Management
 
+### `(process/run cmd args &opt input)` → `{:exit-code n :stdout s :stderr s}`
+
+Run a subprocess to completion: `cmd` with an array of argument strings (no
+shell), `input` piped to its stdin.  Requires the `:process-execution`
+capability.  For formatters and other short-lived tools where the caller
+needs the output in hand.
+
 ### `(process/spawn cmd &opt args cwd)` → process-id
 
 Spawn a subprocess via `sh -c cmd`. Optional `cwd` sets the working directory. Output arrives via `process-output` events; exit via `process-exit`.
@@ -967,7 +983,11 @@ Send SIGTERM to the process. No-op if already exited.
 
 ### `(process/stdin id text)` → nil
 
-Write `text` to the process's stdin.
+Write `text` to the process's stdin.  Signals an error when the process does not exist, its stdin is already closed, or the write fails.
+
+### `(process/close-stdin id)` → nil
+
+Close the process's stdin, signaling EOF so the command can finish; the exit is reported via `process-exit`.
 
 ### `(process/list)` → `[{:id n :cmd "…" :running bool} …]`
 
@@ -1139,6 +1159,19 @@ Associate a tree-sitter language with a buffer.
 ### `(ts/has-tree? buf-id)` → bool
 
 Return true if a tree-sitter language has been set on the buffer.
+
+### `(ts/set-mode-query mode query-src)` → nil
+
+Register `query-src` as the tree-sitter highlight query for a major mode,
+replacing any earlier registration.  Plugins normally get this for free:
+`plugin/define` loads the plugin's `syntax.scm` as its language's
+`<lang>-mode` query.
+
+### `(ts/load-mode-query mode path)` → nil
+
+Register a major mode's highlight query from a query file on disk
+(conventionally a plugin's `syntax.scm`).  A missing or unreadable file is
+ignored — the mode simply gets no tree-sitter highlighting.
 
 ### `(ts/highlight buf-id query-src)` → array
 
@@ -1331,6 +1364,10 @@ Return the active session ID, or `nil` if no session is running.
 ### `(debug/breakpoints file)` → `[line …]`
 
 The line numbers of all breakpoints in the file.
+
+### `(debug/toggle-breakpoint)` → nil
+
+Toggle a breakpoint at the cursor line of the focused buffer (1-based).  Shares the native toggle with gutter clicks, so a line past the end of the buffer keeps its absolute line number instead of re-anchoring.  Emits `debug-breakpoint-changed`.
 
 ### `(debug/set-enabled file line enabled)` → nil
 
@@ -1662,35 +1699,29 @@ Return an array of all agent session records, sorted by ascending session ID.
 
 ---
 
-## `language/` — Language Provider Ecosystem (Phase 12)
+## `language/` — Language Registry
 
-Languages are external Janet modules discovered from the `languages/`
-directory.  Each language sub-directory provides:
+Languages are registered by plugins (see the `plugin/` section): a plugin's
+manifest lists the languages it serves, and its `main.janet` provides the
+whole language surface — major mode, LSP wiring, formatting, highlighting.
 
-| File | Purpose |
-|------|---------|
-| `provider.janet` | Janet-side Language Provider implementation |
-| `syntax.scm` | Tree-sitter query file for symbol extraction |
-| `config.janet` | Format, completion, and debug-adapter settings |
-
-### `(language/register name &opt provider-path syntax-path config-path)` → `:ok`
+### `(language/register name &opt syntax-path config-path)` → `:ok`
 
 Register a language by name.  Optional positional arguments supply paths to
-the language's Janet files.  Re-registering an existing name replaces its
-entry (the loaded flag resets to false).
+the language's assets in its plugin directory.  Re-registering an existing
+name replaces its entry (the loaded flag resets to false).
 
 ```janet
 (language/register "rust"
-  "/path/to/languages/rust/provider.janet"
-  "/path/to/languages/rust/syntax.scm"
-  "/path/to/languages/rust/config.janet")
+  "/path/to/plugins/rust/syntax.scm"
+  "/path/to/plugins/rust/config.janet")
 ```
 
 ### `(language/unregister name)` → nil
 
 Remove a language from the registry.  Emits `language-unregistered`.
 
-### `(language/list)` → `[{:name :loaded :provider-path :syntax-path :config-path} …]`
+### `(language/list)` → `[{:name :loaded :syntax-path :config-path} …]`
 
 Return all registered languages, sorted alphabetically by name.
 
@@ -1711,28 +1742,6 @@ has been assigned.
   (print "current language: " lang))
 ```
 
-### `(language/load name)` → `:ok` or `:error`
-
-Read the named language's `provider.janet` from disk and evaluate it in the
-Janet VM.  Marks the language as loaded on success.  Returns `:error` if the
-language is not registered, has no `provider-path`, or if the file cannot be
-read or evaluated.
-
-```janet
-(when (= :error (language/load "rust"))
-  (print "rust provider not available"))
-```
-
-### `(language/discover root)` → count
-
-Scan `root` for sub-directories and call `language/register` for each one
-found, pointing at whichever of `provider.janet`, `syntax.scm`, and
-`config.janet` exist.  Returns the number of languages discovered.
-
-```janet
-(language/discover "/usr/share/magma/languages")
-```
-
 ---
 
 ### Language Events
@@ -1740,7 +1749,6 @@ found, pointing at whichever of `provider.janet`, `syntax.scm`, and
 | Event | Payload keys | When fired |
 |-------|-------------|------------|
 | `language-registered` | `name` | `language/register` succeeded |
-| `language-loaded` | `name` | `language/load` succeeded |
 | `language-unregistered` | `name` | `language/unregister` removed a language |
 
 ### Dired commands
@@ -1777,5 +1785,127 @@ These are Rust commands invoked via `editor/run-command` (or colon-mode verbs).
 | Verb | Action |
 |------|--------|
 | `:lang-list` | List all registered languages with their load status |
-| `:lang-load <name>` | Load a language's `provider.janet` |
 | `:lang-info <name>` | Show all registered paths for a language |
+
+## `plugin/` — Plugin System
+
+A plugin is an installed extension: an on-disk directory holding a manifest,
+an entry script, and everything it needs (syntax queries, configuration,
+providers).  Registering a plugin also installs its extension manifest, so
+the capabilities it declares gate every privileged call its handlers make —
+see the `extension/` capability table for the available keywords.
+
+A plugin directory has this shape:
+
+| File | Purpose |
+|------|---------|
+| `manifest.janet` | Declares the plugin via `(plugin/define {…})` |
+| `main.janet` | Entry script — wires major modes, hooks, commands |
+| `syntax.scm` | Tree-sitter highlight query for the plugin's major modes (optional) |
+| `config.janet` | Default options (optional) |
+
+The entry may be a compiled image (`main.jimage`) instead of source — see `plugin/build`.
+
+### `(plugin/define spec)` → :ok
+
+Declare a plugin from inside its `manifest.janet`.  `spec` is a table:
+`:name` (required), `:version`, `:entry` (default `"main.janet"`), `:deps`
+(array of plugin names that must load first), `:languages` (language IDs the
+plugin serves), and `:capabilities` (array of capability keywords).  Each
+language is registered with the language registry, and the plugin's
+`syntax.scm` — when present — becomes the tree-sitter highlight query for
+its conventional `<lang>-mode` major mode.
+
+### `(plugin/register name version root entry deps langs caps)` → `:ok`
+
+Register a plugin record directly — the primitive `plugin/define` builds on.
+
+### `(plugin/load name)` → `:ok` or `:error`
+
+Evaluate the plugin's entry file with the plugin's capability context
+active; every handler and command it registers carries those capabilities at
+invocation time.  A `main.jimage` entry is loaded through `plugin/load-image`
+in the same context window.  Languages the plugin declares are marked loaded.
+
+### `(plugin/enable name)` → `:ok` or error-string
+
+Load a plugin and all of its dependencies, depth-first.  Unknown plugins,
+dependency cycles, and entry failures are reported by name.
+
+### `(plugin/enable-many names)` → `:ok` or error-string
+
+As `plugin/enable`, for several plugins in one resolution pass.
+
+### `(plugin/discover root)` → count
+
+Register every plugin found under `root`.  A sub-directory is a plugin when
+it holds a `manifest.janet`.  Returns the number of plugins found.
+
+### `(plugin/bootstrap cwd home)` → nil
+
+Startup wiring: discover plugins from `<cwd>/plugins` and the user plugin
+directory, then enable every discovered plugin in dependency order —
+installed means enabled.  Honors the settings:
+`plugins-enabled=false` disables loading from disk entirely;
+`plugins-root` (a path) replaces the user directory, which falls back to
+`~/.config/magma/plugins` when unset.
+
+### `(plugin/list)` → `[{:name :version :root :entry :deps :languages :capabilities :loaded} …]`
+
+Return all registered plugins, sorted alphabetically by name.
+
+### `(plugin/status name)` → table or nil
+
+Return one plugin's status table, or nil when not registered.
+
+### `(plugin/build name)` → image-path
+
+Compile the plugin's entry source into `<stem>.jimage` next to it and return
+the image path.  The entry must be `.janet` source — an image cannot be
+recompiled; point `:entry` back at the source to rebuild.
+
+### `(plugin/build-all root)` → `[failure …]`
+
+Build images for every registered plugin discovered under `root` whose entry
+is still source (all registered plugins when `root` is nil).  Returns an
+array of failure strings — empty means every plugin compiled.
+
+### `(plugin/load-image path)` → nil
+
+Load a plugin image built by `plugin/build`: validate its header, resolve the
+bytecode against the running VM, and run the entry.  Called automatically by
+`plugin/load` for image entries.
+
+An image file starts with `MGIMG1:<janet-version>` and a newline, followed by
+marshaled bytecode.  Images pin the bytecode format to the building VM: a
+version mismatch is a clean "rebuild this plugin" error, fixed by one
+`:plugin-build`.  An image is code with the same trust level as source — the
+capability system remains the gate.
+
+### Events
+
+| Event | Payload |
+|-------|---------|
+| `plugin-registered` | `{name, version}` |
+| `plugin-loaded` | `{name}` |
+
+### Colon-mode verbs
+
+| Verb | Action |
+|------|--------|
+| `:plugin-list` | List all registered plugins with load status and capabilities |
+| `:plugin-enable <name>` | Enable a plugin and its dependencies |
+| `:plugin-info <name>` | Show one plugin's manifest details |
+| `:plugin-build <name>` | Compile a plugin's entry into a loadable `.jimage` |
+| `:plugin-build-all [root]` | Compile every plugin under a root (all registered plugins when omitted) |
+
+## run-config/ — Run Configuration Contribution
+
+### `(run-config/register name command &opt args cwd debuggable build-before)` → `:ok`
+
+Add or replace a named run configuration: the program to spawn, its argument
+array, an optional working directory (nil resolves to the project root),
+whether a debug session can launch from it, and an optional dependency on
+another configuration that must complete first.  Language plugins contribute
+their build/test/run definitions through this — the editor does not
+hard-code per-language commands.

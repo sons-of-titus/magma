@@ -46,8 +46,8 @@ S ≤2 days, M ≤2 weeks, L >2 weeks.
 
 Full JetBrains plugin-ecosystem parity, AI assistant integration
 (`agent/` remains scaffolding and should either get a real model backend
-or be deleted), collaborative editing (current `collab.janet` is a
-whole-file clobber and should be removed rather than grown), and bidi
+or be deleted), collaborative editing (removed rather than grown: `collab.janet` was a
+whole-file clobber), and bidi
 rendering (correct, but tiny user base vs. cost right now; revisit with
 R-12's layout cache which is its natural substrate).
 

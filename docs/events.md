@@ -144,6 +144,8 @@ location.  This is the ground truth for both Rust and Janet subscribers.
 | `lsp-progress` | `token` | String | `runtime.rs` — `process_background_event` |
 | `lsp-progress` | `message` | String | |
 | `lsp-progress` | `percentage` | String | |
+| `lsp-signature-help` | `path` | String | `runtime.rs` — `process_background_event` |
+| `lsp-signature-help` | `signatures` | String | Raw signatureHelp result JSON |
 
 ## GUI / Render
 

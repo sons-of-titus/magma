@@ -17,6 +17,29 @@
   [lang path]
   (put *ts-grammars* lang path))
 
+# Shared-library file?  Mirrors the plugin system's own test: os/stat
+# returns nil for absent paths and follows symlinks to their target.
+(defn- ts-grammar-file?
+  [path]
+  (def m (get (try (os/stat path) ([_] nil)) :mode :missing))
+  (or (= :file m) (= :link m)))
+
+# Conventional grammar pickup: a plugin ships its grammar for the running
+# platform at <plugin-dir>/grammars/tree-sitter-<lang>.<ext> — .dylib on
+# macOS, .dll on Windows, .so elsewhere.  Returns the absolute path, or
+# nil when the plugin has none for this platform (fallback highlighting
+# applies).
+(defn ts/grammar-lib-path
+  [root lang]
+  (def path
+    (string root "/grammars/tree-sitter-" lang
+            "." (case (os/which)
+                  :macos "dylib"
+                  :windows "dll"
+                  :mingw "dll"
+                  "so")))
+  (when (ts-grammar-file? path) path))
+
 # Register `query` as the tree-sitter highlight query for a major mode,
 # replacing any earlier registration.  The mode's syntax layer belongs to
 # the tree-sitter lane from here on: the native fallback highlighter
@@ -46,21 +69,30 @@
   [buf-id lang]
   (def cur (try (ts/has-tree? buf-id) ([e] false)))
   (unless cur
-    # A grammar registered through language/define (plugin languages) is
-    # already loaded in the Rust registry; *ts-grammars* is the manual
-    # path.  Only tag the buffer with a language that really has a grammar
-    # — the semantic engine keys symbol indexing off this language, so a
-    # bogus entry (e.g. "fundamental") silently empties the symbol index.
-    (if (ts/has-language lang)
-      (do
-        (ts/set-language buf-id lang)
-        (ts/parse buf-id))
-      (when-let [grammar-path (get *ts-grammars* lang)]
-        (try
-          (ts/load-grammar grammar-path lang)
-          ([e] (print "ts: failed to load grammar: " e)))
-        (ts/set-language buf-id lang)
-        (ts/parse buf-id)))))
+    # `lang` arrives as the major-mode name; plugin grammars load under
+    # the language id (language/define) and manual registrations may use
+    # either key.  The conventional `<id>-mode` naming bridges the two:
+    # the language id is the key providers and the semantic engine use,
+    # so it wins.  Only tag the buffer with a language that really has a
+    # grammar — a bogus entry silently empties the symbol index.
+    (def lang-id
+      (if (string/has-suffix? "-mode" lang)
+        (string/slice lang 0 (- (length lang) 5))
+        lang))
+    (def registry-name
+      (cond
+        (ts/has-language lang-id) lang-id
+        (ts/has-language lang) lang
+        (let [path (or (get *ts-grammars* lang-id) (get *ts-grammars* lang))]
+          (when path
+            (try
+              (ts/load-grammar path lang-id)
+              ([e] (print "ts: failed to load grammar: " e)))
+            (when (ts/has-language lang-id) lang-id)))
+        nil))
+    (when registry-name
+      (ts/set-language buf-id registry-name)
+      (ts/parse buf-id))))
 
 # Auto-highlight a buffer using tree-sitter.
 # (ts/highlight-buffer buf-id) — runs the mode's query and sets the

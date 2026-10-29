@@ -40,3 +40,43 @@
       (if (= result :ok)
         (print "plugin reloaded: " name)
         (print "plugin reload failed: " result)))))
+
+(defn colon-plugin-list
+  "List all registered plugins with load status: :plugin-list"
+  [_]
+  (def plugins (plugin/list))
+  (if (= (length plugins) 0)
+    (print "No plugins registered")
+    (each p plugins
+      (print (get p :name "?") " v" (get p :version "?")
+             (if (get p :loaded) " [loaded]" "")
+             " [" (string/join (map string (get p :capabilities @[])) ", ") "]"))))
+
+(defn colon-plugin-enable
+  "Enable a plugin and its dependencies: :plugin-enable <name>"
+  [arg]
+  (def name (string/trim (string arg)))
+  (if (= (length name) 0)
+    (print "plugin-enable: provide a plugin name")
+    (do
+      (def result (plugin/enable name))
+      (if (= result :ok)
+        (print "plugin enabled: " name)
+        (print "plugin enable failed: " result)))))
+
+(defn colon-plugin-info
+  "Show one plugin's manifest details: :plugin-info <name>"
+  [arg]
+  (def name (string/trim (string arg)))
+  (def p (plugin/status name))
+  (if (nil? p)
+    (print "plugin not registered: " name)
+    (do
+      (print "name:          " (get p :name))
+      (print "version:       " (get p :version))
+      (print "root:          " (get p :root))
+      (print "entry:         " (get p :entry))
+      (print "deps:          " (string/join (get p :deps @[]) " "))
+      (print "languages:     " (string/join (get p :languages @[]) " "))
+      (print "capabilities:  " (string/join (map string (get p :capabilities @[])) " "))
+      (print "loaded:        " (get p :loaded)))))

@@ -29,29 +29,43 @@
    binds the plugin's directory as :magma/plugin-dir while the manifest
    evaluates.  Languages the plugin serves are registered with the
    language registry (wiring modes, queries, and option defaults — see
-   language/define); an optional :toolchain spec and every
+   language/define); a grammar the plugin ships at
+   grammars/tree-sitter-<lang>.<platform-ext> is picked up
+   conventionally; an optional :toolchain spec and every
    project-templates/<name>/ template register too.
 
    Spec keys beyond the loader's own:
-     :extensions {\"rust\" [\"rs\"]} — file extensions per language
-     :toolchain  {\"id\" ...}      — a toolchain/register spec table"
+     :extensions     {\"rust\" [\"rs\"]} — file extensions per language
+     :grammar-symbols {\"terraform\" \"tree_sitter_hcl\"} — export name
+                     override for a grammar whose C entry point deviates
+                     from the conventional tree_sitter_<lang>
+     :toolchain      {\"id\" ...} — a toolchain/register spec table"
   [spec]
   (def root (dyn :magma/plugin-dir ""))
   (def name (get spec :name))
   (unless name (error "plugin/define: :name required"))
   (def entry (get spec :entry "main.janet"))
   (def ext-map (get spec :extensions @{}))
+  (def symbol-map (get spec :grammar-symbols @{}))
   (def langs @[])
   (each lang (get spec :languages @[])
     (def syntax (when (file-exists? (string root "/syntax.scm"))
                   (string root "/syntax.scm")))
     (def config (when (file-exists? (string root "/config.janet"))
                   (string root "/config.janet")))
-    (language/define {:id lang
-                      :syntax syntax
-                      :config config
-                      :extensions (get ext-map lang @[])
-                      :plugin name})
+    (def spec {:id lang
+               :syntax syntax
+               :config config
+               :extensions (get ext-map lang @[])
+               :plugin name})
+    (def grammar (ts/grammar-lib-path root lang))
+    # The spec literal is a struct; optional grammar keys merge into a
+    # fresh table rather than mutating it.
+    (def overrides @{})
+    (when grammar (put overrides :grammar grammar))
+    (when-let [sym (get symbol-map lang)]
+      (put overrides :grammar-symbol sym))
+    (language/define (merge spec overrides))
     (array/push langs lang))
   (when-let [toolchain (get spec :toolchain)]
     (toolchain/register (merge toolchain {:plugin name})))
@@ -160,44 +174,3 @@
   (fn [data]
     (editor/log-message (string "[plugin] loaded: " (get data "name" "?")))))
 
-# ── Colon verbs ──────────────────────────────────────────────────────────────
-
-(defn colon-plugin-list
-  "List all registered plugins with load status: :plugin-list"
-  [_]
-  (def plugins (plugin/list))
-  (if (= (length plugins) 0)
-    (print "No plugins registered")
-    (each p plugins
-      (print (get p :name "?") " v" (get p :version "?")
-             (if (get p :loaded) " [loaded]" "")
-             " [" (string/join (map string (get p :capabilities @[])) ", ") "]"))))
-
-(defn colon-plugin-enable
-  "Enable a plugin and its dependencies: :plugin-enable <name>"
-  [arg]
-  (def name (string/trim (string arg)))
-  (if (= (length name) 0)
-    (print "plugin-enable: provide a plugin name")
-    (do
-      (def result (plugin/enable name))
-      (if (= result :ok)
-        (print "plugin enabled: " name)
-        (print "plugin enable failed: " result)))))
-
-(defn colon-plugin-info
-  "Show one plugin's manifest details: :plugin-info <name>"
-  [arg]
-  (def name (string/trim (string arg)))
-  (def p (plugin/status name))
-  (if (nil? p)
-    (print "plugin not registered: " name)
-    (do
-      (print "name:          " (get p :name))
-      (print "version:       " (get p :version))
-      (print "root:          " (get p :root))
-      (print "entry:         " (get p :entry))
-      (print "deps:          " (string/join (get p :deps @[]) " "))
-      (print "languages:     " (string/join (get p :languages @[]) " "))
-      (print "capabilities:  " (string/join (map string (get p :capabilities @[])) " "))
-      (print "loaded:        " (get p :loaded)))))

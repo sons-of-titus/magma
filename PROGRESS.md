@@ -18,6 +18,7 @@ about status, this file wins — findings.md narrates, this file tracks.
 | After Wave 3 — editor quality + trust | 1,494 pass / 0 fail | 0 warnings |
 | **After Wave 4 — backlog close-out** | **1,551 pass / 0 fail** | **0 warnings; `--no-default-features` builds again** |
 | **After GUI overhaul + follow-ups** | **1,590 pass / 0 fail** | **0 warnings; `cargo clippy --all-targets` clean** |
+| **After language plugins + project templates** | **1,947 pass / 0 fail (`cargo test --features janet --workspace`)** | new: `docs/plugins-templates.md` |
 
 Wave 4 closed every open finding and roadmap item from the audit
 (including the ones the roadmap had marked "deliberately not planned"),

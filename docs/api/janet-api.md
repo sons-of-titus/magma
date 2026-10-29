@@ -1183,6 +1183,13 @@ Associate a tree-sitter language with a buffer.
 
 Return true if a tree-sitter language has been set on the buffer.
 
+### `(ts/has-language name)` → bool
+
+Return true if a grammar is loaded in the tree-sitter registry — either
+loaded through `language/register`'s `:grammar` or `ts/load-grammar`.
+`ts/ensure-language` consults this before tagging a buffer, so plugin
+languages with shipped grammars highlight without manual registration.
+
 ### `(ts/set-mode-query mode query-src)` → nil
 
 Register `query-src` as the tree-sitter highlight query for a major mode,
@@ -1427,6 +1434,32 @@ Resolve an executable against `$PATH`; nil when it is not installed.
 Resolve an executable against `$PATH`, then the well-known install roots that
 packaging hides from it (keg-only Homebrew, MacPorts, VS Code extensions; on
 macOS also `xcrun --find`); nil when it is installed nowhere.
+
+### `(toolchain/register spec)` → `:ok`
+
+Register a build toolchain from a spec table (or struct):
+
+```janet
+(toolchain/register
+  {:id "rust.cargo"
+   :language "rust"
+   :detect ["Cargo.toml"]
+   :actions {"build"  {:program "cargo" :args ["build"]}
+             "test"   {:program "cargo" :args ["test"]}
+             "run"    {:program "cargo" :args ["run"] :debuggable true}}})
+```
+
+The marker files recognize the toolchain's project type; when a project is
+detected, every action becomes a run configuration (saved configurations
+keep priority — toolchain actions fill the gaps).  Actions are structured
+program/argument lists, never shell strings.  Re-registering the same id
+from the same plugin replaces the entry; another plugin claiming the id is
+an error.
+
+### `(toolchain/registered)` → `[{:id :language :detect :actions :debug-adapter :plugin} …]`
+
+All registered toolchains with their detection markers, declared actions,
+and debug adapter declaration.
 
 Return an array of line numbers (integers) for all breakpoints set in `file`.
 
@@ -1740,6 +1773,36 @@ name replaces its entry (the loaded flag resets to false).
   "/path/to/plugins/rust/config.janet")
 ```
 
+### `(language/register spec)` → `{:id :grammar-loaded}`
+
+Register a language from a full spec table (or struct):
+
+```janet
+(language/register
+  {:id "nova"
+   :extensions ["nova" "nva"]           ; file extensions → `<id>-mode`
+   :grammar "/abs/path/libtree-sitter-nova.dylib"  ; optional plugin grammar
+   :syntax "/abs/path/highlights.scm"   ; optional highlight query
+   :comments {:line "//" :block ["/*" "*/"]}
+   :indentation {:size 4 :style "spaces"}
+   :plugin "nova"})
+```
+
+A plugin-provided `:grammar` shared library is loaded and ABI-validated
+immediately; a failure warns and leaves the language on fallback
+highlighting rather than failing the registration.  `:syntax` is
+compile-checked against the grammar when one is loaded.  Extension
+mappings never override: the first registration of an extension wins and
+the later one is reported.
+
+### `(language/define spec)` → registration result
+
+The plugin-facing form of `language/register`: registers the language and
+wires its user-facing behavior — the extension→mode mappings, the
+tree-sitter highlight query, and the `<id>-comment-*` /
+`<id>-indent-*` option defaults (set only when no value exists).  Plugin
+manifests reach it through `plugin/define`.
+
 ### `(language/unregister name)` → nil
 
 Remove a language from the registry.  Emits `language-unregistered`.
@@ -1905,12 +1968,23 @@ version mismatch is a clean "rebuild this plugin" error, fixed by one
 `:plugin-build`.  An image is code with the same trust level as source — the
 capability system remains the gate.
 
+### `(plugin/unload name)` → `:ok` or `:error`
+
+Unload a plugin at the registry level: its languages, project templates,
+and toolchains are removed, its record is marked not-loaded, and a
+`plugin-unloaded` event fires.  Scripts the plugin already registered
+(commands, event handlers, keymaps) keep running until the session ends —
+the scripting runtime has no per-plugin teardown, so this is an
+unregistration, not a sandboxed suspension.  `:plugin-reload` re-reads the
+manifest and enables the plugin again.
+
 ### Events
 
 | Event | Payload |
 |-------|---------|
 | `plugin-registered` | `{name, version}` |
 | `plugin-loaded` | `{name}` |
+| `plugin-unloaded` | `{name}` |
 
 ### Colon-mode verbs
 
@@ -1919,6 +1993,8 @@ capability system remains the gate.
 | `:plugin-list` | List all registered plugins with load status and capabilities |
 | `:plugin-enable <name>` | Enable a plugin and its dependencies |
 | `:plugin-info <name>` | Show one plugin's manifest details |
+| `:plugin-unload <name>` | Remove a plugin's registry-level contributions |
+| `:plugin-reload <name>` | Re-read a plugin's manifest and enable it again |
 | `:plugin-build <name>` | Compile a plugin's entry into a loadable `.jimage` |
 | `:plugin-build-all [root]` | Compile every plugin under a root (all registered plugins when omitted) |
 
@@ -1932,3 +2008,65 @@ whether a debug session can launch from it, and an optional dependency on
 another configuration that must complete first.  Language plugins contribute
 their build/test/run definitions through this — the editor does not
 hard-code per-language commands.
+
+## template/ — Project Templates
+
+Project templates are plugin-contributed project generators.  A template is
+a directory of files copied into every generated project with
+`{{variable}}` substitution; the New Project wizard browses the registry
+and the `new-project` command generates.  `template/define` is the
+plugin-facing form — it resolves `:source` against the declaring plugin's
+directory and records the plugin as owner.
+
+### `(template/define spec)` → `:ok`
+
+Declare a project template.  Called from a `template.janet` inside the
+plugin's `project-templates/<name>/` directory:
+
+```janet
+(template/define
+  {:id "rust.binary"
+   :name "Binary Application"
+   :description "Create a Rust executable project."
+   :category "application"
+   :language "rust"
+   :source "."                       ; relative to the template directory
+   :toolchain "rust.cargo"           ; optional; shown with availability
+   :debug {:adapter "codelldb"}      ; optional preferred debug adapter
+   :variables {:project_name {:type "project-name" :required true}
+               :edition {:type "choice" :default "2021"
+                         :choices ["2021" "2024"]}}})
+```
+
+Variable types: `text`, `project-name` (safe file name characters),
+`choice` (validated against `:choices`), and `boolean` (`"true"` /
+`"false"`).  `project_name` is always provided to substitution — declaring
+it only controls requiredness in the wizard.
+
+### `(template/register spec)` → `:ok`
+
+Register a template from a fully resolved spec (absolute `:source`, owner
+in `:plugin`).  This is the raw form `template/define` wraps; ids must be
+namespaced (`<plugin>.<name>`) and a duplicate id from a different plugin
+is an error.
+
+### `(template/list)` → `[{:id :name :description :category :language :source :variables :toolchain :file-count :plugin} …]`
+
+All registered templates, sorted by category then id.
+
+### `(template/get id)` → table or nil
+
+One template's metadata.
+
+## Project creation — the `new-project` command
+
+`(new-project template dest name vars open)` creates a project from a
+registered template: `dest` is the final project directory, `name` is the
+project name (it doubles as the `project_name` variable), `vars` is a JSON
+object of template variables, and `open` (default true) opens the project
+when generation completes.  Generation runs on the background pool: the
+command returns immediately, progress appears as a "Creating project"
+status chip, and `new-project-cancel` aborts an in-flight generation.
+Substitution never executes anything — unknown variables, path escapes,
+symlinks in the template, and occupied destinations are rejected, and a
+failed generation rolls back everything it created.

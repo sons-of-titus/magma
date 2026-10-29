@@ -14,8 +14,28 @@ pub struct LanguageInfo {
     pub syntax_path: Option<String>,
     /// Absolute path to the language's `config.janet` file, if provided.
     pub config_path: Option<String>,
-    /// Whether the owning plugin has been loaded.
+    /// File extensions mapped to this language (plugin declarations only;
+    /// the built-in extension map is unaffected).
+    pub extensions: Vec<String>,
+    /// Absolute path to a plugin-provided grammar shared library, if the
+    /// plugin ships one.  Loaded at registration, never reloaded.
+    pub grammar_path: Option<String>,
+    /// Whether the grammar library loaded and passed the ABI check.
+    pub grammar_loaded: bool,
+    /// Line comment marker (`"//"`), from the registration's `:comments`.
+    pub comment_line: Option<String>,
+    /// Block comment open/close markers (`["/*", "*/"]`).
+    pub comment_block: Option<(String, String)>,
+    /// Indentation width from the registration's `:indentation`.
+    pub indent_size: Option<u32>,
+    /// `"spaces"` or `"tabs"`.
+    pub indent_style: Option<String>,
+    /// Whether the plugin also provides the `config.janet` via the
+    /// registration table (metadata; the file loads as before).
     pub loaded: bool,
+    /// The plugin that registered this language; registry-level plugin
+    /// unload removes its languages.
+    pub owner: Option<String>,
 }
 
 impl LanguageInfo {
@@ -24,7 +44,15 @@ impl LanguageInfo {
             name: name.into(),
             syntax_path: None,
             config_path: None,
+            extensions: Vec::new(),
+            grammar_path: None,
+            grammar_loaded: false,
+            comment_line: None,
+            comment_block: None,
+            indent_size: None,
+            indent_style: None,
             loaded: false,
+            owner: None,
         }
     }
 
@@ -54,6 +82,14 @@ impl LanguageRegistry {
     /// Remove a language from the registry.  Returns true if it existed.
     pub fn unregister(&mut self, name: &str) -> bool {
         self.languages.remove(name).is_some()
+    }
+
+    /// Remove every language registered by `owner`; returns how many.
+    pub fn remove_owner(&mut self, owner: &str) -> usize {
+        let before = self.languages.len();
+        self.languages
+            .retain(|_, info| info.owner.as_deref() != Some(owner));
+        before - self.languages.len()
     }
 
     /// Look up a language by name.
@@ -96,7 +132,9 @@ mod tests {
             Some("/langs/rust/syntax.scm".into()),
             Some("/langs/rust/config.janet".into()),
         ));
-        r.register(LanguageInfo::new("janet").with_paths(Some("/langs/janet/syntax.scm".into()), None));
+        r.register(
+            LanguageInfo::new("janet").with_paths(Some("/langs/janet/syntax.scm".into()), None),
+        );
         r
     }
 
@@ -123,7 +161,10 @@ mod tests {
         let r = make_registry();
         let info = r.get("rust").unwrap();
         assert_eq!(info.syntax_path.as_deref(), Some("/langs/rust/syntax.scm"));
-        assert_eq!(info.config_path.as_deref(), Some("/langs/rust/config.janet"));
+        assert_eq!(
+            info.config_path.as_deref(),
+            Some("/langs/rust/config.janet")
+        );
     }
 
     #[test]

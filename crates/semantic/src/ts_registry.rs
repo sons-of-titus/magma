@@ -33,6 +33,20 @@ pub fn has_language(name: &str) -> bool {
     with_language_map(|m| m.contains_key(name))
 }
 
+/// Compile-check a query against the named grammar without running it.
+/// Registration-time validation so a broken query is reported when its
+/// language loads, not discovered as silent missing highlights later.
+pub fn validate_query(lang_name: &str, query_src: &str) -> Result<(), String> {
+    with_language_map(|map| {
+        let Some(language) = map.get(lang_name) else {
+            return Err(format!("grammar {lang_name} is not registered"));
+        };
+        tree_sitter::Query::new(language, query_src)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+}
+
 /// Parse `text` with the named grammar, returning parse error strings.
 /// Returns `None` if the grammar is not registered.
 pub fn parse_text(lang_name: &str, text: &str) -> Option<Vec<String>> {
@@ -196,15 +210,22 @@ pub fn highlight_incremental(
     })
 }
 
-/// Load a tree-sitter grammar from a shared library.
+/// Load a tree-sitter grammar from a shared library.  `lang_name` is the
+/// registry name the grammar is being registered under — the loader probes
+/// the conventional `tree_sitter_<name>` export before the legacy list.
+/// The language function is ABI-validated by building a parser before the
+/// library handle is released; an incompatible grammar is a clean error,
+/// never a silent parse failure later.
 /// Returns `Ok(Language)` on success or `Err(message)` on failure.
-pub fn load_grammar_from_lib(path: &str) -> Result<tree_sitter::Language, String> {
+pub fn load_grammar_from_lib(path: &str, lang_name: &str) -> Result<tree_sitter::Language, String> {
     let lib = unsafe { libloading::Library::new(path) }
         .map_err(|e| format!("cannot open shared library: {}", e))?;
 
+    let probe = format!("tree_sitter_{}", lang_name.replace('-', "_"));
     let func_ptr: unsafe extern "C-unwind" fn() -> *const std::ffi::c_void = unsafe {
         let sym: libloading::Symbol<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void> = lib
             .get(b"tree_sitter_language")
+            .or_else(|_| lib.get(probe.as_bytes()))
             .or_else(|_| lib.get(b"tree_sitter_rust"))
             .or_else(|_| lib.get(b"tree_sitter_javascript"))
             .or_else(|_| lib.get(b"tree_sitter_python"))
@@ -216,8 +237,16 @@ pub fn load_grammar_from_lib(path: &str) -> Result<tree_sitter::Language, String
         *sym
     };
 
-    std::mem::forget(lib);
     let lang_fn: unsafe extern "C" fn() -> *const () = unsafe { std::mem::transmute(func_ptr) };
     let lang_fn = unsafe { tree_sitter_language::LanguageFn::from_raw(lang_fn) };
-    Ok(tree_sitter::Language::new(lang_fn))
+    let language = tree_sitter::Language::new(lang_fn);
+    // The grammar is about to be leaked into the registry; validate the ABI
+    // now, while a load failure can still refuse it instead of leaving a
+    // parser that silently returns `None` on every `set_language`.
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&language)
+        .map_err(|e| format!("grammar ABI incompatible with this tree-sitter runtime: {e}"))?;
+    std::mem::forget(lib);
+    Ok(language)
 }

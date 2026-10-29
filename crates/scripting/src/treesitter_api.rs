@@ -78,7 +78,7 @@ unsafe extern "C-unwind" fn c_ts_load_grammar(argc: i32, argv: *mut Janet) -> Ja
             conv::signal_err("ts/load-grammar requires a language name")
         };
 
-        match ts_registry::load_grammar_from_lib(&path_str) {
+        match ts_registry::load_grammar_from_lib(&path_str, &name) {
             Ok(lang) => {
                 ts_registry::register_language(&name, lang);
                 conv::boolean(true)
@@ -199,6 +199,17 @@ unsafe extern "C-unwind" fn c_ts_has_tree(argc: i32, argv: *mut Janet) -> Janet 
     })
 }
 
+/// Check whether a grammar is loaded in the tree-sitter registry.
+/// (ts/has-language name) → bool
+unsafe extern "C-unwind" fn c_ts_has_language(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let Some(name) = conv::get_str(argc, argv, 0) else {
+            return conv::boolean(false);
+        };
+        conv::boolean(ts_registry::has_language(&name))
+    }
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
@@ -230,6 +241,12 @@ pub fn register() -> Vec<JanetReg> {
             name: c"ts/has-tree?".as_ptr() as *const _,
             cfun: Some(c_ts_has_tree as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Check if a buffer has a tree-sitter language set".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"ts/has-language".as_ptr() as *const _,
+            cfun: Some(c_ts_has_language as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Check whether a grammar is loaded in the tree-sitter registry".as_ptr()
+                as *const _,
         },
     ]
 }

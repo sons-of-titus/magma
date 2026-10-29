@@ -231,7 +231,7 @@ fn generate_project_from_plugin_template_end_to_end() {
         // project (open defaults true) and its detection seeds the run
         // configs asynchronously — wait for both.
         let mut opened = false;
-        let mut event_names: Vec<String> = Vec::new();
+        let _event_names: Vec<String> = Vec::new();
         for _ in 0..500 {
             while let Ok(event) = rx.try_recv() {
                 kernel::runtime::process_background_event(&mut ed, event);

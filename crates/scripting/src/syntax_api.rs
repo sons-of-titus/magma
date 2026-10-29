@@ -82,28 +82,30 @@ unsafe extern "C-unwind" fn c_syntax_set_ts_mode(argc: i32, argv: *mut Janet) ->
 /// literals are tuples); any non-string element is a validation error,
 /// not a silent skip.
 unsafe fn get_keyword_list(argc: i32, argv: *mut Janet, i: i32) -> Option<Vec<String>> {
-    if i >= argc {
-        return None;
-    }
-    let v = *argv.add(i as usize);
-    let (data, count): (*const Janet, usize) =
-        if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
-            let arr = janet_unwrap_array(v);
-            ((*arr).data, (*arr).count as usize)
-        } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
-            let tup = janet_unwrap_tuple(v);
-            let len = (*janet_tuple_head(tup)).length as usize;
-            (tup, len)
-        } else {
+    unsafe {
+        if i >= argc {
             return None;
-        };
-    let mut out = Vec::with_capacity(count);
-    for idx in 0..count {
-        let mut elem = *data.add(idx);
-        let s = conv::get_str(1, &mut elem, 0)?;
-        out.push(s);
+        }
+        let v = *argv.add(i as usize);
+        let (data, count): (*const Janet, usize) =
+            if janet_checktype(v, JanetType_JANET_ARRAY) != 0 {
+                let arr = janet_unwrap_array(v);
+                ((*arr).data, (*arr).count as usize)
+            } else if janet_checktype(v, JanetType_JANET_TUPLE) != 0 {
+                let tup = janet_unwrap_tuple(v);
+                let len = (*janet_tuple_head(tup)).length as usize;
+                (tup, len)
+            } else {
+                return None;
+            };
+        let mut out = Vec::with_capacity(count);
+        for idx in 0..count {
+            let mut elem = *data.add(idx);
+            let s = conv::get_str(1, &mut elem, 0)?;
+            out.push(s);
+        }
+        Some(out)
     }
-    Some(out)
 }
 
 pub fn register() -> Vec<JanetReg> {

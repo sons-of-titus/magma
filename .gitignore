@@ -4,3 +4,4 @@ memory/
 .commandcode/
 .zcode/
 .DS_Store
+plugins/*/grammars/

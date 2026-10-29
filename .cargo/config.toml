@@ -1,1 +1,7 @@
 [env]
+
+[alias]
+# The grammar build tool lives outside the workspace on purpose; the alias
+# targets its manifest directly so `cargo xtask grammars` works from the
+# repository root.
+xtask = "run --manifest-path xtask/Cargo.toml --release --"

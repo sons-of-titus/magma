@@ -1,0 +1,244 @@
+# Grammar sources for the bundled language plugins.
+#
+# Each entry names the plugin language id (matching plugins/<id>/ and the
+# `:languages` manifest key) and the upstream grammar repository it is
+# built from.  `cargo xtask grammars --all` clones each repo at the pinned
+# commit and compiles the parser into plugins/<id>/grammars/ as a shared
+# library for the running platform.
+#
+# Fields:
+#   repo   upstream grammar repository
+#   rev    pinned commit the library is built from
+#   src    repo-relative parser directory (default "src"); parser.c plus
+#          any scanner.c / scanner.cc in it are compiled automatically
+#   extra  additional repo-relative C/C++ sources (shared scanners living
+#          outside the parser directory)
+#   symbol export override for grammars whose C entry point does not
+#          follow the tree_sitter_<language> convention
+
+[grammars.batch]
+repo = "https://github.com/wharflab/tree-sitter-batch"
+rev = "2aa22f00d7f5bbe58556b8eef0b1fc1629508603"
+
+[grammars.c]
+repo = "https://github.com/tree-sitter/tree-sitter-c"
+rev = "b780e47fc780ddc8da13afa35a3f4ed5c157823d"
+
+# Skipped: oakmac/tree-sitter-clojure still emits grammar ABI 9, below
+# the runtime's minimum (13), and has no regenerated branch.  The clojure
+# plugin falls back to the native keyword highlighter.
+# [grammars.clojure]
+# repo = "https://github.com/oakmac/tree-sitter-clojure"
+# rev = "bff93b54c2ccc4c905b0e1cc64be622163c8b7fc"
+
+[grammars.cmake]
+repo = "https://github.com/uyha/tree-sitter-cmake"
+rev = "58993af75218bc99a1f5a04c832a5937e7c422cb"
+
+[grammars.cpp]
+repo = "https://github.com/tree-sitter/tree-sitter-cpp"
+rev = "c009222808634c1014f82438d4883753516a2c24"
+
+[grammars.css]
+repo = "https://github.com/tree-sitter/tree-sitter-css"
+rev = "dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f"
+
+[grammars.dart]
+repo = "https://github.com/UserNobody14/tree-sitter-dart"
+rev = "0038280b774b65c1b89ba7fec50624d8baed9fe1"
+
+[grammars.dockerfile]
+repo = "https://github.com/camdencheek/tree-sitter-dockerfile"
+rev = "971acdd908568b4531b0ba28a445bf0bb720aba5"
+
+[grammars.elixir]
+repo = "https://github.com/elixir-lang/tree-sitter-elixir"
+rev = "cb32ccbe17c67037b09e31bf9beb22cdae6ed8e9"
+
+[grammars.emacs-lisp]
+repo = "https://github.com/Wilfred/tree-sitter-elisp"
+rev = "0cbf0906d9ee707c8c109422fba9cdd17ae13dcf"
+symbol = "tree_sitter_elisp"
+
+[grammars.erlang]
+repo = "https://github.com/WhatsApp/tree-sitter-erlang"
+rev = "62c82e67b73e13f3ef06e4c8c07ff035a8235d30"
+
+[grammars.fish]
+repo = "https://github.com/ram02z/tree-sitter-fish"
+rev = "b7f1d682941e0c62dfcd6bf9ef481638351bab16"
+
+[grammars.go]
+repo = "https://github.com/tree-sitter/tree-sitter-go"
+rev = "2346a3ab1bb3857b48b29d779a1ef9799a248cd7"
+
+[grammars.graphql]
+repo = "https://github.com/bkegley/tree-sitter-graphql"
+rev = "5e66e961eee421786bdda8495ed1db045e06b5fe"
+
+[grammars.groovy]
+repo = "https://github.com/murtaza64/tree-sitter-groovy"
+rev = "2a6ddd558b6aa39c5b77d8db9fe9baf817486b2c"
+
+[grammars.haskell]
+repo = "https://github.com/tree-sitter/tree-sitter-haskell"
+rev = "97288e585b0bd44199720280d067fa35bacd81ff"
+
+[grammars.html]
+repo = "https://github.com/tree-sitter/tree-sitter-html"
+rev = "73a3947324f6efddf9e17c0ea58d454843590cc0"
+
+[grammars.http]
+repo = "https://github.com/rest-nvim/tree-sitter-http"
+rev = "db8b4398de90b6d0b6c780aba96aaa2cd8e9202c"
+
+[grammars.ini]
+repo = "https://github.com/justinmk/tree-sitter-ini"
+rev = "e4018b5176132b4f3c5d6e61cea383f42288d0f5"
+
+[grammars.janet]
+repo = "https://github.com/sogaiu/tree-sitter-janet-simple"
+rev = "3c1bdcfff374138da03a1db25c75efce623910fe"
+symbol = "tree_sitter_janet_simple"
+
+[grammars.java]
+repo = "https://github.com/tree-sitter/tree-sitter-java"
+rev = "e10607b45ff745f5f876bfa3e94fbcc6b44bdc11"
+
+[grammars.javascript]
+repo = "https://github.com/tree-sitter/tree-sitter-javascript"
+rev = "58404d8cf191d69f2674a8fd507bd5776f46cb11"
+
+[grammars.json]
+repo = "https://github.com/tree-sitter/tree-sitter-json"
+rev = "254c42a6476413b776221e03982ac8ae159eeb72"
+
+[grammars.kotlin]
+repo = "https://github.com/fwcd/tree-sitter-kotlin"
+rev = "6a82d7ccb2eac95f3a2a049722037cdbb86ef7e5"
+
+[grammars.latex]
+repo = "https://github.com/latex-lsp/tree-sitter-latex"
+rev = "fa8df448fc2c0192a8c2f8cfc97de53cb2b4ecb9"
+
+[grammars.lisp]
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-commonlisp"
+rev = "32323509b3d9fe96607d151c2da2c9009eb13a2f"
+symbol = "tree_sitter_commonlisp"
+
+[grammars.lua]
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-lua"
+rev = "10fe0054734eec83049514ea2e718b2a56acd0c9"
+
+[grammars.makefile]
+repo = "https://github.com/alemuller/tree-sitter-make"
+rev = "a4b9187417d6be349ee5fd4b6e77b4172c6827dd"
+symbol = "tree_sitter_make"
+
+# Block parser only: highlight injections need the inline grammar, which
+# the editor does not support yet.
+[grammars.markdown]
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-markdown"
+rev = "41ff24a6c775492c543b09228aeb98d1cd2b3a0f"
+src = "tree-sitter-markdown/src"
+
+[grammars.nim]
+repo = "https://github.com/alaviss/tree-sitter-nim"
+rev = "ac72ba30d16edf0be021588a9301ede4accd6cf4"
+
+[grammars.nix]
+repo = "https://github.com/nix-community/tree-sitter-nix"
+rev = "37500eb28efff87b07af3df45e37d5726429b03a"
+
+[grammars.ocaml]
+repo = "https://github.com/tree-sitter/tree-sitter-ocaml"
+rev = "3b2e14e0697d405c9aa0beddfa09b71f45abc504"
+src = "grammars/ocaml/src"
+
+[grammars.org]
+repo = "https://github.com/milisims/tree-sitter-org"
+rev = "64cfbc213f5a83da17632c95382a5a0a2f3357c1"
+
+[grammars.perl]
+repo = "https://github.com/tree-sitter-perl/tree-sitter-perl"
+rev = "d0a9590e3150543032a3b1703fd082b3f4656e45"
+
+[grammars.php]
+repo = "https://github.com/tree-sitter/tree-sitter-php"
+rev = "58d5643086ae60e93a3746cca648363ee97c8761"
+src = "php/src"
+
+[grammars.powershell]
+repo = "https://github.com/airbus-cert/tree-sitter-powershell"
+rev = "65ea6919e816a7ac142acec7ee72757f89db8439"
+
+[grammars.protobuf]
+repo = "https://github.com/mitchellh/tree-sitter-proto"
+rev = "42d82fa18f8afe59b5fc0b16c207ee4f84cb185f"
+symbol = "tree_sitter_proto"
+
+[grammars.python]
+repo = "https://github.com/tree-sitter/tree-sitter-python"
+rev = "26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64"
+
+[grammars.r]
+repo = "https://github.com/r-lib/tree-sitter-r"
+rev = "58a22794466c0fc15b0d3b40531db751593721e8"
+
+[grammars.ruby]
+repo = "https://github.com/tree-sitter/tree-sitter-ruby"
+rev = "ad907a69da0c8a4f7a943a7fe012712208da6dee"
+
+[grammars.rust]
+repo = "https://github.com/tree-sitter/tree-sitter-rust"
+rev = "77a3747266f4d621d0757825e6b11edcbf991ca5"
+
+[grammars.scala]
+repo = "https://github.com/tree-sitter/tree-sitter-scala"
+rev = "c76bab0092b622e34df4916d80b117436683d16e"
+
+[grammars.scheme]
+repo = "https://github.com/6cdh/tree-sitter-scheme"
+rev = "45c72463ac4260ef6e07d1c0642ed43d4e9957b4"
+
+[grammars.sh]
+repo = "https://github.com/tree-sitter/tree-sitter-bash"
+rev = "a06c2e4415e9bc0346c6b86d401879ffb44058f7"
+symbol = "tree_sitter_bash"
+
+[grammars.sql]
+repo = "https://github.com/derekstride/tree-sitter-sql"
+rev = "987a64a7b105e267b39725a81ad2db628dc3178c"
+
+[grammars.swift]
+repo = "https://github.com/alex-pinkus/tree-sitter-swift"
+rev = "9e3b87f66f1fd2f3b931376fd3723ab788e337c3"
+
+# The maintained terraform grammar is the HCL one; its C entry point
+# deviates from the conventional name, so the export is declared here.
+[grammars.terraform]
+repo = "https://github.com/MichaHoffmann/tree-sitter-hcl"
+rev = "64ad62785d442eb4d45df3a1764962dafd5bc98b"
+symbol = "tree_sitter_hcl"
+
+[grammars.toml]
+repo = "https://github.com/ikatyang/tree-sitter-toml"
+rev = "8bd2056818b21860e3d756b5a58c4f6e05fb744e"
+
+[grammars.typescript]
+repo = "https://github.com/tree-sitter/tree-sitter-typescript"
+rev = "75b3874edb2dc714fb1fd77a32013d0f8699989f"
+src = "typescript/src"
+
+[grammars.xml]
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-xml"
+rev = "5000ae8f22d11fbe93939b05c1e37cf21117162d"
+src = "xml/src"
+
+[grammars.yaml]
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-yaml"
+rev = "a1c4812a73ec5e089de8e441fdea3a921e8d5079"
+
+[grammars.zig]
+repo = "https://github.com/maxxnino/tree-sitter-zig"
+rev = "a80a6e9be81b33b182ce6305ae4ea28e29211bd5"

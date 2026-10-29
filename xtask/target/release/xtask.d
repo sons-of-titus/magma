@@ -1,0 +1,1 @@
+/Users/mohamedabdellahi/Projects/Catosystems/magma-grammars/xtask/target/release/xtask: /Users/mohamedabdellahi/Projects/Catosystems/magma-grammars/xtask/src/compile.rs /Users/mohamedabdellahi/Projects/Catosystems/magma-grammars/xtask/src/main.rs

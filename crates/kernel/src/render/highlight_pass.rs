@@ -39,6 +39,19 @@ fn paint_cells(
     }
 }
 
+/// Resolve a highlight scope (a tree-sitter capture name) to a style: the
+/// longest matching scope-face prefix wins, falling back to a face of the
+/// same name.  `scope_faces` is kept sorted longest-prefix-first.
+fn resolve_scope_style(editor: &Editor, scope: &str) -> Option<Style> {
+    editor
+        .scope_faces
+        .iter()
+        .find(|(prefix, _)| scope.starts_with(prefix.as_str()))
+        .and_then(|(_, face)| editor.faces.get(face))
+        .or_else(|| editor.faces.get(scope))
+        .copied()
+}
+
 /// Apply all highlight layers (base → syntax → semantic → search → custom) and
 /// the visual selection highlight onto `surface`.
 #[allow(clippy::too_many_arguments)]
@@ -97,8 +110,7 @@ pub fn apply_highlights(
             if hl_end <= visible_byte_start || hl_start >= visible_byte_end {
                 continue;
             }
-            let style = editor
-                .resolve_face_style(face_name)
+            let style = resolve_scope_style(editor, face_name)
                 .unwrap_or(fallback_style);
 
             for (vis_row, (line_start, line_end)) in row_ranges.iter().enumerate() {

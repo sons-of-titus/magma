@@ -7,8 +7,10 @@ pub mod buffer;
 mod completion;
 mod db_cmds;
 mod debug_cmds;
+mod diagnostics_cmds;
 mod editing;
 mod file;
+mod indent_cmds;
 pub(crate) mod helpers;
 mod misc;
 mod motion;
@@ -16,6 +18,7 @@ mod navigation;
 mod project_cmds;
 mod registers;
 mod run_config_cmds;
+mod scroll_cmds;
 mod search;
 pub mod search_query;
 pub(crate) mod vc_actions;
@@ -51,4 +54,7 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     misc::register(editor);
     project_cmds::register(editor);
     run_config_cmds::register(editor);
+    diagnostics_cmds::register(editor);
+    indent_cmds::register(editor);
+    scroll_cmds::register(editor);
 }

@@ -215,6 +215,8 @@ unsafe fn janet_to_string(v: Janet) -> Option<String> {
 }
 
 /// (event/emit name &opt data)
+///
+/// `data` may be a table or a struct; keys and values are stringified.
 unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let Some(name) = conv::get_str(argc, argv, 0) else {
@@ -225,6 +227,7 @@ unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
             let data_val = *argv.add(1);
             if janet_checktype(data_val, JanetType_JANET_TABLE) != 0 {
                 let tbl = &*janet_unwrap_table(data_val);
+                let tbl = &*janet_unwrap_table(data_val);
                 // Iterate over the full backing-array capacity, not just `count`.
                 // Janet uses an open-addressing hash table so live entries can sit
                 // at any position in [0, capacity); iterating only 0..count would
@@ -232,6 +235,22 @@ unsafe extern "C-unwind" fn c_event_emit(argc: i32, argv: *mut Janet) -> Janet {
                 for i in 0..tbl.capacity {
                     let kv = &*tbl.data.add(i as usize);
                     // Skip empty slots (nil key) and dead/tombstone slots.
+                    if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 {
+                        continue;
+                    }
+                    if let (Some(k), Some(v)) = (janet_to_string(kv.key), janet_to_string(kv.value))
+                    {
+                        data.insert(k, v);
+                    }
+                }
+            } else if janet_checktype(data_val, JanetType_JANET_STRUCT) != 0 {
+                let st = janet_unwrap_struct(data_val);
+                let head = &*janet_struct_head(st);
+                // Entries are hash-distributed across capacity slots, not
+                // packed into the first `length` — iterate the slots like
+                // the table branch and skip the nils.
+                for i in 0..head.capacity as usize {
+                    let kv = &*st.add(i);
                     if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 {
                         continue;
                     }

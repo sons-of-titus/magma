@@ -15,6 +15,22 @@ fn quit_routes_through_the_guarded_command() {
 }
 
 #[test]
+fn buffer_word_under_cursor_returns_the_word_at_the_cursor() {
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        if let Some(view) = ed.views.get_mut(&key) {
+            view.insert(0, "alpha beta gamma");
+            view.set_cursor(7);
+        }
+        let r = scripting::eval_result(
+            r#"(= (buffer/word-under-cursor (buffer/current)) "beta")"#,
+        )
+        .unwrap();
+        assert_eq!(r, "true");
+    });
+}
+
+#[test]
 fn quit_refusal_surfaces_as_a_janet_error() {
     janet_test!(ed, {
         let key = ed.create_buffer_from_str("dirty.txt", "work");
@@ -94,9 +110,17 @@ fn builtin_command_files_register_their_commands() {
 fn every_builtin_compiles_at_init() {
     // A builtin that fails to load silently disables everything it defines
     // (LSP glue, syntax tables, …) — the failure must never be invisible.
+    // init() drains the loader's error list into an error status message,
+    // so the editor state is the observable, not the loader.
     janet_test!(ed, {
         let errors = scripting::take_builtin_load_errors();
         assert!(errors.is_empty(), "builtins failed to compile: {errors:?}");
+        match &ed.status_message {
+            Some(msg) if msg.kind == kernel::state::MessageKind::Error => {
+                panic!("init surfaced an error message: {}", msg.text)
+            }
+            _ => {}
+        }
     });
 }
 

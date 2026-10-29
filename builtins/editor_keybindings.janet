@@ -62,16 +62,8 @@
         (editor/run-command "yank-line")
         (editor/run-command "delete-line")))))
 
-(command/define "editor-paste"
-  (fn [&]
-    (def b (buffer/current))
-    (when b
-      (def text (clipboard/get))
-      (when text
-        (def pos (buffer/cursor b))
-        (buffer/insert b pos text)
-        (buffer/set-cursor b (+ pos (length text)))))))
-
+# Paste is the native put-after-cursor: it also falls back to the yank
+# register when the system clipboard is empty.
 (command/define "select-all"
   (fn [&]
     (def b (buffer/current))
@@ -120,7 +112,7 @@
 # Clipboard + selection
 (keymap/set "ctrl-c" "editor-copy" :editor)
 (keymap/set "ctrl-x" "editor-cut"  :editor)
-(keymap/set "ctrl-v" "editor-paste" :editor)
+(keymap/set "ctrl-v" "put-after-cursor" :editor)
 (keymap/set "ctrl-a" "select-all"   :editor)
 
 # Completion — works while typing, no mode entry required.

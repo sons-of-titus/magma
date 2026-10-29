@@ -8,6 +8,7 @@
 //!   (debug/step-out &opt thread-id)    → nil
 //!   (debug/add-breakpoint file line)   → nil
 //!   (debug/remove-breakpoint file line)→ nil
+//!   (debug/toggle-breakpoint)          → nil
 //!   (debug/evaluate expr)              → nil (result: debug-evaluate-result event)
 //!   (debug/session)                    → session-id or nil
 //!   (debug/breakpoints file)           → array of line numbers
@@ -218,6 +219,31 @@ unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Jane
     })
 }
 
+/// (debug/toggle-breakpoint) → nil
+///
+/// Toggle a 1-based breakpoint at the cursor line of the focused buffer.
+/// Routes through the kernel's native toggle so keybindings and gutter
+/// clicks share the past-EOF anchoring rule.
+unsafe extern "C-unwind" fn c_debug_toggle_breakpoint(_argc: i32, _argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let buf_id = kernel::input::focused_buffer_id(ed);
+        let cursor = ed
+            .view_of_buffer(buf_id)
+            .map(|v| v.cursor_offset())
+            .unwrap_or(0);
+        let target = ed.buffers.get(buf_id).and_then(|arc| {
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            let path = buf.path.clone()?;
+            let line = buf.slice(0, cursor).chars().filter(|&c| c == '\n').count() + 1;
+            Some((path, line))
+        });
+        if let Some((path, line)) = target {
+            kernel::debug::toggle_breakpoint_at(ed, &path, line);
+        }
+        conv::nil()
+    })
+}
+
 /// (debug/set-enabled file line enabled) → nil
 /// Disabled breakpoints stay visible in the UI but are withheld from the
 /// adapter until re-enabled.
@@ -414,6 +440,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"debug/breakpoints".as_ptr() as *const _,
             cfun: Some(c_debug_breakpoints),
             documentation: c"(debug/breakpoints file) → [line ...] — line numbers of all breakpoints in file".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/toggle-breakpoint".as_ptr() as *const _,
+            cfun: Some(c_debug_toggle_breakpoint),
+            documentation: c"(debug/toggle-breakpoint) → nil — toggle a breakpoint at the cursor line of the focused buffer (1-based)".as_ptr() as *const _,
         },
         JanetReg {
             name: c"debug/set-enabled".as_ptr() as *const _,

@@ -56,6 +56,17 @@ fn completion_bindings_work_while_typing() {
 }
 
 #[test]
+fn ctrl_v_binds_native_paste() {
+    janet_test!(ed, {
+        enter_normal_mode(&mut ed);
+        assert_eq!(
+            ed.keymaps.resolve("ctrl-v").as_deref(),
+            Some("put-after-cursor")
+        );
+    });
+}
+
+#[test]
 fn ctrl_o_still_means_jump_back_in_normal_mode() {
     // The review's finding: the GUI hijacked ctrl-o and vim's jump-back
     // silently vanished.  It is restored; the GUI takes no ctrl-p.

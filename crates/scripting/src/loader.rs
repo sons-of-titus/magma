@@ -148,6 +148,7 @@ pub fn init_vm() {
         regs.extend(super::net_http_api::register());
         regs.extend(super::net_tcp_api::register());
         regs.extend(super::selection_api::register());
+        regs.extend(super::buffer_word_api::register());
         regs.extend(super::syntax_api::register());
         regs.extend(super::register_api::register());
         regs.extend(super::option_api::register());
@@ -187,28 +188,12 @@ pub fn init_vm() {
         include_str!("../../../builtins/magma_utils.janet"),
     );
     load_builtin(
-        "builtins/scroll_commands.janet",
-        include_str!("../../../builtins/scroll_commands.janet"),
-    );
-    load_builtin(
-        "builtins/indent_commands.janet",
-        include_str!("../../../builtins/indent_commands.janet"),
-    );
-    load_builtin(
-        "builtins/multi_cursor.janet",
-        include_str!("../../../builtins/multi_cursor.janet"),
-    );
-    load_builtin(
         "builtins/major_modes.janet",
         include_str!("../../../builtins/major_modes.janet"),
     );
     load_builtin(
         "builtins/plugin_loader.janet",
         include_str!("../../../builtins/plugin_loader.janet"),
-    );
-    load_builtin(
-        "builtins/syntax_core.janet",
-        include_str!("../../../builtins/syntax_core.janet"),
     );
     load_builtin(
         "builtins/syntax_langs.janet",
@@ -299,16 +284,8 @@ pub fn init_vm() {
         include_str!("../../../builtins/janet_eval.janet"),
     );
     load_builtin(
-        "builtins/mshell.janet",
-        include_str!("../../../builtins/mshell.janet"),
-    );
-    load_builtin(
         "builtins/net.janet",
         include_str!("../../../builtins/net.janet"),
-    );
-    load_builtin(
-        "builtins/collab.janet",
-        include_str!("../../../builtins/collab.janet"),
     );
     load_builtin(
         "builtins/ssh_fs.janet",

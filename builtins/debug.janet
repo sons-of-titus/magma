@@ -36,17 +36,8 @@
 
 # ── Helper functions ──────────────────────────────────────────────────────────
 
-(defn debug/toggle-breakpoint
-  "Toggle a breakpoint at the cursor position in the focused buffer."
-  []
-  (let [file (buffer/path (editor/focused-buffer))
-        # Breakpoints are stored 1-based (DAP convention); buffer/line-number is 0-based.
-        line (+ 1 (buffer/line-number (editor/focused-buffer)))]
-    (when file
-      (let [bps (debug/breakpoints file)]
-        (if (find |(= $ line) bps)
-          (debug/remove-breakpoint file line)
-          (debug/add-breakpoint file line))))))
+# debug/toggle-breakpoint is a C function over the kernel's native toggle
+# (the same path gutter clicks use); breakpoints are 1-based (DAP convention).
 
 (defn debug/session?
   "Return true if a debug session is active."
@@ -111,7 +102,7 @@
     (when (not (empty? expr))
       (debug/evaluate expr))))
 
-# Register the toggle-breakpoint command so it can be bound to a key.
+# Command-name surface for keybindings over the native toggle.
 (command/define "debug/toggle-breakpoint"
   (fn [] (debug/toggle-breakpoint)))
 

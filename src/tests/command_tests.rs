@@ -347,3 +347,83 @@ fn smart_case_replaces_insensitively() {
         .unwrap();
     assert_eq!(helpers::buf_text(&ed), "x x");
 }
+
+// ── Paste (ctrl-v binding) ───────────────────────────────────────────
+
+#[test]
+fn put_after_cursor_inserts_and_leaves_cursor_after_pasted_text() {
+    let mut ed = helpers::make_editor_with_buffer("hello world");
+    set_cursor(&mut ed, 5);
+    ed.editing.yanked_text = Some("XY".to_string());
+    helpers::run(&mut ed, "put-after-cursor");
+    assert_eq!(helpers::buf_text(&ed), "helloXY world");
+    assert_eq!(helpers::cursor(&ed), 7);
+}
+
+// ── Multi-cursor ─────────────────────────────────────────────────────
+
+#[test]
+fn multi_cursor_next_occurrence_adds_cursor_at_next_word_match() {
+    let mut ed = helpers::make_editor_with_buffer("alpha beta alpha");
+    helpers::run(&mut ed, "multi-cursor-next-occurrence");
+    assert_eq!(ed.multi_cursor.extra_cursors.len(), 1);
+    assert_eq!(ed.multi_cursor.extra_cursors[0].pos, 11);
+    assert!(ed.multi_cursor.active);
+}
+
+#[test]
+fn multi_cursor_next_occurrence_without_match_is_noop() {
+    let mut ed = helpers::make_editor_with_buffer("alpha");
+    helpers::run(&mut ed, "multi-cursor-next-occurrence");
+    assert!(ed.multi_cursor.extra_cursors.is_empty());
+    assert!(!ed.multi_cursor.active);
+}
+
+// ── Viewport scroll commands ─────────────────────────────────────────
+
+fn big_buffer(lines: usize) -> String {
+    (0..lines).map(|i| format!("line{i}\n")).collect()
+}
+
+macro_rules! focused_pane {
+    ($ed:expr) => {{
+        let wid = $ed.view_tree.focused_window().unwrap();
+        $ed.view_tree.window(wid).unwrap()
+    }};
+}
+
+#[test]
+fn scroll_page_down_moves_viewport_and_cursor_a_page() {
+    let mut ed = helpers::make_editor_with_buffer(&big_buffer(60));
+    helpers::run(&mut ed, "scroll-page-down");
+    let pane = focused_pane!(&ed);
+    let height = pane.height as i64;
+    let step = (height - 2).max(1);
+    assert_eq!(pane.scroll_offset, step as usize);
+    assert!(pane.scroll_pinned);
+    // The cursor rides the same distance.
+    assert!(helpers::cursor(&ed) >= step as usize);
+}
+
+#[test]
+fn scroll_line_down_moves_cursor_one_line_and_follows_view() {
+    let mut ed = helpers::make_editor_with_buffer("alpha\nbeta\ngamma");
+    helpers::run(&mut ed, "scroll-line-down");
+    assert_eq!(helpers::cursor(&ed), 6);
+    assert_eq!(
+        focused_pane!(&ed).scroll_offset,
+        1,
+        "the viewport pins to keep the cursor visible at the top"
+    );
+}
+
+#[test]
+fn scroll_column_commands_pin_horizontal_offset() {
+    let mut ed = helpers::make_editor_with_buffer("alpha\nbeta");
+    helpers::run(&mut ed, "scroll-column-right");
+    let pane = focused_pane!(&ed);
+    assert_eq!(pane.scroll_left, 4);
+    assert!(pane.scroll_left_pinned);
+    helpers::run(&mut ed, "scroll-column-left");
+    assert_eq!(focused_pane!(&ed).scroll_left, 0);
+}

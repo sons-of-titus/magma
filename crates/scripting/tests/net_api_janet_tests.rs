@@ -127,8 +127,6 @@ fn tcp_send_to_non_existent_server_returns_nil_without_crash() {
     assert_eq!(r, "nil");
 }
 
-// ── Collab colon verbs ────────────────────────────────────────────────────
-
 // ── vfs/open SSH URI parsing ──────────────────────────────────────────────
 
 #[test]
@@ -193,30 +191,6 @@ fn net_pending_table_exists() {
     let _editor_scope = scripting::EditorScope::new(&mut ed);
     let r = scripting::eval_result(r#"(table? *net-pending*)"#).unwrap();
     assert_eq!(r, "true", "*net-pending* must be a table");
-}
-
-// ── collab/encode-decode round-trip (pure Janet) ──────────────────────────
-
-#[test]
-fn collab_peer_cursors_table_exists() {
-    let _lock = helpers::acquire_janet_lock();
-    let mut ed = setup_background_editor();
-    scripting::init(&mut ed);
-    let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(r#"(table? *collab-peer-cursors*)"#).unwrap();
-    assert_eq!(r, "true", "*collab-peer-cursors* must be a table");
-}
-
-// ── collab server id starts nil ───────────────────────────────────────────
-
-#[test]
-fn collab_server_id_starts_nil() {
-    let _lock = helpers::acquire_janet_lock();
-    let mut ed = setup_background_editor();
-    scripting::init(&mut ed);
-    let _editor_scope = scripting::EditorScope::new(&mut ed);
-    let r = scripting::eval_result(r#"(nil? *collab-server-id*)"#).unwrap();
-    assert_eq!(r, "true", "*collab-server-id* must start as nil");
 }
 
 // ── tcp-connect increments next_net_id ───────────────────────────────────

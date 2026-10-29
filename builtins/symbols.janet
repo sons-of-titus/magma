@@ -25,27 +25,14 @@
 
 # ── Navigation: go-to-definition (tree-sitter index, LSP fallback) ───────────
 
-(defn- line-offset
-  "Byte offset of a 0-based line in text."
-  [text line]
-  (var off 0)
-  (var l 0)
-  (while (and (< l line) (< off (length text)))
-    (def nl (string/find "\n" (string/slice text off)))
-    (if nl
-      (do (set off (+ off nl 1)) (++ l))
-      (set off (length text))))
-  off)
-
 (command/define "goto-definition"
   (fn [&]
     (def buf (buffer/current))
     (unless buf (break))
-    (def result (word-under-cursor buf))
-    (unless result
+    (def sym (buffer/word-under-cursor buf))
+    (unless sym
       (editor/echo "No symbol under cursor" "error")
       (break))
-    (def [_ _ sym] result)
     # A tree-sitter index hit is instant and offline; without one, defer to
     # an attached LSP (async — its result is echoed when it arrives).
     (def defs (semantic/definitions sym))
@@ -57,8 +44,8 @@
         (when (and file (not= file ""))
           (editor/run-command "open-file" file)
           (when-let [nb (buffer/current)]
-            (def text (buffer/slice nb 0 (buffer/len nb)))
-            (buffer/set-cursor nb (line-offset text (or line 0)))
+            (when-let [off (buffer/line-start-offset nb (or line 0))]
+              (buffer/set-cursor nb off))
             (editor/echo (string sym " → " file ":" (+ 1 (or line 0))))))
       (editor/run-command "lsp-go-to-definition")))))
 

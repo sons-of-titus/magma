@@ -127,6 +127,27 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         cursor_clear_impl,
     );
+
+    cmds.register_fn(
+        "multi-cursor-next-occurrence",
+        "Add a cursor at the next occurrence of the word under the cursor",
+        vec![],
+        |editor, _args| {
+            let buf_id = get_current_buffer_id(editor);
+            if let Some((_, Some(next))) = super::search::word_and_next(editor, buf_id, true) {
+                editor
+                    .multi_cursor
+                    .extra_cursors
+                    .push(ExtraCursor {
+                        pos: next,
+                        anchor: None,
+                    });
+                editor.multi_cursor.active = true;
+                emit_cursor_moved(editor);
+            }
+            Ok(())
+        },
+    );
 }
 
 fn cursor_add_impl(editor: &mut Editor, args: &HashMap<String, ArgValue>) -> CommandResult {

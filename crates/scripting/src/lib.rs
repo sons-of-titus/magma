@@ -235,6 +235,8 @@ mod buffer_query_api;
 #[cfg(feature = "janet")]
 mod buffer_text_api;
 #[cfg(feature = "janet")]
+mod buffer_word_api;
+#[cfg(feature = "janet")]
 mod syntax_api;
 #[cfg(feature = "janet")]
 mod clipboard_api;

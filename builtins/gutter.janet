@@ -16,25 +16,3 @@
 
 # Default fold icons.
 (gutter/set-fold-icons "▾" "▸" "fold-face")
-
-# Default line-number format (hybrid: absolute on cursor, relative elsewhere).
-(gutter/set-line-number-format "gutter-lnum-hybrid")
-
-# Built-in line-number format commands.
-# Each receives (abs-line cursor-line total-lines) and returns a string.
-
-(defn gutter-lnum-absolute [abs-line cursor-line total-lines]
-  (string abs-line))
-
-(defn gutter-lnum-relative [abs-line cursor-line total-lines]
-  (string (math/abs (- abs-line cursor-line))))
-
-(defn gutter-lnum-hybrid [abs-line cursor-line total-lines]
-  (if (= abs-line cursor-line)
-    (string abs-line)
-    (string (math/abs (- abs-line cursor-line)))))
-
-# Register them as commands so Janet extensions can refer to them by name.
-(command/define "gutter-lnum-absolute" (fn [] (gutter-lnum-absolute 0 0 0)))
-(command/define "gutter-lnum-relative" (fn [] (gutter-lnum-relative 0 0 0)))
-(command/define "gutter-lnum-hybrid"   (fn [] (gutter-lnum-hybrid 0 0 0)))

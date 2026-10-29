@@ -139,11 +139,5 @@
   (put overrides (norm-key key) (if glyph (if rgb [glyph rgb] glyph) :none))
   (install active-spec))
 
-(defn icons/use-pack
-  "Switch to a VS Code icon-theme pack by path or by name inside an
-  icon-pack search dir (~/.config/magma/icon-packs)."
-  [name-or-path]
-  (icons/load-pack name-or-path))
-
 (install default-pack)
 (command/define "icons-default" icons/use-default)

@@ -178,13 +178,3 @@
       (def members (project/workspace-members))
       (when (> (length members) 0)
         (print "Detected " (length members) " workspace members")))))
-
-# --- Setup ---
-# Initialise recent projects from persistent store
-
-(defn- load-recent-on-ready
-  [_]
-  (each p (project/recent)
-    (project/push-recent p)))
-
-(event/once "editor-ready" load-recent-on-ready)

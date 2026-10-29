@@ -19,6 +19,7 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
             None => conv::signal_err("net/http-request: url string required"),
         };
         let body = conv::get_str(argc, argv, 2).unwrap_or_default();
+        let headers = conv::get_table_strings(argc, argv, 3).unwrap_or_default();
         let bg = match ed.background.as_ref() {
             Some(bg) => bg.clone(),
             None => conv::signal_err("net/http-request: no background runtime"),
@@ -26,10 +27,13 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
         let id = ed.io.next_net_id;
         ed.io.next_net_id += 1;
         let sender = bg.sender.clone();
-        debug_http!("→ id={id} {method} {url} body_len={}", body.len());
+        debug_http!("→ id={id} {method} {url} body_len={} headers={}", body.len(), headers.len());
         bg.spawn_blocking(move || {
             let result = (|| -> Result<(u16, String), String> {
-                let req = ureq::request(&method, &url);
+                let mut req = ureq::request(&method, &url);
+                for (name, value) in &headers {
+                    req = req.set(name, value);
+                }
                 let resp = if body.is_empty() {
                     req.call().map_err(|e| e.to_string())?
                 } else {

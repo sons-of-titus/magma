@@ -152,18 +152,36 @@ unsafe extern "C-unwind" fn c_process_kill(argc: i32, argv: *mut Janet) -> Janet
 
 /// (process/stdin id text)
 ///
-/// Write `text` to the process's stdin.  The process must have been spawned
-/// by `process/spawn` and still be running.
+/// Write `text` to the process's stdin.  Signals an error when the process
+/// does not exist, has already closed its stdin, or the write fails —
+/// callers must not assume delivery succeeded.
 unsafe extern "C-unwind" fn c_process_stdin(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
         let text = conv::get_str(argc, argv, 1).unwrap_or_default();
-        if let Some(state) = ed.io.processes.get_mut(&id)
-            && let Some(stdin) = state.stdin.as_mut()
-        {
-            use std::io::Write;
-            let _ = stdin.write_all(text.as_bytes());
-            let _ = stdin.flush();
+        let Some(state) = ed.io.processes.get_mut(&id) else {
+            conv::signal_err(&format!("process/stdin: no such process {id}"));
+        };
+        let Some(stdin) = state.stdin.as_mut() else {
+            conv::signal_err("process/stdin: stdin is already closed");
+        };
+        use std::io::Write;
+        if let Err(e) = stdin.write_all(text.as_bytes()).and_then(|_| stdin.flush()) {
+            conv::signal_err(&format!("process/stdin write failed: {e}"));
+        }
+        conv::nil()
+    })
+}
+
+/// (process/close-stdin id)
+///
+/// Close the process's stdin, signaling EOF so the remote end can finish.
+/// The exit is reported through the `process-exit` event as usual.
+unsafe extern "C-unwind" fn c_process_close_stdin(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let id = conv::get_int(argc, argv, 0).unwrap_or(-1) as u64;
+        if let Some(state) = ed.io.processes.get_mut(&id) {
+            state.stdin.take();
         }
         conv::nil()
     })
@@ -258,6 +276,60 @@ unsafe fn execute_stored_fn(ed: &mut kernel::state::Editor, task_id: u64, fn_ref
                 },
             );
         }
+    }
+}
+
+/// (process/run cmd args &opt input) → {:exit-code n :stdout s :stderr s}
+///
+/// Run a subprocess to completion: `cmd` with an array of argument strings
+/// (no shell), `input` piped to its stdin.  For formatters and other
+/// short-lived tools where the caller needs the output in hand.
+unsafe extern "C-unwind" fn c_process_run(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::ProcessExecution) {
+        conv::signal_err("process/run requires the ProcessExecution capability");
+    }
+    unsafe {
+        let cmd = match conv::get_str(argc, argv, 0) {
+            Some(s) => s,
+            None => conv::signal_err("process/run requires a command string"),
+        };
+        let args = conv::get_str_array(argc, argv, 1).unwrap_or_default();
+        let input = conv::get_opt_str(argc, argv, 2).flatten();
+
+        let mut command = std::process::Command::new(&cmd);
+        command.args(&args);
+        command.stdin(std::process::Stdio::piped());
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::piped());
+
+        let mut child = match command.spawn() {
+            Ok(c) => c,
+            Err(e) => return run_result_table(-1, "", &format!("exec error: {e}")),
+        };
+        if let Some(stdin) = child.stdin.as_mut() {
+            use std::io::Write as _;
+            let _ = stdin.write_all(input.as_deref().unwrap_or("").as_bytes());
+        }
+        let output = match child.wait_with_output() {
+            Ok(o) => o,
+            Err(e) => return run_result_table(-1, "", &format!("wait error: {e}")),
+        };
+        run_result_table(
+            output.status.code().unwrap_or(-1),
+            &String::from_utf8_lossy(&output.stdout),
+            &String::from_utf8_lossy(&output.stderr),
+        )
+    }
+}
+
+unsafe fn run_result_table(exit_code: i32, stdout: &str, stderr: &str) -> Janet {
+    unsafe {
+        let tbl = janet_wrap_table(janet_table(3));
+        let t = janet_unwrap_table(tbl);
+        janet_table_put(t, conv::keyword("exit-code"), conv::integer(exit_code));
+        janet_table_put(t, conv::keyword("stdout"), conv::string(stdout));
+        janet_table_put(t, conv::keyword("stderr"), conv::string(stderr));
+        tbl
     }
 }
 
@@ -363,6 +435,13 @@ pub(super) fn remove_task_function(id: u64) {
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
+            name: c"process/run".as_ptr() as *const _,
+            cfun: Some(c_process_run as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation:
+                c"Run a subprocess to completion with args and optional stdin; returns {:exit-code :stdout :stderr}"
+                    .as_ptr() as *const _,
+        },
+        JanetReg {
             name: c"process/spawn".as_ptr() as *const _,
             cfun: Some(c_process_spawn as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation:
@@ -377,7 +456,15 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"process/stdin".as_ptr() as *const _,
             cfun: Some(c_process_stdin as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Write text to a running subprocess's stdin".as_ptr() as *const _,
+            documentation: c"Write text to a running subprocess's stdin; signals an error on failure"
+                .as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"process/close-stdin".as_ptr() as *const _,
+            cfun: Some(
+                c_process_close_stdin as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Close a subprocess's stdin, signaling EOF".as_ptr() as *const _,
         },
         JanetReg {
             name: c"process/list".as_ptr() as *const _,

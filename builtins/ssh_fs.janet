@@ -40,10 +40,26 @@
       (when-let [win (window/current)]
         (window/set-buffer win buf)))))
 
+(defn ssh-fs/escape-path
+  "Single-quote-escape a path for safe interpolation into a remote shell
+  command.  Content itself never needs escaping — it travels on stdin."
+  [path]
+  (string/replace-all "'" "'\\''" path))
+
 (defn ssh-fs/write
-  "Write content to a remote file via SSH (uses `cat >`)."
+  "Write content to a remote file via SSH.
+
+  Content is delivered through the process's stdin — it is never
+  interpolated into the command line — and stdin is closed so the remote
+  `cat` can finish.  The returned process id reports the outcome through
+  the `process-exit` event: only exit code 0 means the file was written."
   [host path content]
-  (process/spawn "ssh" (string host " sh -c 'cat > " path "'")))
+  (def pid (process/spawn
+             "ssh"
+             (string host " sh -c 'cat > " (ssh-fs/escape-path path) "'")))
+  (process/stdin pid content)
+  (process/close-stdin pid)
+  pid)
 
 # ── Virtual filesystem router ─────────────────────────────────────────────────
 

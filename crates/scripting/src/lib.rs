@@ -127,6 +127,45 @@ pub(crate) mod conv {
         }
     }
 
+    /// Read a table argument as `(string-key, string-value)` pairs.
+    /// `None` when the argument is absent or not a table; non-string
+    /// keys and values are skipped.
+    pub unsafe fn get_table_strings(
+        argc: i32,
+        argv: *mut Janet,
+        i: i32,
+    ) -> Option<Vec<(String, String)>> {
+        unsafe {
+            if i >= argc {
+                return None;
+            }
+            let v = *argv.add(i as usize);
+            if janet_checktype(v, JanetType_JANET_TABLE) == 0 {
+                return None;
+            }
+            let tbl = janet_unwrap_table(v);
+            // Iterate the full backing-array capacity, not `count`: live
+            // entries sit at their hash index, which can be anywhere in
+            // [0, capacity).
+            let mut out = Vec::new();
+            for idx in 0..(*tbl).capacity {
+                let kv = *(*tbl).data.add(idx as usize);
+                if janet_checktype(kv.key, JanetType_JANET_NIL) != 0 {
+                    continue;
+                }
+                let mut key_argv = kv.key;
+                let mut val_argv = kv.value;
+                if let (Some(k), Some(val)) = (
+                    get_str(1, &mut key_argv, 0),
+                    get_str(1, &mut val_argv, 0),
+                ) {
+                    out.push((k, val));
+                }
+            }
+            Some(out)
+        }
+    }
+
     pub fn nil() -> Janet {
         unsafe { janet_wrap_nil() }
     }
@@ -308,6 +347,8 @@ mod project_api;
 mod project_registry_api;
 #[cfg(feature = "janet")]
 mod register_api;
+#[cfg(feature = "janet")]
+mod run_config_api;
 #[cfg(feature = "janet")]
 mod scheduler_api;
 #[cfg(feature = "janet")]

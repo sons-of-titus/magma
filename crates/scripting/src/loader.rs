@@ -161,6 +161,7 @@ pub fn init_vm() {
         regs.extend(super::scheduler_api::register());
         regs.extend(super::extension_api::register());
         regs.extend(super::plugin_api::register());
+        regs.extend(super::run_config_api::register());
         regs.extend(super::agent_api::register());
         regs.extend(super::language_api::register());
         regs.push(evil_janet::JanetReg {

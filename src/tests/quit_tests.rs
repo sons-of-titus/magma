@@ -81,6 +81,48 @@ fn force_quit_ignores_dirty_buffers() {
 }
 
 #[test]
+fn refused_quit_arms_the_confirm_flag() {
+    let mut ed = editor();
+    let key = ed.create_buffer_from_str("hand.rs", "content");
+    focus(&mut ed, key);
+    edit(&mut ed, key, 0, "x");
+    let _ = run(&mut ed, "quit");
+    assert!(ed.quit_refused, "refusal must arm the frontend's confirm dialog");
+    assert!(ed.running);
+}
+
+#[test]
+fn successful_quit_disarms_the_confirm_flag() {
+    let mut ed = editor();
+    let key = ed.create_buffer_from_str("hand.rs", "content");
+    focus(&mut ed, key);
+    edit(&mut ed, key, 0, "x");
+    let _ = run(&mut ed, "quit");
+    assert!(ed.quit_refused);
+    // Save through the buffer's own path so the write stays synchronous.
+    ed.buffers
+        .get_mut(key)
+        .unwrap()
+        .lock()
+        .unwrap()
+        .mark_saved();
+    run(&mut ed, "quit").unwrap();
+    assert!(!ed.quit_refused, "a later clean quit must disarm the dialog");
+    assert!(!ed.running);
+}
+
+#[test]
+fn force_quit_leaves_the_confirm_flag_alone() {
+    let mut ed = editor();
+    let key = ed.create_buffer_from_str("dirty.rs", "content");
+    focus(&mut ed, key);
+    edit(&mut ed, key, 0, "x");
+    run(&mut ed, "force-quit").unwrap();
+    assert!(!ed.quit_refused);
+    assert!(!ed.running);
+}
+
+#[test]
 fn save_all_writes_pathed_dirty_buffers_and_leaves_unpathed() {
     let dir = std::env::temp_dir().join(format!("magma-save-all-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

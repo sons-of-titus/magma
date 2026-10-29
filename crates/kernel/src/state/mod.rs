@@ -137,6 +137,10 @@ pub struct Editor {
     pub keymaps: KeymapManager,
     pub fs: Box<dyn FileSystem>,
     pub running: bool,
+    /// A quit was attempted while buffers had unsaved changes.  Frontends
+    /// observe it to raise a confirmation dialog; the frontend that handles
+    /// it clears it.
+    pub quit_refused: bool,
     pub editor_mode: EditorMode,
     pub selection: Option<Selection>,
     pub plugin_state: std::collections::HashMap<String, String>,
@@ -267,6 +271,7 @@ impl Editor {
             keymaps: KeymapManager::new(),
             fs,
             running: true,
+            quit_refused: false,
             editor_mode: EditorMode::default(),
             selection: None,
             plugin_state: std::collections::HashMap::new(),

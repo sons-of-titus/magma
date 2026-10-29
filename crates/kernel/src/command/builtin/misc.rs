@@ -22,11 +22,13 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let dirty = editor.dirty_buffer_names();
             if !dirty.is_empty() {
+                editor.quit_refused = true;
                 return Err(format!(
                     "No write since last change: {} (use force-quit to override)",
                     dirty.join(", ")
                 ));
             }
+            editor.quit_refused = false;
             editor
                 .events
                 .emit_typed(keys::events::BEFORE_QUIT, EmptyPayload);

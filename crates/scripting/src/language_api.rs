@@ -100,7 +100,7 @@ unsafe fn register_from_spec(ed: &mut kernel::state::Editor, spec: Janet) -> Jan
         let mut grammar_loaded = false;
         let grammar_path = jtable::get_str(spec, "grammar");
         if let Some(path) = grammar_path.as_deref() {
-            grammar_loaded = load_grammar(ed, &id, path);
+            grammar_loaded = load_grammar(ed, &id, path, jtable::get_str(spec, "grammar-symbol").as_deref());
         }
 
         let mut info = LanguageInfo {
@@ -158,14 +158,21 @@ unsafe fn register_from_spec(ed: &mut kernel::state::Editor, spec: Janet) -> Jan
 }
 
 /// Load a plugin-provided grammar library into the tree-sitter registry.
-/// Failure warns and returns false — the language still registers and
-/// fallback highlighting applies; a bad grammar must not block plugin
-/// loading or take the editor down.
-unsafe fn load_grammar(ed: &mut kernel::state::Editor, id: &str, path: &str) -> bool {
+/// `symbol` overrides the conventional `tree_sitter_<id>` export name for
+/// grammars whose C entry point deviates.  Failure warns and returns
+/// false — the language still registers and fallback highlighting
+/// applies; a bad grammar must not block plugin loading or take the
+/// editor down.
+unsafe fn load_grammar(
+    ed: &mut kernel::state::Editor,
+    id: &str,
+    path: &str,
+    symbol: Option<&str>,
+) -> bool {
     if ts_registry::has_language(id) {
         return true;
     }
-    match ts_registry::load_grammar_from_lib(path, id) {
+    match ts_registry::load_grammar_from_lib(path, id, symbol) {
         Ok(lang) => {
             ts_registry::register_language(id, lang);
             true

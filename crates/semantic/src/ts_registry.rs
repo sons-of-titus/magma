@@ -116,7 +116,7 @@ fn query_tree(
     let mut query_caps = cursor.captures(&query, root, text_bytes);
     let mut result = Vec::new();
     while let Some((m, _)) = query_caps.next() {
-        for cap in m.captures {
+        for cap in m.captures() {
             let start = cap.node.start_byte();
             let end = cap.node.end_byte();
             if start >= end {
@@ -182,8 +182,8 @@ pub fn highlight_incremental(
         let mut cur: &str = "";
         let mut cur_pos: usize = 0;
         let tree = parser
-            .parse_with(
-                &mut |offset: usize, _| -> &[u8] {
+            .parse_with_options(
+                &mut |offset: usize, _: tree_sitter::Point| -> &[u8] {
                     while offset >= cur_pos + cur.len() {
                         match chunks.next() {
                             Some(c) => {
@@ -201,6 +201,7 @@ pub fn highlight_incremental(
                     &cur.as_bytes()[b..]
                 },
                 old_tree.as_ref(),
+                None,
             )
             .or(old_tree)?;
 
@@ -212,28 +213,44 @@ pub fn highlight_incremental(
 
 /// Load a tree-sitter grammar from a shared library.  `lang_name` is the
 /// registry name the grammar is being registered under — the loader probes
-/// the conventional `tree_sitter_<name>` export before the legacy list.
+/// the conventional `tree_sitter_<name>` export before the legacy list;
+/// `symbol` overrides that convention for grammars whose C entry point
+/// deviates (declared in a plugin's language spec).
 /// The language function is ABI-validated by building a parser before the
 /// library handle is released; an incompatible grammar is a clean error,
 /// never a silent parse failure later.
 /// Returns `Ok(Language)` on success or `Err(message)` on failure.
-pub fn load_grammar_from_lib(path: &str, lang_name: &str) -> Result<tree_sitter::Language, String> {
+pub fn load_grammar_from_lib(
+    path: &str,
+    lang_name: &str,
+    symbol: Option<&str>,
+) -> Result<tree_sitter::Language, String> {
     let lib = unsafe { libloading::Library::new(path) }
         .map_err(|e| format!("cannot open shared library: {}", e))?;
 
     let probe = format!("tree_sitter_{}", lang_name.replace('-', "_"));
+    let mut candidates: Vec<&[u8]> = Vec::new();
+    if let Some(s) = symbol {
+        candidates.push(s.as_bytes());
+    }
+    candidates.push(probe.as_bytes());
+    candidates.push(b"tree_sitter_language");
+    candidates.extend([
+        &b"tree_sitter_rust"[..],
+        b"tree_sitter_javascript",
+        b"tree_sitter_python",
+        b"tree_sitter_java",
+        b"tree_sitter_json",
+        b"tree_sitter_html",
+        b"tree_sitter_bash",
+    ]);
     let func_ptr: unsafe extern "C-unwind" fn() -> *const std::ffi::c_void = unsafe {
-        let sym: libloading::Symbol<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void> = lib
-            .get(b"tree_sitter_language")
-            .or_else(|_| lib.get(probe.as_bytes()))
-            .or_else(|_| lib.get(b"tree_sitter_rust"))
-            .or_else(|_| lib.get(b"tree_sitter_javascript"))
-            .or_else(|_| lib.get(b"tree_sitter_python"))
-            .or_else(|_| lib.get(b"tree_sitter_java"))
-            .or_else(|_| lib.get(b"tree_sitter_json"))
-            .or_else(|_| lib.get(b"tree_sitter_html"))
-            .or_else(|_| lib.get(b"tree_sitter_bash"))
-            .map_err(|e| format!("cannot find language function: {}", e))?;
+        let sym = candidates
+            .iter()
+            .find_map(|name| {
+                lib.get::<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void>(name).ok()
+            })
+            .ok_or_else(|| format!("cannot find language function (tried {})", probe))?;
         *sym
     };
 

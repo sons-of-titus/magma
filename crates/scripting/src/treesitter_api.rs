@@ -78,7 +78,7 @@ unsafe extern "C-unwind" fn c_ts_load_grammar(argc: i32, argv: *mut Janet) -> Ja
             conv::signal_err("ts/load-grammar requires a language name")
         };
 
-        match ts_registry::load_grammar_from_lib(&path_str, &name) {
+        match ts_registry::load_grammar_from_lib(&path_str, &name, None) {
             Ok(lang) => {
                 ts_registry::register_language(&name, lang);
                 conv::boolean(true)

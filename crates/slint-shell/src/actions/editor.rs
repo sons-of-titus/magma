@@ -119,18 +119,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             let command = command.to_string();
             match command.as_str() {
                 "open-project-dialog" => {
-                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                        let mut args = HashMap::new();
-                        args.insert(
-                            "path".to_string(),
-                            ArgValue::Path(dir.to_string_lossy().into_owned()),
-                        );
-                        match execute_command(&mut s.editor, "open-project", &args) {
-                            Ok(()) => s.message.clear(),
-                            Err(e) => s.message = e,
-                        }
-                        s.tree_epoch = u64::MAX;
-                    }
+                    super::open_project_dialog(&mut s);
                 }
                 "toggle-theme" => {
                     let next = match s.theme_name.as_str() {

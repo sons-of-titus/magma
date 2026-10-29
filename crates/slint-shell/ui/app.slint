@@ -1,4 +1,5 @@
 export { Theme } from "theme.slint";
+export { WelcomeWindow } from "welcome-window.slint";
 import { Theme } from "theme.slint";
 import { MenuBar as CustomMenuBar, MenuItem as CustomMenuItem } from "components/menu-bar.slint";
 import { MenuPopup } from "components/menu-popup.slint";
@@ -17,8 +18,7 @@ import { ProgressStrip, ProgressTask } from "components/progress-strip.slint";
 import { EditorView } from "components/editor-view.slint";
 import { BottomBar, BottomDock, FindRow, GitHistoryRow, ProblemRow } from "components/bottom-dock.slint";
 import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.slint";
-import { Welcome } from "components/welcome.slint";
-import { SettingsView, SettingsRow } from "views/settings-view.slint";
+import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint";
 import { DialogView } from "views/dialog-view.slint";
 import { HoverCard, CompletionPopup, QuickfixMenu } from "views/overlays.slint";
 import { ComboBox, SpinBox } from "std-widgets.slint";
@@ -165,8 +165,6 @@ export component AppWindow inherits Window {
     in property <[CustomMenuItem]> menu-items;
     in-out property <bool> menu-visible;
     in property <length> menu-x: 0px;
-    in property <[string]> recents;
-    in property <bool> show-welcome;
 
     // ── Hover card ───────────────────────────────────────────────────────
     in property <bool> hover-visible: false;
@@ -206,6 +204,7 @@ export component AppWindow inherits Window {
     in-out property <string> settings-agent-provider: "openai";
     in-out property <string> settings-agent-token: "";
     in-out property <string> settings-agent-model: "";
+    in property <[PluginRow]> settings-plugin-rows;
 
     // ── App-wide font ────────────────────────────────────────────────────
     in-out property <string> app-font-name: "";
@@ -217,6 +216,7 @@ export component AppWindow inherits Window {
     callback set-option(string, string);
     callback reset-option(string);
     callback add-option(string, string);
+    callback plugin-toggled(string, bool);
     callback settings-search-changed();
     callback settings-select-category(int);
     callback key(string, bool, bool, bool, bool);
@@ -287,7 +287,6 @@ export component AppWindow inherits Window {
     callback agent-resized(length);
     callback menu-opened(string, length);
     callback command(string);
-    callback open-recent(string);
 
     MenuBar {
         Menu {
@@ -688,19 +687,10 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.show-welcome : Welcome {
-        x: 0;
-        y: 0;
-        width: 100%;
-        height: 100%;
-        recents: root.recents;
-        open-folder => { root.command("open-project-dialog"); }
-        open-recent(path) => { root.open-recent(path); }
-    }
-
     // ── Settings overlay ─────────────────────────────────────────────────
     if root.settings-visible : SettingsView {
         rows: root.settings-rows;
+        plugin-rows: root.settings-plugin-rows;
         settings-category <=> root.settings-category;
         settings-search <=> root.settings-search;
         settings-app-font-name <=> root.settings-app-font-name;
@@ -717,6 +707,7 @@ export component AppWindow inherits Window {
         set-option(name, v) => { root.set-option(name, v); }
         reset-option(name) => { root.reset-option(name); }
         add-option(name, v) => { root.add-option(name, v); }
+        plugin-toggled(n, c) => { root.plugin-toggled(n, c); }
         search-changed() => { root.settings-search-changed(); }
         select-category(c) => { root.settings-select-category(c); }
         apply-font-settings => { root.apply-font-settings(); }

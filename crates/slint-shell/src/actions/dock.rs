@@ -305,21 +305,6 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             refresh(&weak, &mut s);
         });
     }
-    {
-        let state = Rc::clone(&state);
-        let weak = app.as_weak();
-        app.on_open_recent(move |path| {
-            let mut s = state.borrow_mut();
-            let mut args = HashMap::new();
-            args.insert("path".to_string(), ArgValue::Path(path.to_string()));
-            match execute_command(&mut s.editor, "open-project", &args) {
-                Ok(()) => s.message.clear(),
-                Err(e) => s.message = e,
-            }
-            s.tree_epoch = u64::MAX;
-            refresh(&weak, &mut s);
-        });
-    }
 }
 
 /// Load `git log` for the focused project (or the focused file's directory).

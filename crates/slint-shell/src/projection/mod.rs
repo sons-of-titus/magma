@@ -17,7 +17,7 @@ pub use db::{
     db_sources, db_status, db_tree,
 };
 pub use debug_view::snapshot as debug_snapshot;
-pub use settings::settings_rows;
+pub use settings::{disabled_plugins, plugin_rows, settings_rows};
 
 use std::collections::HashSet;
 

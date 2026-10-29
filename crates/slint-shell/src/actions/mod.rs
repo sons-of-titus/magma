@@ -14,7 +14,11 @@ pub(crate) mod fonts;
 mod settings;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+
+use kernel::command::args::ArgValue;
+use kernel::command::execute_command;
 
 use crate::AppState;
 
@@ -25,4 +29,27 @@ pub(crate) fn install(app: &crate::AppWindow, state: Rc<RefCell<AppState>>) {
     debug::install(&app, Rc::clone(&state));
     agent::install(&app, Rc::clone(&state));
     settings::install(&app, Rc::clone(&state));
+}
+
+/// Folder-picker → `open-project`.  Shared by the editor's menu action and
+/// the launcher window's Open Folder button.  Callers refresh afterwards.
+pub(crate) fn open_project_dialog(s: &mut AppState) {
+    let Some(dir) = rfd::FileDialog::new().pick_folder() else {
+        return;
+    };
+    open_project_path(s, &dir.to_string_lossy());
+}
+
+/// `open-project` with a path, reporting failures on the status message.
+pub(crate) fn open_project_path(s: &mut AppState, path: &str) {
+    let mut args = HashMap::new();
+    args.insert(
+        "path".to_string(),
+        ArgValue::Path(path.to_string()),
+    );
+    match execute_command(&mut s.editor, "open-project", &args) {
+        Ok(()) => s.message.clear(),
+        Err(e) => s.message = e,
+    }
+    s.tree_epoch = u64::MAX;
 }

@@ -82,5 +82,6 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             state.settings_category,
             &state.settings_search,
         ))));
+        app.set_settings_plugin_rows(ModelRc::new(VecModel::from(projection::plugin_rows(ed))));
     }
 }

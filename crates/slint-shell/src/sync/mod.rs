@@ -180,6 +180,10 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     sync_theme(&app, state);
     app.set_app_font_name(state.app_font_name.as_str().into());
     app.set_app_font_size(state.app_font_size);
+    if let Some(w) = state.welcome.upgrade() {
+        w.set_app_font_name(state.app_font_name.as_str().into());
+        w.set_app_font_size(state.app_font_size);
+    }
     kernel::icons::sync_option(&mut state.editor);
     tree::sync_tree(&app, state);
 
@@ -318,36 +322,43 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         app.set_git_history(m);
     });
     app.set_status_mode(projection::status_mode(ed).as_str().into());
+    // Recents feed the launcher window; the editor window has no use for
+    // them since the welcome moved there.
+    let welcome = state.welcome.upgrade();
     state.m_recents.set(
         projection::recent_projects(ed)
             .into_iter()
             .map(Into::into)
             .collect::<Vec<slint::SharedString>>(),
-        |m| app.set_recents(m),
+        |m| {
+            if let Some(w) = &welcome {
+                w.set_recents(m.clone());
+            }
+        },
     );
+    // The launcher is its own small window: opening a project maps the
+    // editor window at full size and closes the launcher, so no window is
+    // ever resized and an open never flashes a partial-size app.  Show the
+    // incoming window before hiding the outgoing one — the event loop quits
+    // when the last window closes.
     let now_welcome = ed.project_manager.project.root.is_none();
-    if now_welcome != state.welcome_visible {
-        state.welcome_visible = now_welcome;
-        if now_welcome {
-            app.window()
-                .set_size(slint::WindowSize::Logical(slint::LogicalSize::new(
-                    640.0, 480.0,
-                )));
-        } else {
-            let (w, _) = logical_size(&app);
-            if w < 900.0 {
-                app.window()
-                    .set_size(slint::WindowSize::Logical(slint::LogicalSize::new(
-                        1280.0, 800.0,
-                    )));
+    if now_welcome != state.launcher_visible {
+        state.launcher_visible = now_welcome;
+        if let Some(w) = state.welcome.upgrade() {
+            if now_welcome {
+                let _ = w.show();
+                let _ = app.hide();
+            } else {
+                // The editor window is (re)mapping: re-arm the stabilization
+                // gate so the pane paints from its real size, never the
+                // stub one it reported while hidden.
+                state.window_ready = false;
+                state.last_logical_width = 0.0;
+                let _ = app.show();
+                let _ = w.hide();
             }
         }
-        // The window just changed size; re-arm the stabilization gate so the
-        // pane renders from the new layout, never from the one being replaced.
-        state.window_ready = false;
-        state.last_logical_width = 0.0;
     }
-    app.set_show_welcome(now_welcome);
 
     agent::sync(&app, state);
     tool_windows::sync_commit(&app, &mut state.editor, &state.message);
@@ -386,6 +397,9 @@ fn sync_theme(app: &AppWindow, state: &mut AppState) {
     }
     let palette = theme::palette(&name);
     theme::apply_slint(app, &palette, &state.editor.font_config.family);
+    if let Some(w) = state.welcome.upgrade() {
+        theme::apply_launcher(&w, &palette, &state.editor.font_config.family);
+    }
     theme::apply_editor(&mut state.editor, &palette);
     state.theme_name = name;
 }

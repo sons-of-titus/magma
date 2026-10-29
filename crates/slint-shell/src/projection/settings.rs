@@ -4,11 +4,11 @@ use kernel::state::Editor;
 use kernel::state::options::{OPTION_SPECS, OptionCategory, OptionKind};
 use slint::{ModelRc, SharedString, VecModel};
 
-use crate::SettingsRow;
+use crate::{PluginRow, SettingsRow};
 
-/// Registry-backed rows for one settings page.  `agent.provider` lives on
-/// the Agent page rather than Behavior; the Advanced page lists custom
-/// options (never secrets).
+/// Registry-backed rows for one settings page.  The Agent and Plugins pages
+/// select by name prefix rather than registry category; the Advanced page
+/// lists custom options (never secrets).
 pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRow> {
     let filter = filter.trim().to_lowercase();
     let want = |name: &str, desc: &str| {
@@ -61,17 +61,25 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
                     .map(from_spec),
             );
         }
+        // Plugins options live on the Plugins page, `agent.*` on the Agent
+        // page; `plugins-disabled` is backed by the per-plugin toggles and
+        // shown as a raw row nowhere.
         2 => {
+            rows.extend(OPTION_SPECS.iter().filter(|s| {
+                s.category == OptionCategory::Behavior
+                    && !s.name.starts_with("agent.")
+                    && !s.name.starts_with("plugins-")
+            }).map(from_spec));
+        }
+        3 => {
             rows.extend(
                 OPTION_SPECS
                     .iter()
-                    .filter(|s| {
-                        s.category == OptionCategory::Behavior && !s.name.starts_with("agent.")
-                    })
+                    .filter(|s| s.name.starts_with("plugins-") && s.name != "plugins-disabled")
                     .map(from_spec),
             );
         }
-        3 => {
+        4 => {
             rows.extend(
                 OPTION_SPECS
                     .iter()
@@ -101,4 +109,47 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
     }
     rows.retain(|r| want(r.name.as_str(), r.description.as_str()));
     rows
+}
+
+/// One row per registered plugin for the Plugins page.  `enabled` mirrors
+/// the `plugins-disabled` option — the toggle writes it, startup reads it.
+pub fn plugin_rows(ed: &Editor) -> Vec<PluginRow> {
+    let disabled = disabled_plugins(ed);
+    ed.plugin_registry
+        .list()
+        .iter()
+        .map(|p| PluginRow {
+            name: p.name.clone().into(),
+            version: p.version.clone().into(),
+            entry: p.entry_point.clone().into(),
+            loaded: p.loaded,
+            enabled: !disabled.iter().any(|n| n == &p.name),
+            capabilities: ed
+                .extension_registry
+                .get(&p.name)
+                .map(|m| {
+                    m.capabilities
+                        .iter()
+                        .map(|c| c.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default()
+                .into(),
+        })
+        .collect()
+}
+
+/// The comma-separated `plugins-disabled` option, parsed.
+pub fn disabled_plugins(ed: &Editor) -> Vec<String> {
+    ed.options
+        .get("plugins-disabled")
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
 }

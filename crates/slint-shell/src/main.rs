@@ -86,6 +86,9 @@ struct AppState {
     /// derive a viewport scroll that never unwinds.
     window_ready: bool,
     last_logical_width: f32,
+    /// The launcher window; visible exactly while no project is open.
+    welcome: slint::Weak<WelcomeWindow>,
+    launcher_visible: bool,
     theme_name: String,
     app_font_name: String,
     app_font_size: f32,
@@ -114,7 +117,6 @@ struct AppState {
     git_history: Vec<GitHistoryRow>,
     wheel_y: f32,
     wheel_x: f32,
-    welcome_visible: bool,
     /// Signature gates so idle refreshes skip re-blitting textures.
     minimap_sig: u64,
     terminal_sig: u64,
@@ -228,6 +230,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         debug_ref_slots: Vec::new(),
         window_ready: false,
         last_logical_width: 0.0,
+        welcome: slint::Weak::default(),
+        launcher_visible: false,
         theme_name: String::new(),
         app_font_name: String::new(),
         app_font_size: 12.0,
@@ -253,7 +257,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         git_history: Vec::new(),
         wheel_y: 0.0,
         wheel_x: 0.0,
-        welcome_visible: false,
         minimap_sig: 0,
         terminal_sig: 0,
         icon_images: HashMap::new(),
@@ -273,12 +276,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     let app = AppWindow::new()?;
+    let welcome = WelcomeWindow::new()?;
     logging::info!(
         "milestone: window created at {:?}",
         boot_clock().elapsed()
     );
 
+    {
+        let mut s = state.borrow_mut();
+        s.welcome = welcome.as_weak();
+    }
+
     actions::install(&app, Rc::clone(&state));
+
+    // The launcher routes into the same actions as the editor menus, then
+    // refreshes the editor projection so the new project's first frame is
+    // already projected when its window maps.
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        welcome.on_open_folder(move || {
+            let mut s = state.borrow_mut();
+            actions::open_project_dialog(&mut s);
+            s.editor.frame_dirty = true;
+            sync::refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        welcome.on_open_recent(move |path| {
+            let mut s = state.borrow_mut();
+            actions::open_project_path(&mut s, &path);
+            s.editor.frame_dirty = true;
+            sync::refresh(&weak, &mut s);
+        });
+    }
 
     // Persisted font choices go on before the first refresh so the first
     // frame already renders with them.
@@ -302,6 +335,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             logging::warn!("Could not reopen last project: {e}");
         }
+    }
+
+    // One of the two windows is always up: the launcher while no project is
+    // open, the editor otherwise.  Opening a project maps the editor window
+    // at full size and closes the launcher — no window is ever resized, so
+    // an open never flashes a partial-size app.
+    let launcher = {
+        let mut s = state.borrow_mut();
+        s.launcher_visible = s.editor.project_manager.project.root.is_none();
+        s.launcher_visible
+    };
+    if launcher {
+        let _ = welcome.show();
+    } else {
+        let _ = app.show();
     }
 
     sync::refresh(&app.as_weak(), &mut state.borrow_mut());
@@ -362,7 +410,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
-    app.run()?;
+    slint::run_event_loop()?;
     drop(timer);
     {
         let mut s = state.borrow_mut();

@@ -8,7 +8,7 @@ use kernel::render::surface::Style;
 use kernel::state::Editor;
 use slint::ComponentHandle;
 
-use crate::{AppWindow, Theme};
+use crate::{AppWindow, Theme, WelcomeWindow};
 
 pub type Rgb = (u8, u8, u8);
 
@@ -82,8 +82,10 @@ pub fn palette(name: &str) -> Palette {
     crate::palettes::palette(name)
 }
 
-pub fn apply_slint(app: &AppWindow, p: &Palette, mono_family: &str) {
-    let g = app.global::<Theme>();
+/// Push a palette into one window's `Theme` global instance.  Each
+/// top-level component carries its own instance of the global; the editor
+/// window and the launcher must stay in lockstep.
+fn apply_palette(g: Theme, p: &Palette, mono_family: &str) {
     g.set_chrome(color(p.chrome));
     g.set_surface_panel(color(p.surface_panel));
     g.set_surface(color(p.surface));
@@ -104,6 +106,14 @@ pub fn apply_slint(app: &AppWindow, p: &Palette, mono_family: &str) {
     g.set_tab_hover(color(p.tab_hover));
     g.set_selection(color(p.selection));
     g.set_font_mono(mono_family.into());
+}
+
+pub fn apply_slint(app: &AppWindow, p: &Palette, mono_family: &str) {
+    apply_palette(app.global::<Theme>(), p, mono_family);
+}
+
+pub fn apply_launcher(w: &WelcomeWindow, p: &Palette, mono_family: &str) {
+    apply_palette(w.global::<Theme>(), p, mono_family);
 }
 
 /// Push the palette into the surface pipeline so the editor pane follows the

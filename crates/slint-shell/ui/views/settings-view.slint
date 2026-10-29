@@ -15,6 +15,17 @@ export struct SettingsRow {
     modified: bool,
 }
 
+// One installed plugin on the Plugins page: identity, load state, and the
+// enabled toggle (backed by the plugins-disabled option).
+export struct PluginRow {
+    name: string,
+    version: string,
+    entry: string,
+    loaded: bool,
+    enabled: bool,
+    capabilities: string,
+}
+
 component OptionRow inherits Rectangle {
     in property <SettingsRow> spec;
     callback set(string, string);
@@ -116,6 +127,7 @@ component CategoryRow inherits Rectangle {
 
 export component SettingsView inherits Rectangle {
     in property <[SettingsRow]> rows;
+    in property <[PluginRow]> plugin-rows;
     in property <[string]> available-fonts;
     in property <[string]> agent-models;
     in property <bool> agent-configured: false;
@@ -133,6 +145,7 @@ export component SettingsView inherits Rectangle {
     callback set-option(string, string);
     callback reset-option(string);
     callback add-option(string, string);
+    callback plugin-toggled(string, bool);
     callback search-changed();
     callback select-category(int);
     callback apply-font-settings();
@@ -201,7 +214,7 @@ export component SettingsView inherits Rectangle {
                 vertical-alignment: center;
             }
             Text {
-                text: ["Appearance", "Editing", "Behavior", "Agent", "Advanced"][root.settings-category];
+                text: ["Appearance", "Editing", "Behavior", "Plugins", "Agent", "Advanced"][root.settings-category];
                 color: Theme.text-muted;
                 font-size: Theme.font-ui;
                 vertical-alignment: center;
@@ -245,8 +258,9 @@ export component SettingsView inherits Rectangle {
                     CategoryRow { label: "Appearance"; selected: root.settings-category == 0; picked => { root.select-category(0); } }
                     CategoryRow { label: "Editing"; selected: root.settings-category == 1; picked => { root.select-category(1); } }
                     CategoryRow { label: "Behavior"; selected: root.settings-category == 2; picked => { root.select-category(2); } }
-                    CategoryRow { label: "Agent"; selected: root.settings-category == 3; picked => { root.select-category(3); } }
-                    CategoryRow { label: "Advanced"; selected: root.settings-category == 4; picked => { root.select-category(4); } }
+                    CategoryRow { label: "Plugins"; selected: root.settings-category == 3; picked => { root.select-category(3); } }
+                    CategoryRow { label: "Agent"; selected: root.settings-category == 4; picked => { root.select-category(4); } }
+                    CategoryRow { label: "Advanced"; selected: root.settings-category == 5; picked => { root.select-category(5); } }
                 }
 
                 Rectangle { vertical-stretch: 1; }
@@ -383,8 +397,73 @@ export component SettingsView inherits Rectangle {
                         }
                     }
 
-                    // ── Agent ────────────────────────────────────────
+                    // ── Plugins ──────────────────────────────────────
                     if root.settings-category == 3 : VerticalLayout {
+                        spacing: 10px;
+                        for row in root.rows : OptionRow {
+                            spec: row;
+                            set(n, v) => { root.set-option(n, v); }
+                            reset(n) => { root.reset-option(n); }
+                        }
+
+                        SectionLabel { text: "INSTALLED PLUGINS"; }
+                        if root.plugin-rows.length == 0 : Text {
+                            text: "No plugins installed — drop plugin directories into the plugins root.";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                        }
+                        for p in root.plugin-rows : Rectangle {
+                            height: 44px;
+                            border-radius: Theme.radius;
+                            HorizontalLayout {
+                                padding: 4px;
+                                spacing: 12px;
+                                alignment: start;
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 2px;
+                                    alignment: start;
+
+                                    Text {
+                                        text: p.name;
+                                        color: Theme.text-primary;
+                                        font-size: Theme.font-ui;
+                                    }
+                                    Text {
+                                        text: "v" + p.version + "  ·  " + p.entry
+                                              + (p.capabilities != "" ? "  ·  " + p.capabilities : "");
+                                        color: Theme.text-muted;
+                                        font-size: Theme.font-small;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                // Green = loaded this session.
+                                Rectangle {
+                                    y: (parent.height - self.height) / 2;
+                                    width: 8px;
+                                    height: 8px;
+                                    border-radius: 4px;
+                                    background: p.loaded ? Theme.success : Theme.border;
+                                }
+                                enable := Check {
+                                    y: (parent.height - self.height) / 2;
+                                    checked: p.enabled;
+                                    toggled => { root.plugin-toggled(p.name, enable.checked); }
+                                }
+                            }
+                        }
+                        Text {
+                            text: "Green dot = loaded now. Unchecked plugins stay off until the next startup.";
+                            color: Theme.text-faint;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    // ── Agent ────────────────────────────────────────
+                    if root.settings-category == 4 : VerticalLayout {
                         spacing: 10px;
                         for row in root.rows : OptionRow {
                             spec: row;
@@ -442,7 +521,7 @@ export component SettingsView inherits Rectangle {
                     }
 
                     // ── Advanced ─────────────────────────────────────
-                    if root.settings-category == 4 : VerticalLayout {
+                    if root.settings-category == 5 : VerticalLayout {
                         spacing: 10px;
                         Text {
                             text: root.rows.length == 0

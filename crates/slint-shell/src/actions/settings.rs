@@ -15,10 +15,15 @@ use super::fonts::{FontChanges, apply_fonts, collect_available_fonts};
 use crate::{AppState, AppWindow, sync::refresh};
 
 // Settings information architecture.  Categories beyond the option
-// registry's own are the Agent page (provider, key, model) and Advanced
-// (raw custom options).
+// registry's own are the Plugins page (registry options + per-plugin
+// toggles), the Agent page (provider, key, model), and Advanced (raw
+// custom options).
 pub(super) const CATEGORY_APPEARANCE: i32 = 0;
-pub(super) const CATEGORY_AGENT: i32 = 3;
+pub(super) const CATEGORY_AGENT: i32 = 4;
+
+/// The highest valid settings category — keep in sync with the view's
+/// sidebar and page branches.
+pub(super) const CATEGORY_LAST: i32 = 5;
 
 pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
@@ -147,6 +152,29 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_plugin_toggled(move |name, enabled| {
+            let mut s = state.borrow_mut();
+            let mut disabled = crate::projection::disabled_plugins(&s.editor);
+            if enabled {
+                disabled.retain(|n| n != name.as_str());
+            } else if !disabled.iter().any(|n| n == name.as_str()) {
+                disabled.push(name.to_string());
+            }
+            if disabled.is_empty() {
+                s.editor.options.remove("plugins-disabled");
+            } else {
+                s.editor
+                    .options
+                    .insert("plugins-disabled".into(), disabled.join(","));
+            }
+            persist::save_settings(&s.editor);
+            s.settings_rows_dirty = true;
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_settings_search_changed(move || {
             let mut s = state.borrow_mut();
             if let Some(a) = weak.upgrade() {
@@ -160,7 +188,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
         app.on_settings_select_category(move |category| {
-            let category = category.max(0).min(4);
+            let category = category.max(0).min(CATEGORY_LAST);
             // The page branches on the view's property, and refresh reads the
             // category back from it — state alone would be clobbered before
             // the rows were ever projected.
@@ -221,7 +249,7 @@ pub(super) fn command(weak: &slint::Weak<AppWindow>, s: &mut AppState, command: 
     match command {
         "dialog:settings" => {
             let category = match s.settings_category {
-                0..=4 => s.settings_category,
+                0..=5 => s.settings_category,
                 _ => CATEGORY_APPEARANCE,
             };
             open(weak, s, category);

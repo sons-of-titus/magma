@@ -1,0 +1,29 @@
+import { Theme } from "theme.slint";
+import { Welcome } from "components/welcome.slint";
+
+// The launcher is its own small window, JetBrains-style: opening a project
+// maps the editor window at full size and closes this one, so no window is
+// ever resized and an open never flashes a partial-size app.
+export component WelcomeWindow inherits Window {
+    title: "Magma";
+    preferred-width: 640px;
+    preferred-height: 480px;
+    min-width: 480px;
+    min-height: 360px;
+    background: Theme.surface;
+    default-font-family: root.app-font-name;
+    default-font-size: root.app-font-size;
+
+    in property <[string]> recents;
+    in property <string> app-font-name: "";
+    in property <length> app-font-size: 12px;
+
+    callback open-folder();
+    callback open-recent(string);
+
+    Welcome {
+        recents: root.recents;
+        open-folder => { root.open-folder(); }
+        open-recent(path) => { root.open-recent(path); }
+    }
+}

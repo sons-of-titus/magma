@@ -20,6 +20,7 @@ import { BottomBar, BottomDock, FindRow, GitHistoryRow, ProblemRow } from "compo
 import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.slint";
 import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint";
 import { DialogView } from "views/dialog-view.slint";
+import { QuitView } from "views/quit-view.slint";
 import { HoverCard, CompletionPopup, QuickfixMenu } from "views/overlays.slint";
 import { ComboBox, SpinBox } from "std-widgets.slint";
 export component AppWindow inherits Window {
@@ -190,6 +191,11 @@ export component AppWindow inherits Window {
     in-out property <bool> dialog-visible: false;
     in property <string> dialog-title: "";
     in-out property <string> dialog-input: "";
+
+    // ── Quit confirmation ────────────────────────────────────────────────
+    in property <bool> quit-confirm-visible: false;
+    in property <string> quit-confirm-message: "";
+    in property <string> quit-confirm-files: "";
 
     // ── Settings ─────────────────────────────────────────────────────────
     in-out property <bool> settings-visible: false;
@@ -798,6 +804,13 @@ export component AppWindow inherits Window {
         dialog-input <=> root.dialog-input;
         command(cmd) => { root.command(cmd); }
         close => { root.dialog-visible = false; }
+    }
+
+    // ── Quit confirmation overlay ────────────────────────────────────────
+    if root.quit-confirm-visible : QuitView {
+        message: root.quit-confirm-message;
+        files: root.quit-confirm-files;
+        command(cmd) => { root.command(cmd); }
     }
 
     // ── Hover card / completion popup / quickfix menu ────────────────────

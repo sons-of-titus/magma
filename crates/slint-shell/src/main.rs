@@ -9,6 +9,7 @@ mod actions;
 mod catppuccin;
 mod dracula;
 mod input;
+mod lifecycle;
 mod new_palettes;
 mod noctis;
 mod palettes;
@@ -108,6 +109,12 @@ struct AppState {
     dialog_visible: bool,
     dialog_title: String,
     dialog_input: String,
+    /// The unsaved-changes dialog raised over a refused quit.
+    quit_confirm_visible: bool,
+    /// Save was chosen in that dialog; quit once the dirty set drains
+    /// (async writes keep buffers dirty until the write-confirmed events
+    /// land).
+    quit_when_clean: bool,
     settings_visible: bool,
     settings_category: i32,
     settings_search: String,
@@ -249,6 +256,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dialog_visible: false,
         dialog_title: String::new(),
         dialog_input: String::new(),
+        quit_confirm_visible: false,
+        quit_when_clean: false,
         settings_visible: false,
         settings_category: 0,
         settings_search: String::new(),
@@ -288,6 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     actions::install(&app, Rc::clone(&state));
+    lifecycle::install(&app, Rc::clone(&state));
 
     // The launcher routes into the same actions as the editor menus, then
     // refreshes the editor projection so the new project's first frame is
@@ -373,6 +383,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     workspace::close_editor_session(&mut s.editor);
                     let _ = slint::quit_event_loop();
                     return;
+                }
+                // A refused `quit` (dirty buffers) raises the confirmation
+                // dialog instead of dying on the status-bar error alone.
+                if s.editor.quit_refused {
+                    s.editor.quit_refused = false;
+                    if !s.editor.dirty_buffer_names().is_empty() {
+                        lifecycle::show_confirm(&weak, s);
+                        return;
+                    }
+                }
+                // "Save All" in the dialog: quit once the async writes land.
+                if s.quit_when_clean && s.editor.dirty_buffer_names().is_empty() {
+                    s.quit_when_clean = false;
+                    s.quit_confirm_visible = false;
+                    let _ = kernel::command::execute_command(
+                        &mut s.editor,
+                        "quit",
+                        &HashMap::new(),
+                    );
                 }
                 s.workspace.maintain(&mut s.editor);
                 let mut changed = false;

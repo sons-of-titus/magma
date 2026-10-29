@@ -70,6 +70,19 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     app.set_agent_models(ModelRc::new(VecModel::from(models))); // ── Dialog sync ────────────────────────────────────────────────────────
     app.set_dialog_visible(state.dialog_visible);
     app.set_dialog_title(state.dialog_title.as_str().into());
+    // The unsaved-changes dialog projects the live dirty set: buffers that
+    // finish saving while it is open drop off the list.
+    app.set_quit_confirm_visible(state.quit_confirm_visible);
+    if state.quit_confirm_visible {
+        let dirty = ed.dirty_buffer_names();
+        let n = dirty.len();
+        app.set_quit_confirm_message(if n == 1 {
+            "Save changes to this file before quitting?".into()
+        } else {
+            format!("Save changes to these {n} files before quitting?").into()
+        });
+        app.set_quit_confirm_files(dirty.join("\n").into());
+    }
     // settings state is in-out: read user changes back
     state.settings_visible = app.get_settings_visible();
     state.settings_category = app.get_settings_category();

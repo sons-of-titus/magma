@@ -22,6 +22,16 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 return;
             };
             let mut s = state.borrow_mut();
+            // The unsaved-changes dialog is modal: Return saves, Escape
+            // cancels, and everything else stays out of the buffer.
+            if s.quit_confirm_visible {
+                match key.as_str() {
+                    "return" => crate::lifecycle::confirm_command(&weak, &mut s, "quit:save"),
+                    "esc" => crate::lifecycle::confirm_command(&weak, &mut s, "quit:cancel"),
+                    _ => {}
+                }
+                return;
+            }
             kernel::input::dispatch_key(&mut s.editor, &key);
             s.editor.dispatch_events_scoped();
             s.editor.frame_dirty = true;
@@ -153,6 +163,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                         Err(e) => s.message = e,
                     }
                 }
+                c if c.starts_with("quit:") => {
+                    crate::lifecycle::confirm_command(&weak, &mut s, c);
+                }
                 c if c.starts_with("settings:") || c.starts_with("dialog:") => {
                     settings::command(&weak, &mut s, &command);
                 }
@@ -258,9 +271,12 @@ mod mouse {
         {
             let state = Rc::clone(&state);
             let weak = app.as_weak();
-            app.on_ime_committed(move |text| {
-                let mut s = state.borrow_mut();
-                kernel::input::dispatch_key(&mut s.editor, &text);
+        app.on_ime_committed(move |text| {
+            let mut s = state.borrow_mut();
+            if s.quit_confirm_visible {
+                return;
+            }
+            kernel::input::dispatch_key(&mut s.editor, &text);
                 s.editor.dispatch_events_scoped();
                 s.editor.frame_dirty = true;
                 refresh(&weak, &mut s);

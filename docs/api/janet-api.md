@@ -1127,6 +1127,29 @@ Return the current find-in-files result list.
 
 ---
 
+## syntax/ — Fallback Syntax Rules
+
+The non-tree-sitter fallback highlighter's rule registry.  Keyword tables and
+extension maps stay in Janet (`syntax_langs.janet`, `syntax_lang_ext.janet`);
+the kernel owns scanning and the incremental range cache.  Ownership of the
+`syntax` highlight layer: a major mode with a registered tree-sitter
+highlight query owns it; every other buffer with configured rules is owned
+by the fallback.
+
+### `(syntax/define-rules lang keywords comment-marker)` → `:ok`
+
+Replace the fallback rules for a language: `keywords` is an array or tuple of exact word matches, `comment-marker` a line-comment prefix or nil.  Signals an error for an empty language name, a non-sequence `keywords`, a non-string keyword, or an empty marker.  Re-registration replaces the previous rules and invalidates cached ranges for that language.
+
+### `(syntax/map-extension extension lang)` → `:ok`
+
+Map a path extension (dot omitted) to a fallback language.  Re-mapping an extension replaces its language; mapping to a language without rules never highlights.
+
+### `(syntax/set-ts-mode mode enabled)` → nil
+
+Hand a major mode's syntax layer to the tree-sitter lane (or take it back).  A flip clears the layer on that mode's buffers so the active owner starts clean.
+
+---
+
 ## task/ — Background Tasks
 
 ### `(task/spawn janet-fn)` → task-id

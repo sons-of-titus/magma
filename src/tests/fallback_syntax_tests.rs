@@ -11,11 +11,17 @@ fn setup_rust_buffer(ed: &mut crate::kernel::state::Editor, text: &str) -> usize
         Some("//".to_string()),
     );
     ed.fallback_syntax.map_extension("rs", "rust");
-    let key = ed.create_buffer_from_str("t.rs", text);
+    let key = ed.create_buffer("t.rs");
     if let Some(win) = ed.view_tree.focused_window_mut() {
         win.buffer_id = Some(key);
     }
     ed.buffers.get(key).unwrap().lock().unwrap().path = Some("/t/main.rs".to_string());
+    if !text.is_empty() {
+        let view = ed.views.get_mut(&key).unwrap();
+        view.insert(0, text);
+    let _ = view;
+        ed.publish_buffer_changes();
+    }
     key
 }
 
@@ -32,10 +38,10 @@ fn layer(ed: &crate::kernel::state::Editor, key: usize) -> Vec<(usize, usize, St
 #[test]
 fn first_change_full_scans_and_colors_the_buffer() {
     let mut ed = helpers::make_editor();
-    let key = setup_rust_buffer(&mut ed, "fn main() { let x = 1; }\n");
+    let key = setup_rust_buffer(&mut ed, "");
     let view = ed.views.get_mut(&key).unwrap();
-    view.insert(0, "");
-    drop(view);
+    view.insert(0, "fn main() { let x = 1; }\n");
+    let _ = view;
     ed.publish_buffer_changes();
     let ranges = layer(&ed, key);
     assert!(
@@ -53,7 +59,7 @@ fn ts_owned_mode_stands_down_and_takes_over_deterministically() {
     fallback_syntax::set_ts_mode(&mut ed, "fundamental", true);
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(view.cursor_offset(), "// x\n");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
     assert!(
         layer(&ed, key).is_empty(),
@@ -64,7 +70,7 @@ fn ts_owned_mode_stands_down_and_takes_over_deterministically() {
     fallback_syntax::set_ts_mode(&mut ed, "fundamental", false);
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(view.cursor_offset(), "fn two() {}\n");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
     assert!(!layer(&ed, key).is_empty(), "fallback owns again after the flip");
 }
@@ -95,11 +101,11 @@ fn incremental_splice_matches_full_rescan() {
     // Two edits through the canonical publication path.
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(view.cursor_offset(), "x");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(4, "let z = 9;\n");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
     let after_dirty = layer(&ed, key);
 
@@ -129,7 +135,7 @@ fn rule_changes_invalidate_cached_ranges() {
 
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(view.cursor_offset(), "beta()\n");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
     assert!(
         layer(&ed, key).iter().any(|(_, _, f)| f == "keyword-face"),
@@ -147,7 +153,7 @@ fn whole_buffer_replacement_stays_correct() {
     let view = ed.views.get_mut(&key).unwrap();
     view.delete(0, len);
     view.insert(0, "let replaced = true;\n");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
 
     let expected = {
@@ -192,26 +198,10 @@ fn language_change_rescans_under_new_rules() {
     ed.buffers.get(key).unwrap().lock().unwrap().path = Some("/t/other.txt".to_string());
     let view = ed.views.get_mut(&key).unwrap();
     view.insert(view.cursor_offset(), "fn more()\n");
-    drop(view);
+    let _ = view;
     ed.publish_buffer_changes();
     assert!(
         layer(&ed, key).is_empty(),
         "an unmapped language must not keep stale rust ranges"
     );
 }
-    #[test]
-    fn probe_whole_buffer_replacement() {
-        let mut ed = helpers::make_editor();
-        let key = setup_rust_buffer(&mut ed, "fn one() {}\nfn two() {}\n");
-        fallback_syntax::force_highlight(&mut ed, key);
-        eprintln!("after init: {:?}", layer(&ed, key));
-        let len = ed.buffers.get(key).unwrap().lock().unwrap().len();
-        let view = ed.views.get_mut(&key).unwrap();
-        view.delete(0, len);
-        view.insert(0, "let replaced = true;\n");
-        drop(view);
-        eprintln!("pending: {:?}", ed.buffers.get(key).unwrap().lock().unwrap().has_pending_changes());
-        ed.publish_buffer_changes();
-        eprintln!("after both: {:?}", layer(&ed, key));
-        eprintln!("text: {:?}", helpers::buf_text(&ed));
-    }

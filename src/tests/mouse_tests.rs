@@ -170,6 +170,7 @@ fn click_at(ed: &mut Editor, _buf_id: usize, pane: &crate::kernel::render::view_
         drag_active: false,
         last_click: None,
         click_count: 0,
+        press_offset: None,
     };
 }
 

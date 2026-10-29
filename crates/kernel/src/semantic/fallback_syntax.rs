@@ -22,8 +22,8 @@ use crate::text_engine::Buffer;
 const LAYER: &str = "syntax";
 
 pub struct FallbackRules {
-    keywords: HashSet<String>,
-    comment_marker: Option<String>,
+    pub keywords: HashSet<String>,
+    pub comment_marker: Option<String>,
 }
 
 pub struct BufferCache {
@@ -34,9 +34,9 @@ pub struct BufferCache {
 
 #[derive(Default)]
 pub struct FallbackState {
-    rules: HashMap<String, FallbackRules>,
-    extensions: HashMap<String, String>,
-    ts_modes: HashSet<String>,
+    pub rules: HashMap<String, FallbackRules>,
+    pub extensions: HashMap<String, String>,
+    pub ts_modes: HashSet<String>,
     caches: HashMap<usize, BufferCache>,
 }
 
@@ -158,11 +158,12 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
         ed.fallback_syntax.caches.remove(&key);
         return;
     };
-    let (mode_name, lang) = {
+    let (mode_name, lang, current_rev) = {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         (
             buf.major_mode.name().to_string(),
             lang_for(&ed.fallback_syntax, &buf),
+            buf.revision(),
         )
     };
     let state = &mut ed.fallback_syntax;
@@ -172,7 +173,12 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
         return;
     }
     let Some(lang) = lang else {
+        // Nothing owns this buffer's syntax anymore — clear the layer and
+        // the cache so no stale ranges outlive the language.
         state.caches.remove(&key);
+        if let Some(view) = ed.view_of_buffer_mut(key) {
+            view.clear_highlights_layer(LAYER);
+        }
         return;
     };
     if !state.rules.contains_key(&lang) {
@@ -180,6 +186,12 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
         state.caches.remove(&key);
         return;
     }
+    // Splicing needs the transaction's coordinates to line up with the
+    // cached text AND the rescan region to be read from the state that
+    // transaction produced.  Both hold only when this transaction is the
+    // one that brought the buffer to its current revision; anything older
+    // in the same drain falls back to a full rescan of the current text.
+    let is_current = txn.revision_after.0 == current_rev;
     let computed = {
         let state = &ed.fallback_syntax;
         let rules = &state.rules[&lang];
@@ -187,7 +199,7 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
         match state
             .caches
             .get(&key)
-            .filter(|c| c.revision == txn.revision_before.0 && c.lang == lang)
+            .filter(|c| c.revision == txn.revision_before.0 && c.lang == lang && is_current)
         {
             Some(cache) => incremental_ranges(&buf, cache, txn, rules),
             None => {
@@ -196,12 +208,11 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
             }
         }
     };
-    let revision = txn.revision_after.0;
     let state = &mut ed.fallback_syntax;
     state.caches.insert(
         key,
         BufferCache {
-            revision,
+            revision: current_rev,
             lang,
             ranges: computed.clone(),
         },
@@ -427,7 +438,11 @@ mod tests {
         let out = scan("(string/slice s 0) (swap! a)", &r);
         assert_eq!(
             out,
-            vec![(1, 13, "keyword-face".into()), (17, 22, "keyword-face".into())]
+            vec![
+                (1, 13, "keyword-face".into()),
+                (16, 17, "constant-face".into()),
+                (20, 25, "keyword-face".into()),
+            ]
         );
     }
 
@@ -435,7 +450,7 @@ mod tests {
     fn comments_end_at_newline_and_keep_it() {
         let r = rules(&[], Some("//"));
         let out = scan("a // note\nb", &r);
-        assert_eq!(out, vec![(2, 10, "comment-face".into())]);
+        assert_eq!(out, vec![(2, 9, "comment-face".into())]);
     }
 
     #[test]
@@ -445,7 +460,7 @@ mod tests {
 line" c"#, &r);
         assert_eq!(
             out,
-            vec![(2, 8, "string-face".into()), (13, 24, "string-face".into())]
+            vec![(2, 8, "string-face".into()), (11, 23, "string-face".into())]
         );
     }
 

@@ -461,3 +461,116 @@ fn dirty_range_splice_equals_full_rescan() {
         );
     });
 }
+
+// ── Native fallback rule registry (syntax/define-rules) ────────────────
+
+fn syntax_layer(ed: &kernel::state::Editor, key: usize) -> Vec<(usize, usize, String)> {
+    ed.views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("syntax")
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[test]
+fn define_rules_registers_and_replaces_deterministically() {
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        let r = scripting::eval_result(r##"(syntax/define-rules "zlang" ["kw1" "kw2"] "#")"##)
+            .unwrap();
+        assert_eq!(r, ":ok");
+        scripting::eval(r#"(syntax/map-extension "zzlang" "zlang")"#);
+        {
+            let arc = ed.buffers.get(key).unwrap();
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/t/a.zzlang".to_string());
+            buf.insert(0, "kw1 plain kw2\n");
+        }
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
+        assert_eq!(
+            syntax_layer(&ed, key).len(),
+            2,
+            "both keywords must highlight: {:?}",
+            syntax_layer(&ed, key)
+        );
+
+        // Re-registration replaces the rule set; the next scan follows it.
+        scripting::eval(r##"(syntax/define-rules "zlang" ["kw1"] "#")"##);
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
+        assert_eq!(syntax_layer(&ed, key).len(), 1);
+    });
+}
+
+#[test]
+fn define_rules_rejects_malformed_rules() {
+    janet_test!(ed, {
+        let cases = [
+            r#"(syntax/define-rules "xlang" "notaseq" nil)"#,
+            r#"(syntax/define-rules "xlang" ["ok" 5] nil)"#,
+            r#"(syntax/define-rules "xlang" [] "")"#,
+            r#"(syntax/define-rules "" [] nil)"#,
+        ];
+        for form in cases {
+            let caught = scripting::eval_result(&format!(
+                r#"(= (try {form} ([e] "caught")) "caught")"#
+            ))
+            .unwrap();
+            assert_eq!(caught, "true", "{form} must be a catchable validation error");
+        }
+        assert!(
+            !ed.fallback_syntax.rules.contains_key("xlang"),
+            "rejected rules must not register"
+        );
+    });
+}
+
+#[test]
+fn ts_ownership_flips_through_janet_configuration() {
+    // ts/set-mode-query hands the mode's layer to the tree-sitter lane via
+    // syntax/set-ts-mode; the fallback stands down by state, so event
+    // registration order cannot change the outcome.
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        scripting::eval(r#"(syntax/define-rules "olang" ["owkw"] nil)"#);
+        scripting::eval(r#"(syntax/map-extension "olangext" "olang")"#);
+        {
+            let arc = ed.buffers.get(key).unwrap();
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/t/a.olangext".to_string());
+            buf.insert(0, "owkw x\n");
+        }
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
+        assert_eq!(syntax_layer(&ed, key).len(), 1);
+
+        scripting::eval(r#"(ts/set-mode-query "fundamental" "(keyword)")"#);
+        assert!(
+            syntax_layer(&ed, key).is_empty(),
+            "the ownership flip must clear fallback ranges at once"
+        );
+
+        // Edits while tree-sitter owns the layer stay untouched.
+        {
+            let view = ed.views.get_mut(&key).unwrap();
+            view.insert(0, "owkw more\n");
+        }
+        ed.publish_buffer_changes();
+        assert!(
+            syntax_layer(&ed, key).is_empty(),
+            "fallback must not write while a ts query owns the mode"
+        );
+
+        // Handing the layer back restores fallback highlighting.
+        scripting::eval(r#"(syntax/set-ts-mode "fundamental" false)"#);
+        {
+            let view = ed.views.get_mut(&key).unwrap();
+            view.insert(0, "owkw again\n");
+        }
+        ed.publish_buffer_changes();
+        assert!(
+            !syntax_layer(&ed, key).is_empty(),
+            "fallback owns again after the flip back"
+        );
+    });
+}

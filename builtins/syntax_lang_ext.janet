@@ -115,8 +115,6 @@
 
 # --- Extension-to-language map -----------------------------------------
 
-# Populate the table defined in syntax_core.janet — use put, never def,
-# so the forward declaration binding in syntax_core's module is mutated.
 (syntax/map-extension "janet" "janet")
 (syntax/map-extension "jdn" "janet")
 (syntax/map-extension "rs" "rust")

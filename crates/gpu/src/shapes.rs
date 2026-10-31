@@ -49,8 +49,8 @@ fn marker_alpha(ch: char, px: u32, py: u32, cell_w: u32, cell_h: u32) -> u8 {
         '●' => disc_alpha(px, py, cell_w, cell_h, true),
         '○' => disc_alpha(px, py, cell_w, cell_h, false),
         '▎' => bar_alpha(px, py, cell_w, cell_h),
-        '▸' => triangle_alpha(px, py, cell_w, cell_h, false),
-        '▾' => triangle_alpha(px, py, cell_w, cell_h, true),
+        '▸' => chevron_alpha(px, py, cell_w, cell_h, false),
+        '▾' => chevron_alpha(px, py, cell_w, cell_h, true),
         _ => 0,
     }
 }
@@ -100,48 +100,50 @@ pub fn bar_alpha(px: u32, py: u32, cell_w: u32, cell_h: u32) -> u8 {
     antialias(dx.max(dy))
 }
 
-/// Fold arrows (`▸`/`▾`), spanning the middle 60% of the cell.  Faces ship
-/// only the small codepoint variants, which read as pinpricks at body size.
-pub fn triangle_alpha(px: u32, py: u32, cell_w: u32, cell_h: u32, down: bool) -> u8 {
+/// Fold chevrons (`▾` open, `▸` folded): a thin V stroke, not a filled
+/// wedge — the font's own small codepoint variants read as pinpricks at
+/// body size, and a solid triangle shouts.  About half the cell, centred.
+pub fn chevron_alpha(px: u32, py: u32, cell_w: u32, cell_h: u32, down: bool) -> u8 {
     let cw = cell_w.max(1) as f32;
     let ch = cell_h.max(1) as f32;
-    let x = px as f32 + 0.5;
-    let y = py as f32 + 0.5;
-    // Wound so the interior is on the positive side of every edge cross.
-    let v = if down {
+    let cx = cw / 2.0;
+    let cy = ch / 2.0;
+    let (half_w, half_h) = (cw * 0.28, ch * 0.21);
+    // A polyline in path order: the two strokes meet at the vertex, and
+    // only the union of the segments carries ink.
+    let pts: [(f32, f32); 3] = if down {
         [
-            (cw * 0.12, ch * 0.20),
-            (cw * 0.88, ch * 0.20),
-            (cw * 0.50, ch * 0.80),
+            (cx - half_w, cy - half_h),
+            (cx, cy + half_h),
+            (cx + half_w, cy - half_h),
         ]
     } else {
         [
-            (cw * 0.20, ch * 0.50),
-            (cw * 0.80, ch * 0.20),
-            (cw * 0.80, ch * 0.80),
+            (cx - half_h, cy - half_w),
+            (cx + half_h, cy),
+            (cx - half_h, cy + half_w),
         ]
     };
-    let mut inside = true;
-    let mut d_in = f32::NEG_INFINITY;
-    let mut d_out = f32::INFINITY;
-    for i in 0..3 {
-        let (x0, y0) = v[i];
-        let (x1, y1) = v[(i + 1) % 3];
+    let half_stroke = (cw.min(ch) as f32 * 0.055).max(0.7);
+    let x = px as f32 + 0.5;
+    let y = py as f32 + 0.5;
+    let mut dist = f32::INFINITY;
+    for i in 0..2 {
+        let (x0, y0) = pts[i];
+        let (x1, y1) = pts[i + 1];
         let ex = x1 - x0;
         let ey = y1 - y0;
-        let len = (ex * ex + ey * ey).sqrt().max(1.0);
-        let edge = (ex * (y - y0) - ey * (x - x0)) / len;
-        inside &= edge >= 0.0;
-        d_in = d_in.max(edge);
-        // True distance to the edge *segment*: the half-plane distance alone
-        // overestimates outside points past a slanted edge's ends.
-        let t = (((x - x0) * ex + (y - y0) * ey) / (len * len)).clamp(0.0, 1.0);
+        let len2 = ex * ex + ey * ey;
+        let t = if len2 > 0.0 {
+            (((x - x0) * ex + (y - y0) * ey) / len2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         let qx = x - (x0 + t * ex);
         let qy = y - (y0 + t * ey);
-        d_out = d_out.min((qx * qx + qy * qy).sqrt());
+        dist = dist.min((qx * qx + qy * qy).sqrt());
     }
-    // Vertices are wound inside-positive; coverage wants inside-negative.
-    antialias(if inside { -d_in } else { d_out })
+    antialias(dist - half_stroke)
 }
 
 #[cfg(test)]
@@ -195,27 +197,54 @@ mod tests {
     }
 
     #[test]
-    fn fold_triangles_fill_their_cell_without_touching_the_base_edge() {
+    fn fold_chevrons_are_thin_v_strokes() {
         for down in [false, true] {
-            assert_eq!(triangle_alpha(CW / 2, CH / 2, CW, CH, down), 255);
-            assert_eq!(triangle_alpha(1, 1, CW, CH, down), 0);
-            assert_eq!(triangle_alpha(1, CH - 2, CW, CH, down), 0);
+            // Hollow: the wedge is gone, the stroke never covers the cell
+            // centre (the vertex sits off it).
             assert_eq!(
-                triangle_alpha(CW - 1, CH / 2, CW, CH, down),
+                chevron_alpha(CW / 2, CH / 2, CW, CH, down),
                 0,
-                "the base must keep a margin from the cell edge"
+                "a filled wedge would paint the centre"
             );
+            // Never touches the cell edges.
+            assert_eq!(chevron_alpha(0, 0, CW, CH, down), 0);
+            assert_eq!(chevron_alpha(CW - 1, 0, CW, CH, down), 0);
+            assert_eq!(chevron_alpha(0, CH - 1, CW, CH, down), 0);
+            assert_eq!(chevron_alpha(CW - 1, CH - 1, CW, CH, down), 0);
+            // Small: ink spans the geometric extent of its orientation —
+            // the open chevron's height, the folded one's width is what
+            // the rotation maps onto the cell's tall axis — with a small
+            // tolerance for the stroke and its feather.
             let mut ink_rows = 0;
             for py in 0..CH {
-                if (0..CW).any(|px| triangle_alpha(px, py, CW, CH, down) > 0) {
+                if (0..CW).any(|px| chevron_alpha(px, py, CW, CH, down) > 0) {
                     ink_rows += 1;
                 }
             }
+            let span = if down {
+                2.0 * (CH as f32 * 0.21)
+            } else {
+                2.0 * (CW as f32 * 0.28)
+            };
+            // Plus the stroke and its one-pixel feather on each side.
+            let stroke = (CW.min(CH) as f32 * 0.055).max(0.7);
             assert!(
-                ink_rows >= CH / 2,
-                "the arrow must span half the cell height, got {ink_rows}/{CH}"
+                ((span + stroke)..=(span + 2.0 * stroke + 2.0)).contains(&(ink_rows as f32)),
+                "the chevron must stay small, got {ink_rows}/{CH} rows (span {span})"
             );
         }
+        // Orientation: the vertex sits below centre when open (▾) and right
+        // of centre when folded (▸).
+        let down_vertex_y = (CH as f32 * (0.5 + 0.21)) as u32;
+        assert!(
+            (0..CW).any(|px| chevron_alpha(px, down_vertex_y, CW, CH, true) > 0),
+            "the open chevron's vertex must carry ink"
+        );
+        let right_vertex_x = (CW as f32 * (0.5 + 0.21)) as u32;
+        assert!(
+            chevron_alpha(right_vertex_x, CH / 2, CW, CH, false) > 0,
+            "the folded chevron must point right"
+        );
     }
 
     #[test]

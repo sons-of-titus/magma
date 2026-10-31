@@ -281,3 +281,23 @@ fn build_visible_rows_extracts_lines_without_editor() {
         line: 0,
     };
 }
+
+#[test]
+fn a_folded_range_renders_its_real_header_line() {
+    // The gutter chevron (▸) is the folded signal; the placeholder line
+    // would only displace the header the user still needs to see.
+    let buf = Buffer::from_string(
+        BufferId(0),
+        "stub",
+        "fn main() {\n    body();\n}\nfn two() {}\n",
+    );
+    let rows = build_visible_rows(&buf, &[(0, 27)], 0, 2, buf.line_count());
+    assert_eq!(rows.len(), 2);
+    assert!(rows[0].fold);
+    assert_eq!(
+        rows[0].text, "fn main() {\n",
+        "the header line stays visible"
+    );
+    assert!(!rows[1].fold);
+    assert_eq!(rows[1].text, "fn two() {}\n");
+}

@@ -26,6 +26,10 @@ pub struct VisibleRow {
 
 /// Build the visible rows for a viewport, including fold collapsing.
 /// Pure buffer/fold logic; takes no `Editor`.
+///
+/// A folded range renders its real first line — the gutter's right-pointing
+/// chevron is what says the range is collapsed, so no placeholder text
+/// displaces the header the user still needs to see.
 pub fn build_visible_rows(
     buf: &crate::text_engine::Buffer,
     folds: &[(usize, usize)],
@@ -41,31 +45,22 @@ pub fn build_visible_rows(
         let line_start = buf.line_start_offset(abs_line).unwrap_or(buf.len());
         let line_end = buf.line_start_offset(abs_line + 1).unwrap_or(buf.len());
         let is_fold_start = fold_map.contains_key(&line_start);
-        if is_fold_start {
-            let fold_end = fold_map[&line_start];
-            let folded = buf
-                .position_of(fold_end)
+        let folded = if is_fold_start {
+            buf.position_of(fold_map[&line_start])
                 .line
                 .saturating_sub(abs_line)
-                .max(1);
-            rows.push(VisibleRow {
-                start: line_start,
-                end: line_end,
-                text: format!("--- {} lines folded ---", folded),
-                fold: true,
-                line: abs_line,
-            });
-            abs_line += folded;
+                .max(1)
         } else {
-            rows.push(VisibleRow {
-                start: line_start,
-                end: line_end,
-                text: buf.slice(line_start, line_end),
-                fold: false,
-                line: abs_line,
-            });
-            abs_line += 1;
-        }
+            1
+        };
+        rows.push(VisibleRow {
+            start: line_start,
+            end: line_end,
+            text: buf.slice(line_start, line_end),
+            fold: is_fold_start,
+            line: abs_line,
+        });
+        abs_line += folded;
     }
     rows
 }
@@ -258,20 +253,12 @@ impl View for EditorView {
             // combining marks = 0), so wide glyphs align (§10).  The
             // grapheme→cell mapping comes from the row-layout cache (R-12):
             // one segmentation per (line, revision), reused by the
-            // highlight passes.  Fold rows render synthetic text and stay
-            // uncached — their key would collide with the real line.
+            // highlight passes.  Fold rows carry their real line text, so
+            // the same cache entry serves both.
             let max_col = content_cols;
             {
-                let layout = if is_fold_start {
-                    std::sync::Arc::new(crate::render::row_layout::RowLayout::build(
-                        line_text,
-                        0,
-                        tab_w,
-                        &editor.font_config.glyph_widths,
-                    ))
-                } else {
-                    cached_row_layout(editor, buf_id, line_start, line_text, buf.revision(), tab_w)
-                };
+                let layout =
+                    cached_row_layout(editor, buf_id, line_start, line_text, buf.revision(), tab_w);
                 for i in 0..layout.widths.len() {
                     let col = layout.cols[i] as usize;
                     if col < scroll_left {
@@ -302,18 +289,7 @@ impl View for EditorView {
             .collect();
         let row_layouts: Vec<std::sync::Arc<crate::render::row_layout::RowLayout>> = rows
             .iter()
-            .map(|r| {
-                if r.fold {
-                    std::sync::Arc::new(crate::render::row_layout::RowLayout::build(
-                        &r.text,
-                        0,
-                        tab_w,
-                        &editor.font_config.glyph_widths,
-                    ))
-                } else {
-                    cached_row_layout(editor, buf_id, r.start, &r.text, buf.revision(), tab_w)
-                }
-            })
+            .map(|r| cached_row_layout(editor, buf_id, r.start, &r.text, buf.revision(), tab_w))
             .collect();
         apply_highlights(
             editor,

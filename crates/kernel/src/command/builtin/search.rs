@@ -149,7 +149,11 @@ pub(super) fn register(editor: &mut Editor) {
 }
 
 /// The word around the cursor plus the next/previous occurrence's offset.
-pub(super) fn word_and_next(editor: &Editor, buf_id: usize, forward: bool) -> Option<(String, Option<usize>)> {
+pub(super) fn word_and_next(
+    editor: &Editor,
+    buf_id: usize,
+    forward: bool,
+) -> Option<(String, Option<usize>)> {
     let view = editor.view_of_buffer(buf_id)?;
     let pos = view.cursor_offset();
     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());

@@ -84,18 +84,37 @@ pub(super) fn register(editor: &mut Editor) {
 
     cmds.register_fn(
         "set-major-mode",
-        "Set the major mode of the focused buffer",
-        vec![ArgSpec::new("mode", ArgType::String)],
+        "Set the major mode of the focused buffer, or of the buffer named",
+        vec![
+            ArgSpec::new("mode", ArgType::String),
+            // Absent = the focused buffer; no default value on purpose —
+            // defaulting to slot 0 would silently target the wrong buffer.
+            ArgSpec {
+                name: "buffer".to_string(),
+                arg_type: ArgType::Buffer,
+                required: false,
+                default: None,
+                prompt: None,
+            },
+        ],
         |editor, args| {
             let name = args
                 .get("mode")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "mode name required".to_string())?;
             let new_mode = crate::text_engine::MajorMode::from_name(name);
-            let buf_id = get_current_buffer_id(editor);
-            if let Some(arc) = editor.buffers.get_mut(buf_id) {
-                arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode = new_mode;
-            }
+            // buffer-created events queue and drain in batches (project
+            // open, session restore): the mode must land on the buffer the
+            // event describes, not whichever one is focused at drain time.
+            let buf_id = args
+                .get("buffer")
+                .and_then(|a| a.as_buffer())
+                .map(|b| b as usize)
+                .unwrap_or_else(|| get_current_buffer_id(editor));
+            let Some(arc) = editor.buffers.get(buf_id) else {
+                return Err(format!("no such buffer: {buf_id}"));
+            };
+            arc.lock().unwrap_or_else(|e| e.into_inner()).major_mode = new_mode;
             editor.events.emit_typed(
                 keys::events::MAJOR_MODE_CHANGED,
                 MajorModeChangedPayload {
@@ -129,7 +148,11 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn(
         "syntax-highlight",
         "Re-run fallback syntax highlighting on a buffer",
-        vec![ArgSpec::optional("buffer", ArgType::Integer, ArgValue::Integer(-1))],
+        vec![ArgSpec::optional(
+            "buffer",
+            ArgType::Integer,
+            ArgValue::Integer(-1),
+        )],
         |editor, args| {
             let key = args
                 .get("buffer")

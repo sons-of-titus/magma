@@ -12,6 +12,7 @@ mod editing;
 mod file;
 pub(crate) mod helpers;
 mod indent_cmds;
+mod lsp_cmds;
 mod misc;
 mod motion;
 mod navigation;
@@ -56,6 +57,7 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     project_cmds::register(editor);
     run_config_cmds::register(editor);
     diagnostics_cmds::register(editor);
+    lsp_cmds::register(editor);
     indent_cmds::register(editor);
     scroll_cmds::register(editor);
     template_cmds::register(editor);

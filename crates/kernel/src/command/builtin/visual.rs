@@ -135,13 +135,10 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
             if let Some((_, Some(next))) = super::search::word_and_next(editor, buf_id, true) {
-                editor
-                    .multi_cursor
-                    .extra_cursors
-                    .push(ExtraCursor {
-                        pos: next,
-                        anchor: None,
-                    });
+                editor.multi_cursor.extra_cursors.push(ExtraCursor {
+                    pos: next,
+                    anchor: None,
+                });
                 editor.multi_cursor.active = true;
                 emit_cursor_moved(editor);
             }

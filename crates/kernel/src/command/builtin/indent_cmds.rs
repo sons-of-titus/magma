@@ -27,7 +27,11 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn(
         "indent-line",
         "Indent the current line (TAB)",
-        vec![ArgSpec::optional("count", ArgType::Integer, ArgValue::Integer(1))],
+        vec![ArgSpec::optional(
+            "count",
+            ArgType::Integer,
+            ArgValue::Integer(1),
+        )],
         |editor, args| {
             let count = count_arg(args);
             let buf_id = get_current_buffer_id(editor);
@@ -56,7 +60,11 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn(
         "deindent-line",
         "Remove up to one indent step from the start of the current line (SHIFT-TAB)",
-        vec![ArgSpec::optional("count", ArgType::Integer, ArgValue::Integer(1))],
+        vec![ArgSpec::optional(
+            "count",
+            ArgType::Integer,
+            ArgValue::Integer(1),
+        )],
         |editor, args| {
             let count = count_arg(args);
             let buf_id = get_current_buffer_id(editor);

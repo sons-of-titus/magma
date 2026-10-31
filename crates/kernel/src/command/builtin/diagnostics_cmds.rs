@@ -36,11 +36,10 @@ pub(super) fn register(editor: &mut Editor) {
         "Set end-of-line decorations showing the highest-severity diagnostic per line",
         vec![ArgSpec::new("buffer", ArgType::Integer)],
         |editor, args| {
-            let buf_id = args
-                .get("buffer")
-                .and_then(|a| a.as_integer())
-                .ok_or_else(|| "a buffer id is required".to_string())?
-                as usize;
+            let buf_id =
+                args.get("buffer")
+                    .and_then(|a| a.as_integer())
+                    .ok_or_else(|| "a buffer id is required".to_string())? as usize;
             let best: Vec<(usize, DiagnosticSeverity, String)> = {
                 let Some(arc) = editor.buffers.get(buf_id) else {
                     return Ok(());
@@ -63,7 +62,7 @@ pub(super) fn register(editor: &mut Editor) {
                 out.sort_by_key(|(line, _, _)| *line);
                 out
             };
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            editor.for_each_view_of_buffer_mut(buf_id, |view| {
                 view.decor_clear_layer(LAYER);
                 for (line, sev, msg) in &best {
                     view.decor_set_eol(
@@ -73,7 +72,7 @@ pub(super) fn register(editor: &mut Editor) {
                         severity_face(*sev).to_string(),
                     );
                 }
-            }
+            });
             for _ in &best {
                 editor.events.emit_typed(
                     keys::events::DECORATION_CHANGED,

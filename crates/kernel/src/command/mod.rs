@@ -2,11 +2,33 @@ pub mod args;
 pub mod builtin;
 
 use crate::state::Editor;
-use args::{ArgSpec, ArgValue};
+use args::{ArgSpec, ArgType, ArgValue};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type CommandResult = Result<(), String>;
+
+/// String arguments arrive from every text boundary (command line, palette,
+/// Janet `editor/run-command` / `command/run`).  When the declared type is
+/// numeric, parse there — the handlers only see the typed variants.
+fn coerce_string_arg(value: &mut ArgValue, arg_type: &ArgType) {
+    let ArgValue::String(s) = value else {
+        return;
+    };
+    match arg_type {
+        ArgType::Integer => {
+            if let Ok(i) = s.parse::<i64>() {
+                *value = ArgValue::Integer(i);
+            }
+        }
+        ArgType::Buffer => {
+            if let Ok(i) = s.parse::<u64>() {
+                *value = ArgValue::Buffer(i);
+            }
+        }
+        _ => {}
+    }
+}
 
 pub(crate) type CommandFn =
     dyn Fn(&mut Editor, &HashMap<String, ArgValue>) -> CommandResult + Send + Sync;
@@ -127,6 +149,8 @@ pub fn execute_command(
                 } else if arg.required {
                     return Err(format!("Missing required argument: {}", arg.name));
                 }
+            } else if let Some(value) = resolved.get_mut(&arg.name) {
+                coerce_string_arg(value, &arg.arg_type);
             }
         }
         (Arc::clone(&entry.handler), resolved)

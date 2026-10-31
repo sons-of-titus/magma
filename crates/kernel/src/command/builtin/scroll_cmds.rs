@@ -44,7 +44,11 @@ fn scroll_by_lines(editor: &mut Editor, n: i64) {
         let cur_line = buf.slice(0, cur_off).matches('\n').count();
         let max_line = buf.line_count().saturating_sub(1) as i64;
         let target = (cur_line as i64 + n).clamp(0, max_line);
-        (max_line, buf.line_start_offset(target as usize).map(|off| (target, off)))
+        (
+            max_line,
+            buf.line_start_offset(target as usize)
+                .map(|off| (target, off)),
+        )
     };
     let (height, old_top) = editor
         .view_tree

@@ -172,8 +172,8 @@ fn set_fold_icons_stores_icons() {
 #[test]
 fn set_fold_icons_defaults_from_gutter_janet() {
     janet_test!(ed, {
-        assert_eq!(ed.gutter.fold_icons.open, "▾");
-        assert_eq!(ed.gutter.fold_icons.closed, "▸");
+        assert_eq!(ed.gutter.fold_icons.open, "v");
+        assert_eq!(ed.gutter.fold_icons.closed, ">");
     });
 }
 

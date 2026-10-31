@@ -1,6 +1,6 @@
 //! Pure Rust tests for the GutterProvider architecture (Phase 7).
 
-use crate::kernel::render::gutter::{FoldIcons, GutterProvider, GutterRegistry};
+use crate::kernel::render::gutter::{FoldIcons, GutterCtx, GutterProvider, GutterRegistry};
 use crate::kernel::render::gutter_providers::{
     Breakpoints, Coverage, Diagnostics, Folding, GitSigns, JanetProvider, LineNumbers,
 };
@@ -113,8 +113,8 @@ fn total_width_sums_all_providers() {
 #[test]
 fn fold_icons_have_defaults() {
     let ed = helpers::make_editor();
-    assert_eq!(ed.gutter.fold_icons.open, "▾");
-    assert_eq!(ed.gutter.fold_icons.closed, "▸");
+    assert_eq!(ed.gutter.fold_icons.open, "v");
+    assert_eq!(ed.gutter.fold_icons.closed, ">");
     assert_eq!(ed.gutter.fold_icons.face, "fold-face");
 }
 
@@ -196,4 +196,31 @@ fn janet_provider_stores_name_and_fn() {
 fn janet_provider_width_is_one() {
     let jp = JanetProvider { provider_name: "x".to_string(), fn_name: None };
     assert_eq!(jp.width(), 1);
+}
+
+// ── folding cell rendering ────────────────────────────────────────────────────
+
+#[test]
+fn folding_provider_uses_the_debug_pointer_glyph_when_folded() {
+    let ed = helpers::make_editor();
+    let diag = std::collections::HashMap::new();
+    let base = GutterCtx {
+        editor: &ed,
+        buf_id: 0,
+        buf_path: None,
+        cursor_line: 0,
+        line_count: 10,
+        line_start_offset: 0,
+        is_fold_start: false,
+        is_foldable: false,
+        diag_lines: &diag,
+    };
+    // A plain line leaves the column blank.
+    assert_eq!(Folding.render(3, &base).unwrap().text, " ");
+    // A foldable range shows the open mark.
+    let foldable = GutterCtx { is_foldable: true, ..base };
+    assert_eq!(Folding.render(3, &foldable).unwrap().text, "v");
+    // A collapsed range shows the same pointer the debug step uses.
+    let folded = GutterCtx { is_fold_start: true, ..base };
+    assert_eq!(Folding.render(3, &folded).unwrap().text, ">");
 }

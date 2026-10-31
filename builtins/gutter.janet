@@ -14,5 +14,7 @@
 (gutter/add-provider ":line-numbers")
 (gutter/add-provider ":folding")
 
-# Default fold icons.
-(gutter/set-fold-icons "▾" "▸" "fold-face")
+# Default fold icons — the same plain glyphs the gutter already uses:
+# "v" marks a foldable (open) range, ">" is the debug step pointer for a
+# collapsed one.  Font-rendered, so they stay small at any size.
+(gutter/set-fold-icons "v" ">" "fold-face")

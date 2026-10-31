@@ -84,6 +84,12 @@ pub(super) fn register(editor: &mut Editor) {
                         }
                     }
                 }
+                editor.events.emit_typed(
+                    keys::events::BUFFER_FOCUSED,
+                    BufferFocusedPayload {
+                        buffer_id: key.to_string(),
+                    },
+                );
                 return Ok(());
             }
             // The read stays synchronous by design: open-file's callers
@@ -163,6 +169,12 @@ pub(super) fn register(editor: &mut Editor) {
                         },
                     );
                     crate::semantic::fallback_syntax::on_buffer_created(editor, buf_id as usize);
+                    editor.events.emit_typed(
+                        keys::events::BUFFER_FOCUSED,
+                        BufferFocusedPayload {
+                            buffer_id: buf_id.to_string(),
+                        },
+                    );
                     return Ok(());
                 } else {
                     // PDF: extract text.
@@ -240,6 +252,15 @@ pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
         },
     );
     crate::semantic::fallback_syntax::on_buffer_created(editor, buf_id as usize);
+    // The buffer is now the focused pane's buffer.  open-file is the one
+    // path that changes focus without a user window switch, so without
+    // this the focus event never fires for opened files.
+    editor.events.emit_typed(
+        keys::events::BUFFER_FOCUSED,
+        BufferFocusedPayload {
+            buffer_id: buf_id.to_string(),
+        },
+    );
 }
 
 /// Present find-files results (the async event's sink and the sync path

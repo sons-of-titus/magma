@@ -70,6 +70,16 @@
     (when-let [buf-id (scan-number (string (get data :buffer-id)))]
       (ts/recompute-folds buf-id))))
 
+# Edits re-run the query through the lane-scheduled parse above, but a
+# freshly opened file never edits: its first (and only) tree comes from
+# ts/highlight-buffer on buffer-created.  Loader order puts this file
+# before symbols.janet, so recomputing on created would run before any
+# language is set — first focus is the earliest point the tree exists.
+(event/on "buffer-focused"
+  (fn [data]
+    (when-let [buf-id (scan-number (string (get data :buffer-id)))]
+      (ts/recompute-folds buf-id))))
+
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 # Foldable range starting exactly at `offset`, or nil.
@@ -111,10 +121,13 @@
     (buffer/unfold-all buf)))
 
 # The keymap carries flat chords only, so the vim z-prefix collapses onto
-# alt: za toggles, zM closes all, zR opens all.
-(keymap/set "alt-z" "toggle-fold" :editor)
-(keymap/set "alt-m" "fold-all" :editor)
-(keymap/set "alt-r" "unfold-all" :editor)
+# a modifier: za toggles, zM closes all, zR opens all.  The GUI's key
+# translation names keyboard alt "meta-" (terminal frontends send alt-),
+# so both prefixes are bound.
+(each prefix ["alt" "meta"]
+  (keymap/set (string prefix "-z") "toggle-fold" :editor)
+  (keymap/set (string prefix "-m") "fold-all" :editor)
+  (keymap/set (string prefix "-r") "unfold-all" :editor))
 
 # ── Gutter click ─────────────────────────────────────────────────────────────
 #

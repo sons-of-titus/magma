@@ -496,3 +496,46 @@ fn real_rust_analyzer_serves_semantic_completions() {
     // No orphans: the spawned server must not outlive the test.
     ed.lsp.shutdown_all();
 }
+
+#[test]
+fn opening_a_file_publishes_fold_candidates_without_typing() {
+    // The regression for "folds don't work": a fresh open must arrive with
+    // fold candidates already published — the first tree lands on
+    // buffer-created, and the recompute runs on the focus event open-file
+    // now emits.  Typing must not be required.
+    let path = rs_file(
+        "fold",
+        "fn main() {\n    let alpha = 1;\n    println!(\"{}\", alpha);\n}\n\nfn second() {\n    let beta = 2;\n}\n",
+    );
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+
+    assert_eq!(
+        scripting::eval(&enable_rust_plugin()),
+        "ok",
+        "the real rust plugin must load (grammar + queries)"
+    );
+    open_file_cmd(&mut ed, &path);
+    ed.events.drain_and_dispatch();
+
+    let key = helpers::focused_key(&ed);
+    let ranges = ed.views.get(&key).unwrap().fold_ranges.clone();
+    assert!(
+        !ranges.is_empty(),
+        "a freshly opened file must have fold candidates"
+    );
+
+    // The cursor sits at offset 0 — on `fn main`'s header line — so a
+    // toggle folds that function, and a second toggle opens it again.
+    assert_eq!(scripting::eval("(command/run \"toggle-fold\")"), "ok");
+    let folds = ed.views.get(&key).unwrap().folds.clone();
+    assert_eq!(folds.len(), 1, "toggle-fold collapsed the first function");
+    assert_eq!(folds[0].0, 0, "the fold starts on the header line");
+    assert_eq!(scripting::eval("(command/run \"toggle-fold\")"), "ok");
+    assert!(
+        ed.views.get(&key).unwrap().folds.is_empty(),
+        "a second toggle opens the fold again"
+    );
+}

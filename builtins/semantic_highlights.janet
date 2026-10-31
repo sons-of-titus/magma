@@ -6,9 +6,12 @@
 # owns that presentation: which scopes map to which faces.
 #
 # Two sources mark dead code:
-#   - semantic-token modifiers (rust-analyzer's `unreferenced`), and
-#   - hint-severity diagnostics whose message says the code is unused
-#     (servers without semanticTokens support).
+#   - semantic-token modifiers (`unreferenced` where a server offers it,
+#     `deprecated` everywhere it does),
+#   - diagnostics whose message says the code is unused — hints from
+#     servers that report dead code that way, and warnings from the rust
+#     dead-code lints, which is where Rust's unused code is actually
+#     reported.
 # Both paint the same faces, so a server upgrading from one to the other
 # changes nothing the user sees.
 
@@ -41,11 +44,14 @@
 (face/scope-face "unreferenced" "unused-face")
 (face/scope-face "deprecated" "deprecated-face")
 
-# ── Hint-diagnostics fallback ────────────────────────────────────────────────
-
+# ── Diagnostics fallback ─────────────────────────────────────────────────────
+#
 # Messages that mean "this code is dead" — matched against the server's
 # own wording.  Kept deliberately narrow: hint diagnostics also carry
 # style suggestions and doc prompts, and dimming those would be wrong.
+# Warnings qualify too because the rust dead-code lints ("unused
+# variable: `x`", "function `f` is never used") arrive as warnings from
+# cargo check — that is where Rust's dead code is actually reported.
 (def- *dead-code-phrases*
   ["unused" "never used" "not accessed" "unreferenced" "never read"])
 
@@ -53,10 +59,12 @@
   (def lower (string/ascii-lower message))
   (some |(string/find $ lower) *dead-code-phrases*))
 
-# "[H] line 3:5 …" — the one display rendering diagnostics carry.
+# "[H] line 3:5 …" / "[W] line 1:1 …" — the one display rendering
+# diagnostics carry.
 (defn- parse-hint-position
   [display]
-  (when (string/has-prefix? "[H] " display)
+  (when (or (string/has-prefix? "[H] " display)
+            (string/has-prefix? "[W] " display))
     (when-let [line-marker (string/find "line " display)]
       (def rest (string/slice display (+ line-marker 5)))
       (when-let [colon (string/find ":" rest)]

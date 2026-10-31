@@ -307,7 +307,7 @@ fn dead_code_refresh_dims_unused_hint_words() {
 }
 
 #[test]
-fn dead_code_refresh_ignores_hints_that_are_not_dead_code() {
+fn dead_code_refresh_dims_only_dead_code_messages() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("aaa\nbbb\nccc\n");
     scripting::init(&mut ed);
@@ -318,6 +318,7 @@ fn dead_code_refresh_ignores_hints_that_are_not_dead_code() {
     if let Some(arc) = ed.buffers.get(key) {
         arc.lock().unwrap().set_lsp_diagnostics(vec![
             Diagnostic {
+                // A hint, but a style suggestion, not dead code.
                 message: "consider adding documentation".into(),
                 severity: DiagnosticSeverity::Hint,
                 line: 0,
@@ -326,8 +327,9 @@ fn dead_code_refresh_ignores_hints_that_are_not_dead_code() {
                 end_column: 3,
             },
             Diagnostic {
-                // A warning, not a hint: wrong severity, no dim.
-                message: "unused import".into(),
+                // The rust dead-code lints arrive as warnings — this one
+                // dims (cargo's "unused import" family).
+                message: "unused import: std::fmt".into(),
                 severity: DiagnosticSeverity::Warning,
                 line: 2,
                 column: 0,
@@ -346,9 +348,35 @@ fn dead_code_refresh_ignores_hints_that_are_not_dead_code() {
         .get("dead-code")
         .cloned()
         .unwrap_or_default();
+    assert_eq!(
+        layer,
+        vec![(8, 11, "unused".to_string())],
+        "the dead-code warning dims, the style hint does not: got {layer:?}"
+    );
+
+    // A warning that is not about dead code stays untouched.
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().set_lsp_diagnostics(vec![Diagnostic {
+            message: "mismatched types".into(),
+            severity: DiagnosticSeverity::Warning,
+            line: 1,
+            column: 0,
+            end_line: 1,
+            end_column: 3,
+        }]);
+    }
+    let _ = scripting::eval(&format!("(dead-code/refresh {key})"));
+    let layer = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("dead-code")
+        .cloned()
+        .unwrap_or_default();
     assert!(
         layer.is_empty(),
-        "only unused-code hints may dim: got {layer:?}"
+        "ordinary warnings must not dim: {layer:?}"
     );
 }
 

@@ -133,7 +133,21 @@ pub fn initialize_params(root: Option<&str>) -> Value {
                 "semanticTokens": {
                     "requests": { "full": true },
                     "formats": ["relative"],
-                    "tokenModifiers": [],
+                    // rust-analyzer deserializes these strictly and aborts
+                    // the handshake when either is missing — the legend
+                    // names the client is prepared to see.
+                    "tokenTypes": [
+                        "comment", "decorator", "enum", "enumMember", "function",
+                        "interface", "keyword", "macro", "method", "namespace",
+                        "number", "operator", "parameter", "property", "string",
+                        "struct", "type", "typeParameter", "variable"
+                    ],
+                    "tokenModifiers": [
+                        "declaration", "definition", "static", "deprecated",
+                        "abstract", "documentation", "defaultLibrary",
+                        "unreferenced", "constant", "mutable", "reference",
+                        "async", "callable", "public"
+                    ],
                     "multilineTokenSupport": false,
                 },
             }

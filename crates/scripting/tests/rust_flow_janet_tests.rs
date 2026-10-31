@@ -539,3 +539,115 @@ fn opening_a_file_publishes_fold_candidates_without_typing() {
         "a second toggle opens the fold again"
     );
 }
+
+#[test]
+fn real_rust_analyzer_serves_semantic_tokens() {
+    // The regression this guards: the client's initialize capabilities
+    // once missed the semanticTokens legend arrays rust-analyzer
+    // deserializes strictly — every server spawn aborted mid-handshake,
+    // so no LSP feature worked at all.  A ready server plus a populated
+    // "semantic" layer proves the whole path.
+    //
+    // Spawns a live rust-analyzer; opt-in so `cargo test` stays fast:
+    // MAGMA_RA_E2E=1 cargo test -p scripting --test rust_flow_janet_tests
+    if std::env::var("MAGMA_RA_E2E").as_deref() != Ok("1") {
+        return;
+    }
+    let Some(_ra) = kernel::project::toolchain::find("rust-analyzer") else {
+        eprintln!("rust-analyzer not installed; skipping");
+        return;
+    };
+
+    let dir = std::env::temp_dir().join(format!("magma_ra_semtok_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"ra_semtok\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    let src = dir.join("src/main.rs");
+    std::fs::write(
+        &src,
+        "fn main() {\n    let unused_var = 1;\n    println!(\"hi\");\n}\n",
+    )
+    .unwrap();
+
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    ed.background = Some(kernel::runtime::BackgroundHandle::new(runtime, tx));
+
+    assert_eq!(scripting::eval(&enable_rust_plugin()), "ok");
+
+    // Live boot order: project first (the plugin starts the server on
+    // project-opened, with the root), then the file.
+    let mut args = std::collections::HashMap::new();
+    args.insert(
+        "path".to_string(),
+        kernel::command::args::ArgValue::Path(dir.to_string_lossy().into_owned()),
+    );
+    kernel::command::execute_command(&mut ed, "open-project", &args).unwrap();
+    let path = src.to_str().unwrap().replace('\\', "/");
+    open_file_cmd(&mut ed, &path);
+    ed.events.drain_and_dispatch();
+
+    let key = helpers::focused_key(&ed);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    let mut ready = false;
+    let mut tokens = false;
+    while std::time::Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            let started = matches!(
+                &ev,
+                kernel::runtime::BackgroundEvent::Lsp(kernel::semantic::Event::Started { .. })
+            );
+            kernel::runtime::process_background_event(&mut ed, ev);
+            if started {
+                ed.events.drain_and_dispatch();
+            }
+        }
+        ed.events.drain_and_dispatch();
+        ready = scripting::eval_result(r#"(string (= :ready (get *lsp-servers* "rust")))"#)
+            .unwrap_or_default()
+            == r#""true""#;
+        tokens = ed
+            .views
+            .get(&key)
+            .and_then(|v| v.highlight_layers.get("semantic"))
+            .map(|l| !l.is_empty())
+            .unwrap_or(false);
+        if ready && tokens {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(
+        ready,
+        "rust-analyzer must reach :ready — a handshake abort means the initialize capabilities were rejected"
+    );
+    assert!(
+        tokens,
+        "semantic tokens must reach the semantic highlight layer"
+    );
+
+    let scopes: Vec<String> = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("semantic")
+        .unwrap()
+        .iter()
+        .map(|(_, _, s)| s.clone())
+        .collect();
+    assert!(
+        scopes.iter().any(|s| s == "function" || s == "keyword"),
+        "server token types must survive the resolvable-scope filter, got {scopes:?}"
+    );
+    // No orphans: the spawned server must not outlive the test.
+    ed.lsp.shutdown_all();
+}

@@ -46,6 +46,12 @@ pub fn rasterize_font_atlas(
         let cell_x = col * cell_w;
         let cell_y = row * cell_h;
 
+        // Gutter markers are geometry, not font outlines — the text font
+        // must not decide whether a breakpoint renders, or how big it is.
+        if super::shapes::paint_marker(&mut pixels, ch, cell_x, cell_y, cell_w, cell_h, width) {
+            continue;
+        }
+
         let glyph_id = scaled.glyph_id(ch);
         let h_advance = scaled.h_advance(glyph_id);
         // Centre glyph horizontally; clamp so it never starts left of the cell.

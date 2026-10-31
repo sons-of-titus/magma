@@ -39,12 +39,55 @@ fn a_new_atlas_maps_every_baked_character_to_a_grid_cell() {
 #[test]
 fn atlas_bakes_the_cursor_and_gutter_glyphs() {
     let atlas = GpuGlyphAtlas::new();
-    for ch in ['█', '▌', '▏', '▔', '▸', '▾', '●', '○', '—'] {
+    for ch in ['█', '▌', '▎', '▏', '▔', '▸', '▾', '●', '○', '—'] {
         assert!(
             atlas.contains(ch),
             "atlas is missing the rendered glyph {ch:?}"
         );
     }
+}
+
+/// First/last row (and column) of a marker's atlas cell carrying ink.
+fn cell_ink_span(atlas: &GpuGlyphAtlas, ch: char) -> (u32, u32, u32, u32) {
+    let uv = atlas.glyphs.get(&ch).expect("marker is baked");
+    let alpha = |px: u32, py: u32| {
+        atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4 + 3) as usize]
+    };
+    let row_ink = |py: u32| (0..uv.w).any(|px| alpha(px, py) > 0);
+    let col_ink = |px: u32| (0..uv.h).any(|py| alpha(px, py) > 0);
+    let top = (0..uv.h).find(|&py| row_ink(py)).expect("marker has ink");
+    let bottom = (0..uv.h).rev().find(|&py| row_ink(py)).unwrap();
+    let left = (0..uv.w).find(|&px| col_ink(px)).expect("marker has ink");
+    let right = (0..uv.w).rev().find(|&px| col_ink(px)).unwrap();
+    (top, bottom, left, right)
+}
+
+#[test]
+fn gutter_markers_are_baked_as_geometry_not_font_glyphs() {
+    let font = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let mut atlas = GpuGlyphAtlas::new();
+    atlas.rasterize(font, 15.0);
+    let (cw, ch) = (atlas.cell_w, atlas.cell_h);
+
+    // The disc fills the marker column and sits exactly in the cell middle;
+    // the font's own ● is smaller and rides the text baseline.
+    let (top, bottom, left, right) = cell_ink_span(&atlas, '●');
+    assert!(right - left + 1 >= cw * 3 / 4, "disc must fill the column");
+    let mid = (top + bottom) as f32 / 2.0;
+    assert!(
+        (mid - ch as f32 / 2.0).abs() <= 2.0,
+        "disc must be centred, not baseline-aligned"
+    );
+
+    // The fold arrow spans more of the cell than the font's small variant.
+    let (top, bottom, _, _) = cell_ink_span(&atlas, '▾');
+    assert!(bottom - top + 1 >= ch / 2, "fold arrow must be legible");
+
+    // The git sign is a left-anchored bar — the box fallback would ink the
+    // right edge of the cell instead.
+    let (_, _, left, right) = cell_ink_span(&atlas, '▎');
+    assert!(left <= cw / 8, "bar hangs off the left edge");
+    assert!(right <= cw / 2, "no box-fallback ink on the right half");
 }
 
 #[test]

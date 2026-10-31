@@ -66,10 +66,12 @@ pub const ATLAS_CHARS: &str = concat!(
     "\u{00F0}\u{00F1}\u{00F2}\u{00F3}\u{00F4}\u{00F5}\u{00F6}\u{00F7}\
      \u{00F8}\u{00F9}\u{00FA}\u{00FB}\u{00FC}\u{00FD}\u{00FE}\u{00FF}",
     // Cursor shapes and gutter markers — the kernel paints these into the
-    // Surface (`█`, `▏`, `▔`, `▌` for cursors, `▾`/`▸` for folds,
-    // `●`/`○` for breakpoints).  Without their own cells they would fall
-    // back to the box glyph.
-    "\u{2588}\u{258C}\u{258F}\u{2594}\u{25B8}\u{25BE}\u{25CF}\u{25CB}",
+    // Surface (`█`, `▏`, `▔`, `▌` for cursors, `▾`/`▸` for folds, `●`/`○`
+    // for breakpoints, `▎` for git signs).  Without their own cells they
+    // would fall back to the box glyph.  The gutter markers are painted as
+    // geometry, not font outlines (see shapes), so they render the same
+    // whatever font the editor uses.
+    "\u{2588}\u{258C}\u{258E}\u{258F}\u{2594}\u{25B8}\u{25BE}\u{25CF}\u{25CB}",
     // Typographic dash used throughout the editor's own docs and comments.
     "\u{2014}",
     // Greek and Cyrillic (F-35: the GPU path is not ASCII-only) — the

@@ -28,12 +28,13 @@ unsafe extern "C-unwind" fn c_lsp_start(argc: i32, argv: *mut Janet) -> Janet {
             .filter_map(|i| conv::get_str(argc, argv, i))
             .collect();
 
-        if ed.lsp.get(&language).is_some() {
-            return conv::nil();
-        }
         let Some(bg) = ed.background.clone() else {
             return conv::nil();
         };
+        if !ed.lsp.can_start(&language) {
+            return conv::nil();
+        }
+        ed.lsp.mark_starting(&language);
         let root = ed
             .project_manager
             .project
@@ -79,6 +80,26 @@ unsafe extern "C-unwind" fn c_lsp_did_open(argc: i32, argv: *mut Janet) -> Janet
         if let Some((buf_key, lang)) = attached {
             ed.lsp.note_buffer_language(buf_key, &lang);
         }
+        conv::nil()
+    })
+}
+
+/// (lsp/semantic-tokens language-id [buf-id]) → nil
+///
+/// Request the document's semantic tokens.  The decoded result lands in the
+/// "semantic" highlight layer through the kernel's LSP handler; Janet's
+/// scope-face registrations decide what paints.
+unsafe extern "C-unwind" fn c_lsp_semantic_tokens(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        with_server_and_doc(ed, argc, argv, |server, buf_key, arc, uri| {
+            let revision = arc.lock().unwrap_or_else(|e| e.into_inner()).revision();
+            server.request(
+                "textDocument/semanticTokens/full",
+                serde_json::json!({ "textDocument": { "uri": uri } }),
+                buf_key,
+                revision,
+            );
+        });
         conv::nil()
     })
 }
@@ -371,6 +392,13 @@ pub fn register() -> Vec<JanetReg> {
             name: c"lsp/did-close".as_ptr() as *const _,
             cfun: Some(c_lsp_did_close as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Send textDocument/didClose for a buffer".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"lsp/semantic-tokens".as_ptr() as *const _,
+            cfun: Some(
+                c_lsp_semantic_tokens as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Request textDocument/semanticTokens for a buffer".as_ptr() as *const _,
         },
         JanetReg {
             name: c"lsp/notify".as_ptr() as *const _,

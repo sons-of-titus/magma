@@ -105,4 +105,13 @@ pub enum Event {
         request_id: u64,
         edit_json: String,
     },
+    /// Decoded `textDocument/semanticTokens/full` result, legend names
+    /// resolved.  Positions stay UTF-16; the consumer converts them
+    /// against the buffer.
+    SemanticTokens {
+        path: String,
+        tokens: Vec<super::SemanticToken>,
+        buf_key: Option<usize>,
+        revision: u64,
+    },
 }

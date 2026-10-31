@@ -36,10 +36,6 @@
    :css   {:command "vscode-css-languageserver" :args @["--stdio"] :language-id "css"}
    :sql   {:command "sql-language-server" :args @["up" "--method" "stdio"] :language-id "sql"}})
 
-(defn- json-escape [s]
-  (->> s (string/replace-all "\\" "\\\\") (string/replace-all "\"" "\\\"")
-    (string/replace-all "\n" "\\n") (string/replace-all "\r" "\\r") (string/replace-all "\t" "\\t")))
-
 (defn- buffer-extension [buffer-id]
   (def path (buffer/path buffer-id)) (def name (or path (buffer/name buffer-id)))
   (def parts (string/split "." name))
@@ -51,10 +47,6 @@
 (defn diagnostics [buffer-id] (buffer/diagnostics buffer-id))
 (defn- language-id-for [buffer-id] (get *buffer-languages* buffer-id))
 
-(defn- buffer-uri [buffer-id]
-  (def path (buffer/path buffer-id))
-  (if path (string "file://" path) (string "untitled:" (buffer/name buffer-id))))
-
 (defn send-did-open [buffer-id]
   # Only a ready server has a live handle; lsp/did-open against a still-starting
   # server silently drops, and marking the buffer attached then would suppress
@@ -63,6 +55,7 @@
   (when (and lang-id (= :ready (get *lsp-servers* lang-id))
              (not (get *attached-buffers* buffer-id)))
     (lsp/did-open lang-id buffer-id)
+    (lsp/semantic-tokens lang-id buffer-id)
     (put *attached-buffers* buffer-id true)))
 
 (def *missing-reported* @{})
@@ -109,15 +102,24 @@
       (when (= lang-id (get *buffer-languages* buf-id))
         (send-did-open buf-id)))))
 
-(command/define "lsp-go-to-definition"
-  (fn []
-    (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id))
+# A server that crashed (or failed its handshake) must be forgotten here:
+# attach-if-supported refuses to start a language that has a table entry,
+# so without the reset the language never comes back.  The kernel bounds
+# re-attachment with a restart budget before emitting this event.
+(event/on "lsp-server-exited"
+  (fn [ev]
+    (def lang-id (get ev :language))
     (when lang-id
-      (def uri (buffer-uri buf-id)) (def pos (buffer/cursor buf-id))
-      # LSP wants (line, UTF-16 code units) — never a byte column.
-      (def [line col] (buffer/lsp-position buf-id pos))
-      (lsp/request lang-id "textDocument/definition"
-        (string/format "{\"textDocument\":{\"uri\":\"%s\"},\"position\":{\"line\":%d,\"character\":%d}}" uri line col)))))
+      (put *lsp-servers* lang-id nil)
+      (each buf-id (keys *buffer-languages*)
+        (when (= lang-id (get *buffer-languages* buf-id))
+          # didOpen must fire again once the replacement is ready.
+          (put *attached-buffers* buf-id nil)
+          (attach-if-supported buf-id))))))
+
+# lsp-go-to-definition is a Rust command: goto-definition's fallback calls
+# it from inside a Janet command, and dispatching a Janet command there
+# nests fibers, which Janet does not support.
 
 (event/on "lsp-definition"
   (fn [ev]
@@ -181,56 +183,5 @@
 
 (event/on "buffer-created" attach-from-event)
 (event/on "buffer-focused" attach-from-event)
-
-# Incremental didChange (docs/core-redesign.md §8): one range change per
-# edit of the transaction, emitted back-to-front so every range and every
-# inserted-text slice is valid against the final buffer; the version is the
-# canonical document revision.
-(defn- parse-edit-spans
-  [s]
-  (def out @[])
-  (when (and s (not (empty? s)))
-    (each part (string/split "," s)
-      (def f (string/split ":" part))
-      (when (= 3 (length f))
-        (def st (scan-number (f 0)))
-        (def oe (scan-number (f 1)))
-        (def ne (scan-number (f 2)))
-        (when (and st oe ne) (array/push out [st oe ne])))))
-  out)
-
-(defn- did-change-payload
-  [buf-id edits-str]
-  (def spans (parse-edit-spans edits-str))
-  (def changes
-    (if (empty? spans)
-      # No edit detail (e.g. a view-switch ping): full-text sync.
-      (string/format "{\"text\":\"%s\"}"
-        (json-escape (buffer/slice buf-id 0 (buffer/len buf-id))))
-      (do
-        (def parts @[])
-        (var i (- (length spans) 1))
-        (while (>= i 0)
-          (def [st oe ne] (spans i))
-          (def p1 (buffer/lsp-position buf-id st))
-          (def p2 (buffer/lsp-position buf-id ne))
-          (def text (buffer/slice buf-id st ne))
-          (array/push parts (string/format
-            "{\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}},\"rangeLength\":%d,\"text\":\"%s\"}"
-            (p1 0) (p1 1) (p2 0) (p2 1) (- oe st) (json-escape text)))
-          (-= i 1))
-        (string/join parts ","))))
-  changes)
-
-(event/on "buffer-changed"
-  (fn [ev]
-    (def buf-id (scan-number (get ev :buffer-id)))
-    (def lang-id (get *buffer-languages* buf-id))
-    (when (and lang-id buf-id)
-      (def uri (buffer-uri buf-id))
-      (def rev (get ev :revision-after))
-      (lsp/notify lang-id "textDocument/didChange"
-        (string/format "{\"textDocument\":{\"uri\":\"%s\",\"version\":%s},\"contentChanges\":[%s]}"
-          uri (or rev "0") (did-change-payload buf-id (get ev :edits)))))))
 
 (print "lsp.janet loaded")

@@ -77,12 +77,36 @@ pub fn notification(method: &str, params: Value) -> Value {
     json!({"jsonrpc": "2.0", "method": method, "params": params})
 }
 
-/// Convert a `file://` URI to a filesystem path (best effort, no percent
-/// decoding beyond the common space).
+/// Convert a `file://` URI to a filesystem path, decoding every `%XX`
+/// escape.  Non-URI input passes through unchanged.
 pub fn uri_to_path(uri: &str) -> String {
-    uri.strip_prefix("file://")
-        .map(|p| p.replace("%20", " "))
-        .unwrap_or_else(|| uri.to_string())
+    let Some(path) = uri.strip_prefix("file://") else {
+        return uri.to_string();
+    };
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(b) = u8::from_str_radix(&path[i + 1..i + 3], 16)
+        {
+            out.push(b);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Match a server-sent document URI against a buffer path.  didOpen sends
+/// the percent-encoded URI, and servers echo it back — decode that side
+/// before comparing; raw-path and undecoded comparisons keep sloppy
+/// servers working.
+pub fn uri_matches_path(uri: &str, buf_path: &str) -> bool {
+    uri_to_path(uri) == buf_path || uri.strip_prefix("file://") == Some(buf_path) || uri == buf_path
 }
 
 /// Build `initialize` params.  A real rootUri matters: rust-analyzer refuses
@@ -105,6 +129,12 @@ pub fn initialize_params(root: Option<&str>) -> Value {
                     "signatureInformation": {
                         "documentationFormat": ["markdown", "plaintext"]
                     }
+                },
+                "semanticTokens": {
+                    "requests": { "full": true },
+                    "formats": ["relative"],
+                    "tokenModifiers": [],
+                    "multilineTokenSupport": false,
                 },
             }
         },
@@ -164,5 +194,34 @@ mod tests {
     fn uri_to_path_strips_scheme() {
         assert_eq!(uri_to_path("file:///a/b%20c.rs"), "/a/b c.rs");
         assert_eq!(uri_to_path("untitled:x"), "untitled:x");
+    }
+
+    #[test]
+    fn uri_to_path_decodes_every_escape() {
+        assert_eq!(uri_to_path("file:///a%23b%3Fc%25d.rs"), "/a#b?c%d.rs");
+        // A literal %-sequence that is not valid hex stays put.
+        assert_eq!(uri_to_path("file:///a%zz.rs"), "/a%zz.rs");
+        assert_eq!(uri_to_path("file:///a%.rs"), "/a%.rs");
+    }
+
+    #[test]
+    fn path_to_uri_round_trips_through_the_decoder() {
+        for path in [
+            "/home/u/file.rs",
+            "/home/u/my notes.rs",
+            "/home/u/50% off/x#y?z.rs",
+        ] {
+            assert_eq!(uri_to_path(&path_to_uri(path)), path);
+        }
+    }
+
+    #[test]
+    fn uri_matches_path_handles_encoded_and_raw() {
+        assert!(uri_matches_path("file:///a/b.rs", "/a/b.rs"));
+        assert!(uri_matches_path(
+            "file:///a/my%20notes.rs",
+            "/a/my notes.rs"
+        ));
+        assert!(!uri_matches_path("file:///a/b.rs", "/a/other.rs"));
     }
 }

@@ -12,6 +12,8 @@
 
 mod event;
 mod protocol;
+mod registry;
+mod semantic_tokens;
 
 #[cfg(test)]
 mod tests;
@@ -29,6 +31,8 @@ use crate::lsp_proto;
 
 pub use event::{Event, EventSink};
 pub use protocol::{extract_hover_text, first_location, is_cancellation, parse_diagnostics};
+pub use registry::LspRegistry;
+pub use semantic_tokens::{SemanticLegend, SemanticToken, decode_semantic_tokens};
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -56,6 +60,9 @@ struct Core {
     pending: Mutex<HashMap<u64, Pending>>,
     state: Mutex<ServerState>,
     next_id: AtomicU64,
+    /// The server's semantic-token legend, captured from the initialize
+    /// result and applied to every later semanticTokens response.
+    legend: Mutex<semantic_tokens::SemanticLegend>,
     /// Signaled by the reader when the `initialize` response arrives.
     init_signal: Mutex<std::sync::mpsc::Sender<Result<(), String>>>,
 }
@@ -127,6 +134,7 @@ impl LspHandle {
             pending: Mutex::new(HashMap::new()),
             state: Mutex::new(ServerState::Initializing),
             next_id: AtomicU64::new(1),
+            legend: Mutex::new(semantic_tokens::SemanticLegend::default()),
             init_signal: Mutex::new(init_tx),
         });
 
@@ -376,85 +384,4 @@ where
     sink.send(Event::ServerExited {
         language: language_id,
     });
-}
-
-/// Registry of running servers, owned by the embedding application.
-#[derive(Default)]
-pub struct LspRegistry {
-    servers: HashMap<String, Arc<LspHandle>>,
-    /// Restart attempts per language — bounded so a crash-looping server
-    /// cannot spin forever.
-    restarts: HashMap<String, u32>,
-    /// Buffers with an attached server (buffer slab key → language id).
-    /// Recorded at didOpen; drives Rust-side completion/hover requests.
-    buffer_languages: HashMap<usize, String>,
-}
-
-impl LspRegistry {
-    pub fn get(&self, language_id: &str) -> Option<&Arc<LspHandle>> {
-        self.servers.get(language_id)
-    }
-
-    pub fn note_buffer_language(&mut self, buf_key: usize, language_id: &str) {
-        self.buffer_languages
-            .insert(buf_key, language_id.to_string());
-    }
-
-    pub fn language_for_buffer(&self, buf_key: usize) -> Option<String> {
-        self.buffer_languages.get(&buf_key).cloned()
-    }
-
-    pub fn insert(&mut self, language_id: &str, handle: Arc<LspHandle>) {
-        self.servers.insert(language_id.to_string(), handle);
-    }
-
-    /// Start (or return the running) server for a language.
-    pub fn ensure_started<S>(
-        &mut self,
-        command: &str,
-        args: &[String],
-        language_id: &str,
-        root: Option<String>,
-        sink: S,
-    ) -> Result<Arc<LspHandle>, String>
-    where
-        S: EventSink + Send + 'static,
-    {
-        if let Some(existing) = self.servers.get(language_id)
-            && existing.state() == ServerState::Ready
-        {
-            return Ok(existing.clone());
-        }
-        let restarts = self.restarts.entry(language_id.to_string()).or_insert(0);
-        if *restarts >= 3 {
-            return Err(format!(
-                "LSP server for {language_id} exceeded restart attempts"
-            ));
-        }
-        *restarts += 1;
-        let handle = LspHandle::start(command, args, language_id, root, sink)?;
-        let handle = Arc::new(handle);
-        self.servers.insert(language_id.to_string(), handle.clone());
-        Ok(handle)
-    }
-
-    /// Reset the restart budget when a server has been stable.
-    pub fn note_ready(&mut self, language_id: &str) {
-        self.restarts.remove(language_id);
-    }
-
-    pub fn exited(&mut self, language_id: &str) {
-        self.servers.remove(language_id);
-    }
-
-    pub fn running(&self) -> Vec<String> {
-        self.servers.keys().cloned().collect()
-    }
-
-    pub fn shutdown_all(&mut self) {
-        for handle in self.servers.values() {
-            handle.shutdown();
-        }
-        self.servers.clear();
-    }
 }

@@ -10,7 +10,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use super::protocol;
-use super::{Core, Event, EventSink, LspHandle, LspRegistry, Pending, ServerState};
+use super::{Core, Event, EventSink, LspHandle, Pending, ServerState};
 use crate::lsp_proto;
 
 #[derive(Clone, Default)]
@@ -43,6 +43,7 @@ fn core() -> (Arc<Core>, Signal, Outbound) {
         pending: Mutex::new(HashMap::new()),
         state: Mutex::new(ServerState::Initializing),
         next_id: AtomicU64::new(1),
+        legend: Mutex::new(super::SemanticLegend::default()),
         init_signal: Mutex::new(init_tx),
     });
     (core, init_rx, outbound_rx)
@@ -374,27 +375,9 @@ fn shutdown_sends_the_request_then_exit_before_killing() {
 }
 
 #[test]
-fn restart_budget_stops_a_crash_loop() {
-    let mut registry = LspRegistry::default();
+fn spawn_failure_reports_the_missing_binary() {
     let sink = Collect::new();
-
-    for _ in 0..3 {
-        let err = registry
-            .ensure_started(
-                "magma-no-such-lsp-binary-9f1c",
-                &[],
-                "rust",
-                None,
-                sink.clone(),
-            )
-            .unwrap_err();
-        assert!(err.contains("Failed to spawn"));
-    }
-    let err = registry
-        .ensure_started("magma-no-such-lsp-binary-9f1c", &[], "rust", None, sink)
-        .unwrap_err();
-    assert!(
-        err.contains("exceeded restart attempts"),
-        "unexpected error: {err}"
-    );
+    let err =
+        LspHandle::start("magma-no-such-lsp-binary-9f1c", &[], "rust", None, sink).unwrap_err();
+    assert!(err.contains("Failed to spawn"), "unexpected error: {err}");
 }

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use logging::debug;
 use serde_json::Value;
 
+use super::semantic_tokens::{decode_semantic_tokens, semantic_token_legend};
 use super::{Core, Event, EventSink, Pending, ServerState};
 use crate::lsp_proto::Inbound;
 use crate::provider::{Diagnostic, DiagnosticSeverity};
@@ -121,6 +122,13 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                 return;
             }
             if id == 1 {
+                // The server's semantic-token legend lives only in the
+                // initialize result; capture it before the handshake
+                // response is consumed.
+                if let Some(result) = result.as_ref() {
+                    *core.legend.lock().unwrap_or_else(|e| e.into_inner()) =
+                        semantic_token_legend(result);
+                }
                 // The initialize response completes the awaited handshake.
                 if let Ok(tx) = core.init_signal.lock() {
                     let _ = tx.send(Ok(()));
@@ -177,7 +185,9 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                     },
                     "textDocument/signatureHelp" => Event::SignatureHelp {
                         path: language_id.to_string(),
-                        json: result.map(|r| r.to_string()).unwrap_or_else(|| "null".into()),
+                        json: result
+                            .map(|r| r.to_string())
+                            .unwrap_or_else(|| "null".into()),
                         buf_key: p.buf_key,
                         revision: p.revision,
                     },
@@ -186,6 +196,20 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                         edit: result
                             .map(|r| r.to_string())
                             .unwrap_or_else(|| "null".into()),
+                        buf_key: p.buf_key,
+                        revision: p.revision,
+                    },
+                    "textDocument/semanticTokens/full" => Event::SemanticTokens {
+                        path: language_id.to_string(),
+                        tokens: result
+                            .as_ref()
+                            .map(|r| {
+                                decode_semantic_tokens(
+                                    r,
+                                    &core.legend.lock().unwrap_or_else(|e| e.into_inner()),
+                                )
+                            })
+                            .unwrap_or_default(),
                         buf_key: p.buf_key,
                         revision: p.revision,
                     },

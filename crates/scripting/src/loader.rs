@@ -218,6 +218,10 @@ pub fn init_vm() {
         include_str!("../../../builtins/plugins/lsp.janet"),
     );
     load_builtin(
+        "builtins/plugins/lsp_sync.janet",
+        include_str!("../../../builtins/plugins/lsp_sync.janet"),
+    );
+    load_builtin(
         "builtins/plugins/tags_gen.janet",
         include_str!("../../../builtins/plugins/tags_gen.janet"),
     );
@@ -232,6 +236,10 @@ pub fn init_vm() {
     load_builtin(
         "builtins/treesitter.janet",
         include_str!("../../../builtins/treesitter.janet"),
+    );
+    load_builtin(
+        "builtins/folds.janet",
+        include_str!("../../../builtins/folds.janet"),
     );
     load_builtin(
         "builtins/symbols.janet",
@@ -268,6 +276,10 @@ pub fn init_vm() {
     load_builtin(
         "builtins/lsp_diag_eol.janet",
         include_str!("../../../builtins/lsp_diag_eol.janet"),
+    );
+    load_builtin(
+        "builtins/semantic_highlights.janet",
+        include_str!("../../../builtins/semantic_highlights.janet"),
     );
     load_builtin(
         "builtins/gutter.janet",

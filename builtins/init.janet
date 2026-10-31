@@ -89,4 +89,15 @@
   {:fg (catppuccin-mocha :peach) :bg (catppuccin-mocha :base)
    :bold false :italic false :underline false :strikethrough false :dim false})
 
+# Dead code and deprecations — the semantic-highlight targets.  Unused
+# code greys out exactly like comments (overlay0); deprecated code keeps
+# the grey but strikes through.
+(face/define "unused-face"
+  {:fg (catppuccin-mocha :overlay0) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough false :dim true})
+
+(face/define "deprecated-face"
+  {:fg (catppuccin-mocha :overlay0) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough true :dim true})
+
 (print "Magma ready")

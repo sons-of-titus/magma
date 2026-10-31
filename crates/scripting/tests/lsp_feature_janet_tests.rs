@@ -208,3 +208,183 @@ fn lsp_position_counts_utf16_code_units() {
         }
     });
 }
+
+// ── Server-exit recovery ────────────────────────────────────────────────
+
+#[test]
+fn lsp_server_exited_resets_the_attach_state() {
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        // The attach tables key languages by string id (:language-id values).
+        scripting::eval(r#"(put *lsp-servers* "testlang" :ready)"#);
+        scripting::eval(&format!(r#"(put *buffer-languages* {key} "testlang")"#));
+        scripting::eval(&format!(r#"(put *attached-buffers* {key} true)"#));
+
+        let ok = scripting::eval_result(
+            r#"(do (event/emit "lsp-server-exited" {"language" "testlang"}) true)"#,
+        )
+        .unwrap();
+        assert_eq!(ok, "true");
+        // emit only queues; the handler runs on the drain.
+        ed.dispatch_events_scoped();
+
+        let gone = scripting::eval_result(r#"(nil? (get *lsp-servers* "testlang"))"#).unwrap();
+        assert_eq!(
+            gone, "true",
+            "a dead server's attach record must be dropped"
+        );
+
+        let reopenable =
+            scripting::eval_result(&format!(r#"(nil? (get *attached-buffers* {key}))"#)).unwrap();
+        assert_eq!(
+            reopenable, "true",
+            "didOpen must fire again once the replacement server is ready"
+        );
+    });
+}
+
+// ── Document-sync URIs ──────────────────────────────────────────────────
+
+#[test]
+fn buffer_uri_encodes_reserved_bytes() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("x");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().path = Some("/tmp/my notes.rs".to_string());
+    }
+    // didOpen sends the percent-encoded URI (kernel path_to_uri); didChange
+    // must reference the same string or the server never matches the doc.
+    let ok = scripting::eval_result(&format!(
+        r#"(= (buffer-uri {key}) "file:///tmp/my%20notes.rs")"#
+    ))
+    .unwrap();
+    assert_eq!(ok, "true", "buffer-uri must encode like path_to_uri");
+}
+
+// ── Dead-code dimming (hint-diagnostics fallback) ────────────────────────
+
+#[test]
+fn dead_code_refresh_dims_unused_hint_words() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("aaa\nbbb\nccc\n");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    // A hint whose message says the code is unused, pointing at line 2
+    // col 1 ("ccc" — the display is 1-based).
+    use kernel::text_engine::diagnostic::{Diagnostic, DiagnosticSeverity};
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().set_lsp_diagnostics(vec![Diagnostic {
+            message: "unused variable `x`".into(),
+            severity: DiagnosticSeverity::Hint,
+            line: 1,
+            column: 0,
+            end_line: 1,
+            end_column: 3,
+        }]);
+    }
+
+    let result = scripting::eval(&format!("(dead-code/refresh {key})"));
+    assert_eq!(result, "ok");
+
+    let layer = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("dead-code")
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(
+        layer,
+        vec![(4, 7, "unused".to_string())],
+        "the word after the hint's position dims"
+    );
+}
+
+#[test]
+fn dead_code_refresh_ignores_hints_that_are_not_dead_code() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("aaa\nbbb\nccc\n");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    use kernel::text_engine::diagnostic::{Diagnostic, DiagnosticSeverity};
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().set_lsp_diagnostics(vec![
+            Diagnostic {
+                message: "consider adding documentation".into(),
+                severity: DiagnosticSeverity::Hint,
+                line: 0,
+                column: 0,
+                end_line: 0,
+                end_column: 3,
+            },
+            Diagnostic {
+                // A warning, not a hint: wrong severity, no dim.
+                message: "unused import".into(),
+                severity: DiagnosticSeverity::Warning,
+                line: 2,
+                column: 0,
+                end_line: 2,
+                end_column: 3,
+            },
+        ]);
+    }
+
+    let _ = scripting::eval(&format!("(dead-code/refresh {key})"));
+    let layer = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("dead-code")
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        layer.is_empty(),
+        "only unused-code hints may dim: got {layer:?}"
+    );
+}
+
+#[test]
+fn dead_code_refresh_clears_the_layer_when_diagnostics_leave() {
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("aaa\nbbb\n");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+
+    use kernel::text_engine::diagnostic::{Diagnostic, DiagnosticSeverity};
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().set_lsp_diagnostics(vec![Diagnostic {
+            message: "unused variable `x`".into(),
+            severity: DiagnosticSeverity::Hint,
+            line: 1,
+            column: 0,
+            end_line: 1,
+            end_column: 3,
+        }]);
+    }
+    let _ = scripting::eval(&format!("(dead-code/refresh {key})"));
+    // The server withdrew the hint.
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().set_lsp_diagnostics(vec![]);
+    }
+    let _ = scripting::eval(&format!("(dead-code/refresh {key})"));
+
+    let layer = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("dead-code")
+        .cloned()
+        .unwrap_or_default();
+    assert!(layer.is_empty(), "a withdrawn hint must undim");
+}

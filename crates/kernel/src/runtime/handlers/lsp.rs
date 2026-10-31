@@ -24,8 +24,68 @@ fn revision_current(ed: &Editor, buf_key: Option<usize>, revision: u64) -> bool 
 
 /// Match a publishDiagnostics URI against a buffer path (LSP sends file URIs).
 fn lsp_path_matches(buf_path: Option<&str>, diag_path: &str) -> bool {
-    let diag = diag_path.strip_prefix("file://").unwrap_or(diag_path);
-    buf_path == Some(diag) || buf_path == Some(diag_path)
+    match buf_path {
+        Some(p) => crate::semantic::lsp_proto::uri_matches_path(diag_path, p),
+        None => false,
+    }
+}
+
+/// A scope paints only when presentation has claimed it — a Janet-registered
+/// scope-face or a face of the same name.  Dropping unclaimed scopes keeps a
+/// server's unmapped token types from repainting text in the generic
+/// highlight colors.
+fn scope_resolvable(ed: &Editor, scope: &str) -> bool {
+    ed.scope_faces
+        .iter()
+        .any(|(prefix, _)| scope.starts_with(prefix.as_str()))
+        || ed.faces.contains_key(scope)
+}
+
+/// Byte end of the span starting at `start` that covers `len_utf16` UTF-16
+/// code units — astral chars count as two, matching how LSP measures.
+fn utf16_span_end(buf: &crate::text_engine::Buffer, start: usize, len_utf16: usize) -> usize {
+    let text = buf.slice(start, buf.len());
+    let mut units = 0usize;
+    for (i, c) in text.char_indices() {
+        if units >= len_utf16 {
+            return start + i;
+        }
+        units += c.len_utf16();
+    }
+    start + text.len()
+}
+
+/// Semantic tokens land in the "semantic" highlight layer (after syntax).
+/// Each token contributes its type scope, then one range per modifier so a
+/// modifier's styling paints over the type's.
+fn apply_semantic_tokens(
+    ed: &mut Editor,
+    buf_key: usize,
+    tokens: &[crate::semantic::lsp::SemanticToken],
+) {
+    let Some(arc) = ed.buffers.get(buf_key) else {
+        return;
+    };
+    let mut ranges: Vec<(usize, usize, String)> = Vec::new();
+    {
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        for t in tokens {
+            let start =
+                crate::semantic::edit_apply::offset_of_lsp_position(&buf, t.line, t.col_utf16);
+            let end = utf16_span_end(&buf, start, t.len_utf16);
+            if end <= start {
+                continue;
+            }
+            ranges.push((start, end, t.token_type.clone()));
+            for m in &t.modifiers {
+                ranges.push((start, end, m.clone()));
+            }
+        }
+    }
+    ranges.retain(|(_, _, scope)| scope_resolvable(ed, scope));
+    ed.for_each_view_of_buffer_mut(buf_key, |view| {
+        view.set_highlights_layer("semantic", ranges.clone());
+    });
 }
 
 pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
@@ -58,8 +118,9 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
             }
             let count = diagnostics.len();
             // Typed diagnostics live in the semantic engine (canonical);
-            // the buffer keeps display strings only.  URI vs path is
-            // normalized so servers sending file:// URIs still land.
+            // the buffer keeps display strings only.  The engine keys by
+            // raw buffer path — decode the URI before storing so readers
+            // querying by `buf.path` match.
             let display: Vec<String> = diagnostics.iter().map(|d| d.display()).collect();
             let mut buffer_id: Option<usize> = None;
             for (key, arc) in ed.buffers.iter_mut() {
@@ -70,7 +131,8 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                     break;
                 }
             }
-            ed.semantic.update_diagnostics(&path, diagnostics);
+            ed.semantic
+                .update_diagnostics(&crate::semantic::lsp_proto::uri_to_path(&path), diagnostics);
             if let Some(buf) = buffer_id {
                 crate::inlay_hints::request(ed, buf);
             }
@@ -131,6 +193,15 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 crate::state::MessageKind::Error,
                 format!("language server for {language} exited"),
             );
+            // Janet's attach table still believes the server is live; the
+            // reset event is what lets it re-attach (and respawn) the
+            // language.  Bounded by the restart budget so a crash-looping
+            // server cannot respawn forever.
+            if ed.lsp.allow_restart(&language) {
+                let mut data = std::collections::HashMap::new();
+                data.insert("language".to_string(), language);
+                ed.events.emit("lsp-server-exited", data);
+            }
         }
         Event::Started { language, result } => match result {
             Ok(handle) => {
@@ -142,6 +213,14 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
             }
             Err(e) => {
                 ed.show_message(crate::state::MessageKind::Error, e);
+                // A failed handshake never produces a handle; clear the
+                // spawn slot and let the attach layer retry within budget.
+                ed.lsp.exited(&language);
+                if ed.lsp.allow_restart(&language) {
+                    let mut data = std::collections::HashMap::new();
+                    data.insert("language".to_string(), language);
+                    ed.events.emit("lsp-server-exited", data);
+                }
             }
         },
         Event::Hover {
@@ -239,12 +318,14 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 .focused_window()
                 .and_then(|wid| ed.view_tree.buffer(wid));
             if focused == buf_key {
-                ed.signature =
-                    crate::signature::parse_signature_help(&json).unwrap_or_default();
+                ed.signature = crate::signature::parse_signature_help(&json).unwrap_or_default();
             }
             ed.events.emit_typed(
                 keys::events::LSP_SIGNATURE_HELP,
-                LspSignatureHelpPayload { path, signatures: json },
+                LspSignatureHelpPayload {
+                    path,
+                    signatures: json,
+                },
             );
         }
         Event::RenameResult {
@@ -257,6 +338,16 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 keys::events::LSP_RENAME_RESULT,
                 LspRenameResultPayload { path, edit },
             );
+        }
+        Event::SemanticTokens {
+            tokens,
+            buf_key,
+            revision,
+            ..
+        } if revision_current(ed, buf_key, revision) => {
+            if let Some(buf_key) = buf_key {
+                apply_semantic_tokens(ed, buf_key, &tokens);
+            }
         }
         Event::Progress {
             token,

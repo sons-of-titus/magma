@@ -69,6 +69,8 @@ impl GutterProvider for Folding {
         let fold_icons = &ctx.editor.gutter.fold_icons;
         let icon = if ctx.is_fold_start {
             fold_icons.closed.as_str()
+        } else if ctx.is_foldable {
+            fold_icons.open.as_str()
         } else {
             " "
         };

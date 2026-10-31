@@ -17,7 +17,11 @@ pub struct BufferView {
     pub buffer: Arc<Mutex<Buffer>>,
     pub cursor: Position,
     pub scroll_offset: usize,
+    /// Collapsed ranges: rendered as a single fold row.
     pub folds: Vec<(usize, usize)>,
+    /// Foldable ranges reported by the language (tree-sitter fold query):
+    /// what the gutter offers to fold, distinct from what is folded.
+    pub fold_ranges: Vec<(usize, usize)>,
     pub highlights: Vec<(usize, usize, String)>,
     pub highlight_layers: HashMap<String, Vec<(usize, usize, String)>>,
     pub decoration_layers: HashMap<String, Vec<Decoration>>,
@@ -30,6 +34,7 @@ impl BufferView {
             cursor: Position::zero(),
             scroll_offset: 0,
             folds: Vec::new(),
+            fold_ranges: Vec::new(),
             highlights: Vec::new(),
             highlight_layers: HashMap::new(),
             decoration_layers: HashMap::new(),
@@ -61,9 +66,11 @@ impl BufferView {
     }
 
     /// Map a pre-transaction byte range to post-transaction coordinates.
-    /// Ranges overlapping an edit are dropped — a search hit inside deleted
-    /// text no longer exists — and ranges after an edit shift by the delta,
-    /// the same anchor arithmetic the cursor uses.
+    /// Ranges entirely after an edit shift by the delta — the same anchor
+    /// arithmetic the cursor uses.  A range the edit cuts through keeps its
+    /// surviving part (grows over an insertion inside it, clamps over a
+    /// deletion): dropping it would blank a word or a whole string literal
+    /// between the keystroke and the next parse landing.
     fn transform_range(txn: &EditTransaction, range: (usize, usize)) -> Option<(usize, usize)> {
         let (mut s, mut e) = range;
         // Edits are ascending and disjoint (§A.3), so the first edit at or
@@ -78,13 +85,40 @@ impl BufferView {
                 s = (s as i64 + delta).max(0) as usize;
                 e = (e as i64 + delta).max(0) as usize;
             } else {
-                return None;
+                // Overlap.  The parts of the span before and after the edit
+                // survive; only the span the edit fully covers disappears.
+                let left = s < start;
+                let right = e > end;
+                match (left, right) {
+                    (false, false) => return None,
+                    // Span truncated to the prefix before the edit — later
+                    // edits are past it.
+                    (true, false) => {
+                        e = start;
+                        break;
+                    }
+                    // Span reduced to its tail after the edit.
+                    (false, true) => {
+                        s = (end as i64 + delta).max(0) as usize;
+                        e = (e as i64 + delta).max(0) as usize;
+                    }
+                    // Span bridges the edit: it stretches or shrinks by the
+                    // delta and keeps its head.
+                    (true, true) => {
+                        e = (e as i64 + delta).max(0) as usize;
+                    }
+                }
             }
         }
         Some((s.min(e), e.max(s)))
     }
 
-    fn transform_highlights(&mut self, txn: &EditTransaction) {
+    /// Fold spans follow edits exactly like highlights: an edit cutting
+    /// through a fold opens it (dropping the span beats folding half a
+    /// function), and spans past the edit shift by the delta.  The fold
+    /// start can land mid-line after an edit on its line; the next
+    /// tree-sitter recompute re-snaps it, so no extra handling here.
+    fn transform_annotations(&mut self, txn: &EditTransaction) {
         let map = |v: &Vec<(usize, usize, String)>| -> Vec<(usize, usize, String)> {
             v.iter()
                 .filter_map(|(a, b, f)| {
@@ -92,10 +126,17 @@ impl BufferView {
                 })
                 .collect()
         };
+        let map_range = |v: &Vec<(usize, usize)>| -> Vec<(usize, usize)> {
+            v.iter()
+                .filter_map(|&(a, b)| Self::transform_range(txn, (a, b)))
+                .collect()
+        };
         self.highlights = map(&self.highlights);
         for layer in self.highlight_layers.values_mut() {
             *layer = map(layer);
         }
+        self.folds = map_range(&self.folds);
+        self.fold_ranges = map_range(&self.fold_ranges);
     }
 
     // ── Content mutations (delegate to Buffer, cursor transforms) ──
@@ -111,7 +152,7 @@ impl BufferView {
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
-            self.transform_highlights(&txn);
+            self.transform_annotations(&txn);
         }
     }
 
@@ -128,7 +169,7 @@ impl BufferView {
         };
         if let Some(txn) = &txn {
             self.cursor_through(txn);
-            self.transform_highlights(txn);
+            self.transform_annotations(txn);
         }
         txn
     }
@@ -141,7 +182,7 @@ impl BufferView {
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
-            self.transform_highlights(&txn);
+            self.transform_annotations(&txn);
         }
     }
 
@@ -153,7 +194,7 @@ impl BufferView {
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
-            self.transform_highlights(&txn);
+            self.transform_annotations(&txn);
         }
     }
 
@@ -165,7 +206,7 @@ impl BufferView {
         match restored {
             Some((offset, txns)) => {
                 for txn in &txns {
-                    self.transform_highlights(txn);
+                    self.transform_annotations(txn);
                 }
                 self.set_cursor(offset);
                 true
@@ -182,7 +223,7 @@ impl BufferView {
         match restored {
             Some((offset, txns)) => {
                 for txn in &txns {
-                    self.transform_highlights(txn);
+                    self.transform_annotations(txn);
                 }
                 self.set_cursor(offset);
                 true
@@ -224,6 +265,10 @@ impl BufferView {
         self.folds
             .iter()
             .any(|(fs, fe)| *fs <= line_start && *fe >= line_end)
+    }
+
+    pub fn set_fold_ranges(&mut self, ranges: Vec<(usize, usize)>) {
+        self.fold_ranges = ranges;
     }
 
     // ── Highlights ──

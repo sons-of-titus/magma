@@ -51,6 +51,8 @@ pub struct GutterCtx<'a> {
     pub line_start_offset: usize,
     /// True when this line is the start of a folded region.
     pub is_fold_start: bool,
+    /// True when this line starts a foldable range that is not folded.
+    pub is_foldable: bool,
     /// Pre-computed diagnostic severity for lines (0-based line → severity char).
     pub diag_lines: &'a HashMap<usize, char>,
 }

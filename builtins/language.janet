@@ -17,12 +17,12 @@
 
 (event/on "language-registered"
   (fn [data]
-    (def name (get data "name" "?"))
+    (def name (get data :name "?"))
     (editor/log-message (string "[language] registered: " name))))
 
 (event/on "language-unregistered"
   (fn [data]
-    (def name (get data "name" "?"))
+    (def name (get data :name "?"))
     (editor/log-message (string "[language] unregistered: " name))))
 
 # ── Registration ─────────────────────────────────────────────────────────────
@@ -70,6 +70,8 @@
       (put *extension-mode-map* ext mode)))
   (when-let [syntax (get spec :syntax)]
     (ts/load-mode-query mode syntax))
+  (when-let [folds (get spec :folds)]
+    (ts/load-mode-fold-query mode folds))
   (when-let [comments (get spec :comments)]
     (set-option-default (string id "-comment-prefix") (get comments :line))
     (when-let [block (get comments :block)]

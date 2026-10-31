@@ -203,6 +203,13 @@ impl View for EditorView {
         // ── Pass 1: gutter + text (fold-aware) ───────────────────────────────
         let empty_folds = Vec::new();
         let folds = view.map(|v| &v.folds).unwrap_or(&empty_folds);
+        let empty_fold_ranges = Vec::new();
+        let foldable_starts: std::collections::HashSet<usize> = view
+            .map(|v| &v.fold_ranges)
+            .unwrap_or(&empty_fold_ranges)
+            .iter()
+            .map(|(s, _)| *s)
+            .collect();
 
         // Visible rows extracted once: (line_start, line_end_incl_newline, text).
         // No whole-document copy is made to render a viewport (§9.1).
@@ -228,6 +235,7 @@ impl View for EditorView {
                     line_count: total_lines,
                     line_start_offset: line_start,
                     is_fold_start,
+                    is_foldable: !is_fold_start && foldable_starts.contains(&line_start),
                     diag_lines: &diag_lines,
                 };
                 let gutter_bg = style_theme("line-num", "line-num-bg");

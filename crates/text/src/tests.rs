@@ -250,6 +250,40 @@ fn undo_transforms_highlights_back() {
 }
 
 #[test]
+fn insert_inside_a_highlight_grows_it() {
+    // Typing mid-word keeps the word colored through the new character
+    // instead of dropping the span until the next parse lands.
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "syntax".into())]);
+    view.insert(8, "XX");
+    assert_eq!(view.highlights, vec![(6, 12, "syntax".into())]);
+}
+
+#[test]
+fn deleting_a_highlight_head_clamps_to_the_surviving_tail() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "syntax".into())]);
+    view.delete(4, 8); // " b" — half of "beta"
+    assert_eq!(view.highlights, vec![(4, 6, "syntax".into())]);
+}
+
+#[test]
+fn deleting_a_highlight_tail_clamps_to_the_surviving_head() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(6, 10, "syntax".into())]);
+    view.delete(8, 12); // "ta g" — the tail of "beta"
+    assert_eq!(view.highlights, vec![(6, 8, "syntax".into())]);
+}
+
+#[test]
+fn a_span_bridging_an_insert_stretches_with_it() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_highlights(vec![(4, 12, "syntax".into())]);
+    view.insert(6, ">>");
+    assert_eq!(view.highlights, vec![(4, 14, "syntax".into())]);
+}
+
+#[test]
 fn highlight_layers_transform_with_the_flat_list() {
     let mut view = buf_view("alpha beta gamma");
     view.set_highlights_layer("semantic", vec![(6, 10, "sel".into())]);
@@ -258,4 +292,40 @@ fn highlight_layers_transform_with_the_flat_list() {
         view.highlight_layers.get("semantic").map(|v| v.as_slice()),
         Some(&[(4, 8, "sel".to_string())][..])
     );
+}
+
+// ── Fold ranges survive edits (folds track the text, not stale bytes) ──
+
+#[test]
+fn insert_before_a_fold_shifts_it() {
+    let mut view = buf_view("alpha beta gamma");
+    view.add_fold(6, 10);
+    view.insert(0, "XX");
+    assert_eq!(view.folds, vec![(8, 12)]);
+}
+
+#[test]
+fn deleting_through_a_fold_opens_it() {
+    let mut view = buf_view("alpha beta gamma");
+    view.add_fold(6, 10);
+    view.delete(4, 12);
+    assert!(view.folds.is_empty());
+}
+
+#[test]
+fn fold_candidates_transform_like_folds() {
+    let mut view = buf_view("alpha beta gamma");
+    view.set_fold_ranges(vec![(6, 10)]);
+    view.insert(0, "XX");
+    assert_eq!(view.fold_ranges, vec![(8, 12)]);
+    assert!(view.undo());
+    assert_eq!(view.fold_ranges, vec![(6, 10)]);
+}
+
+#[test]
+fn a_fold_bridging_an_insert_stretches_with_it() {
+    let mut view = buf_view("alpha beta gamma");
+    view.add_fold(4, 12);
+    view.insert(6, ">>");
+    assert_eq!(view.folds, vec![(4, 14)]);
 }

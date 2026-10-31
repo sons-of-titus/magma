@@ -51,10 +51,13 @@
   (each lang (get spec :languages @[])
     (def syntax (when (file-exists? (string root "/syntax.scm"))
                   (string root "/syntax.scm")))
+    (def folds (when (file-exists? (string root "/folds.scm"))
+                 (string root "/folds.scm")))
     (def config (when (file-exists? (string root "/config.janet"))
                   (string root "/config.janet")))
     (def spec {:id lang
                :syntax syntax
+               :folds folds
                :config config
                :extensions (get ext-map lang @[])
                :plugin name})
@@ -168,9 +171,9 @@
 (event/on "plugin-registered"
   (fn [data]
     (editor/log-message
-      (string "[plugin] registered: " (get data "name" "?") " v" (get data "version" "?")))))
+      (string "[plugin] registered: " (get data :name "?") " v" (get data :version "?")))))
 
 (event/on "plugin-loaded"
   (fn [data]
-    (editor/log-message (string "[plugin] loaded: " (get data "name" "?")))))
+    (editor/log-message (string "[plugin] loaded: " (get data :name "?")))))
 

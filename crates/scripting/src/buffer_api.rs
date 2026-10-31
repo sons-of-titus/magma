@@ -80,15 +80,12 @@ unsafe fn parse_highlight_ranges(
 unsafe extern "C-unwind" fn c_buffer_set_highlights(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let Some(view) = ed.view_of_buffer_mut(key) else {
-            return conv::nil();
-        };
         if argc < 2 {
-            view.clear_highlights();
+            ed.for_each_view_of_buffer_mut(key, |view| view.clear_highlights());
             return conv::nil();
         }
         let ranges = parse_highlight_ranges(argc, argv, 1);
-        view.set_highlights(ranges);
+        ed.for_each_view_of_buffer_mut(key, |view| view.set_highlights(ranges.clone()));
         conv::nil()
     })
 }
@@ -96,9 +93,7 @@ unsafe extern "C-unwind" fn c_buffer_set_highlights(argc: i32, argv: *mut Janet)
 unsafe extern "C-unwind" fn c_buffer_clear_highlights(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        if let Some(view) = ed.view_of_buffer_mut(key) {
-            view.clear_highlights();
-        }
+        ed.for_each_view_of_buffer_mut(key, |view| view.clear_highlights());
         conv::nil()
     })
 }
@@ -109,16 +104,42 @@ unsafe extern "C-unwind" fn c_buffer_set_highlights_layer(argc: i32, argv: *mut 
         let Some(layer) = conv::get_str(argc, argv, 1) else {
             return conv::nil();
         };
-        let Some(view) = ed.view_of_buffer_mut(key) else {
-            return conv::nil();
-        };
         if argc < 3 {
-            view.clear_highlights_layer(&layer);
+            ed.for_each_view_of_buffer_mut(key, |view| view.clear_highlights_layer(&layer));
             return conv::nil();
         }
         let ranges = parse_highlight_ranges(argc, argv, 2);
-        view.set_highlights_layer(&layer, ranges);
+        ed.for_each_view_of_buffer_mut(key, |view| {
+            view.set_highlights_layer(&layer, ranges.clone())
+        });
         conv::nil()
+    })
+}
+
+/// (buffer/highlights-layer buf layer) → [[start end scope] ...]
+/// Introspection for the `:hl-debug` verb — the layer as the renderer
+/// will read it.
+unsafe extern "C-unwind" fn c_buffer_highlights_layer(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let Some(layer) = conv::get_str(argc, argv, 1) else {
+            return conv::nil();
+        };
+        let Some(view) = ed.view_of_buffer(key) else {
+            return janet_wrap_array(janet_array(0));
+        };
+        let Some(ranges) = view.highlight_layers.get(&layer) else {
+            return janet_wrap_array(janet_array(0));
+        };
+        let arr = janet_array(ranges.len() as i32);
+        for (s, e, scope) in ranges {
+            let item = janet_array(3);
+            janet_array_push(item, conv::integer(*s as i32));
+            janet_array_push(item, conv::integer(*e as i32));
+            janet_array_push(item, conv::string(scope));
+            janet_array_push(arr, janet_wrap_array(item));
+        }
+        janet_wrap_array(arr)
     })
 }
 
@@ -128,9 +149,7 @@ unsafe extern "C-unwind" fn c_buffer_clear_highlights_layer(argc: i32, argv: *mu
         let Some(layer) = conv::get_str(argc, argv, 1) else {
             return conv::nil();
         };
-        if let Some(view) = ed.view_of_buffer_mut(key) {
-            view.clear_highlights_layer(&layer);
-        }
+        ed.for_each_view_of_buffer_mut(key, |view| view.clear_highlights_layer(&layer));
         conv::nil()
     })
 }
@@ -187,6 +206,64 @@ unsafe extern "C-unwind" fn c_buffer_folds(argc: i32, argv: *mut Janet) -> Janet
     })
 }
 
+/// Parse `[[start end] …]` into fold byte ranges; malformed entries skip.
+/// Janet literals are tuples, so reads go through the array-or-tuple
+/// accessors rather than a raw array unwrap.
+unsafe fn parse_fold_ranges(value: Janet) -> Vec<(usize, usize)> {
+    unsafe {
+        let n = len_seq(value);
+        let mut ranges = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let inner = index_seq(value, i);
+            let Some(s) = conv::get_int_value(index_seq(inner, 0)) else {
+                continue;
+            };
+            let Some(e) = conv::get_int_value(index_seq(inner, 1)) else {
+                continue;
+            };
+            if s >= 0 && e >= s {
+                ranges.push((s as usize, e as usize));
+            }
+        }
+        ranges
+    }
+}
+
+/// (buffer/set-fold-ranges buf [[start end] …]) — the language's foldable
+/// ranges (tree-sitter fold query output).  Distinct from folds: candidates
+/// feed the gutter indicator and toggle-fold; folding one is explicit.
+unsafe extern "C-unwind" fn c_buffer_set_fold_ranges(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let ranges = if argc < 2 {
+            Vec::new()
+        } else {
+            parse_fold_ranges(*argv.add(1))
+        };
+        ed.for_each_view_of_buffer_mut(key, |view| view.set_fold_ranges(ranges.clone()));
+        conv::nil()
+    })
+}
+
+/// (buffer/fold-ranges buf) → [[start end] …]
+unsafe extern "C-unwind" fn c_buffer_fold_ranges(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let key = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let ranges = match ed.view_of_buffer(key) {
+            Some(view) => view.fold_ranges.clone(),
+            None => Vec::new(),
+        };
+        let arr = janet_array(ranges.len() as i32);
+        for (s, e) in ranges {
+            let inner = janet_array(2);
+            janet_array_push(inner, conv::integer(s as i32));
+            janet_array_push(inner, conv::integer(e as i32));
+            janet_array_push(arr, janet_wrap_array(inner));
+        }
+        janet_wrap_array(arr)
+    })
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
@@ -210,6 +287,11 @@ pub fn register() -> Vec<JanetReg> {
                     as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
             ),
             documentation: c"Set highlight ranges for a named layer".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"buffer/highlights-layer".as_ptr() as *const _,
+            cfun: Some(c_buffer_highlights_layer as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"(buffer/highlights-layer buf layer) -> [[start end scope] ...] - read a highlight layer back".as_ptr() as *const _,
         },
         JanetReg {
             name: c"buffer/clear-highlights-layer".as_ptr() as *const _,
@@ -240,6 +322,21 @@ pub fn register() -> Vec<JanetReg> {
             name: c"buffer/folds".as_ptr() as *const _,
             cfun: Some(c_buffer_folds as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Get all fold ranges for a buffer".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"buffer/set-fold-ranges".as_ptr() as *const _,
+            cfun: Some(
+                c_buffer_set_fold_ranges as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Set the buffer's foldable ranges reported by the language"
+                .as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"buffer/fold-ranges".as_ptr() as *const _,
+            cfun: Some(
+                c_buffer_fold_ranges as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Get the buffer's foldable ranges".as_ptr() as *const _,
         },
     ]
 }

@@ -46,3 +46,44 @@ fn scheduled_parse_is_a_noop_without_a_registered_grammar() {
     crate::kernel::semantic::ts_schedule::schedule_tree_update(&mut ed, key);
     assert!(!ed.ts_trees.contains_key(&key));
 }
+
+#[test]
+fn dropping_a_buffer_clears_tree_sitter_state() {
+    let mut ed = helpers::make_editor_with_buffer("fn main() {}");
+    let key = focused_key(&ed);
+    ed.ts_languages.insert(key, "rust".to_string());
+
+    // The slab reuses slots: a stale language entry would make the next
+    // buffer in this slot skip ts/set-language (ts/has-tree? only checks
+    // membership) and parse with the previous buffer's grammar.
+    ed.drop_buffer(key);
+    assert!(!ed.ts_languages.contains_key(&key));
+    assert!(!ed.ts_trees.contains_key(&key));
+}
+
+#[test]
+fn highlight_layer_writes_reach_every_view_fork() {
+    let mut ed = helpers::make_editor_with_buffer("abc def");
+    let key = focused_key(&ed);
+    // A second window fork shows the same buffer; with a single-fork
+    // write, unordered HashMap pick decided which fork got the layer and
+    // the render could read the other one.
+    let fork = ed.views.get(&key).cloned().unwrap();
+    ed.window_views.insert((kernel::state::id::WindowId(4242), key), fork);
+
+    ed.for_each_view_of_buffer_mut(key, |view| {
+        view.set_highlights_layer("syntax", vec![(0, 3, "keyword-face".to_string())])
+    });
+
+    assert_eq!(
+        ed.window_views[&(kernel::state::id::WindowId(4242), key)]
+            .highlight_layers
+            .get("syntax"),
+        Some(&vec![(0, 3, "keyword-face".to_string())]),
+        "the forked window must see the layer"
+    );
+    assert!(
+        ed.views[&key].highlight_layers.contains_key("syntax"),
+        "the default view must see the layer"
+    );
+}

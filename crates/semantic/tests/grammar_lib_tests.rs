@@ -115,7 +115,10 @@ fn compile(source: &Path, out: &Path) {
             std::fs::write(&def, "EXPORTS\n    tree_sitter_stublang\n    tree_sitter_aliased\n    tree_sitter_broken\n")
                 .expect("write def");
             let mut cmd = std::process::Command::new(tool.path());
-            cmd.envs(tool.get_envs().map(|(k, v)| (k.to_os_string(), v.to_os_string())));
+            cmd.envs(
+                tool.get_envs()
+                    .map(|(k, v)| (k.to_os_string(), v.to_os_string())),
+            );
             cmd.current_dir(dir);
             cmd.args(["/nologo", "/O2", "/LD"]);
             cmd.arg(source);

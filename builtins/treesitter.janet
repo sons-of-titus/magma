@@ -40,14 +40,35 @@
                   "so")))
   (when (ts-grammar-file? path) path))
 
+# A mode may only be handed to the tree-sitter lane when a grammar actually
+# backs it: the Rust registry has one loaded (`ts/has-language`) or a path
+# is registered for first use (*ts-grammars*).  A query without a grammar —
+# a plugin that ships syntax.scm but no loadable shared library — must leave
+# the native fallback highlighter in charge, or the mode gets neither.
+(defn- ts-mode-has-grammar? [mode]
+  (def lang-id
+    (if (string/has-suffix? "-mode" mode)
+      (string/slice mode 0 (- (length mode) 5))
+      mode))
+  (or (ts/has-language lang-id)
+      (ts/has-language mode)
+      (get *ts-grammars* lang-id)
+      (get *ts-grammars* mode)))
+
 # Register `query` as the tree-sitter highlight query for a major mode,
-# replacing any earlier registration.  The mode's syntax layer belongs to
-# the tree-sitter lane from here on: the native fallback highlighter
-# stands down for it and stale fallback ranges are cleared.
+# replacing any earlier registration.  When a grammar backs the mode, its
+# syntax layer belongs to the tree-sitter lane from here on: the native
+# fallback highlighter stands down for it and stale fallback ranges are
+# cleared.  Call ts/register-grammar (or language/define with :grammar)
+# before this, or the fallback stays in charge.
 (defn ts/set-mode-query
   [mode query]
-  (put *ts-mode-queries* mode query)
-  (syntax/set-ts-mode mode true))
+  # Store as string: file/read yields a buffer, and ts/highlight reads the
+  # query through a string-only C boundary — a stored buffer would make
+  # every highlight run silently return nil.
+  (put *ts-mode-queries* mode (string query))
+  (when (ts-mode-has-grammar? mode)
+    (syntax/set-ts-mode mode true)))
 
 # Register a major mode's highlight query from a query file on disk
 # (conventionally the plugin's syntax.scm).  A missing or unreadable file
@@ -112,8 +133,20 @@
       (break))))
   (when result
     (def ranges @[])
+    (def text (buffer/slice buf-id 0 (buffer/len buf-id)))
+    # The grammar parses None/Some/Ok as plain identifiers and query
+    # predicates are not applied by the runtime — promote them to the
+    # constant scope so they read as literals, not variables.
     (each r result
-      (array/push ranges [(r 0) (r 1) (r 2)]))
+      (var [s e scope] r)
+      (when (and (= scope "variable")
+                 (< s (length text))
+                 (<= e (length text))
+                 (or (= (string/slice text s e) "None")
+                     (= (string/slice text s e) "Some")
+                     (= (string/slice text s e) "Ok")))
+        (set scope "constant"))
+      (array/push ranges [s e scope]))
     (buffer/set-highlights-layer buf-id "syntax" ranges)))
 
 # ── Scope → face mapping ─────────────────────────────────────────────────────
@@ -154,8 +187,33 @@
 # a fresh tree for a buffer, re-run the query against it.
 (event/on "ts-tree-updated"
   (fn [data]
-    (when-let [raw (get data "buffer-id")]
+    (when-let [raw (get data :buffer-id)]
       (when-let [buf-id (scan-number raw)]
         (ts/highlight-buffer buf-id)))))
+
+# ── :hl-debug — introspect the syntax layer around the cursor ────────────────
+#
+# With the cursor on (or right after) a suspicious token, this prints the
+# major mode, the spans that overlap the token from the layer the renderer
+# reads, and the resolved face.  It separates "the layer is short" from
+# "the renderer dropped a cell" — the two halves of a half-colored token.
+(command/define "hl-debug"
+  (fn [&]
+    (def buf (buffer/current))
+    (unless buf (break))
+    (def pos (buffer/cursor buf))
+    (def word (buffer/word-under-cursor buf))
+    (def spans (buffer/highlights-layer buf "syntax"))
+    (editor/echo (string "mode=" (buffer/major-mode buf)
+                         " cursor=" pos
+                         " spans=" (length spans)))
+    (each [s e scope] spans
+      (when (and (<= s pos) (< pos e))
+        (editor/echo (string "  [" s " " e "] " (string/slice (buffer/slice buf 0 (buffer/len buf)) s (min e (buffer/len buf)))
+                             " → " scope)))
+      (when word
+        (def ws (- pos (length word)))
+        (when (and (<= ws s) (< s (+ pos 1)))
+          (editor/echo (string "  near-word [" s " " e "] " scope)))))))
 
 (print "tree-sitter loaded")

@@ -296,7 +296,10 @@ fn syntax_highlight_buffer_rust_produces_ranges() {
     }
 
     // The syntax-highlight command must produce a layer
-    let result = scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {})"#, key));
+    let result = scripting::eval(&format!(
+        r#"(editor/run-command "syntax-highlight" {})"#,
+        key
+    ));
     assert_eq!(result, "ok", "syntax-highlight must not error");
 
     // Check that the view has a "syntax" layer with keyword-face ranges
@@ -478,8 +481,8 @@ fn syntax_layer(ed: &kernel::state::Editor, key: usize) -> Vec<(usize, usize, St
 fn define_rules_registers_and_replaces_deterministically() {
     janet_test!(ed, {
         let key = helpers::focused_key(&ed);
-        let r = scripting::eval_result(r##"(syntax/define-rules "zlang" ["kw1" "kw2"] "#")"##)
-            .unwrap();
+        let r =
+            scripting::eval_result(r##"(syntax/define-rules "zlang" ["kw1" "kw2"] "#")"##).unwrap();
         assert_eq!(r, ":ok");
         scripting::eval(r#"(syntax/map-extension "zzlang" "zlang")"#);
         {
@@ -513,11 +516,13 @@ fn define_rules_rejects_malformed_rules() {
             r#"(syntax/define-rules "" [] nil)"#,
         ];
         for form in cases {
-            let caught = scripting::eval_result(&format!(
-                r#"(= (try {form} ([e] "caught")) "caught")"#
-            ))
-            .unwrap();
-            assert_eq!(caught, "true", "{form} must be a catchable validation error");
+            let caught =
+                scripting::eval_result(&format!(r#"(= (try {form} ([e] "caught")) "caught")"#))
+                    .unwrap();
+            assert_eq!(
+                caught, "true",
+                "{form} must be a catchable validation error"
+            );
         }
         assert!(
             !ed.fallback_syntax.rules.contains_key("xlang"),
@@ -528,9 +533,9 @@ fn define_rules_rejects_malformed_rules() {
 
 #[test]
 fn ts_ownership_flips_through_janet_configuration() {
-    // ts/set-mode-query hands the mode's layer to the tree-sitter lane via
-    // syntax/set-ts-mode; the fallback stands down by state, so event
-    // registration order cannot change the outcome.
+    // syntax/set-ts-mode hands the mode's layer to the tree-sitter lane;
+    // the fallback stands down by state, so event registration order
+    // cannot change the outcome.
     janet_test!(ed, {
         let key = helpers::focused_key(&ed);
         scripting::eval(r#"(syntax/define-rules "olang" ["owkw"] nil)"#);
@@ -544,7 +549,7 @@ fn ts_ownership_flips_through_janet_configuration() {
         scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
         assert_eq!(syntax_layer(&ed, key).len(), 1);
 
-        scripting::eval(r#"(ts/set-mode-query "fundamental" "(keyword)")"#);
+        scripting::eval(r#"(syntax/set-ts-mode "fundamental" true)"#);
         assert!(
             syntax_layer(&ed, key).is_empty(),
             "the ownership flip must clear fallback ranges at once"
@@ -571,6 +576,43 @@ fn ts_ownership_flips_through_janet_configuration() {
         assert!(
             !syntax_layer(&ed, key).is_empty(),
             "fallback owns again after the flip back"
+        );
+    });
+}
+
+#[test]
+fn ts_set_mode_query_without_a_grammar_leaves_the_fallback_in_charge() {
+    // A mode whose query has no loadable grammar (a plugin shipped
+    // syntax.scm but no shared library) must keep native fallback
+    // highlighting — handing the layer to tree-sitter would leave it with
+    // neither highlighter.
+    janet_test!(ed, {
+        let key = helpers::focused_key(&ed);
+        scripting::eval(r#"(syntax/define-rules "olang" ["owkw"] nil)"#);
+        scripting::eval(r#"(syntax/map-extension "olangext" "olang")"#);
+        {
+            let arc = ed.buffers.get(key).unwrap();
+            let mut buf = arc.lock().unwrap();
+            buf.path = Some("/t/a.olangext".to_string());
+            buf.insert(0, "owkw x\n");
+        }
+        scripting::eval(r#"(ts/set-mode-query "olang-mode" "(keyword)")"#);
+        scripting::eval(&format!(r#"(editor/run-command "syntax-highlight" {key})"#));
+        assert_eq!(
+            syntax_layer(&ed, key).len(),
+            1,
+            "a query without a grammar must not stand down the fallback"
+        );
+
+        // The fallback keeps updating while the query is registered.
+        {
+            let view = ed.views.get_mut(&key).unwrap();
+            view.insert(0, "owkw more\n");
+        }
+        ed.publish_buffer_changes();
+        assert!(
+            !syntax_layer(&ed, key).is_empty(),
+            "fallback must keep painting edits without a grammar"
         );
     });
 }

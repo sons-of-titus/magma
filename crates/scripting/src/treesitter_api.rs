@@ -104,12 +104,14 @@ unsafe extern "C-unwind" fn c_ts_set_language(argc: i32, argv: *mut Janet) -> Ja
     })
 }
 
-/// Incremental highlight: reuse the cached parse tree, apply the edits
-/// since its revision, reparse only the changed regions, and run the query.
-/// Falls back to a full parse when there is no usable cached tree.
-///
-/// (ts/highlight buf-id query-string) → [[start end scope] ...] or nil
-unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet {
+/// Run `query_str` against the buffer's fresh-or-cached tree, updating the
+/// per-buffer tree state.  Returns (start, end, capture) triples with the
+/// capture names verbatim — the query's semantics belong to the caller.
+fn run_incremental_query(
+    ed: &mut kernel::state::Editor,
+    buf_id: usize,
+    query_str: &str,
+) -> Option<Vec<(usize, usize, String)>> {
     use kernel::semantic::ts_registry;
 
     fn point_of(buf: &kernel::text_engine::Buffer, offset: usize) -> tree_sitter::Point {
@@ -117,69 +119,68 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
         tree_sitter::Point::new(row, col)
     }
 
-    with_editor(|ed| unsafe {
-        let buf_id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
-        let Some(query_str) = conv::get_str(argc, argv, 1) else {
-            return conv::nil();
-        };
-        let Some(lang_name) = ed.ts_languages.get(&buf_id).cloned() else {
-            return conv::nil();
-        };
-        let Some(arc) = ed.buffers.get(buf_id) else {
-            return conv::nil();
-        };
+    let lang_name = ed.ts_languages.get(&buf_id).cloned()?;
+    let arc = ed.buffers.get(buf_id)?;
 
-        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let current_rev = buf.revision();
-        let mut cached = ed
-            .ts_trees
-            .get(&buf_id)
-            .filter(|s| s.revision <= current_rev)
-            .cloned();
-        let mut edits: Vec<tree_sitter::InputEdit> = Vec::new();
-        if let Some(state) = &cached {
-            match buf.changes_since(state.revision) {
-                Some(changes) => {
-                    for (_before, _after, spans) in changes {
-                        for &(start, old_end, new_end) in spans.iter().rev() {
-                            edits.push(tree_sitter::InputEdit {
-                                start_byte: start,
-                                old_end_byte: old_end,
-                                new_end_byte: new_end,
-                                start_position: point_of(&buf, start),
-                                old_end_position: point_of(&buf, old_end.min(buf.len())),
-                                new_end_position: point_of(&buf, new_end.min(buf.len())),
-                            });
-                        }
-                    }
+    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+    let current_rev = buf.revision();
+    let mut cached = ed
+        .ts_trees
+        .get(&buf_id)
+        .filter(|s| s.revision <= current_rev)
+        .cloned();
+    let mut edits: Vec<tree_sitter::InputEdit> = Vec::new();
+    if let Some(state) = &cached {
+        match buf.changes_since(state.revision) {
+            Some(changes) => {
+                let spans: Vec<&(usize, usize, usize)> =
+                    changes.iter().flat_map(|(_, _, s)| s.iter()).collect();
+                // A single edit's row/col points are computable against
+                // the current text: bytes before its start are untouched
+                // by the edit itself.  A multi-edit feed would need each
+                // edit's points in the interleaved text state between
+                // its neighbors, which is gone — feeding tree-sitter
+                // positions that disagree with its byte offsets corrupts
+                // the tree, so those discard the cache and reparse whole.
+                if spans.len() == 1 {
+                    let &(start, old_end, new_end) = spans[0];
+                    edits.push(tree_sitter::InputEdit {
+                        start_byte: start,
+                        old_end_byte: old_end,
+                        new_end_byte: new_end,
+                        start_position: point_of(&buf, start),
+                        old_end_position: point_of(&buf, old_end.min(buf.len())),
+                        new_end_position: point_of(&buf, new_end.min(buf.len())),
+                    });
+                } else {
+                    cached = None;
                 }
-                // The tree predates the retention window: no honest
-                // incremental feed exists, so discard it and force a full
-                // reparse.
-                None => cached = None,
             }
+            // The tree predates the retention window: no honest
+            // incremental feed exists, so discard it and force a full
+            // reparse.
+            None => cached = None,
         }
-        let query_text = buf.slice(0, buf.len());
-        let (result, mut state) = match ts_registry::highlight_incremental(
-            &lang_name,
-            buf.rope_handle(),
-            &query_text,
-            &query_str,
-            &edits,
-            cached,
-        ) {
-            Some(r) => r,
-            None => {
-                drop(buf);
-                return conv::nil();
-            }
-        };
-        drop(buf);
-        state.revision = current_rev;
-        ed.ts_trees.insert(buf_id, state);
+    }
+    let query_text = buf.slice(0, buf.len());
+    let (result, mut state) = ts_registry::highlight_incremental(
+        &lang_name,
+        buf.rope_handle(),
+        &query_text,
+        query_str,
+        &edits,
+        cached,
+    )?;
+    drop(buf);
+    state.revision = current_rev;
+    ed.ts_trees.insert(buf_id, state);
+    Some(result)
+}
 
+fn triples_to_janet(result: &[(usize, usize, String)]) -> Janet {
+    unsafe {
         let result_arr = janet_array(result.len().clamp(1, 4096) as i32);
-        for (start, end, scope) in &result {
+        for (start, end, scope) in result {
             let arr = janet_array(3);
             janet_array_push(arr, conv::integer(*start as i32));
             janet_array_push(arr, conv::integer(*end as i32));
@@ -187,6 +188,43 @@ unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet
             janet_array_push(result_arr, janet_wrap_array(arr));
         }
         janet_wrap_array(result_arr)
+    }
+}
+
+/// Incremental highlight: reuse the cached parse tree, apply the edits
+/// since its revision, reparse only the changed regions, and run the query.
+/// Falls back to a full parse when there is no usable cached tree.
+///
+/// (ts/highlight buf-id query-string) → [[start end scope] ...] or nil
+unsafe extern "C-unwind" fn c_ts_highlight(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let buf_id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let Some(query_str) = conv::get_str(argc, argv, 1) else {
+            return conv::nil();
+        };
+        match run_incremental_query(ed, buf_id, &query_str) {
+            Some(result) => triples_to_janet(&result),
+            None => conv::nil(),
+        }
+    })
+}
+
+/// Incremental arbitrary query: the same cached-tree path as ts/highlight,
+/// but capture names come back verbatim (no scope promotion).  This is the
+/// general mechanism behind the per-mode query features — folds, and later
+/// textobjects or indents — each driven by its own query kind.
+///
+/// (ts/query-tree buf-id query-string) → [[start end capture] ...] or nil
+unsafe extern "C-unwind" fn c_ts_query_tree(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let buf_id = conv::get_int(argc, argv, 0).unwrap_or(-1) as usize;
+        let Some(query_str) = conv::get_str(argc, argv, 1) else {
+            return conv::nil();
+        };
+        match run_incremental_query(ed, buf_id, &query_str) {
+            Some(result) => triples_to_janet(&result),
+            None => conv::nil(),
+        }
     })
 }
 
@@ -235,7 +273,13 @@ pub fn register() -> Vec<JanetReg> {
         JanetReg {
             name: c"ts/highlight".as_ptr() as *const _,
             cfun: Some(c_ts_highlight as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
-            documentation: c"Incrementally parse and query a buffer".as_ptr() as *const _,
+            documentation: c"Incrementally highlight a buffer with a query".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"ts/query-tree".as_ptr() as *const _,
+            cfun: Some(c_ts_query_tree as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Run a query against the buffer's cached tree, captures verbatim"
+                .as_ptr() as *const _,
         },
         JanetReg {
             name: c"ts/has-tree?".as_ptr() as *const _,

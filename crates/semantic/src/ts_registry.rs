@@ -248,7 +248,8 @@ pub fn load_grammar_from_lib(
         let sym = candidates
             .iter()
             .find_map(|name| {
-                lib.get::<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void>(name).ok()
+                lib.get::<unsafe extern "C-unwind" fn() -> *const std::ffi::c_void>(name)
+                    .ok()
             })
             .ok_or_else(|| format!("cannot find language function (tried {})", probe))?;
         *sym

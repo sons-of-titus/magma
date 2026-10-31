@@ -47,7 +47,11 @@ fn grammar_root(tag: &str) -> std::path::PathBuf {
     )
     .unwrap();
     let mut main = std::fs::File::create(dir.join("plugins/zzts/main.janet")).unwrap();
-    writeln!(main, r#"(major-mode/define "tiny-mode" {{:parent "prog"}})"#).unwrap();
+    writeln!(
+        main,
+        r#"(major-mode/define "tiny-mode" {{:parent "prog"}})"#
+    )
+    .unwrap();
     let mut syntax = std::fs::File::create(dir.join("plugins/zzts/syntax.scm")).unwrap();
     writeln!(syntax, "(source_file) @module").unwrap();
     dir
@@ -122,7 +126,10 @@ fn opened_file_of_declared_extension_gets_the_language() {
             .trim_matches('"')
             .parse()
             .expect("buffer id");
-        assert_eq!(ed.ts_languages.get(&buf_id).map(String::as_str), Some("tiny"));
+        assert_eq!(
+            ed.ts_languages.get(&buf_id).map(String::as_str),
+            Some("tiny")
+        );
     });
     std::fs::remove_dir_all(&dir).ok();
 }

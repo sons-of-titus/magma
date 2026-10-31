@@ -22,7 +22,8 @@ import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint"
 import { DialogView } from "views/dialog-view.slint";
 import { QuitView } from "views/quit-view.slint";
 import { NewProjectView, TemplateItem, TemplateVar } from "views/new-project-view.slint";
-import { HoverCard, CompletionPopup, QuickfixMenu } from "views/overlays.slint";
+import { HoverCard, CompletionPopup, QuickfixMenu, CompletionEntry } from "views/overlays.slint";
+import { WindowControls, WindowResizeEdges } from "components/window-chrome.slint";
 import { ComboBox, SpinBox } from "std-widgets.slint";
 export component AppWindow inherits Window {
     preferred-width: 1280px;
@@ -31,6 +32,9 @@ export component AppWindow inherits Window {
     min-height: 360px;
     max-width: 100000px;
     max-height: 100000px;
+    // No native decorations: the chrome band drags the window, the window
+    // controls close/minimize, and WindowResizeEdges resizes.
+    no-frame: true;
     background: Theme.surface;
     default-font-family: root.app-font-name;
     default-font-size: root.app-font-size;
@@ -178,8 +182,9 @@ export component AppWindow inherits Window {
     in property <bool> completion-visible: false;
     in property <length> completion-x: 0px;
     in property <length> completion-y: 0px;
-    in property <[string]> completion-items;
+    in property <[CompletionEntry]> completion-entries;
     in property <int> completion-selected: 0;
+    in property <string> completion-info;
 
     // ── Quickfix menu ────────────────────────────────────────────────────
     in property <bool> quickfix-visible: false;
@@ -195,8 +200,13 @@ export component AppWindow inherits Window {
 
     // ── New Project wizard ───────────────────────────────────────────────
     in property <bool> new-project-visible: false;
+    // Solo: no project is open, so the wizard replaces the editor chrome
+    // instead of floating over it.
+    in property <bool> new-project-solo: false;
     in property <[TemplateItem]> new-project-templates;
     in property <TemplateItem> new-project-detail;
+    in property <[string]> new-project-languages;
+    in property <string> new-project-language: "";
     in property <[TemplateVar]> new-project-vars;
     in-out property <string> new-project-search: "";
     in-out property <string> new-project-name: "";
@@ -307,6 +317,9 @@ export component AppWindow inherits Window {
     callback agent-resized(length);
     callback menu-opened(string, length);
     callback command(string);
+    // Frameless-window resize, applied by the shell (see window_chrome.rs).
+    callback window-resize-begin(int);
+    callback window-resize-move(int, length, length);
 
     MenuBar {
         Menu {
@@ -353,25 +366,42 @@ export component AppWindow inherits Window {
         }
     }
 
+    // The whole editor chrome steps aside while the New Project wizard runs
+    // solo (no project open): the wizard is the window's content then.
     VerticalLayout {
+        visible: !root.new-project-solo;
+
         // ── Menu + main toolbar (JetBrains New UI single band) ───────────
+        // The band is also the frameless window's drag handle; child
+        // TouchAreas (toolbar, controls) still get their clicks.
         Rectangle {
             height: Theme.menu-height;
             background: Theme.chrome;
 
-            HorizontalLayout {
-                padding-left: 6px;
-                padding-right: 6px;
-                spacing: 2px;
-                alignment: end;
+            WindowMoveArea {
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 2px;
+                    alignment: end;
 
-                ToolBar {
-                    run => { root.command("run-config"); }
-                    debug => { root.command("debug-config"); }
-                    stop => { root.command("stop-config"); }
-                    build => { root.command("make"); }
-                    test => { root.command("make"); }
-                    settings => { root.command("dialog:settings"); }
+                    ToolBar {
+                        run => { root.command("run-config"); }
+                        debug => { root.command("debug-config"); }
+                        stop => { root.command("stop-config"); }
+                        build => { root.command("make"); }
+                        test => { root.command("make"); }
+                        settings => { root.command("dialog:settings"); }
+                    }
+
+                    WindowControls {
+                        minimizable: true;
+                        maximizable: true;
+                        maximized <=> root.maximized;
+                        minimize => { root.minimized = true; }
+                        maximize => { root.maximized = !root.maximized; }
+                        quit => { root.close(); }
+                    }
                 }
             }
 
@@ -830,8 +860,11 @@ export component AppWindow inherits Window {
 
     // ── New Project wizard overlay ───────────────────────────────────────
     if root.new-project-visible : NewProjectView {
+        solo: root.new-project-solo;
         templates: root.new-project-templates;
         detail: root.new-project-detail;
+        languages: root.new-project-languages;
+        language: root.new-project-language;
         vars: root.new-project-vars;
         search <=> root.new-project-search;
         project-name <=> root.new-project-name;
@@ -844,6 +877,7 @@ export component AppWindow inherits Window {
         create() => { root.command("new-project:create"); }
         browse() => { root.command("new-project:browse"); }
         select(i) => { root.command("new-project:select:" + i); }
+        language-select(i) => { root.command("new-project:language:" + i); }
         move-selection(d) => { root.command("new-project:move:" + d); }
         search-changed() => { root.command("new-project:search-changed"); }
         var-changed(key, value) => { root.command("new-project:var:" + key + "=" + value); }
@@ -864,8 +898,9 @@ export component AppWindow inherits Window {
     if root.completion-visible : CompletionPopup {
         completion-x: editor-pane.absolute-position.x + root.completion-x;
         completion-y: editor-pane.absolute-position.y + root.completion-y;
-        completion-items: root.completion-items;
+        completion-entries: root.completion-entries;
         completion-selected: root.completion-selected;
+        completion-info: root.completion-info;
     }
 
     if root.quickfix-visible : QuickfixMenu {
@@ -873,5 +908,11 @@ export component AppWindow inherits Window {
         quickfix-y: editor-pane.absolute-position.y + root.quickfix-y;
         quickfix-items: root.quickfix-items;
         quickfix-selected: root.quickfix-selected;
+    }
+
+    // ── Frameless-window resize zones ─────────────────────────────────────
+    WindowResizeEdges {
+        begin(dir) => { root.window-resize-begin(dir); }
+        drag(dir, dx, dy) => { root.window-resize-move(dir, dx, dy); }
     }
 }

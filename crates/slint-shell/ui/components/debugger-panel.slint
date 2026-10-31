@@ -63,7 +63,7 @@ export component DebuggerPanel inherits Rectangle {
                 alignment: start;
 
                 ExecButton {
-                    glyph: "\u{F0450}";
+                    glyph: "\u{F0709}";
                     label: "Restart";
                     shortcut: "\u{21BB}";
                     enabled: root.can-restart;
@@ -102,7 +102,7 @@ export component DebuggerPanel inherits Rectangle {
                 Rectangle { width: 8px; }
 
                 ExecButton {
-                    glyph: "\u{F0397}";
+                    glyph: "\u{F01B7}";
                     label: "Step Over";
                     shortcut: "F8";
                     enabled: root.can-step;
@@ -110,7 +110,7 @@ export component DebuggerPanel inherits Rectangle {
                     clicked => { root.command("dbg-step-over"); }
                 }
                 ExecButton {
-                    glyph: "\u{F0395}";
+                    glyph: "\u{F01B9}";
                     label: "Step Into";
                     shortcut: "F7";
                     enabled: root.can-step;
@@ -118,7 +118,7 @@ export component DebuggerPanel inherits Rectangle {
                     clicked => { root.command("dbg-step-in"); }
                 }
                 ExecButton {
-                    glyph: "\u{F0396}";
+                    glyph: "\u{F01B8}";
                     label: "Step Out";
                     shortcut: "\u{21E7}F8";
                     enabled: root.can-step;

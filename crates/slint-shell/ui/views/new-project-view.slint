@@ -2,6 +2,7 @@ import { Theme } from "../theme.slint";
 import { ScrollView } from "std-widgets.slint";
 import { Field, Picker, Check, SectionLabel } from "../components/controls.slint";
 import { Button, ToolbarIcon } from "../components/button.slint";
+import { EmptyState } from "../components/tool-window.slint";
 
 // One template in the browser list; the selected one is also pushed as
 // `detail` for the right-hand pane.
@@ -32,8 +33,15 @@ export struct TemplateVar {
 }
 
 export component NewProjectView inherits Rectangle {
+    // Solo: no project is open, so the wizard is the window's whole content
+    // instead of a card floating over the editor chrome.
+    in property <bool> solo: false;
     in property <[TemplateItem]> templates;
     in property <TemplateItem> detail;
+    // Language sections: display names ("Rust"); `language` is the selected
+    // one.  Search spans every language while it is non-empty.
+    in property <[string]> languages;
+    in property <string> language: "";
     in-out property <string> search: "";
     in-out property <string> project-name: "";
     in-out property <string> dest-dir: "";
@@ -47,24 +55,39 @@ export component NewProjectView inherits Rectangle {
     callback create();
     callback browse();
     callback select(int);
+    callback language-select(int);
     callback move-selection(int);
     callback search-changed();
     callback var-changed(string, string);
     callback name-changed();
     callback dest-changed();
 
-    property <length> card-w: 740px;
-    property <length> card-h: 520px;
+    property <length> card-w: 760px;
+    property <length> card-h: 540px;
+
+    // Codepoints mirror the Nerd Font pack in builtins/icons.janet.
+    // Matched lowercased so raw ids and display names both resolve.
+    function lang-glyph(name: string) -> string {
+        if name.to-lowercase() == "rust" { return "\u{e7a8}"; }
+        if name.to-lowercase() == "python" { return "\u{e606}"; }
+        if name.to-lowercase() == "go" { return "\u{e627}"; }
+        if name.to-lowercase() == "c" || name.to-lowercase() == "cpp" { return "\u{e649}"; }
+        if name.to-lowercase() == "javascript" || name.to-lowercase() == "js" { return "\u{e60c}"; }
+        if name.to-lowercase() == "typescript" || name.to-lowercase() == "ts" { return "\u{e628}"; }
+        if name.to-lowercase() == "janet" { return "\u{f121}"; }
+        return "\u{f15c}";
+    }
 
     x: 0px;
     y: 0px;
     width: 100%;
     height: 100%;
-    background: #00000066;
+    background: root.solo ? Theme.surface : #00000066;
 
     // The backdrop only closes when nothing is in flight — a stray click
-    // must not abandon a generation.
-    TouchArea {
+    // must not abandon a generation.  In solo mode there is nothing behind
+    // the wizard to click away to.
+    if !root.solo : TouchArea {
         clicked => {
             if !root.generating {
                 root.close();
@@ -73,17 +96,17 @@ export component NewProjectView inherits Rectangle {
     }
 
     Rectangle {
-        x: (parent.width - card-w) / 2;
-        y: (parent.height - card-h) / 2;
-        width: card-w;
-        height: card-h;
-        background: Theme.surface-panel;
-        border-radius: 8px;
-        border-width: 1px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.solo ? parent.width : card-w;
+        height: root.solo ? parent.height : card-h;
+        background: root.solo ? Theme.surface : Theme.surface-panel;
+        border-radius: root.solo ? 0px : 8px;
+        border-width: root.solo ? 0px : 1px;
         border-color: Theme.border;
-        drop-shadow-blur: 24px;
+        drop-shadow-blur: root.solo ? 0px : 24px;
         drop-shadow-color: #00000077;
-        drop-shadow-offset-y: 6px;
+        drop-shadow-offset-y: root.solo ? 0px : 6px;
 
         TouchArea { }
 
@@ -110,44 +133,121 @@ export component NewProjectView inherits Rectangle {
         }
 
         VerticalLayout {
-            // ── Header ──────────────────────────────────────────────────
-            HorizontalLayout {
-                padding: 14px;
-                padding-bottom: 8px;
-                spacing: 8px;
-                alignment: start;
+            // ── Header: drag handle for the solo window ──────────────────
+            header := Rectangle {
+                height: Theme.menu-height;
+                background: Theme.chrome;
 
-                Text {
-                    text: "New Project";
-                    color: Theme.text-primary;
-                    font-size: 15px;
-                    font-weight: 700;
-                    vertical-alignment: center;
+                WindowMoveArea {
+                    enabled: root.solo;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 6px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        Text {
+                            text: "\u{f135}";
+                            color: Theme.accent;
+                            font-family: "Symbols Nerd Font";
+                            font-size: 13px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "New Project";
+                            color: Theme.text-primary;
+                            font-size: 12px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        ToolbarIcon {
+                            glyph: "✕";
+                            enabled: !root.generating;
+                            clicked => { root.close(); }
+                        }
+                    }
                 }
-                Rectangle { horizontal-stretch: 1; }
-                ToolbarIcon {
-                    glyph: "✕";
-                    enabled: !root.generating;
-                    clicked => { root.close(); }
+
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.border;
                 }
             }
 
             HorizontalLayout {
-                padding-left: 14px;
-                padding-right: 14px;
-                padding-bottom: 14px;
-                spacing: 14px;
+                padding: 14px;
+                spacing: 12px;
 
-                // ── Template browser ────────────────────────────────────
+                // ── Language sections + template browser ─────────────────
                 VerticalLayout {
-                    width: 250px;
+                    width: 260px;
                     spacing: 8px;
 
                     Field {
-                        placeholder: "Search templates";
+                        placeholder: "Search all templates";
                         text <=> root.search;
                         edited => { root.search-changed(); }
                     }
+
+                    // Language sections: pick the language first, then the
+                    // template inside it.  Search spans every language.
+                    if root.languages.length > 0 : VerticalLayout {
+                        spacing: 4px;
+
+                        SectionLabel { text: "LANGUAGE"; }
+
+                        Rectangle {
+                            height: Math.min(root.languages.length * 28px + 8px, 148px);
+                            border-radius: Theme.radius;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            background: Theme.surface;
+
+                            ScrollView {
+                                VerticalLayout {
+                                    padding: 4px;
+                                    for lang[idx] in root.languages : Rectangle {
+                                        height: 28px;
+                                        border-radius: 3px;
+                                        background: lang == root.language
+                                            ? Theme.selection
+                                            : (lang-touch.has-hover ? Theme.fill : transparent);
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 8px;
+                                            alignment: start;
+                                            Text {
+                                                width: 16px;
+                                                text: root.lang-glyph(lang);
+                                                color: lang == root.language ? Theme.accent : Theme.text-faint;
+                                                font-family: "Symbols Nerd Font";
+                                                font-size: 14px;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: center;
+                                            }
+                                            Text {
+                                                text: lang;
+                                                color: lang == root.language ? Theme.text-primary : Theme.text-secondary;
+                                                font-size: Theme.font-ui;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                            }
+                                        }
+                                        lang-touch := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.language-select(idx); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionLabel { text: "TEMPLATES"; }
 
                     Rectangle {
                         vertical-stretch: 1;
@@ -156,39 +256,61 @@ export component NewProjectView inherits Rectangle {
                         border-color: Theme.border;
                         background: Theme.surface;
 
-                        if root.templates.length == 0 : Text {
-                            text: "No templates match.";
-                            color: Theme.text-faint;
-                            font-size: Theme.font-small;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        if root.templates.length == 0 : EmptyState {
+                            width: 100%;
+                            height: 100%;
+                            glyph: "\u{f002}";
+                            title: "No templates match";
+                            detail: "Try a different search or language section.";
                         }
 
                         ScrollView {
                             VerticalLayout {
                                 padding: 4px;
                                 for t[idx] in root.templates : Rectangle {
-                                    height: 40px;
+                                    height: 44px;
                                     border-radius: 3px;
                                     background: t.selected
                                         ? Theme.selection
                                         : (row-touch.has-hover ? Theme.fill : transparent);
-                                    VerticalLayout {
-                                        padding-left: 8px;
+
+                                    if t.selected : Rectangle {
+                                        x: 0;
+                                        width: 2px;
+                                        height: 100%;
+                                        background: Theme.accent;
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 10px;
                                         padding-right: 8px;
-                                        alignment: center;
-                                        spacing: 1px;
+                                        spacing: 8px;
+
                                         Text {
-                                            text: t.name;
-                                            color: Theme.text-primary;
-                                            font-size: Theme.font-ui;
-                                            overflow: elide;
+                                            width: 16px;
+                                            text: root.lang-glyph(t.language);
+                                            color: t.selected ? Theme.accent : Theme.text-faint;
+                                            font-family: "Symbols Nerd Font";
+                                            font-size: 14px;
+                                            vertical-alignment: center;
+                                            horizontal-alignment: center;
                                         }
-                                        Text {
-                                            text: t.category + (t.language == "" ? "" : "  ·  " + t.language);
-                                            color: Theme.text-faint;
-                                            font-size: 10px;
-                                            overflow: elide;
+                                        VerticalLayout {
+                                            vertical-stretch: 1;
+                                            alignment: center;
+                                            spacing: 1px;
+                                            Text {
+                                                text: t.name;
+                                                color: Theme.text-primary;
+                                                font-size: Theme.font-ui;
+                                                overflow: elide;
+                                            }
+                                            Text {
+                                                text: t.category + (t.language == "" ? "" : "  ·  " + t.language);
+                                                color: Theme.text-faint;
+                                                font-size: 10px;
+                                                overflow: elide;
+                                            }
                                         }
                                     }
                                     row-touch := TouchArea {
@@ -211,12 +333,25 @@ export component NewProjectView inherits Rectangle {
 
                         VerticalLayout {
                             spacing: 10px;
+                            alignment: start;
 
-                            Text {
-                                text: root.detail.name;
-                                color: Theme.text-primary;
-                                font-size: 14px;
-                                font-weight: 700;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text {
+                                    text: root.lang-glyph(root.detail.language);
+                                    color: Theme.accent;
+                                    font-family: "Symbols Nerd Font";
+                                    font-size: 15px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: root.detail.name;
+                                    color: Theme.text-primary;
+                                    font-size: 14px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
                             }
                             Text {
                                 text: root.detail.description;
@@ -229,16 +364,35 @@ export component NewProjectView inherits Rectangle {
                                 color: Theme.text-faint;
                                 font-size: Theme.font-small;
                             }
-                            if root.detail.toolchain-status != "" : Text {
-                                text: root.detail.toolchain-status;
-                                color: Theme.warning;
-                                font-size: Theme.font-small;
-                                wrap: word-wrap;
+                            if root.detail.toolchain-status != "" : HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+                                Text {
+                                    text: "\u{f071}";
+                                    color: Theme.warning;
+                                    font-family: "Symbols Nerd Font";
+                                    font-size: Theme.font-small;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: root.detail.toolchain-status;
+                                    color: Theme.warning;
+                                    font-size: Theme.font-small;
+                                    wrap: word-wrap;
+                                    horizontal-stretch: 1;
+                                }
                             }
 
                             SectionLabel { text: "LOCATION"; }
                             HorizontalLayout {
                                 spacing: 8px;
+                                Text {
+                                    width: 150px;
+                                    text: "Destination";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-ui;
+                                    vertical-alignment: center;
+                                }
                                 Field {
                                     horizontal-stretch: 1;
                                     placeholder: "/path/to/parent/folder";
@@ -254,8 +408,8 @@ export component NewProjectView inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: 8px;
-                                alignment: start;
                                 Text {
+                                    width: 150px;
                                     text: "Name";
                                     color: Theme.text-secondary;
                                     font-size: Theme.font-ui;
@@ -315,40 +469,54 @@ export component NewProjectView inherits Rectangle {
                         }
                     }
 
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.border;
+                    if root.detail.id == "" : EmptyState {
+                        vertical-stretch: 1;
+                        glyph: "\u{f15c}";
+                        title: "Select a template";
+                        detail: "Pick a starting point on the left — the form fills in from it.";
                     }
+                }
+            }
 
-                    // ── Footer ───────────────────────────────────────────
-                    HorizontalLayout {
-                        height: 30px;
-                        spacing: 8px;
-                        alignment: start;
+            // ── Footer ───────────────────────────────────────────────────
+            Rectangle {
+                height: 38px;
+                background: Theme.chrome;
 
-                        Text {
-                            vertical-alignment: center;
-                            text: root.generating
-                                ? "Creating project…"
-                                : root.note != "" ? root.note : root.create-reason;
-                            color: root.generating ? Theme.text-muted
-                                : root.note != "" ? Theme.danger : Theme.text-faint;
-                            font-size: Theme.font-small;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                        Button {
-                            label: "Cancel";
-                            enabled: !root.generating;
-                            clicked => { root.close(); }
-                        }
-                        Button {
-                            label: root.generating ? "Creating…" : "Create";
-                            primary: true;
-                            enabled: root.can-create && !root.generating;
-                            clicked => { root.create(); }
-                        }
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        vertical-alignment: center;
+                        text: root.generating
+                            ? "Creating project…"
+                            : root.note != "" ? root.note : root.create-reason;
+                        color: root.generating ? Theme.text-muted
+                            : root.note != "" ? Theme.danger : Theme.text-faint;
+                        font-size: Theme.font-small;
+                        overflow: elide;
+                        horizontal-stretch: 1;
                     }
+                    Button {
+                        label: "Cancel";
+                        enabled: !root.generating;
+                        clicked => { root.close(); }
+                    }
+                    Button {
+                        label: root.generating ? "Creating…" : "Create";
+                        primary: true;
+                        enabled: root.can-create && !root.generating;
+                        clicked => { root.create(); }
+                    }
+                }
+
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.border;
                 }
             }
         }

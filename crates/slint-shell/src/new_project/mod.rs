@@ -21,7 +21,10 @@ pub struct NewProjectState {
     pub can_create: bool,
     /// Index into the filtered template list.
     selected: usize,
-    /// Template ids in display order (filtered by the search text).
+    /// Selected language section: raw template language id, "" when the
+    /// template declares none ("General").  The search spans all sections.
+    language: String,
+    /// Template ids in display order (filtered by language and search text).
     filtered: Vec<String>,
     /// The selected template's inputs with user values.
     vars: Vec<VarValue>,
@@ -76,6 +79,12 @@ pub fn command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
         _ => {
             if let Some(index) = rest.strip_prefix("select:") {
                 s.new_project.selected = index.parse().unwrap_or(0);
+            } else if let Some(index) = rest.strip_prefix("language:") {
+                let sections = language_sections(&s.editor);
+                if let Some(lang) = sections.get(index.parse().unwrap_or(0)) {
+                    s.new_project.language = lang.clone();
+                }
+                s.new_project.selected = 0;
             } else if let Some(delta) = rest.strip_prefix("move:") {
                 let delta: i32 = delta.parse().unwrap_or(0);
                 s.new_project.selected = (s.new_project.selected as i32 + delta).max(0) as usize;
@@ -134,6 +143,9 @@ fn create(app: &AppWindow, s: &mut AppState) {
 pub fn sync(app: &AppWindow, s: &mut AppState) {
     let visible = s.new_project.visible;
     app.set_new_project_visible(visible);
+    // Solo when no project is open: the wizard replaces the editor chrome
+    // instead of floating a card over it.
+    app.set_new_project_solo(visible && s.editor.project_manager.project.root.is_none());
     if !visible {
         return;
     }
@@ -143,19 +155,39 @@ pub fn sync(app: &AppWindow, s: &mut AppState) {
     let dest = app.get_new_project_dest().to_string();
 
     let editor = &mut s.editor;
+    let sections = language_sections(editor);
+    // Fall back to the first section when the stored selection no longer
+    // exists (fresh wizard, template set changed).
+    if !sections.iter().any(|l| *l == s.new_project.language) {
+        s.new_project.language = sections.first().cloned().unwrap_or_default();
+    }
+    let language_rows: Vec<slint::SharedString> = sections
+        .iter()
+        .map(|l| language_display(l).into())
+        .collect();
+    s.m_new_project_languages
+        .set(language_rows, |m| app.set_new_project_languages(m));
+    app.set_new_project_language(language_display(&s.new_project.language).into());
+
     // Cloned: the wizard holds templates across the mutable availability
     // lookup below, and the structs are tiny.
+    let search_active = !needle.is_empty();
+    let language = s.new_project.language.clone();
     let filtered: Vec<kernel::templates::ProjectTemplate> = editor
         .templates
         .list()
         .into_iter()
         .filter(|t| {
-            needle.is_empty()
+            // A search spans every language section; otherwise only the
+            // selected language's templates are listed.
+            let text_hit = !search_active
                 || t.id.contains(&needle)
                 || t.name.to_lowercase().contains(&needle)
                 || t.category.to_lowercase().contains(&needle)
                 || t.description.to_lowercase().contains(&needle)
-                || t.language.to_lowercase().contains(&needle)
+                || t.language.to_lowercase().contains(&needle);
+            let lang_hit = search_active || t.language == language;
+            text_hit && lang_hit
         })
         .cloned()
         .collect();
@@ -274,6 +306,32 @@ pub fn sync(app: &AppWindow, s: &mut AppState) {
             Some(Err(e)) => s.new_project.note = e.clone(),
             None => {}
         }
+    }
+}
+
+/// Raw language ids in section order, "" grouping templates that declare no
+/// language.  Named languages sort alphabetically; the "" group goes last.
+fn language_sections(editor: &kernel::state::Editor) -> Vec<String> {
+    let mut langs: Vec<String> = Vec::new();
+    for t in editor.templates.list() {
+        if !langs.contains(&t.language) {
+            langs.push(t.language.clone());
+        }
+    }
+    langs.sort_by_key(|l| (l.is_empty(), l.clone()));
+    langs
+}
+
+/// Display name for a language section: capitalized id, "General" for the
+/// no-language group.
+fn language_display(raw: &str) -> String {
+    if raw.is_empty() {
+        return "General".into();
+    }
+    let mut chars = raw.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
     }
 }
 

@@ -43,10 +43,7 @@ pub(crate) fn open_project_dialog(s: &mut AppState) {
 /// `open-project` with a path, reporting failures on the status message.
 pub(crate) fn open_project_path(s: &mut AppState, path: &str) {
     let mut args = HashMap::new();
-    args.insert(
-        "path".to_string(),
-        ArgValue::Path(path.to_string()),
-    );
+    args.insert("path".to_string(), ArgValue::Path(path.to_string()));
     match execute_command(&mut s.editor, "open-project", &args) {
         Ok(()) => s.message.clear(),
         Err(e) => s.message = e,

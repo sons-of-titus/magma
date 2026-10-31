@@ -114,7 +114,7 @@ component ChangeRowView inherits Rectangle {
                 border-radius: Theme.radius;
                 background: stage-touch.has-hover ? Theme.fill : transparent;
                 Text {
-                    text: change.staged ? "\u{F03E0}" : "\u{F022E}";   // arrow-down / plus
+                    text: change.staged ? "\u{F0375}" : "\u{F0416}";   // minus-box (unstage) / plus-box (stage)
                     color: stage-touch.has-hover ? (change.staged ? Theme.warning : Theme.success) : Theme.text-faint;
                     font-family: "Symbols Nerd Font";
                     font-size: 11px;
@@ -137,7 +137,7 @@ component ChangeRowView inherits Rectangle {
                 border-radius: Theme.radius;
                 background: discard-touch.has-hover ? Theme.fill : transparent;
                 Text {
-                    text: "\u{F0375}";
+                    text: "\u{F0A7A}";
                     color: discard-touch.has-hover ? Theme.danger : Theme.text-faint;
                     font-family: "Symbols Nerd Font";
                     font-size: 11px;
@@ -213,7 +213,7 @@ export component CommitPanel inherits Rectangle {
 
         // ── No repository ────────────────────────────────────────────────
         if !root.has-repo : EmptyState {
-            glyph: "\u{F02E2}";
+            glyph: "\u{F02A2}";
             title: "No repository detected";
             detail: "Open a folder managed by git, hg, svn, or jj to review and commit changes.";
         }
@@ -237,13 +237,13 @@ export component CommitPanel inherits Rectangle {
                         clicked => { root.command("vc-refresh"); }
                     }
                     if root.has-staging : ToolbarIcon {
-                        glyph: "\u{F0134}";
+                        glyph: "\u{F1143}";
                         symbol: true;
                         enabled: !root.busy && (root.unstaged.length + root.untracked.length) > 0;
                         clicked => { root.command("vc-stage-all"); }
                     }
                     if root.has-staging : ToolbarIcon {
-                        glyph: "\u{F0135}";
+                        glyph: "\u{F1142}";
                         symbol: true;
                         enabled: !root.busy && root.staged.length > 0;
                         clicked => { root.command("vc-unstage-all"); }
@@ -252,13 +252,13 @@ export component CommitPanel inherits Rectangle {
                     Rectangle { horizontal-stretch: 1; }
 
                     ToolbarIcon {
-                        glyph: "\u{F0449}";
+                        glyph: "\u{F01DA}";
                         symbol: true;
                         enabled: !root.busy;
                         clicked => { root.command("vc-fetch"); }
                     }
                     ToolbarIcon {
-                        glyph: "\u{F0448}";
+                        glyph: "\u{F0552}";
                         symbol: true;
                         enabled: !root.busy;
                         clicked => { root.command("vc-push"); }

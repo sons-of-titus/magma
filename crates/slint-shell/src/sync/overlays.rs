@@ -92,8 +92,10 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                     let (uri, position, revision) = {
                         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                         match buf.path.as_deref() {
+                            // The server knows the document by the encoded
+                            // didOpen URI — a raw path never matches.
                             Some(path) => (
-                                format!("file://{path}"),
+                                kernel::semantic::lsp_proto::path_to_uri(path),
                                 buf.lsp_position((*offset).min(buf.len())),
                                 buf.revision(),
                             ),
@@ -181,15 +183,33 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             app.set_completion_x(cx);
             app.set_completion_y(cy + row_h);
             // The overlay shows a scrolling window of the item list so
-            // keyboard navigation stays visible past the first page.
+            // keyboard navigation stays visible past the first page.  Each
+            // row carries its kind and signature; the info pane shows the
+            // selected entry's signature plus documentation.
             let (start, window) =
                 kernel::completion::popup_window(&ed.completion.items, ed.completion.idx);
-            let items: Vec<slint::SharedString> =
-                window.iter().map(|i| i.label.as_str().into()).collect();
+            let entries: Vec<crate::CompletionEntry> = window
+                .iter()
+                .map(|i| crate::CompletionEntry {
+                    label: i.label.as_str().into(),
+                    kind: i.kind.as_str().into(),
+                    detail: i.detail.as_str().into(),
+                })
+                .collect();
             state
-                .m_completion_items
-                .set(items, |m| app.set_completion_items(m));
+                .m_completion_entries
+                .set(entries, |m| app.set_completion_entries(m));
             app.set_completion_selected((ed.completion.idx - start) as i32);
+            let selected = ed.completion.items.get(ed.completion.idx);
+            let mut info = selected.map(|i| i.detail.clone()).unwrap_or_default();
+            let docs = selected.map(|i| i.docs.clone()).unwrap_or_default();
+            if !docs.is_empty() {
+                if !info.is_empty() {
+                    info.push('\n');
+                }
+                info.push_str(&docs);
+            }
+            app.set_completion_info(info.as_str().into());
         }
     }
 

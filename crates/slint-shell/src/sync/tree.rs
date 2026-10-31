@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use kernel::project::tree::{build, collect_dirs};
 
-use crate::{projection, AppState, AppWindow};
+use crate::{AppState, AppWindow, projection};
 
 pub(crate) fn sync_tree(app: &AppWindow, state: &mut AppState) {
     let project = &state.editor.project_manager.project;

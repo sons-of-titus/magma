@@ -19,6 +19,7 @@ mod projection;
 mod sync;
 mod theme;
 mod tokyo_night;
+mod window_chrome;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -144,8 +145,9 @@ struct AppState {
     m_menu: sync::ModelGate<MenuItem>,
     m_new_project_templates: sync::ModelGate<TemplateItem>,
     m_new_project_vars: sync::ModelGate<TemplateVar>,
+    m_new_project_languages: sync::ModelGate<slint::SharedString>,
     m_hover_lines: sync::ModelGate<slint::SharedString>,
-    m_completion_items: sync::ModelGate<slint::SharedString>,
+    m_completion_entries: sync::ModelGate<CompletionEntry>,
     m_quickfix_items: sync::ModelGate<slint::SharedString>,
 }
 
@@ -287,8 +289,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         m_menu: sync::ModelGate::new(),
         m_new_project_templates: sync::ModelGate::new(),
         m_new_project_vars: sync::ModelGate::new(),
+        m_new_project_languages: sync::ModelGate::new(),
         m_hover_lines: sync::ModelGate::new(),
-        m_completion_items: sync::ModelGate::new(),
+        m_completion_entries: sync::ModelGate::new(),
         m_quickfix_items: sync::ModelGate::new(),
     }));
 
@@ -303,6 +306,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     actions::install(&app, Rc::clone(&state));
     lifecycle::install(&app, Rc::clone(&state));
+    window_chrome::install(&app);
 
     // The launcher routes into the same actions as the editor menus, then
     // refreshes the editor projection so the new project's first frame is

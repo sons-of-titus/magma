@@ -284,6 +284,8 @@ pub fn menu_items(title: &'static str) -> Vec<MenuItem> {
             ("", ""),
             ("Go to File…", "dialog:goto-file"),
             ("Go to Symbol…", "dialog:goto-symbol"),
+            ("", ""),
+            ("Run Command…", "dialog:run-command"),
         ],
         _ => &[
             ("Run", "run-config"),
@@ -383,4 +385,19 @@ pub fn status_mode(ed: &Editor) -> String {
 
 fn short_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
+#[cfg(test)]
+mod menu_tests {
+    use super::*;
+
+    #[test]
+    fn navigate_menu_offers_run_command() {
+        let items = menu_items("Navigate");
+        assert!(
+            items.iter().any(|i| i.command == "dialog:run-command"),
+            "Navigate menu must expose Run Command…, got {:?}",
+            items.iter().map(|i| i.label.clone()).collect::<Vec<_>>()
+        );
+    }
 }

@@ -65,11 +65,16 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
         // page; `plugins-disabled` is backed by the per-plugin toggles and
         // shown as a raw row nowhere.
         2 => {
-            rows.extend(OPTION_SPECS.iter().filter(|s| {
-                s.category == OptionCategory::Behavior
-                    && !s.name.starts_with("agent.")
-                    && !s.name.starts_with("plugins-")
-            }).map(from_spec));
+            rows.extend(
+                OPTION_SPECS
+                    .iter()
+                    .filter(|s| {
+                        s.category == OptionCategory::Behavior
+                            && !s.name.starts_with("agent.")
+                            && !s.name.starts_with("plugins-")
+                    })
+                    .map(from_spec),
+            );
         }
         3 => {
             rows.extend(

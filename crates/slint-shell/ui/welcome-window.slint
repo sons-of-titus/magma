@@ -1,11 +1,15 @@
 import { Theme } from "theme.slint";
 import { Welcome } from "components/welcome.slint";
+import { WindowControls } from "components/window-chrome.slint";
 
 // The launcher is its own small window, JetBrains-style: opening a project
 // maps the editor window at full size and closes this one, so no window is
 // ever resized and an open never flashes a partial-size app.
 export component WelcomeWindow inherits Window {
     title: "Magma";
+    // No native decorations: the strip below drags the window and hosts the
+    // minimize and quit controls.  Not resizable — only the editor window is.
+    no-frame: true;
     preferred-width: 640px;
     preferred-height: 480px;
     min-width: 480px;
@@ -22,10 +26,45 @@ export component WelcomeWindow inherits Window {
     callback new-project();
     callback open-recent(string);
 
-    Welcome {
-        recents: root.recents;
-        open-folder => { root.open-folder(); }
-        new-project => { root.new-project(); }
-        open-recent(path) => { root.open-recent(path); }
+    VerticalLayout {
+        Rectangle {
+            height: Theme.menu-height;
+            background: Theme.chrome;
+
+            WindowMoveArea {
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 6px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Magma";
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-ui;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    WindowControls {
+                        minimizable: true;
+                        minimize => { root.minimized = true; }
+                        quit => { root.close(); }
+                    }
+                }
+            }
+
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border;
+            }
+        }
+
+        Welcome {
+            recents: root.recents;
+            open-folder => { root.open-folder(); }
+            new-project => { root.new-project(); }
+            open-recent(path) => { root.open-recent(path); }
+        }
     }
 }

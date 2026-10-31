@@ -110,11 +110,8 @@ pub fn blit_rgba(
             }
             // Control chars are row terminators, not visible glyphs; painting
             // them through the box fallback would leave a marker at every
-            // line end.  Missing visible glyphs (CJK, icons) still get the box.
-            // Breakpoint discs are drawn by geometry: the font glyphs vary in
-            // size and clip flat at the cell edges.
-            let disc = matches!(cell.ch, '\u{25CF}' | '\u{25CB}');
-            let glyph = if disc || cell.ch == ' ' || cell.ch.is_control() {
+            // line end.  Missing visible glyphs (CJK) still get the box.
+            let glyph = if cell.ch == ' ' || cell.ch.is_control() {
                 None
             } else {
                 atlas
@@ -127,28 +124,6 @@ pub fn blit_rgba(
             for py in 0..cell_h {
                 let row = (cy as u32 * cell_h + py) * w + x0;
                 let out = &mut dst[(row * 4) as usize..((row + cell_w) * 4) as usize];
-                if disc {
-                    let filled = cell.ch == '\u{25CF}';
-                    for (px, o) in out.chunks_exact_mut(4).enumerate() {
-                        let a = kernel::render::shapes::disc_alpha(
-                            px as u32, py, cell_w, cell_h, filled,
-                        );
-                        // SAFETY: `o` is a 4-byte chunk from chunks_exact_mut(4).
-                        unsafe {
-                            if a == 0 {
-                                *o.get_unchecked_mut(0) = br;
-                                *o.get_unchecked_mut(1) = bg;
-                                *o.get_unchecked_mut(2) = bb;
-                            } else {
-                                *o.get_unchecked_mut(0) = blend(fr, br, a);
-                                *o.get_unchecked_mut(1) = blend(fg, bg, a);
-                                *o.get_unchecked_mut(2) = blend(fb, bb, a);
-                            }
-                            *o.get_unchecked_mut(3) = 255;
-                        }
-                    }
-                    continue;
-                }
                 let Some(uv) = glyph else {
                     // SAFETY: out has cell_w*4 bytes.
                     unsafe {
@@ -328,9 +303,7 @@ pub fn atlas_ink_span_px(atlas: &GpuGlyphAtlas) -> Option<(u32, u32)> {
     let uv = atlas.glyphs.get(&'M')?;
     let covered = |py: u32| {
         (0..uv.w).any(|px| {
-            atlas.atlas_pixels
-                [(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4) as usize]
-                > 0
+            atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4) as usize] > 0
         })
     };
     let top = (0..uv.h).find(|&py| covered(py))?;
@@ -710,9 +683,8 @@ mod tests {
         use kernel::render::frame::render_frame_with;
         use kernel::render::surface::Surface;
 
-        let mut ed = kernel::state::Editor::new(Box::new(
-            kernel::storage::disk::DiskFileSystem::new(),
-        ));
+        let mut ed =
+            kernel::state::Editor::new(Box::new(kernel::storage::disk::DiskFileSystem::new()));
         kernel::command::builtin::register_builtin_commands(&mut ed);
         let key = ed.create_buffer_from_str(
             "lib.rs",
@@ -727,9 +699,8 @@ mod tests {
 
         let row_of = |want: &str, x_range: std::ops::Range<u16>| {
             (0..surface.height).find(|&y| {
-                (x_range.clone()).any(|x| {
-                    surface.cell(x, y).map(|c| c.ch.to_string()) == Some(want.to_string())
-                })
+                (x_range.clone())
+                    .any(|x| surface.cell(x, y).map(|c| c.ch.to_string()) == Some(want.to_string()))
             })
         };
         let digit_row = row_of("1", 0..8);
@@ -742,7 +713,10 @@ mod tests {
             }
             println!("{y:2}|{line}|");
         }
-        assert_eq!(digit_row, f_row, "gutter digit and its line's text must share a row");
+        assert_eq!(
+            digit_row, f_row,
+            "gutter digit and its line's text must share a row"
+        );
     }
 
     /// First atlas row of `ch`'s cell carrying any coverage — the exact
@@ -752,8 +726,7 @@ mod tests {
         (0..uv.h)
             .find(|&py| {
                 (0..uv.w).any(|px| {
-                    atlas.atlas_pixels
-                        [(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4) as usize]
+                    atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4) as usize]
                         > 0
                 })
             })
@@ -772,10 +745,7 @@ mod tests {
                 atlas.rasterize_for_grid(FONT, size, ppx, cell_w, cell_h);
                 let (top, bottom) = atlas_ink_span_px(&atlas).expect("'M' has ink");
                 assert_eq!(top, atlas_ink_top(&atlas, 'M'));
-                let (inset, beam) = (
-                    top as f32 / ppx,
-                    (bottom - top + 1) as f32 / ppx,
-                );
+                let (inset, beam) = (top as f32 / ppx, (bottom - top + 1) as f32 / ppx);
                 assert_eq!(inset * ppx, top as f32, "inset stays on the device grid");
                 assert_eq!(beam * ppx, (bottom - top + 1) as f32);
                 assert!(

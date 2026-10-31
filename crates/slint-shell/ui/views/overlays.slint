@@ -1,5 +1,11 @@
 import { Theme } from "../theme.slint";
 
+export struct CompletionEntry {
+    label: string,
+    kind: string,
+    detail: string,
+}
+
 export component HoverCard inherits Rectangle {
     in property <length> hover-x: 0px;
     in property <length> hover-y: 0px;
@@ -29,29 +35,62 @@ export component HoverCard inherits Rectangle {
 export component CompletionPopup inherits Rectangle {
     in property <length> completion-x: 0px;
     in property <length> completion-y: 0px;
-    in property <[string]> completion-items;
+    in property <[CompletionEntry]> completion-entries;
     in property <int> completion-selected: 0;
+    // Signature + documentation of the selected entry, pre-joined by the
+    // shell.  It renders in the side pane, never sizing the popup.
+    in property <string> completion-info;
 
     x: root.completion-x;
     y: root.completion-y;
-    width: 220px;
-    height: (root.completion-items.length * 18px + 8px).min(200px);
+    width: 560px;
+    // The list decides the height — the docs pane must never push it.
+    height: (root.completion-entries.length * 18px + 8px).min(320px);
+    clip: true;
     background: Theme.chrome;
     border-radius: 6px;
     border-width: 1px;
     border-color: Theme.fill;
 
-    VerticalLayout {
-        padding: 4px;
-        for item[i] in root.completion-items : Rectangle {
-            height: 18px;
-            background: i == root.completion-selected ? Theme.fill : transparent;
+    HorizontalLayout {
+        // ── Item list ────────────────────────────────────────────────────
+        VerticalLayout {
+            width: 250px;
+            padding: 4px;
+            for entry[i] in root.completion-entries : Rectangle {
+                height: 18px;
+                background: i == root.completion-selected ? Theme.fill : transparent;
+                HorizontalLayout {
+                    x: 4px;
+                    spacing: 6px;
+                    Text {
+                        text: entry.label;
+                        color: i == root.completion-selected ? Theme.text-primary : Theme.text-secondary;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: entry.kind;
+                        color: Theme.text-secondary;
+                        opacity: 0.6;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 0;
+                    }
+                }
+            }
+        }
+        // ── Divider + docs side pane ─────────────────────────────────────
+        Rectangle { width: 1px; background: Theme.fill; }
+        if root.completion-info != "" : VerticalLayout {
+            padding: 8px;
             Text {
-                x: 8px;
-                text: item;
-                color: i == root.completion-selected ? Theme.text-primary : Theme.text-secondary;
-                font-size: 11px;
-                vertical-alignment: center;
+                text: root.completion-info;
+                color: Theme.text-secondary;
+                font-size: 10px;
+                wrap: word-wrap;
+                vertical-alignment: top;
             }
         }
     }

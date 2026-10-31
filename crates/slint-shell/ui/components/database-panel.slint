@@ -222,7 +222,7 @@ export component DatabasePanel inherits Rectangle {
                         vertical-alignment: center;
                     }
                     if root.connected && root.tree.length == 0 && !root.busy : EmptyState {
-                        glyph: "\u{F159}";
+                        glyph: "\u{F1632}";
                         title: "Empty database";
                         detail: "No tables or views yet.";
                     }
@@ -249,9 +249,9 @@ export component DatabasePanel inherits Rectangle {
                                 }
 
                                 Text {
-                                    text: row.kind == "pk" ? "⑂"
-                                        : row.kind == "index" ? "\u{F0225}"
-                                        : row.kind == "view" ? "\u{F070D}"
+                                    text: row.kind == "pk" ? "\u{F0306}"
+                                        : row.kind == "index" ? "\u{F030B}"
+                                        : row.kind == "view" ? "\u{F0208}"
                                         : "";
                                     color: row.kind == "pk" ? Theme.warning : Theme.text-faint;
                                     font-family: "Symbols Nerd Font";
@@ -327,7 +327,7 @@ export component DatabasePanel inherits Rectangle {
                             clip: true;
 
                             if root.columns.length == 0 : EmptyState {
-                                glyph: "\u{F070D}";
+                                glyph: "\u{F04EB}";
                                 title: root.connected ? "Run a query to see results" : "Not connected";
                                 detail: root.connected
                                     ? "Type SQL in the *sql* buffer, then Run — results land in this grid; NULLs stay distinct."

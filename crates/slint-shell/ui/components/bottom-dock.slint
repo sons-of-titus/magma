@@ -113,7 +113,7 @@ export component BottomBar inherits Rectangle {
             clicked => { root.toggle(2); }
         }
         DockButton {
-            glyph: "\u{EA6B}";
+            glyph: "\u{EB0C}";
             label: "Problems";
             count: root.problems-count;
             active: root.active == 4;
@@ -327,7 +327,7 @@ export component ProblemsView inherits Rectangle {
     background: Theme.surface;
 
     if rows.length == 0 : EmptyState {
-        glyph: "\u{EA6B}";
+        glyph: "\u{EB0C}";
         title: "No problems";
         detail: "Diagnostics from the language server and build tools land here.";
     }
@@ -426,7 +426,8 @@ export component OutputView inherits Rectangle {
 
             ToolbarIcon {
                 y: (parent.height - self.height) / 2;
-                glyph: root.follow ? "↓" : "⏸";
+                glyph: root.follow ? "\u{F0045}" : "\u{F03E4}";
+                symbol: true;
                 tint: root.follow ? Theme.accent : Theme.text-muted;
                 clicked => { root.toggle-follow(); }
             }

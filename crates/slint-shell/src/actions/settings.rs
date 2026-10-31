@@ -254,10 +254,11 @@ pub(super) fn command(weak: &slint::Weak<AppWindow>, s: &mut AppState, command: 
             };
             open(weak, s, category);
         }
-        "dialog:find" | "dialog:goto-file" | "dialog:goto-symbol" => {
+        "dialog:find" | "dialog:goto-file" | "dialog:goto-symbol" | "dialog:run-command" => {
             s.dialog_title = match command {
                 "dialog:find" => "Find in Buffers",
                 "dialog:goto-file" => "Go to File",
+                "dialog:run-command" => "Run Command",
                 _ => "Go to Symbol",
             }
             .into();

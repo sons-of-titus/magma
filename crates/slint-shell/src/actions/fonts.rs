@@ -79,9 +79,15 @@ pub(crate) fn apply_fonts(weak: &slint::Weak<AppWindow>, s: &mut AppState, f: Fo
 /// Re-apply persisted font options at boot, before the first frame.  A
 /// no-op when nothing was persisted — defaults were already bootstrapped.
 pub(crate) fn restore_persisted_fonts(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
-    let has_any = ["font.app-family", "font.app-size", "font.family", "font.size", "font.ligatures"]
-        .iter()
-        .any(|k| s.editor.options.contains_key(*k));
+    let has_any = [
+        "font.app-family",
+        "font.app-size",
+        "font.family",
+        "font.size",
+        "font.ligatures",
+    ]
+    .iter()
+    .any(|k| s.editor.options.contains_key(*k));
     if !has_any {
         return;
     }

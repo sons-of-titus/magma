@@ -288,9 +288,9 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     app.set_status_error(error);
     // The async-open pipeline shows on the bottom progress strip; nothing
     // here invents progress the kernel is not reporting.
-    state
-        .m_progress
-        .set(projection::progress_tasks(ed), |m| app.set_progress_tasks(m));
+    state.m_progress.set(projection::progress_tasks(ed), |m| {
+        app.set_progress_tasks(m)
+    });
     app.set_pane_message(projection::pane_message(ed).as_str().into());
 
     app.set_bottom_tool(state.bottom);

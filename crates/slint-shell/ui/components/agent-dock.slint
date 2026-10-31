@@ -22,21 +22,24 @@ export struct AgentSessionChip {
 }
 
 // Status glyph + color shared by the timeline rows and the session chips.
+// Nerd Font glyphs, not the UI font: plain-text symbols like ⏸ render as
+// color emoji on some platforms.
 component StatusGlyph inherits Text {
     in property <string> status;
     width: 13px;
     font-size: 11px;
+    font-family: "Symbols Nerd Font";
     vertical-alignment: center;
     horizontal-alignment: center;
-    text: root.status == "ok" ? "✓"
-        : root.status == "error" ? "✕"
-        : root.status == "declined" ? "⊘"
-        : root.status == "running" ? "●"
-        : root.status == "pending" ? "⏸"
-        : root.status == "failed" ? "✕"
-        : root.status == "waiting-approval" ? "⏸"
-        : root.status == "completed" ? "✓"
-        : "○";
+    text: root.status == "ok" ? "\u{EAB2}"            // cod-check
+        : root.status == "error" ? "\u{EA87}"         // cod-error
+        : root.status == "declined" ? "\u{EABD}"      // cod-circle_slash
+        : root.status == "running" ? "\u{EB19}"       // cod-loading
+        : root.status == "pending" ? "\u{F03E4}"      // md-pause
+        : root.status == "failed" ? "\u{EA87}"
+        : root.status == "waiting-approval" ? "\u{F03E4}"
+        : root.status == "completed" ? "\u{EAB2}"
+        : "\u{F0130}";                                // md-checkbox_blank_circle_outline
     color: root.status == "ok" || root.status == "completed" ? Theme.success
         : root.status == "error" || root.status == "failed" ? Theme.danger
         : root.status == "declined" ? Theme.warning
@@ -236,8 +239,9 @@ component EntryRow inherits Rectangle {
 
                 Text {
                     width: 13px;
-                    text: "✓";
+                    text: "\u{EAB2}";
                     color: Theme.success;
+                    font-family: "Symbols Nerd Font";
                     font-size: 11px;
                     vertical-alignment: top;
                 }
@@ -435,7 +439,8 @@ export component AgentDock inherits Rectangle {
 
             IconButton {
                 y: (parent.height - self.height) / 2;
-                glyph: "⚙";
+                glyph: "\u{F0493}";
+                symbol: true;
                 clicked => { root.open-settings(); }
             }
         }

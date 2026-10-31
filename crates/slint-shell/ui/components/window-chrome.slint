@@ -1,0 +1,158 @@
+import { Theme } from "../theme.slint";
+
+// Frameless-window furniture for the shell's `no-frame` windows, which have
+// no native title bar: custom controls and drag/resize surfaces.  Everything
+// styles from `Theme` only.
+
+// One title-bar button: a compact square that fills on hover; the close
+// button takes the danger tint, matching every native title bar's red hover.
+// Glyphs render in the bundled Nerd Font — window-control codepoints are
+// missing from most UI fonts (macOS system fonts have no ✕).
+component WindowButton inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> danger: false;
+    callback clicked();
+
+    width: 20px;
+    height: 20px;
+    border-radius: Theme.radius;
+    background: touch.has-hover
+        ? (root.danger ? Theme.danger : Theme.fill)
+        : transparent;
+
+    Text {
+        text: root.glyph;
+        color: touch.has-hover && root.danger ? white : Theme.text-muted;
+        font-family: "Symbols Nerd Font";
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Window controls for a frameless title bar: quit on every window, a
+// minimize button wherever the window supports it, and maximize/restore
+// where the window is resizable.  `maximized` two-way binds to the window's
+// own state so the glyph flips between maximize and restore.
+export component WindowControls inherits HorizontalLayout {
+    in property <bool> minimizable: false;
+    in property <bool> maximizable: false;
+    in-out property <bool> maximized: false;
+    callback minimize();
+    callback maximize();
+    callback quit();
+    spacing: 2px;
+
+    if root.minimizable : WindowButton {
+        glyph: "\u{F05B0}";  // md-window-minimize
+        clicked => { root.minimize(); }
+    }
+    if root.maximizable : WindowButton {
+        glyph: root.maximized ? "\u{F05B2}" : "\u{F05AF}";  // restore / maximize
+        clicked => { root.maximize(); }
+    }
+    WindowButton {
+        glyph: "\u{F0156}";  // md-close
+        danger: true;
+        clicked => { root.quit(); }
+    }
+}
+
+// One resize zone: reports the pressed direction and the pointer delta since
+// the press; the shell applies the new geometry itself.
+component ResizeEdge inherits TouchArea {
+    in property <int> dir;
+    callback begin(int);
+    callback drag(int, length, length);
+
+    pointer-event(e) => {
+        if e.kind == PointerEventKind.down {
+            root.begin(dir);
+        }
+    }
+    moved => {
+        root.drag(dir, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+    }
+}
+
+// Pointer-drag resize zones for the frameless main window.  winit cannot
+// drag-resize undecorated windows on macOS, so the zones only report the
+// pressed direction and the pointer delta since the press; the shell applies
+// the new geometry itself, which behaves the same on every platform.
+// Directions are bit flags: east 1, south 2, west 4, north 8.
+export component WindowResizeEdges inherits Rectangle {
+    callback begin(int);
+    callback drag(int, length, length);
+    width: 100%;
+    height: 100%;
+
+    ResizeEdge { // north
+        x: 8px; y: 0;
+        width: parent.width - 16px; height: 5px;
+        dir: 8;
+        mouse-cursor: ns-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // south
+        x: 8px; y: parent.height - 5px;
+        width: parent.width - 16px; height: 5px;
+        dir: 2;
+        mouse-cursor: ns-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // west
+        x: 0; y: 8px;
+        width: 5px; height: parent.height - 16px;
+        dir: 4;
+        mouse-cursor: ew-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // east
+        x: parent.width - 5px; y: 8px;
+        width: 5px; height: parent.height - 16px;
+        dir: 1;
+        mouse-cursor: ew-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // north-west
+        x: 0; y: 0;
+        width: 14px; height: 14px;
+        dir: 12;
+        mouse-cursor: nwse-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // north-east
+        x: parent.width - 14px; y: 0;
+        width: 14px; height: 14px;
+        dir: 9;
+        mouse-cursor: nesw-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // south-west
+        x: 0; y: parent.height - 14px;
+        width: 14px; height: 14px;
+        dir: 6;
+        mouse-cursor: nesw-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+    ResizeEdge { // south-east
+        x: parent.width - 14px; y: parent.height - 14px;
+        width: 14px; height: 14px;
+        dir: 3;
+        mouse-cursor: nwse-resize;
+        begin(d) => { root.begin(d); }
+        drag(d, dx, dy) => { root.drag(d, dx, dy); }
+    }
+}

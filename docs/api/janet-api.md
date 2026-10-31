@@ -167,6 +167,10 @@ Clear all highlights on the base layer.
 
 Set highlight ranges for the named layer. Layers are merged in order: base → syntax → semantic → search → selection → others.
 
+### `(buffer/highlights-layer slab layer-name)` → `[[start end scope] …]`
+
+Read a highlight layer back as span triples — introspection for tooling.
+
 ### `(buffer/clear-highlights-layer slab layer-name)` → nil
 
 Clear highlight ranges for the named layer. Other layers are unaffected.
@@ -186,6 +190,14 @@ Remove all folds from the buffer.
 ### `(buffer/folds slab)` → `[[start end] …]`
 
 Return all active folds sorted by start byte.
+
+### `(buffer/set-fold-ranges slab ranges)` → nil
+
+Set the buffer's foldable ranges — what the language reports as fold-capable (a tree-sitter fold query's output). Distinct from folds: candidates feed the gutter indicator and toggle-fold; collapsing one is explicit.
+
+### `(buffer/fold-ranges slab)` → `[[start end] …]`
+
+Return the buffer's foldable ranges sorted by start byte.
 
 ### `(buffer/set-header-line slab text)` → nil
 
@@ -336,7 +348,8 @@ Run `sh -c cmd` synchronously and return combined stdout+stderr. Signals on exec
 ### `(editor/run-command name &opt args)` → nil
 
 Execute a registered command by name (Rust or Janet-defined).  `args` maps to
-the command's declared arguments positionally; a command with a single
+the command's declared arguments positionally — string, keyword, or number
+(numbers render in decimal form); a command with a single
 argument receives the whole remainder, and a Janet-defined command receives
 it as its one string argument.
 
@@ -750,7 +763,7 @@ Built-in providers registered by `builtins/gutter.janet`:
 | `:git-signs` | 1 | `sign_cache` (populated by `gutter/provider-update`) |
 | `:diagnostics` | 1 | `buf.diagnostics` strings (pre-computed per frame) |
 | `:line-numbers` | dynamic | computed from line count |
-| `:folding` | 1 | `view.folds` (per-frame) |
+| `:folding` | 1 | `view.folds` + `view.fold_ranges` (per-frame) |
 
 ### `(gutter/add-provider name &opt provider-fn)` → nil
 
@@ -882,7 +895,14 @@ Tells the server the buffer is open, sending its full text at the current revisi
 Sends the buffer's full current text as a change, versioned with the document revision.
 
 ### `(lsp/did-close language-id buffer-id)` → nil
+
 Tells the server the buffer is closed.
+
+### `(lsp/semantic-tokens language-id buffer-id)` → nil
+
+Requests the document's semantic tokens.  The decoded result lands in the
+"semantic" highlight layer; scopes without a registered scope-face or face
+do not paint.
 
 ### `(lsp/shutdown language-id)` → nil
 Performs an ordered shutdown of the server and forgets it.
@@ -1226,6 +1246,13 @@ Incrementally reparse the buffer from its cached tree — applying the edits
 since the tree's revision — and run `query-src`, returning capture triples
 `[start-byte end-byte scope]`.  Falls back to a full parse when no usable
 tree is cached.
+
+### `(ts/query-tree buf-id query-src)` → `[[start end capture] …]` or nil
+
+Run a query against the buffer's cached tree with the same incremental
+reparse as `ts/highlight`, but capture names come back verbatim with no
+scope promotion.  The general mechanism behind the per-mode query features
+(folds, and later textobjects or indents).
 
 ### `(ts/parse buf-id)` → bool
 

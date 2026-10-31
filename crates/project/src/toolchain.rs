@@ -18,9 +18,11 @@ pub fn find(bin: &str) -> Option<PathBuf> {
     find_in(bin, &std::env::split_paths(&path).collect::<Vec<_>>())
 }
 
-/// Roots that hold toolchain binaries but are routinely missing from `$PATH`:
-/// keg-only Homebrew formulas (LLVM ships `lldb-dap`/`clangd` there), MacPorts,
-/// and VS Code's CodeLLDB extension.
+/// Roots that hold toolchain binaries but are routinely missing from `$PATH`
+/// (a GUI-launched app inherits the platform's minimal path): keg-only
+/// Homebrew formulas (LLVM ships `lldb-dap`/`clangd` there), MacPorts,
+/// VS Code's CodeLLDB extension, and the per-user language-toolchain homes
+/// (rustup's `rust-analyzer`, pipx's `~/.local/bin`, `gopls`, `zls`).
 fn well_known_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = [
         "/opt/homebrew/opt/llvm/bin",
@@ -34,7 +36,11 @@ fn well_known_dirs() -> Vec<PathBuf> {
     .collect();
 
     if let Some(home) = std::env::var_os("HOME") {
-        let ext = PathBuf::from(home).join(".vscode").join("extensions");
+        let home = PathBuf::from(home);
+        for tail in [".cargo/bin", ".local/bin", "go/bin", ".nimble/bin", "bin"] {
+            dirs.push(home.join(tail));
+        }
+        let ext = home.join(".vscode").join("extensions");
         if let Ok(entries) = std::fs::read_dir(ext) {
             for entry in entries.flatten() {
                 if entry
@@ -95,6 +101,32 @@ fn is_executable(p: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extended_search_covers_the_user_toolchain_homes() {
+        let home =
+            std::env::temp_dir().join(format!("magma_toolchain_home_{}", std::process::id()));
+        let bin_dir = home.join(".cargo/bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let bin = bin_dir.join("fake-ra");
+        std::fs::write(&bin, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let old_home = std::env::var("HOME").unwrap_or_default();
+        unsafe { std::env::set_var("HOME", &home) };
+        let found = find_extended("fake-ra");
+        unsafe { std::env::set_var("HOME", old_home) };
+        assert_eq!(
+            found.as_deref(),
+            Some(bin.as_path()),
+            "a GUI launch with no $PATH entry must still find ~/.cargo/bin"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
 
     #[test]
     fn finds_executables_in_explicit_paths() {

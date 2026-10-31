@@ -22,7 +22,10 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             match content {
                 Ok(text) => {
                     let already_open = ed.buffers.iter().any(|(_, arc)| {
-                        arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref()
+                        arc.lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .path
+                            .as_deref()
                             == Some(path.as_str())
                     });
                     if already_open {
@@ -49,7 +52,10 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 view.set_cursor(cursor);
             }
         }
-        BackgroundEvent::SessionRestoreDone { generation, focused } => {
+        BackgroundEvent::SessionRestoreDone {
+            generation,
+            focused,
+        } => {
             if generation != ed.project_manager.project.generation {
                 return;
             }

@@ -90,7 +90,10 @@ fn the_if_builtin_expands_with_a_condition_and_a_final_stop() {
     let expansion = expand("if").expect("if is a builtin");
     let (text, stops) = expand_lsp(&expansion);
     assert!(text.starts_with("if ("));
-    assert!(!text.contains('$'), "no marker survives expansion: {text:?}");
+    assert!(
+        !text.contains('$'),
+        "no marker survives expansion: {text:?}"
+    );
     assert_eq!(numbers(&stops), vec![1, 0]);
     assert_eq!(stops[0].text, "condition");
 }
@@ -108,7 +111,10 @@ fn every_builtin_expansion_is_marker_free_with_tabstops() {
     for (trigger, expansion) in &snippets {
         let (text, stops) = expand_lsp(expansion);
         assert!(!text.contains('$'), "builtin {trigger:?} left a marker");
-        assert!(!stops.is_empty(), "builtin {trigger:?} produced no tab stops");
+        assert!(
+            !stops.is_empty(),
+            "builtin {trigger:?} produced no tab stops"
+        );
     }
 }
 

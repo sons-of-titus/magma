@@ -99,8 +99,8 @@ unsafe extern "C-unwind" fn c_toolchain_register(argc: i32, argv: *mut Janet) ->
                 },
             );
         }
-        let debug_adapter = jtable::get_spec(spec, "debug")
-            .and_then(|d| jtable::get_str(d, "adapter"));
+        let debug_adapter =
+            jtable::get_spec(spec, "debug").and_then(|d| jtable::get_str(d, "adapter"));
         let info = ToolchainInfo {
             id,
             language,
@@ -145,7 +145,10 @@ unsafe extern "C-unwind" fn c_toolchain_registered(_argc: i32, _argv: *mut Janet
             janet_table_put(
                 t_tbl,
                 conv::keyword("debug-adapter"),
-                t.debug_adapter.as_deref().map(conv::string).unwrap_or_else(conv::nil),
+                t.debug_adapter
+                    .as_deref()
+                    .map(conv::string)
+                    .unwrap_or_else(conv::nil),
             );
             let markers = janet_array(t.detect_markers.len().max(1) as i32);
             for m in &t.detect_markers {

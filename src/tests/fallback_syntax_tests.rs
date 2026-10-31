@@ -19,7 +19,7 @@ fn setup_rust_buffer(ed: &mut crate::kernel::state::Editor, text: &str) -> usize
     if !text.is_empty() {
         let view = ed.views.get_mut(&key).unwrap();
         view.insert(0, text);
-    let _ = view;
+        let _ = view;
         ed.publish_buffer_changes();
     }
     key
@@ -45,7 +45,9 @@ fn first_change_full_scans_and_colors_the_buffer() {
     ed.publish_buffer_changes();
     let ranges = layer(&ed, key);
     assert!(
-        ranges.iter().any(|&(s, _, ref f)| s == 0 && f == "keyword-face"),
+        ranges
+            .iter()
+            .any(|&(s, _, ref f)| s == 0 && f == "keyword-face"),
         "expected 'fn' at 0 highlighted, got {ranges:?}"
     );
 }
@@ -72,7 +74,10 @@ fn ts_owned_mode_stands_down_and_takes_over_deterministically() {
     view.insert(view.cursor_offset(), "fn two() {}\n");
     let _ = view;
     ed.publish_buffer_changes();
-    assert!(!layer(&ed, key).is_empty(), "fallback owns again after the flip");
+    assert!(
+        !layer(&ed, key).is_empty(),
+        "fallback owns again after the flip"
+    );
 }
 
 #[test]
@@ -125,7 +130,8 @@ fn rule_changes_invalidate_cached_ranges() {
     assert!(!layer(&ed, key).is_empty());
 
     // Re-registration replaces the keyword set; the next scan must follow.
-    ed.fallback_syntax.define_rules("rust", vec!["beta".to_string()], None);
+    ed.fallback_syntax
+        .define_rules("rust", vec!["beta".to_string()], None);
     fallback_syntax::force_highlight(&mut ed, key);
     let ranges = layer(&ed, key);
     assert!(

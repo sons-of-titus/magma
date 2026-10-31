@@ -27,7 +27,11 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
         let id = ed.io.next_net_id;
         ed.io.next_net_id += 1;
         let sender = bg.sender.clone();
-        debug_http!("→ id={id} {method} {url} body_len={} headers={}", body.len(), headers.len());
+        debug_http!(
+            "→ id={id} {method} {url} body_len={} headers={}",
+            body.len(),
+            headers.len()
+        );
         bg.spawn_blocking(move || {
             let result = (|| -> Result<(u16, String), String> {
                 let mut req = ureq::request(&method, &url);

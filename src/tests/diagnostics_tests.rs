@@ -24,9 +24,7 @@ fn diag(sev: DiagnosticSeverity, line: usize, msg: &str) -> Diagnostic {
     }
 }
 
-fn eol_entries(
-    ed: &crate::kernel::state::Editor,
-) -> Vec<(usize, String, String)> {
+fn eol_entries(ed: &crate::kernel::state::Editor) -> Vec<(usize, String, String)> {
     let key = helpers::focused_key(ed);
     let view = ed.views.get(&key).unwrap();
     view.decoration_layers
@@ -34,12 +32,7 @@ fn eol_entries(
         .map(|v| {
             let mut out = Vec::new();
             for d in v {
-                if let crate::kernel::text_engine::Decoration::EndOfLine {
-                    line,
-                    text,
-                    face,
-                } = d
-                {
+                if let crate::kernel::text_engine::Decoration::EndOfLine { line, text, face } = d {
                     out.push((*line, text.clone(), face.clone()));
                 }
             }
@@ -83,4 +76,17 @@ fn apply_eol_clears_stale_decorations_when_diagnostics_empty() {
     ed.buffers.get(key).unwrap().lock().unwrap().lsp_diagnostics = vec![];
     apply(&mut ed);
     assert!(eol_entries(&ed).is_empty());
+}
+
+#[test]
+fn apply_eol_accepts_the_buffer_id_from_the_command_line() {
+    // lsp_diag_eol drives this through editor/run-command: the buffer id
+    // crosses as command-line text and must coerce to the declared
+    // Integer argument, not die as "a buffer id is required".
+    let mut ed = helpers::make_editor_with_buffer("aaa\nbbb");
+    let key = helpers::focused_key(&ed);
+    ed.buffers.get(key).unwrap().lock().unwrap().lsp_diagnostics =
+        vec![diag(DiagnosticSeverity::Error, 0, "boom")];
+    command::execute_command_line(&mut ed, &format!("diagnostics-apply-eol {key}")).unwrap();
+    assert_eq!(eol_entries(&ed).len(), 1);
 }

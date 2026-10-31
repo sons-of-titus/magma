@@ -89,6 +89,17 @@ pub(crate) mod conv {
         }
     }
 
+    /// Read a Janet number *value* (not an argv slot) as an integer — the
+    /// value-based counterpart of `get_int` for walking nested structures.
+    pub unsafe fn get_int_value(v: Janet) -> Option<i32> {
+        unsafe {
+            if janet_checktype(v, JanetType_JANET_NUMBER) == 0 {
+                return None;
+            }
+            Some(janet_unwrap_integer(v))
+        }
+    }
+
     pub unsafe fn get_bool(argc: i32, argv: *mut Janet, i: i32) -> Option<bool> {
         unsafe {
             if i >= argc {

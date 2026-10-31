@@ -42,26 +42,30 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String], generation: u6
     let sender = bg.sender.clone();
     // Coalesced: a newer walk supersedes a scan still queued from the
     // previous one.
-    bg.spawn_on(crate::runtime::Lane::Indexing, Some("index-scan"), move || {
-        use std::time::UNIX_EPOCH;
-        let stamps: Vec<(String, u64, u64)> = rels
-            .iter()
-            .filter_map(|rel| {
-                let meta = std::fs::metadata(root.join(rel)).ok()?;
-                let mtime = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                Some((rel.clone(), meta.len(), mtime))
-            })
-            .collect();
-        let _ = sender.send(BackgroundEvent::Index(crate::index::Event::StampScan {
-            generation,
-            stamps,
-        }));
-    });
+    bg.spawn_on(
+        crate::runtime::Lane::Indexing,
+        Some("index-scan"),
+        move || {
+            use std::time::UNIX_EPOCH;
+            let stamps: Vec<(String, u64, u64)> = rels
+                .iter()
+                .filter_map(|rel| {
+                    let meta = std::fs::metadata(root.join(rel)).ok()?;
+                    let mtime = meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    Some((rel.clone(), meta.len(), mtime))
+                })
+                .collect();
+            let _ = sender.send(BackgroundEvent::Index(crate::index::Event::StampScan {
+                generation,
+                stamps,
+            }));
+        },
+    );
 }
 
 /// Foreground half of the reconcile: diff a scan's stamps against the store
@@ -99,18 +103,20 @@ pub fn apply_stamp_scan(ed: &mut Editor, generation: u64, stamps: Vec<(String, u
             for rel in chunk {
                 let abs = root.join(&rel);
                 let Ok(meta) = std::fs::metadata(&abs) else {
-                    let _ = sender.send(BackgroundEvent::Index(
-                        crate::index::Event::RecordSkipped { generation },
-                    ));
+                    let _ =
+                        sender.send(BackgroundEvent::Index(crate::index::Event::RecordSkipped {
+                            generation,
+                        }));
                     continue;
                 };
                 // Non-UTF8 files (binaries, exotic encodings) carry no
                 // symbols — the index is a source index — but their queue
                 // slot must still drain.
                 let Ok(text) = std::fs::read_to_string(&abs) else {
-                    let _ = sender.send(BackgroundEvent::Index(
-                        crate::index::Event::RecordSkipped { generation },
-                    ));
+                    let _ =
+                        sender.send(BackgroundEvent::Index(crate::index::Event::RecordSkipped {
+                            generation,
+                        }));
                     continue;
                 };
                 let mtime = meta
@@ -120,9 +126,10 @@ pub fn apply_stamp_scan(ed: &mut Editor, generation: u64, stamps: Vec<(String, u
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let rec = crate::index::record_from_text(&rel, mtime, &text);
-                let _ = sender.send(BackgroundEvent::Index(
-                    crate::index::Event::RecordArrived { generation, record: rec },
-                ));
+                let _ = sender.send(BackgroundEvent::Index(crate::index::Event::RecordArrived {
+                    generation,
+                    record: rec,
+                }));
             }
         });
     }
@@ -154,26 +161,31 @@ pub fn reindex_saved_file(ed: &mut Editor, path: &str) {
     let abs = abs.to_string_lossy().into_owned();
     let rel = rel.to_string();
     // Coalesced: a burst of saves leaves only the newest extraction queued.
-    bg.spawn_on(crate::runtime::Lane::Indexing, Some("index-save"), move || {
-        let Ok(meta) = std::fs::metadata(&abs) else {
-            return;
-        };
-        // Non-UTF8 files are skipped: the index is a source index.
-        let Ok(text) = std::fs::read_to_string(&abs) else {
-            return;
-        };
-        use std::time::UNIX_EPOCH;
-        let mtime = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let record = crate::index::record_from_text(&rel, mtime, &text);
-        let _ = sender.send(BackgroundEvent::Index(
-            crate::index::Event::RecordArrived { generation, record },
-        ));
-    });
+    bg.spawn_on(
+        crate::runtime::Lane::Indexing,
+        Some("index-save"),
+        move || {
+            let Ok(meta) = std::fs::metadata(&abs) else {
+                return;
+            };
+            // Non-UTF8 files are skipped: the index is a source index.
+            let Ok(text) = std::fs::read_to_string(&abs) else {
+                return;
+            };
+            use std::time::UNIX_EPOCH;
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let record = crate::index::record_from_text(&rel, mtime, &text);
+            let _ = sender.send(BackgroundEvent::Index(crate::index::Event::RecordArrived {
+                generation,
+                record,
+            }));
+        },
+    );
 }
 
 #[derive(Debug, Default)]

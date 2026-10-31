@@ -99,7 +99,13 @@ impl Batcher {
 /// identity everywhere (sidebar tree, quick-open, project graph).  An
 /// unreadable directory or entry is skipped, never fatal: one permission
 /// error must not blank the whole index.
-fn walk_inner(dir: &std::path::Path, root: &std::path::Path, stack: &mut super::gitignore::IgnoreStack, batch: &mut Batcher, depth: usize) {
+fn walk_inner(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    stack: &mut super::gitignore::IgnoreStack,
+    batch: &mut Batcher,
+    depth: usize,
+) {
     if depth > MAX_WALK_DEPTH {
         return;
     }

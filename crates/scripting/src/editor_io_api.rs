@@ -4,6 +4,23 @@ use super::conv;
 use super::with_editor;
 use evil_janet::*;
 
+/// Stringify a command-line argument: strings and keywords pass through,
+/// numbers render in decimal form — Janet callers pass buffer ids as
+/// numbers, and `get_str` silently drops them.
+unsafe fn arg_to_string(argc: i32, argv: *mut Janet, i: i32) -> Option<String> {
+    if i >= argc {
+        return None;
+    }
+    if let Some(s) = unsafe { conv::get_str(argc, argv, i) } {
+        return Some(s);
+    }
+    let v = unsafe { *argv.add(i as usize) };
+    if unsafe { janet_checktype(v, JanetType_JANET_NUMBER) } != 0 {
+        return Some(format!("{}", unsafe { janet_unwrap_number(v) }));
+    }
+    None
+}
+
 unsafe extern "C-unwind" fn c_editor_fs_write(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         let Some(path) = conv::get_str(argc, argv, 0) else {
@@ -91,11 +108,13 @@ unsafe extern "C-unwind" fn c_editor_run_command(argc: i32, argv: *mut Janet) ->
             Some(n) => n,
             None => conv::signal_err("editor/run-command requires a command name"),
         };
-        let rest = if argc > 1 {
-            conv::get_str(argc, argv, 1).unwrap_or_default()
-        } else {
-            String::new()
-        };
+        // The command line is positional: every extra argument joins the
+        // line so multi-argument commands get all their values (dropping
+        // the tail here silently lost `buffer` ids and the like).
+        let rest = (1..argc)
+            .filter_map(|i| arg_to_string(argc, argv, i))
+            .collect::<Vec<_>>()
+            .join(" ");
         let line = if rest.is_empty() {
             name.clone()
         } else {

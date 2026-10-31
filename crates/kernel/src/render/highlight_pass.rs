@@ -110,8 +110,7 @@ pub fn apply_highlights(
             if hl_end <= visible_byte_start || hl_start >= visible_byte_end {
                 continue;
             }
-            let style = resolve_scope_style(editor, face_name)
-                .unwrap_or(fallback_style);
+            let style = resolve_scope_style(editor, face_name).unwrap_or(fallback_style);
 
             for (vis_row, (line_start, line_end)) in row_ranges.iter().enumerate() {
                 if hl_end <= *line_start {

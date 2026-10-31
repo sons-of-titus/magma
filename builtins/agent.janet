@@ -15,27 +15,27 @@
 
 (event/on "agent-thought"
   (fn [data]
-    (let [sid    (get data "session-id" "?")
-          thought (get data "thought" "")]
+    (let [sid    (get data :session-id "?")
+          thought (get data :thought "")]
       (editor/log-message (string "[agent:" sid "] " thought)))))
 
 (event/on "agent-action"
   (fn [data]
-    (let [sid  (get data "session-id" "?")
-          cmd  (get data "command" "")
-          desc (get data "description" "")]
+    (let [sid  (get data :session-id "?")
+          cmd  (get data :command "")
+          desc (get data :description "")]
       (editor/log-message (string "[agent:" sid "] action: " desc " (" cmd ")")))))
 
 (event/on "agent-result"
   (fn [data]
-    (let [sid    (get data "session-id" "?")
-          result (get data "result" "")]
+    (let [sid    (get data :session-id "?")
+          result (get data :result "")]
       (editor/log-message (string "[agent:" sid "] done: " result)))))
 
 (event/on "agent-error"
   (fn [data]
-    (let [sid (get data "session-id" "?")
-          err (get data "error" "")]
+    (let [sid (get data :session-id "?")
+          err (get data :error "")]
       (editor/log-message (string "[agent:" sid "] error: " err)))))
 
 # ── agent/on-event helper ─────────────────────────────────────────────────────

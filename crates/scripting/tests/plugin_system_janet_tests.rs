@@ -64,9 +64,8 @@ fn plugin_register_is_listed_with_fields() {
 #[test]
 fn plugin_status_nil_for_unknown() {
     janet_test!(ed, {
-        let result =
-            scripting::eval_result(r#"(type (plugin/status "zz-test-never-registered"))"#)
-                .unwrap_or_default();
+        let result = scripting::eval_result(r#"(type (plugin/status "zz-test-never-registered"))"#)
+            .unwrap_or_default();
         assert_eq!(result, ":nil");
     });
 }
@@ -77,24 +76,26 @@ fn plugin_status_nil_for_unknown() {
 fn plugin_load_evaluates_entry_and_marks_loaded() {
     janet_test!(ed, {
         let root = plugin_root("load");
-        write_file(&root.join("main.janet"), "(plugin-state/set \"zz-load-hit\" \"yes\")");
+        write_file(
+            &root.join("main.janet"),
+            "(plugin-state/set \"zz-load-hit\" \"yes\")",
+        );
         scripting::eval(&format!(
             r#"(plugin/register "zz-test-load" "1.0" "{}" "main.janet" @[] @[] @[])"#,
             root_str(&root)
         ));
-        let result =
-            scripting::eval_result(r#"(plugin/load "zz-test-load")"#).unwrap_or_default();
+        let result = scripting::eval_result(r#"(plugin/load "zz-test-load")"#).unwrap_or_default();
         assert_eq!(result, ":ok");
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "zz-test-load") :loaded))"#,
-        )
-        .unwrap_or_default();
+        let status =
+            scripting::eval_result(r#"(string (get (plugin/status "zz-test-load") :loaded))"#)
+                .unwrap_or_default();
         assert_eq!(status, r#""true""#);
-        let side_effect = scripting::eval_result(
-            r#"(plugin-state/get "zz-load-hit")"#,
-        )
-        .unwrap_or_default();
-        assert!(side_effect.contains("yes"), "entry did not run: {side_effect}");
+        let side_effect =
+            scripting::eval_result(r#"(plugin-state/get "zz-load-hit")"#).unwrap_or_default();
+        assert!(
+            side_effect.contains("yes"),
+            "entry did not run: {side_effect}"
+        );
         std::fs::remove_dir_all(&root).ok();
     });
 }
@@ -121,8 +122,14 @@ fn enable_loads_dependencies_first() {
         let main = root.join("main-plugin");
         std::fs::create_dir_all(&dep).unwrap();
         std::fs::create_dir_all(&main).unwrap();
-        write_file(&dep.join("main.janet"), "(plugin-state/set \"zz-dep-loaded\" \"1\")");
-        write_file(&main.join("main.janet"), "(plugin-state/set \"zz-main-loaded\" \"1\")");
+        write_file(
+            &dep.join("main.janet"),
+            "(plugin-state/set \"zz-dep-loaded\" \"1\")",
+        );
+        write_file(
+            &main.join("main.janet"),
+            "(plugin-state/set \"zz-main-loaded\" \"1\")",
+        );
         scripting::eval(&format!(
             r#"(do (plugin/register "zz-test-dep" "1.0" "{}" "main.janet" @[] @[] @[])
                   (plugin/register "zz-test-main" "1.0" "{}" "main.janet" @["zz-test-dep"] @[] @[]))"#,
@@ -184,8 +191,7 @@ fn undeclared_capability_denied_during_load() {
             r#"(plugin/register "zz-test-nocap" "1.0" "{}" "main.janet" @[] @[] @[])"#,
             root_str(&root)
         ));
-        let result =
-            scripting::eval_result(r#"(plugin/load "zz-test-nocap")"#).unwrap_or_default();
+        let result = scripting::eval_result(r#"(plugin/load "zz-test-nocap")"#).unwrap_or_default();
         assert_eq!(result, ":error", "fs/cwd should fail without :filesystem");
         std::fs::remove_dir_all(&root).ok();
     });
@@ -200,9 +206,11 @@ fn declared_capability_allowed_during_load() {
             r#"(plugin/register "zz-test-cap" "1.0" "{}" "main.janet" @[] @[] @[:filesystem])"#,
             root_str(&root)
         ));
-        let result =
-            scripting::eval_result(r#"(plugin/load "zz-test-cap")"#).unwrap_or_default();
-        assert_eq!(result, ":ok", "fs/cwd should pass with :filesystem declared");
+        let result = scripting::eval_result(r#"(plugin/load "zz-test-cap")"#).unwrap_or_default();
+        assert_eq!(
+            result, ":ok",
+            "fs/cwd should pass with :filesystem declared"
+        );
         std::fs::remove_dir_all(&root).ok();
     });
 }
@@ -228,11 +236,13 @@ fn discover_registers_manifest_plugins_only() {
 
         scripting::eval(&format!(r#"(plugin/discover "{}")"#, root_str(&root)));
 
-        let plugin_ok = scripting::eval_result(
-            r#"(string (if (plugin/status "zz-test-full") "yes" "no"))"#,
-        )
-        .unwrap_or_default();
-        assert_eq!(plugin_ok, r#""yes""#, "manifest plugin should be registered");
+        let plugin_ok =
+            scripting::eval_result(r#"(string (if (plugin/status "zz-test-full") "yes" "no"))"#)
+                .unwrap_or_default();
+        assert_eq!(
+            plugin_ok, r#""yes""#,
+            "manifest plugin should be registered"
+        );
 
         let stray_ok = scripting::eval_result(
             r#"(let [l (find (fn [i] (= (get i :name) "stray-dir")) (language/list))]
@@ -281,7 +291,11 @@ fn run_config_register_upserts_into_project_manager() {
         )
         .unwrap_or_default();
         assert_eq!(result, ":ok");
-        let cfg = ed.project_manager.run_configs.named("zz-test-build").cloned();
+        let cfg = ed
+            .project_manager
+            .run_configs
+            .named("zz-test-build")
+            .cloned();
         let cfg = cfg.expect("run config should be registered");
         assert_eq!(cfg.command, "cargo");
         assert_eq!(cfg.args, vec!["build".to_string()]);
@@ -301,19 +315,19 @@ fn bundled_rust_plugin_discovers_enables_and_contributes() {
             .unwrap();
         let root = repo.join("plugins");
         scripting::eval(&format!(r#"(plugin/discover "{}")"#, root_str(&root)));
-        let result =
-            scripting::eval_result(r#"(plugin/enable "rust")"#).unwrap_or_default();
+        let result = scripting::eval_result(r#"(plugin/enable "rust")"#).unwrap_or_default();
         let detail = ed
             .status_message
             .as_ref()
             .map(|m| m.text.clone())
             .unwrap_or_default();
-        assert_eq!(result, ":ok", "bundled rust plugin must enable cleanly: {detail}");
+        assert_eq!(
+            result, ":ok",
+            "bundled rust plugin must enable cleanly: {detail}"
+        );
 
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "rust") :loaded))"#,
-        )
-        .unwrap_or_default();
+        let status = scripting::eval_result(r#"(string (get (plugin/status "rust") :loaded))"#)
+            .unwrap_or_default();
         assert_eq!(status, r#""true""#);
 
         // The plugin serves the rust language through its own entry script.
@@ -322,7 +336,10 @@ fn bundled_rust_plugin_discovers_enables_and_contributes() {
                  (if l (string (get l :loaded)) "missing"))"#,
         )
         .unwrap_or_default();
-        assert_eq!(lang, r#""true""#, "rust language registered and marked loaded");
+        assert_eq!(
+            lang, r#""true""#,
+            "rust language registered and marked loaded"
+        );
 
         // Mode command, formatter command, and the toolchain declaring
         // build/test/run all contributed.
@@ -344,10 +361,9 @@ fn bundled_rust_plugin_discovers_enables_and_contributes() {
             cargo.actions.get("run").is_some_and(|a| a.debuggable),
             "run action must be debuggable"
         );
-        let major_modes = scripting::eval_result(
-            r#"(string (if (get *major-modes* "rust-mode") "yes" "no"))"#,
-        )
-        .unwrap_or_default();
+        let major_modes =
+            scripting::eval_result(r#"(string (if (get *major-modes* "rust-mode") "yes" "no"))"#)
+                .unwrap_or_default();
         assert_eq!(major_modes, r#""yes""#, "rust-mode should be a major mode");
 
         // Build→reload cycle: compile the entry to an image (from a temp
@@ -379,11 +395,13 @@ fn bundled_rust_plugin_discovers_enables_and_contributes() {
             r#"(plugin/register "rust" "0.1.0" "{copied}" "main.jimage" @[] @[] @[:process-execution :editor-access])"#,
         ));
         let reload = scripting::eval_result(r#"(plugin/enable "rust")"#).unwrap_or_default();
-        assert_eq!(reload, ":ok", "image-loaded rust plugin must enable cleanly");
-        let reloaded_status = scripting::eval_result(
-            r#"(string (get (plugin/status "rust") :entry))"#,
-        )
-        .unwrap_or_default();
+        assert_eq!(
+            reload, ":ok",
+            "image-loaded rust plugin must enable cleanly"
+        );
+        let reloaded_status =
+            scripting::eval_result(r#"(string (get (plugin/status "rust") :entry))"#)
+                .unwrap_or_default();
         assert_eq!(reloaded_status, r#""main.jimage""#);
         assert!(
             ed.commands.exists("rust-mode"),
@@ -408,10 +426,8 @@ fn bundled_c_plugin_discovers_enables_and_contributes() {
         let result = scripting::eval_result(r#"(plugin/enable "c")"#).unwrap_or_default();
         assert_eq!(result, ":ok", "bundled c plugin must enable cleanly");
 
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "c") :loaded))"#,
-        )
-        .unwrap_or_default();
+        let status = scripting::eval_result(r#"(string (get (plugin/status "c") :loaded))"#)
+            .unwrap_or_default();
         assert_eq!(status, r#""true""#);
 
         // The plugin serves the c language through its own entry script.
@@ -431,18 +447,18 @@ fn bundled_c_plugin_discovers_enables_and_contributes() {
             ed.commands.exists("c-format-buffer"),
             "formatter command should be registered"
         );
-        let major_modes = scripting::eval_result(
-            r#"(string (if (get *major-modes* "c-mode") "yes" "no"))"#,
-        )
-        .unwrap_or_default();
+        let major_modes =
+            scripting::eval_result(r#"(string (if (get *major-modes* "c-mode") "yes" "no"))"#)
+                .unwrap_or_default();
         assert_eq!(major_modes, r#""yes""#, "c-mode should be a major mode");
 
         // The plugin's syntax.scm became the c-mode tree-sitter highlight query.
-        let query_len = scripting::eval_result(
-            r#"(length (get *ts-mode-queries* "c-mode"))"#,
-        )
-        .unwrap_or_default();
-        assert_ne!(query_len, "0", "c-mode must have a tree-sitter highlight query");
+        let query_len = scripting::eval_result(r#"(length (get *ts-mode-queries* "c-mode"))"#)
+            .unwrap_or_default();
+        assert_ne!(
+            query_len, "0",
+            "c-mode must have a tree-sitter highlight query"
+        );
     });
 }
 
@@ -550,13 +566,11 @@ fn plugin_build_creates_loadable_image() {
             r#"(plugin/register "zz-test-image" "1.0" "{}" "main.jimage" @[] @[] @[])"#,
             root_str(&root)
         ));
-        let load =
-            scripting::eval_result(r#"(plugin/load "zz-test-image")"#).unwrap_or_default();
+        let load = scripting::eval_result(r#"(plugin/load "zz-test-image")"#).unwrap_or_default();
         assert_eq!(load, ":ok");
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "zz-test-image") :loaded))"#,
-        )
-        .unwrap_or_default();
+        let status =
+            scripting::eval_result(r#"(string (get (plugin/status "zz-test-image") :loaded))"#)
+                .unwrap_or_default();
         assert_eq!(status, r#""true""#);
         let side_effect =
             scripting::eval_result(r#"(plugin-state/get "zz-image-hit")"#).unwrap_or_default();
@@ -572,7 +586,10 @@ fn plugin_build_creates_loadable_image() {
 fn image_rejects_wrong_vm_version() {
     janet_test!(ed, {
         let root = plugin_root("image-ver");
-        write_file(&root.join("main.jimage"), "MGIMG1:0.0.0\nnot-really-bytecode");
+        write_file(
+            &root.join("main.jimage"),
+            "MGIMG1:0.0.0\nnot-really-bytecode",
+        );
         scripting::eval(&format!(
             r#"(plugin/register "zz-test-image-ver" "1.0" "{}" "main.jimage" @[] @[] @[])"#,
             root_str(&root)
@@ -683,11 +700,13 @@ fn plugins_root_setting_loads_plugins_from_disk() {
             root_str(&root)
         ));
 
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "zz-test-setting") :loaded))"#,
-        )
-        .unwrap_or_default();
-        assert_eq!(status, r#""true""#, "plugins-root dir should be discovered and enabled");
+        let status =
+            scripting::eval_result(r#"(string (get (plugin/status "zz-test-setting") :loaded))"#)
+                .unwrap_or_default();
+        assert_eq!(
+            status, r#""true""#,
+            "plugins-root dir should be discovered and enabled"
+        );
         std::fs::remove_dir_all(&root).ok();
     });
 }
@@ -711,9 +730,11 @@ fn plugins_enabled_false_disables_disk_loading() {
             root_str(&root)
         ));
 
-        let status = scripting::eval_result(r#"(plugin/status "zz-test-off")"#)
-            .unwrap_or_default();
-        assert_eq!(status, "nil", "no plugin should load when plugins-enabled=false");
+        let status = scripting::eval_result(r#"(plugin/status "zz-test-off")"#).unwrap_or_default();
+        assert_eq!(
+            status, "nil",
+            "no plugin should load when plugins-enabled=false"
+        );
         std::fs::remove_dir_all(&root).ok();
     });
 }
@@ -737,10 +758,9 @@ fn plugins_disabled_option_skips_plugin_at_startup() {
             root_str(&root)
         ));
 
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "zz-test-dis") :loaded))"#,
-        )
-        .unwrap_or_default();
+        let status =
+            scripting::eval_result(r#"(string (get (plugin/status "zz-test-dis") :loaded))"#)
+                .unwrap_or_default();
         assert_eq!(
             status, r#""false""#,
             "a plugins-disabled name must stay unloaded"
@@ -749,11 +769,13 @@ fn plugins_disabled_option_skips_plugin_at_startup() {
         // Re-enabling through the same setting loads it on the next pass.
         scripting::eval(r#"(option/set "plugins-disabled" "")"#);
         scripting::eval(r#"(plugin/bootstrap "" "")"#);
-        let status = scripting::eval_result(
-            r#"(string (get (plugin/status "zz-test-dis") :loaded))"#,
-        )
-        .unwrap_or_default();
-        assert_eq!(status, r#""true""#, "clearing plugins-disabled should load it");
+        let status =
+            scripting::eval_result(r#"(string (get (plugin/status "zz-test-dis") :loaded))"#)
+                .unwrap_or_default();
+        assert_eq!(
+            status, r#""true""#,
+            "clearing plugins-disabled should load it"
+        );
         std::fs::remove_dir_all(&root).ok();
     });
 }
@@ -773,12 +795,24 @@ fn bundled_new_language_plugins_enable_cleanly() {
             root_str(&repo.join("plugins"))
         ));
         for name in [
-            "batch", "cmake", "dart", "dockerfile", "graphql", "groovy",
-            "ini", "latex", "makefile", "ocaml", "perl", "php", "powershell",
-            "r", "scala",
+            "batch",
+            "cmake",
+            "dart",
+            "dockerfile",
+            "graphql",
+            "groovy",
+            "ini",
+            "latex",
+            "makefile",
+            "ocaml",
+            "perl",
+            "php",
+            "powershell",
+            "r",
+            "scala",
         ] {
-            let result = scripting::eval_result(&format!(r#"(plugin/enable "{name}")"#))
-                .unwrap_or_default();
+            let result =
+                scripting::eval_result(&format!(r#"(plugin/enable "{name}")"#)).unwrap_or_default();
             assert_eq!(result, ":ok", "bundled {name} plugin must enable cleanly");
             let mode = format!("(string (if (get *major-modes* \"{name}-mode\") \"yes\" \"no\"))");
             let registered = scripting::eval_result(&mode).unwrap_or_default();
@@ -835,7 +869,11 @@ fn http_plugin_sends_request_with_variables_and_headers() {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     let server_path = dir.join("echo_server.py");
-    std::fs::write(&server_path, ECHO_SERVER.replace("__PORT__", &port.to_string())).unwrap();
+    std::fs::write(
+        &server_path,
+        ECHO_SERVER.replace("__PORT__", &port.to_string()),
+    )
+    .unwrap();
     let mut child = std::process::Command::new("python3")
         .arg(&server_path)
         .arg(port.to_string())
@@ -861,8 +899,7 @@ fn http_plugin_sends_request_with_variables_and_headers() {
         r#"(plugin/discover "{}")"#,
         root_str(&repo.join("plugins"))
     ));
-    let enable =
-        scripting::eval_result(r#"(plugin/enable "http")"#).unwrap_or_default();
+    let enable = scripting::eval_result(r#"(plugin/enable "http")"#).unwrap_or_default();
     assert_eq!(enable, ":ok", "http plugin must enable cleanly");
 
     // A request file with a variable feeding a header; the cursor goes
@@ -909,7 +946,10 @@ fn http_plugin_sends_request_with_variables_and_headers() {
         output.contains("GET http://127.0.0.1:"),
         "request should be logged: {output}"
     );
-    assert!(output.contains("← 200"), "response should carry the status: {output}");
+    assert!(
+        output.contains("← 200"),
+        "response should carry the status: {output}"
+    );
     assert!(
         output.contains("hdr-flow-42"),
         "the {{token}} variable must reach the server as a header: {output}"

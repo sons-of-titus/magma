@@ -89,6 +89,10 @@ def read_message():
     headers = {}
     while True:
         line = sys.stdin.buffer.readline()
+        # readline returns b"" forever at EOF — bail out or this spins at
+        # 100% CPU after the editor side goes away.
+        if not line:
+            raise EOFError("stdin closed")
         if line in (b"\r\n", b"\n"):
             break
         k, _, v = line.decode().partition(":")
@@ -174,7 +178,10 @@ pub fn tiny_grammar_lib() -> &'static std::path::PathBuf {
     LIB.get_or_init(|| {
         let dir = std::env::temp_dir().join("magma_tiny_grammar_tests");
         std::fs::create_dir_all(&dir).expect("grammar dir");
-        let source = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny_grammar/parser.c"));
+        let source = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/tiny_grammar/parser.c"
+        ));
         let ext = if cfg!(windows) { "dll" } else { "dylib" };
         let out = dir.join(format!("tree-sitter-tiny.{ext}"));
         let _ = std::fs::remove_file(&out);
@@ -197,7 +204,10 @@ pub fn tiny_grammar_lib() -> &'static std::path::PathBuf {
                 let def = dir.join("tiny.def");
                 std::fs::write(&def, "EXPORTS\n    tree_sitter_tiny\n").unwrap();
                 let mut cmd = std::process::Command::new(tool.path());
-                cmd.envs(tool.get_envs().map(|(k, v)| (k.to_os_string(), v.to_os_string())));
+                cmd.envs(
+                    tool.get_envs()
+                        .map(|(k, v)| (k.to_os_string(), v.to_os_string())),
+                );
                 cmd.current_dir(&dir);
                 cmd.args(["/nologo", "/O2", "/LD"]);
                 cmd.arg(source);
@@ -215,7 +225,10 @@ pub fn tiny_grammar_lib() -> &'static std::path::PathBuf {
                     .expect("run gcc");
             }
         }
-        assert!(status.success() && out.exists(), "tiny grammar compilation failed");
+        assert!(
+            status.success() && out.exists(),
+            "tiny grammar compilation failed"
+        );
         out
     })
 }

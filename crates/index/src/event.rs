@@ -31,9 +31,7 @@ pub enum Event {
     /// A file counted into the extraction queue yielded no record (missing
     /// on disk, or not UTF-8 — the index is a source index).  It still
     /// arrives so the queue depth the UI reports drains completely.
-    RecordSkipped {
-        generation: u64,
-    },
+    RecordSkipped { generation: u64 },
     /// Size/mtime stamps for the fresh walk, measured off the foreground
     /// thread; the foreground diffs them against the index store to pick
     /// the files needing re-extraction.

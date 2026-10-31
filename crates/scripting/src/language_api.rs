@@ -100,7 +100,12 @@ unsafe fn register_from_spec(ed: &mut kernel::state::Editor, spec: Janet) -> Jan
         let mut grammar_loaded = false;
         let grammar_path = jtable::get_str(spec, "grammar");
         if let Some(path) = grammar_path.as_deref() {
-            grammar_loaded = load_grammar(ed, &id, path, jtable::get_str(spec, "grammar-symbol").as_deref());
+            grammar_loaded = load_grammar(
+                ed,
+                &id,
+                path,
+                jtable::get_str(spec, "grammar-symbol").as_deref(),
+            );
         }
 
         let mut info = LanguageInfo {

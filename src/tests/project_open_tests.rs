@@ -12,15 +12,12 @@ use std::time::{Duration, Instant};
 use crate::kernel::command::{self, args::ArgValue};
 use crate::kernel::index::Event as IndexEvent;
 use crate::kernel::project::Project;
-use crate::kernel::runtime::{BackgroundEvent, process_background_event};
 use crate::kernel::run_config::{RunConfig, RunConfigManager};
+use crate::kernel::runtime::{BackgroundEvent, process_background_event};
 
 fn open_project(ed: &mut crate::kernel::state::Editor, path: &str) {
     let mut args = HashMap::new();
-    args.insert(
-        "path".to_string(),
-        ArgValue::Path(path.to_string()),
-    );
+    args.insert("path".to_string(), ArgValue::Path(path.to_string()));
     command::execute_command(ed, "open-project", &args).unwrap();
 }
 
@@ -148,7 +145,9 @@ fn session_buffers_stream_in_and_the_recorded_focus_wins() {
             })
             .is_some()
     };
-    pump_until(&mut ed, &mut rx, |ed| buffer_paths(ed).len() == 3 && focused_is_recorded(ed));
+    pump_until(&mut ed, &mut rx, |ed| {
+        buffer_paths(ed).len() == 3 && focused_is_recorded(ed)
+    });
 
     // The recorded cursor landed with the buffer, and the recorded focus is
     // the buffer on screen at the end.
@@ -320,7 +319,8 @@ fn unreadable_files_still_drain_the_extraction_queue() {
             && ed.index.stats().pending == 0
     });
     assert_eq!(
-        ed.index.stats().files, 1,
+        ed.index.stats().files,
+        1,
         "the binary stays out of the source index"
     );
     assert!(
@@ -487,7 +487,10 @@ fn a_restore_from_a_superseded_project_never_leaks_into_the_counter() {
 
 #[test]
 fn the_detection_flag_tracks_in_flight_run_config_detection() {
-    let root = temp_project("project_open_progress_detect", &[("Cargo.toml", "[package]\n")]);
+    let root = temp_project(
+        "project_open_progress_detect",
+        &[("Cargo.toml", "[package]\n")],
+    );
     let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
     open_project(&mut ed, root.to_string_lossy().as_ref());
 
@@ -551,7 +554,9 @@ fn open_root_resets_per_project_state_and_the_registry_entry_tracks_it() {
     let root = temp_project("project_open_registry", &[("a.rs", "x\n")]);
     let (mut ed, _bg, mut rx) = crate::tests::helpers::editor_with_background();
     open_project(&mut ed, root.to_string_lossy().as_ref());
-    pump_until(&mut ed, &mut rx, |ed| !ed.project_manager.project.files.is_empty());
+    pump_until(&mut ed, &mut rx, |ed| {
+        !ed.project_manager.project.files.is_empty()
+    });
 
     let name = ed
         .project_manager

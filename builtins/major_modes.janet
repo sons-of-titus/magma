@@ -18,15 +18,18 @@
 (var *active-major-mode-layers* @[])
 
 (defn major-mode/activate
-  "Switch the focused buffer to a major mode by name.
-   `layers` is a tuple of keymap layer keywords to push (parent first)."
-  [mode-name layers]
+  "Switch the focused buffer to a major mode by name (or the buffer whose
+   id is passed).  `layers` is a tuple of keymap layer keywords to push
+   (parent first)."
+  [mode-name layers &opt buf-id]
   # Pop old layers
   (each layer *active-major-mode-layers*
     (keymap/pop-layer layer))
   (array/clear *active-major-mode-layers*)
   # Set Rust-side mode
-  (editor/run-command "set-major-mode" mode-name)
+  (if buf-id
+    (editor/run-command "set-major-mode" mode-name buf-id)
+    (editor/run-command "set-major-mode" mode-name))
   # Push new layers and track them
   (each layer layers
     (keymap/push-layer layer)
@@ -65,8 +68,8 @@
                        :hooks   (get ,opts :hooks @{})
                        :setup   (get ,opts :setup nil)})
      (put mode-entry :activate
-          (fn []
-            (major-mode/activate ,name (get mode-entry :layers @[]))
+          (fn [&opt buf-id]
+            (major-mode/activate ,name (get mode-entry :layers @[]) buf-id)
             # Run the optional setup function
             (when (get mode-entry :setup)
               ((get mode-entry :setup)))
@@ -76,16 +79,16 @@
      (put *major-modes* ,name mode-entry)
      # Register the activate command so (editor/run-command "name") works
      (command/define ,name
-       (fn [&] ((get mode-entry :activate))))))
+       (fn [&opt buf-id] ((get mode-entry :activate) buf-id)))))
 
 (command/define "fundamental-mode"
-  (fn [&] (major-mode/activate "fundamental" [])))
+  (fn [&opt buf-id] (major-mode/activate "fundamental" [] buf-id)))
 
 (command/define "text-mode"
-  (fn [&] (major-mode/activate "text" [:text-mode])))
+  (fn [&opt buf-id] (major-mode/activate "text" [:text-mode] buf-id)))
 
 (command/define "prog-mode"
-  (fn [&] (major-mode/activate "prog" [:prog-mode])))
+  (fn [&opt buf-id] (major-mode/activate "prog" [:prog-mode] buf-id)))
 
 # --- Major mode colon verbs -----------------------------------------------
 
@@ -175,10 +178,15 @@
       (when ext
         (def mode-name (get *extension-mode-map* ext nil))
         (when mode-name
+          # The mode must land on the buffer this event describes:
+          # events queue and drain in batches, so the focused buffer at
+          # drain time can be a different file entirely (a rust file
+          # would come out in toml-mode after restoring a session).
+          (def buf-id (scan-number (get data :buffer-id)))
           # Janet-defined modes activate directly (nested fiber constraint);
           # core modes fall through to the command registry.
           (def entry (get *major-modes* mode-name))
           (if entry
-            ((get entry :activate))
-            (when (command/exists? mode-name)
-              (editor/run-command mode-name))))))))
+            ((get entry :activate) buf-id)
+            (when (and buf-id (command/exists? mode-name))
+              (editor/run-command mode-name buf-id))))))))

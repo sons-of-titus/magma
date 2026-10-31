@@ -446,3 +446,82 @@ fn render_frame_seeds_unpainted_cells_with_the_editor_background() {
         }
     }
 }
+
+// ── Completion popup richness: signature + docs pane ─────────────────
+
+#[test]
+fn completion_popup_shows_signature_and_docs_of_the_selected_item() {
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("let s = Str\n");
+    ed.completion.visible = true;
+    ed.completion.idx = 0;
+    ed.completion.items = vec![crate::kernel::state::completion::CompletionItem {
+        label: "String".into(),
+        kind: "struct".into(),
+        detail: "struct String".into(),
+        insert: "String".into(),
+        docs: "A UTF-8 encoded, growable string.".into(),
+        ..Default::default()
+    }];
+
+    let mut surface = Surface::new(120, 30);
+    crate::kernel::render::completion_popup::render(&ed, &mut surface, 0, 28);
+
+    let text: String = (0..30u16)
+        .flat_map(|y| (0..120u16).map(move |x| (x, y)))
+        .filter_map(|(x, y)| surface.cell(x, y).map(|c| c.ch))
+        .collect();
+    assert!(text.contains("String struct"), "row shows label and kind, got {text:?}");
+    assert!(text.contains("struct String"), "the signature line is on the popup, got {text:?}");
+    assert!(
+        text.contains("UTF-8 encoded, growable"),
+        "documentation wraps into the info pane, got {text:?}"
+    );
+}
+
+// ── Keyword highlight must cover every character of the token ─────────
+
+#[test]
+fn keyword_highlight_covers_the_last_character() {
+    use crate::kernel::render::highlight_pass::apply_highlights;
+    use crate::kernel::render::row_layout::RowLayout;
+
+    let mut ed = crate::tests::helpers::make_editor_with_buffer("    let x = 1;\n");
+    let key = crate::tests::helpers::focused_key(&ed);
+    let kw_fg = (9, 8, 7);
+    ed.faces.insert(
+        "keyword-face".to_string(),
+        Style { fg: kw_fg, ..Default::default() },
+    );
+    ed.scope_faces.push(("keyword".to_string(), "keyword-face".to_string()));
+    ed.for_each_view_of_buffer_mut(key, |view| {
+        view.set_highlights_layer("syntax", vec![(4, 7, "keyword".to_string())])
+    });
+
+    let line = "    let x = 1;\n";
+    let layout = std::sync::Arc::new(RowLayout::build(line, 0, 4, &Default::default()));
+    let rows = vec![(0usize, line.len(), line)];
+    let mut surface = Surface::new(40, 2);
+    apply_highlights(
+        &ed,
+        ed.view_of_buffer(key),
+        &mut surface,
+        &rows,
+        std::slice::from_ref(&layout),
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+    );
+
+    for x in 4..7u16 {
+        let cell = surface.cell(x, 0).expect("cell exists");
+        assert_eq!(cell.style.fg, kw_fg, "column {x} must carry the keyword foreground");
+    }
+    assert_ne!(
+        surface.cell(3, 0).unwrap().style.fg,
+        kw_fg,
+        "the space before the keyword stays unstyled"
+    );
+}

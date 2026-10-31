@@ -24,7 +24,7 @@ pub fn request(editor: &Editor, buf_id: usize) -> bool {
     let (uri, position, revision) = {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let uri = match buf.path.as_deref() {
-            Some(p) => format!("file://{p}"),
+            Some(p) => crate::semantic::lsp_proto::path_to_uri(p),
             None => return false,
         };
         let cursor = editor
@@ -87,8 +87,7 @@ pub fn parse_signature_help(json: &str) -> Option<SignatureState> {
                         let (Some(s), Some(e)) = (a[0].as_u64(), a[1].as_u64()) else {
                             continue;
                         };
-                        utf16_to_byte(&label, s as usize)
-                            .zip(utf16_to_byte(&label, e as usize))
+                        utf16_to_byte(&label, s as usize).zip(utf16_to_byte(&label, e as usize))
                     }
                     Some(Value::String(s)) => {
                         let from = params.last().map(|&(_, end)| end).unwrap_or(after_paren);

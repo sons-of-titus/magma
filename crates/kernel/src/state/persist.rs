@@ -265,7 +265,8 @@ mod tests {
     use super::*;
 
     fn editor_with_options(pairs: &[(&str, &str)]) -> super::super::Editor {
-        let mut ed = super::super::Editor::new(Box::new(crate::storage::disk::DiskFileSystem::new()));
+        let mut ed =
+            super::super::Editor::new(Box::new(crate::storage::disk::DiskFileSystem::new()));
         for (name, value) in pairs {
             ed.options.insert(name.to_string(), value.to_string());
         }
@@ -281,11 +282,20 @@ mod tests {
 
         let mut restored = editor_with_options(&[]);
         load_settings_from(&dir, &mut restored);
-        assert_eq!(restored.options.get("gui-theme").map(String::as_str), Some("dracula"));
-        assert_eq!(restored.options.get("scrolloff").map(String::as_str), Some("5"));
+        assert_eq!(
+            restored.options.get("gui-theme").map(String::as_str),
+            Some("dracula")
+        );
+        assert_eq!(
+            restored.options.get("scrolloff").map(String::as_str),
+            Some("5")
+        );
 
         let raw = std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap();
-        assert!(!raw.contains("api-key"), "secret accounts must not leak into the file");
+        assert!(
+            !raw.contains("api-key"),
+            "secret accounts must not leak into the file"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -296,10 +306,7 @@ mod tests {
         const TEST_ACCOUNT: &str = "agent.api-key.zctestprovider";
         let dir = std::env::temp_dir().join(format!("magma-secrets-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let ed = editor_with_options(&[
-            (TEST_ACCOUNT, "sk-test"),
-            ("agent.provider", "openai"),
-        ]);
+        let ed = editor_with_options(&[(TEST_ACCOUNT, "sk-test"), ("agent.provider", "openai")]);
         save_settings_to(&dir, &ed);
 
         let raw = std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap();

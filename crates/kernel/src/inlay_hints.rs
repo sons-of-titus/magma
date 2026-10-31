@@ -38,7 +38,11 @@ pub fn request(ed: &mut Editor, buf_id: usize) {
         let Some(path) = buf.path.clone() else {
             return;
         };
-        (format!("file://{path}"), buf.revision(), buf.line_count())
+        (
+            crate::semantic::lsp_proto::path_to_uri(&path),
+            buf.revision(),
+            buf.line_count(),
+        )
     };
     if ed.inlay.requested_revision.get(&buf_id) == Some(&revision) {
         return;
@@ -48,7 +52,9 @@ pub fn request(ed: &mut Editor, buf_id: usize) {
         "textDocument": { "uri": uri },
         "range": {
             "start": { "line": 0, "character": 0 },
-            "end": { "line": line_count, "character": 0 },
+            // Lines are 0-based: line_count is one past the last line, and
+            // servers reject a range that ends beyond the document.
+            "end": { "line": line_count.saturating_sub(1), "character": 0 },
         },
     });
     server.request("textDocument/inlayHint", params, buf_id, revision);
@@ -91,14 +97,12 @@ pub fn apply(ed: &mut Editor, buf_id: usize, revision: u64, result: &str) {
         }
         hints.push((line, col, label));
     }
-    if let Some(view) = ed.view_of_buffer_mut(buf_id) {
+    ed.for_each_view_of_buffer_mut(buf_id, |view| {
         view.decor_clear_layer(LAYER);
-    }
-    for (line, col, label) in hints {
-        if let Some(view) = ed.view_of_buffer_mut(buf_id) {
-            view.decor_set_inline(LAYER, line, col, label, "type-face".to_string());
+        for (line, col, label) in &hints {
+            view.decor_set_inline(LAYER, *line, *col, label.clone(), "type-face".to_string());
         }
-    }
+    });
     ed.frame_dirty = true;
 }
 

@@ -222,7 +222,9 @@ fn records_from_a_superseded_generation_never_reach_the_store() {
 }
 
 /// Wait for the save-path extraction job to publish its record.
-fn recv_until_index_event(rx: &mut tokio::sync::mpsc::UnboundedReceiver<BackgroundEvent>) -> IndexEvent {
+fn recv_until_index_event(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<BackgroundEvent>,
+) -> IndexEvent {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     loop {
         if let Ok(BackgroundEvent::Index(event)) = rx.try_recv() {

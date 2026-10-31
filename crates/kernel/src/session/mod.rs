@@ -128,21 +128,25 @@ pub fn restore_async(ed: &mut Editor, root: &std::path::Path) {
     );
     // Coalesced: when projects are switched faster than reads complete, the
     // queued restore of the older project skips itself.
-    bg.spawn_on(crate::runtime::Lane::Maintenance, Some("session-restore"), move || {
-        for entry in state.buffers {
-            let content = std::fs::read_to_string(&entry.path).map_err(|e| e.to_string());
-            let _ = sender.send(crate::runtime::BackgroundEvent::SessionBufferLoaded {
+    bg.spawn_on(
+        crate::runtime::Lane::Maintenance,
+        Some("session-restore"),
+        move || {
+            for entry in state.buffers {
+                let content = std::fs::read_to_string(&entry.path).map_err(|e| e.to_string());
+                let _ = sender.send(crate::runtime::BackgroundEvent::SessionBufferLoaded {
+                    generation,
+                    path: entry.path,
+                    cursor: entry.cursor,
+                    content,
+                });
+            }
+            let _ = sender.send(crate::runtime::BackgroundEvent::SessionRestoreDone {
                 generation,
-                path: entry.path,
-                cursor: entry.cursor,
-                content,
+                focused,
             });
-        }
-        let _ = sender.send(crate::runtime::BackgroundEvent::SessionRestoreDone {
-            generation,
-            focused,
-        });
-    });
+        },
+    );
 }
 
 /// Breakpoints and watches are in-memory per-project state — refill them as

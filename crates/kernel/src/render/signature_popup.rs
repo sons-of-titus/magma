@@ -19,7 +19,11 @@ pub fn render(editor: &Editor, surface: &mut Surface, caret: (u16, u16)) {
     if width == 0 || width + 2 > surface.width {
         return;
     }
-    let row = if caret.1 > 0 { caret.1 - 1 } else { caret.1 + 1 };
+    let row = if caret.1 > 0 {
+        caret.1 - 1
+    } else {
+        caret.1 + 1
+    };
     let x = caret.0.min(surface.width.saturating_sub(width + 1));
     let base = Style {
         fg: (210, 210, 210),
@@ -53,11 +57,7 @@ pub fn render(editor: &Editor, surface: &mut Surface, caret: (u16, u16)) {
     let param = &label[start..end];
     let post = &label[end..];
     let mut col = x + 1;
-    for (text, style) in [
-        (pre, base),
-        (param, highlight),
-        (post, base),
-    ] {
+    for (text, style) in [(pre, base), (param, highlight), (post, base)] {
         if text.is_empty() {
             continue;
         }

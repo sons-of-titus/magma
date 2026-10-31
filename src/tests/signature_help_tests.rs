@@ -2,8 +2,8 @@
 //! background-event landing.
 
 use crate::kernel::input;
-use crate::kernel::runtime::process_background_event;
 use crate::kernel::runtime::BackgroundEvent;
+use crate::kernel::runtime::process_background_event;
 use crate::kernel::state::Editor;
 use crate::tests::helpers::make_editor;
 
@@ -68,7 +68,10 @@ fn a_stale_response_never_lands() {
     // The buffer moves on while the response is in flight.
     ed.view_of_buffer_mut(key).unwrap().insert(0, "let x = ");
     deliver(&mut ed, SIGNATURE_PAYLOAD, stale);
-    assert!(!ed.signature.visible, "a superseded revision must be dropped");
+    assert!(
+        !ed.signature.visible,
+        "a superseded revision must be dropped"
+    );
 }
 
 #[test]
@@ -119,13 +122,7 @@ fn close_paren_dismisses_and_open_paren_with_no_server_stays_hidden() {
 fn a_response_for_an_unfocused_buffer_is_ignored() {
     let mut ed = editor_at_call_open();
     let other = ed.create_buffer_from_str("other.rs", "x\n");
-    let revision = ed
-        .buffers
-        .get(other)
-        .unwrap()
-        .lock()
-        .unwrap()
-        .revision();
+    let revision = ed.buffers.get(other).unwrap().lock().unwrap().revision();
     process_background_event(
         &mut ed,
         BackgroundEvent::Lsp(crate::kernel::semantic::Event::SignatureHelp {

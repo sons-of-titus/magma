@@ -77,10 +77,35 @@ impl Editor {
         }
     }
 
+    /// Apply `f` to every view fork showing `buf`.  Highlight and
+    /// decoration layers are derived from buffer content, so a layer write
+    /// through the single-fork `view_of_buffer_mut` can land in a fork the
+    /// render never reads (HashMap order picks the fork, focus picks the
+    /// reader) — content-derived layers must reach all forks.
+    pub fn for_each_view_of_buffer_mut(
+        &mut self,
+        buf: usize,
+        mut f: impl FnMut(&mut crate::text_engine::BufferView),
+    ) {
+        for (_, v) in self.window_views.iter_mut().filter(|((_, b), _)| *b == buf) {
+            f(v);
+        }
+        if let Some(v) = self.views.get_mut(&buf) {
+            f(v);
+        }
+    }
+
     /// Remove a buffer with its views and point every pane that showed it
     /// at a surviving buffer.  The one close path for buffer teardown.
     pub fn drop_buffer(&mut self, key: usize) {
         crate::semantic::fallback_syntax::on_buffer_dropped(self, key);
+        // Tree-sitter state and the LSP language record are keyed by slab
+        // slot, which the slab reuses — a stale entry would make the next
+        // buffer in this slot parse with the old buffer's grammar (ts/has-tree?
+        // only checks membership) or complete against the wrong server.
+        self.ts_languages.remove(&key);
+        self.ts_trees.remove(&key);
+        self.lsp.forget_buffer(key);
         self.buffers.remove(key);
         self.views.remove(&key);
         self.drop_window_views_of_buffer(key);

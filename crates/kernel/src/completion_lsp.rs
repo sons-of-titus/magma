@@ -28,7 +28,7 @@ pub(super) fn request_lsp_completion(editor: &Editor, buf_id: usize, prefix: &st
     let (uri, position, revision) = {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let uri = match buf.path.as_deref() {
-            Some(p) => format!("file://{p}"),
+            Some(p) => crate::semantic::lsp_proto::path_to_uri(p),
             None => return false,
         };
         let cursor = editor
@@ -156,7 +156,11 @@ pub fn merge_lsp_items(editor: &mut Editor, items: Vec<CompletionItem>) {
         .get(editor.completion.idx)
         .map(|i| i.label.clone());
     let prefix_matches = |i: &CompletionItem| {
-        let f = if i.filter.is_empty() { &i.label } else { &i.filter };
+        let f = if i.filter.is_empty() {
+            &i.label
+        } else {
+            &i.filter
+        };
         // Servers match case-insensitively; a case-sensitive filter would
         // drop their items mid-word ("DO" vs "door").
         f.to_lowercase().starts_with(&prefix.to_lowercase())

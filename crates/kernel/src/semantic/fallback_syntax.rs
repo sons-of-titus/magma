@@ -16,8 +16,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::state::Editor;
-use crate::text_engine::transaction::EditTransaction;
 use crate::text_engine::Buffer;
+use crate::text_engine::transaction::EditTransaction;
 
 const LAYER: &str = "syntax";
 
@@ -92,9 +92,7 @@ pub fn set_ts_mode(ed: &mut Editor, mode: &str, enabled: bool) {
         .collect();
     for key in owned {
         ed.fallback_syntax.caches.remove(&key);
-        if let Some(view) = ed.view_of_buffer_mut(key) {
-            view.clear_highlights_layer(LAYER);
-        }
+        ed.for_each_view_of_buffer_mut(key, |view| view.clear_highlights_layer(LAYER));
     }
 }
 
@@ -145,9 +143,7 @@ pub fn force_highlight(ed: &mut Editor, key: usize) {
             ranges: ranges.clone(),
         },
     );
-    if let Some(view) = ed.view_of_buffer_mut(key) {
-        view.set_highlights_layer(LAYER, ranges);
-    }
+    ed.for_each_view_of_buffer_mut(key, |view| view.set_highlights_layer(LAYER, ranges.clone()));
 }
 
 /// Incremental update from the canonical change-publication path: typed
@@ -176,9 +172,7 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
         // Nothing owns this buffer's syntax anymore — clear the layer and
         // the cache so no stale ranges outlive the language.
         state.caches.remove(&key);
-        if let Some(view) = ed.view_of_buffer_mut(key) {
-            view.clear_highlights_layer(LAYER);
-        }
+        ed.for_each_view_of_buffer_mut(key, |view| view.clear_highlights_layer(LAYER));
         return;
     };
     if !state.rules.contains_key(&lang) {
@@ -217,9 +211,9 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
             ranges: computed.clone(),
         },
     );
-    if let Some(view) = ed.view_of_buffer_mut(key) {
-        view.set_highlights_layer(LAYER, computed);
-    }
+    ed.for_each_view_of_buffer_mut(key, |view| {
+        view.set_highlights_layer(LAYER, computed.clone())
+    });
 }
 
 fn lang_for(state: &FallbackState, buf: &Buffer) -> Option<String> {
@@ -348,9 +342,7 @@ fn scan_comments(text: &str, marker: &str, out: &mut Vec<Range>) {
     while let Some(rel) = text[from..].find(marker) {
         let start = from + rel;
         let after = start + marker.len();
-        let end = text[after..]
-            .find('\n')
-            .map_or(text.len(), |i| after + i);
+        let end = text[after..].find('\n').map_or(text.len(), |i| after + i);
         out.push((start, end, "comment-face".to_string()));
         from = after.max(end.min(text.len()));
     }
@@ -392,17 +384,11 @@ fn scan_numbers(text: &str, out: &mut Vec<Range>) {
     let n = bytes.len();
     let mut i = 0;
     while i < n {
-        let preceded_by_word =
-            i > 0 && is_word_char(bytes[i - 1] as char);
+        let preceded_by_word = i > 0 && is_word_char(bytes[i - 1] as char);
         if bytes[i].is_ascii_digit() && !preceded_by_word {
             let start = i;
             let mut j = start + 1;
-            while j < n
-                && matches!(
-                    bytes[j],
-                    b'0'..=b'9' | b'.' | b'x' | b'X' | b'e' | b'E'
-                )
-            {
+            while j < n && matches!(bytes[j], b'0'..=b'9' | b'.' | b'x' | b'X' | b'e' | b'E') {
                 j += 1;
             }
             out.push((start, j, "constant-face".to_string()));
@@ -429,7 +415,13 @@ mod tests {
         let r = rules(&["fn", "let"], None);
         let out = scan("fnord fn let", &r);
         // "fnord" must not match the "fn" keyword.
-        assert_eq!(out, vec![(6, 8, "keyword-face".into()), (9, 12, "keyword-face".into())]);
+        assert_eq!(
+            out,
+            vec![
+                (6, 8, "keyword-face".into()),
+                (9, 12, "keyword-face".into())
+            ]
+        );
     }
 
     #[test]
@@ -456,8 +448,11 @@ mod tests {
     #[test]
     fn strings_handle_escapes_and_aremultiline() {
         let r = rules(&[], None);
-        let out = scan(r#"a "x\"y" b "multi
-line" c"#, &r);
+        let out = scan(
+            r#"a "x\"y" b "multi
+line" c"#,
+            &r,
+        );
         assert_eq!(
             out,
             vec![(2, 8, "string-face".into()), (11, 23, "string-face".into())]
@@ -504,6 +499,9 @@ line" c"#, &r);
         let text = format!("{filler} fn rest");
         let r = rules(&["fn"], None);
         let out = scan(&text, &r);
-        assert_eq!(out, vec![(9 * 1024 + 1, 9 * 1024 + 3, "keyword-face".into())]);
+        assert_eq!(
+            out,
+            vec![(9 * 1024 + 1, 9 * 1024 + 3, "keyword-face".into())]
+        );
     }
 }

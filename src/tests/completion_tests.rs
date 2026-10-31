@@ -488,7 +488,11 @@ fn server_items_keep_their_metadata_and_word_duplicates_drop() {
     );
     assert_eq!(door.detail, "door: Doorway");
     assert_eq!(
-        ed.completion.items.iter().filter(|i| i.label == "door").count(),
+        ed.completion
+            .items
+            .iter()
+            .filter(|i| i.label == "door")
+            .count(),
         1,
         "the bare word duplicate drops"
     );
@@ -509,13 +513,7 @@ fn accepting_a_snippet_completion_expands_tabstops() {
 
     accept(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
-    let text = ed
-        .buffers
-        .get(key)
-        .unwrap()
-        .lock()
-        .unwrap()
-        .slice(0, 40);
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 40);
     assert_eq!(text, "push(value)", "no $ marker survives accept");
     assert!(ed.snippet.active, "tab-stop cycling is live");
     assert_eq!(ed.snippet.tabstops.len(), 2);
@@ -547,13 +545,7 @@ fn accepting_a_textedit_completion_replaces_the_prefix_wholesale() {
 
     accept(&mut ed);
     let key = crate::tests::helpers::focused_key(&ed);
-    let text = ed
-        .buffers
-        .get(key)
-        .unwrap()
-        .lock()
-        .unwrap()
-        .slice(0, 40);
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 40);
     assert_eq!(text, "player.position");
     assert_eq!(
         ed.view_of_buffer(key).unwrap().cursor_offset(),
@@ -587,7 +579,10 @@ fn merge_filters_on_filter_text_case_insensitively() {
         .iter()
         .map(|i| i.label.as_str())
         .collect();
-    assert!(labels.contains(&"Doorway"), "case differences do not drop items");
+    assert!(
+        labels.contains(&"Doorway"),
+        "case differences do not drop items"
+    );
     assert!(!labels.contains(&"zebra"), "unrelated items are filtered");
     dismiss(&mut ed);
 }

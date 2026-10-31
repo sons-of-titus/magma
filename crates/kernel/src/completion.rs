@@ -10,7 +10,9 @@
 //! `completion_lsp`.
 
 use crate::completion_lsp::request_lsp_completion;
-use crate::completion_words::{candidate_words, cursor_line_and_col, is_word_char, word_prefix_len};
+use crate::completion_words::{
+    candidate_words, cursor_line_and_col, is_word_char, word_prefix_len,
+};
 use crate::state::Editor;
 use crate::state::completion::CompletionItem;
 

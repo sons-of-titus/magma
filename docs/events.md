@@ -146,6 +146,8 @@ location.  This is the ground truth for both Rust and Janet subscribers.
 | `lsp-progress` | `percentage` | String | |
 | `lsp-signature-help` | `path` | String | `runtime.rs` — `process_background_event` |
 | `lsp-signature-help` | `signatures` | String | Raw signatureHelp result JSON |
+| `lsp-server-exited` | `language` | String | `handlers/lsp.rs` — server crashed or handshake failed; the attach layer resets and respawns (bounded by the restart budget) |
+| `lsp-initialized` | `language` | String | `handlers/lsp.rs` — handle is live; pending didOpens flush |
 
 ## GUI / Render
 

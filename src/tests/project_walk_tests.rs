@@ -71,7 +71,11 @@ fn atomic_write_temp_files_never_mark_the_index_dirty() {
 
     // The editor's own atomic-write temp file: saving an indexed file must
     // not re-walk the project.
-    let temp = format!("{}/src/main.rs.magma-tmp-{}", root.display(), std::process::id());
+    let temp = format!(
+        "{}/src/main.rs.magma-tmp-{}",
+        root.display(),
+        std::process::id()
+    );
     assert!(
         !index_change_marks_dirty(root, &temp, "modified", &indexed),
         "the editor's own temp file is invisible to the index"

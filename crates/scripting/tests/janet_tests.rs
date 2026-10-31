@@ -22,10 +22,8 @@ fn buffer_word_under_cursor_returns_the_word_at_the_cursor() {
             view.insert(0, "alpha beta gamma");
             view.set_cursor(7);
         }
-        let r = scripting::eval_result(
-            r#"(= (buffer/word-under-cursor (buffer/current)) "beta")"#,
-        )
-        .unwrap();
+        let r = scripting::eval_result(r#"(= (buffer/word-under-cursor (buffer/current)) "beta")"#)
+            .unwrap();
         assert_eq!(r, "true");
     });
 }

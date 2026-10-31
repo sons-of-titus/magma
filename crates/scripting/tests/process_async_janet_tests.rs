@@ -392,9 +392,11 @@ fn stdin_to_closed_or_unknown_process_signals_error() {
 
     let r = scripting::eval(r#"(try (process/stdin 424242 "x") ([e] "caught"))"#);
     assert_eq!(r, "ok", "an unknown process must be a catchable error");
-    assert!(scripting::eval_result(r#"(= (try (process/stdin 424242 "x") ([e] "caught")) "caught")"#)
-        .unwrap()
-        .contains("true"));
+    assert!(
+        scripting::eval_result(r#"(= (try (process/stdin 424242 "x") ([e] "caught")) "caught")"#)
+            .unwrap()
+            .contains("true")
+    );
 
     // A closed stdin (the normal post-write state) must also be a catchable
     // error, not a silent no-op.
@@ -444,6 +446,9 @@ fn ssh_fs_write_round_trip_over_real_ssh() {
     assert!(pid >= 0);
     let exit_code = pump_exit(&mut ed, &mut rx);
     assert_eq!(exit_code, 0);
-    assert_eq!(std::fs::read_to_string(&out).unwrap(), "real ssh round trip\n");
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "real ssh round trip\n"
+    );
     std::fs::remove_file(&out).ok();
 }

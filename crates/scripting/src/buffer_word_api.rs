@@ -36,6 +36,8 @@ pub fn register() -> Vec<JanetReg> {
     vec![JanetReg {
         name: c"buffer/word-under-cursor".as_ptr() as *const _,
         cfun: Some(c_buffer_word_under_cursor),
-        documentation: c"(buffer/word-under-cursor buf-id) → word or nil — the word at the cursor position".as_ptr() as *const _,
+        documentation:
+            c"(buffer/word-under-cursor buf-id) → word or nil — the word at the cursor position"
+                .as_ptr() as *const _,
     }]
 }

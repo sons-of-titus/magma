@@ -56,7 +56,10 @@ fn detection_from_a_superseded_project_never_applies() {
         // result carries generation 1 and the active project is now 2, so
         // it must be dropped instead of describing the wrong project.
         scripting::eval(&format!("(project/set-root \"{}\")", p1.to_string_lossy()));
-        scripting::eval(&format!("(task/detect-project \"{}\")", p1.to_string_lossy()));
+        scripting::eval(&format!(
+            "(task/detect-project \"{}\")",
+            p1.to_string_lossy()
+        ));
         scripting::eval(&format!("(project/set-root \"{}\")", p2.to_string_lossy()));
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);

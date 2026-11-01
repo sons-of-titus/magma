@@ -39,6 +39,10 @@ pub(super) fn register(editor: &mut Editor) {
             if path.is_empty() {
                 return Err("No text on current line".to_string());
             }
+            let path = crate::project::resolve_path(
+                editor.project_manager.project.root.as_deref(),
+                &path,
+            );
 
             let content = editor
                 .fs
@@ -67,19 +71,25 @@ pub(super) fn register(editor: &mut Editor) {
             crate::command::args::ArgType::Path,
         )],
         |editor, args| {
-            let path = args
+            let raw = args
                 .get("path")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "Path required".to_string())?;
-            if std::path::Path::new(path).exists() {
+            // Anchor before writing, or the file lands next to the process
+            // cwd while open-file resolves against the project root.
+            let path = crate::project::resolve_path(
+                editor.project_manager.project.root.as_deref(),
+                raw,
+            );
+            if std::path::Path::new(&path).exists() {
                 return Err(format!("Already exists: {path}"));
             }
-            if let Some(parent) = std::path::Path::new(path).parent() {
+            if let Some(parent) = std::path::Path::new(&path).parent() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("Cannot create {}: {e}", parent.display()))?;
             }
-            std::fs::write(path, "").map_err(|e| format!("Cannot create {path}: {e}"))?;
-            open_path(editor, path)
+            std::fs::write(&path, "").map_err(|e| format!("Cannot create {path}: {e}"))?;
+            open_path(editor, &path)
         },
     );
 
@@ -91,22 +101,25 @@ pub(super) fn register(editor: &mut Editor) {
             crate::command::args::ArgSpec::new("to", crate::command::args::ArgType::Path),
         ],
         |editor, args| {
-            let from = args
+            let raw_from = args
                 .get("from")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "from required".to_string())?;
-            let to = args
+            let raw_to = args
                 .get("to")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "to required".to_string())?;
-            if std::path::Path::new(to).exists() {
+            let root = editor.project_manager.project.root.as_deref();
+            let from = crate::project::resolve_path(root, raw_from);
+            let to = crate::project::resolve_path(root, raw_to);
+            if std::path::Path::new(&to).exists() {
                 return Err(format!("Already exists: {to}"));
             }
-            std::fs::rename(from, to).map_err(|e| format!("Cannot rename {from}: {e}"))?;
+            std::fs::rename(&from, &to).map_err(|e| format!("Cannot rename {from}: {e}"))?;
             // Open buffers follow the rename so they keep saving to disk.
             for (_, arc) in editor.buffers.iter() {
                 let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                if buf.path.as_deref() == Some(from) {
+                if buf.path.as_deref() == Some(from.as_str()) {
                     buf.path = Some(to.to_string());
                 }
             }
@@ -122,11 +135,15 @@ pub(super) fn register(editor: &mut Editor) {
             crate::command::args::ArgType::Path,
         )],
         |editor, args| {
-            let path = args
+            let raw = args
                 .get("path")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "Path required".to_string())?;
-            let p = std::path::Path::new(path);
+            let path = crate::project::resolve_path(
+                editor.project_manager.project.root.as_deref(),
+                raw,
+            );
+            let p = std::path::Path::new(&path);
             if p.is_dir() {
                 std::fs::remove_dir(p)
                     .map_err(|_| format!("Refusing to delete non-empty directory: {path}"))?;
@@ -142,7 +159,7 @@ pub(super) fn register(editor: &mut Editor) {
                         .unwrap_or_else(|e| e.into_inner())
                         .path
                         .as_deref()
-                        == Some(path)
+                        == Some(path.as_str())
                 })
                 .map(|(k, _)| k)
                 .collect();

@@ -205,6 +205,20 @@ impl ProjectManager {
 
 // ── Opening projects ──────────────────────────────────────────────────────────
 
+/// Anchor `path` to the active project root.  The sidebar tree, finder
+/// results, and session files speak project-relative paths, while the fs
+/// layer resolves against the process cwd — which is not the project root
+/// in general.  Absolute paths pass through unchanged.
+pub fn resolve_path(root: Option<&std::path::Path>, path: &str) -> String {
+    if std::path::Path::new(path).is_absolute() {
+        return path.to_string();
+    }
+    match root {
+        Some(root) => root.join(path).to_string_lossy().into_owned(),
+        None => path.to_string(),
+    }
+}
+
 /// Set `path` as the active project root, register it, emit `project-opened`,
 /// and record it in the recent-projects list.  Emits `project-closed` first
 /// when a project was already active.  Call `dispatch_events_scoped` after to

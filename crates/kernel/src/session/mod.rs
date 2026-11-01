@@ -80,16 +80,21 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
     };
 
     for entry in &state.buffers {
-        if !std::path::Path::new(&entry.path).exists() {
+        // Older session files may hold project-relative paths — anchor them
+        // the same way open-file does, or they resolve against the process
+        // cwd and the files look missing.
+        let path =
+            crate::project::resolve_path(ed.project_manager.project.root.as_deref(), &entry.path);
+        if !std::path::Path::new(&path).exists() {
             continue;
         }
-        if open_path(ed, &entry.path)
+        if open_path(ed, &path)
             && let Some((key, _)) = ed.buffers.iter().find(|(_, arc)| {
                 arc.lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .path
                     .as_deref()
-                    == Some(entry.path.as_str())
+                    == Some(path.as_str())
             })
             && let Some(view) = ed.views.get_mut(&key)
         {
@@ -100,7 +105,9 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
     apply_debug_state(ed, &state);
 
     if let Some(focused) = &state.focused {
-        open_path(ed, focused);
+        let focused =
+            crate::project::resolve_path(ed.project_manager.project.root.as_deref(), focused);
+        open_path(ed, &focused);
     }
 }
 
@@ -128,15 +135,17 @@ pub fn restore_async(ed: &mut Editor, root: &std::path::Path) {
     );
     // Coalesced: when projects are switched faster than reads complete, the
     // queued restore of the older project skips itself.
+    let root = root.to_path_buf();
     bg.spawn_on(
         crate::runtime::Lane::Maintenance,
         Some("session-restore"),
         move || {
             for entry in state.buffers {
-                let content = std::fs::read_to_string(&entry.path).map_err(|e| e.to_string());
+                let path = crate::project::resolve_path(Some(&root), &entry.path);
+                let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
                 let _ = sender.send(crate::runtime::BackgroundEvent::SessionBufferLoaded {
                     generation,
-                    path: entry.path,
+                    path,
                     cursor: entry.cursor,
                     content,
                 });

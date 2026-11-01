@@ -58,17 +58,24 @@ pub(super) fn register(editor: &mut Editor) {
         "Open a file into a buffer",
         vec![ArgSpec::new("path", ArgType::Path)],
         |editor, args| {
-            let path = args
+            let raw = args
                 .get("path")
                 .and_then(|a| a.as_string())
                 .ok_or_else(|| "Path required".to_string())?;
+            // Sidebar rows, finder results, and sessions speak
+            // project-relative paths; the fs layer reads against the
+            // process cwd — anchor them to the project root here.
+            let path = crate::project::resolve_path(
+                editor.project_manager.project.root.as_deref(),
+                raw,
+            );
             // Opening an already-open path focuses it — never fork a duplicate.
             if let Some((key, _)) = editor.buffers.iter().find(|(_, arc)| {
                 arc.lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .path
                     .as_deref()
-                    == Some(path)
+                    == Some(path.as_str())
             }) {
                 let pane = editor
                     .view_tree
@@ -98,7 +105,7 @@ pub(super) fn register(editor: &mut Editor) {
             // sub-millisecond — the UI-thread stall that mattered was the
             // find-files tree walk, which runs on the pool.
             let path_lower = path.to_lowercase();
-            let name = std::path::Path::new(path)
+            let name = std::path::Path::new(&path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "untitled".to_string());
@@ -114,7 +121,7 @@ pub(super) fn register(editor: &mut Editor) {
             let is_pdf = ext == "pdf";
             if is_image || is_pdf {
                 // Binary document: read bytes and decode, never treat as text.
-                let bytes = std::fs::read(path).map_err(|e| format!("Read failed: {path}: {e}"))?;
+                let bytes = std::fs::read(&path).map_err(|e| format!("Read failed: {path}: {e}"))?;
                 if is_image {
                     let dyn_img = image::load_from_memory(&bytes)
                         .map_err(|e| format!("Image decode failed: {path}: {e}"))?;
@@ -188,15 +195,15 @@ pub(super) fn register(editor: &mut Editor) {
                     // fall through to normal open with content by setting a flag
                     // We'll handle via a variable.
                     // Use open_loaded_file with extracted content.
-                    open_loaded_file(editor, path, &content);
+                    open_loaded_file(editor, &path, &content);
                     return Ok(());
                 }
             }
             let content = editor
                 .fs
-                .read(path)
+                .read(&path)
                 .map_err(|e| format!("Read failed: {path}: {e}"))?;
-            open_loaded_file(editor, path, &content);
+            open_loaded_file(editor, &path, &content);
             Ok(())
         },
     );

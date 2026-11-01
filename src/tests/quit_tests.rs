@@ -45,7 +45,7 @@ fn quit_refuses_and_names_dirty_buffers() {
     edit(&mut ed, key, 0, "x");
 
     let err = run(&mut ed, "quit").unwrap_err();
-    assert!(err.contains("No write since last change"), "got: {err}");
+    assert!(err.contains("Unsaved changes"), "got: {err}");
     assert!(err.contains("hand.rs"), "got: {err}");
     assert!(ed.running, "refusal must keep the editor alive");
 }

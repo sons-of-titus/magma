@@ -24,7 +24,7 @@ pub(super) fn register(editor: &mut Editor) {
             if !dirty.is_empty() {
                 editor.quit_refused = true;
                 return Err(format!(
-                    "No write since last change: {} (use force-quit to override)",
+                    "Unsaved changes in {} — save them or choose “Quit without Saving”.",
                     dirty.join(", ")
                 ));
             }
@@ -46,6 +46,26 @@ pub(super) fn register(editor: &mut Editor) {
             Ok(())
         },
     );
+
+    // Editor zoom: the editor font size is the zoom level.  Persistence
+    // rides the same `font.*` options the Settings page writes.
+    for (name, description, delta) in [
+        ("zoom-in", "Increase the editor font size", 1.0f32),
+        ("zoom-out", "Decrease the editor font size", -1.0),
+        ("zoom-reset", "Reset the editor font size to 15px", 0.0),
+    ] {
+        cmds.register_fn(name, description, vec![], move |editor, _args| {
+            let base = if delta == 0.0 { 15.0 } else { editor.font_config.size + delta };
+            editor.font_config.size = base.clamp(6.0, 72.0);
+            editor
+                .options
+                .insert("font.size".into(), editor.font_config.size.to_string());
+            crate::state::persist::save_settings(editor);
+            editor.font_changed = true;
+            editor.frame_dirty = true;
+            Ok(())
+        });
+    }
 
     cmds.register_fn(
         "editor-escape",

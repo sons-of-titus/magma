@@ -653,6 +653,32 @@ Return the last `f`/`t` find parameters, or nil.
 
 ---
 
+## Editor commands — buffer search, tasks, zoom, and GUI requests
+
+Rust commands (via `editor/run-command`, colon-mode, the keymap, or the
+command palette) that back the shell's find bar, toolbar, and pickers.
+
+| Command | Action |
+|---------|--------|
+| `search-buffer pattern` | Search the focused buffer: highlight every match and select the first one at or after the cursor (smart case) |
+| `search-clear` | Clear the search highlights and forget the pattern |
+| `repeat-search` | Jump to the next match of the last pattern (wraps) |
+| `reverse-search` | Jump to the previous match of the last pattern (wraps) |
+| `replace-next pattern replacement` | Replace the next match in the focused buffer |
+| `replace-all pattern replacement` | Replace every match in one undo step |
+| `task-build` | Run the project's detected `build` task (Cargo, npm, Go, Make, …) |
+| `task-test` | Run the project's detected `test` task |
+| `zoom-in` / `zoom-out` / `zoom-reset` | Step, shrink, or reset the editor font size (persisted) |
+| `gui-find` / `gui-replace` | Open the find bar (replace mode for the latter) |
+| `gui-project-find` | Open project search in the Search panel |
+| `gui-goto-file` / `gui-goto-symbol` / `gui-buffers` | Open the file, symbol, or buffer picker |
+| `gui-command-palette` / `gui-goto-line` / `gui-branches` | Open the palette, the line prompt, or the branch switcher |
+
+The `gui-*` commands queue a request the shell drains each frame; in a
+headless session they are harmless no-ops.
+
+---
+
 ## selection/ — Visual Selection
 
 ### `(selection/get)` → `{:anchor n :kind "char"}` or nil

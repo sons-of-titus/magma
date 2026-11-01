@@ -10,6 +10,7 @@ mod debug_cmds;
 mod diagnostics_cmds;
 mod editing;
 mod file;
+pub(crate) mod gui_cmds;
 pub(crate) mod helpers;
 mod indent_cmds;
 mod lsp_cmds;
@@ -54,6 +55,7 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     debug_cmds::register(editor);
     db_cmds::register(editor);
     misc::register(editor);
+    gui_cmds::register(editor);
     project_cmds::register(editor);
     run_config_cmds::register(editor);
     diagnostics_cmds::register(editor);

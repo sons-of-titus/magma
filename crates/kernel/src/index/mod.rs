@@ -13,6 +13,8 @@
 //! `index` crate.  The store lives on the foreground `Editor`; background
 //! walk/extract jobs send typed `IndexRecord` events that are merged here.
 
+mod query;
+
 pub use index::{Event, IndexRecord, IndexStats, extract, record_from_text, store};
 
 use std::collections::HashMap;
@@ -263,27 +265,6 @@ impl IndexStore {
     /// the reported queue depth above zero.
     pub fn clear_pending(&mut self) {
         self.pending = 0;
-    }
-
-    /// All symbols whose name starts with `prefix` — workspace symbol
-    /// search / completion augmentation.
-    pub fn symbols_with_prefix(&self, prefix: &str) -> Vec<(String, &IndexedSymbol)> {
-        let mut out = Vec::new();
-        if prefix.is_empty() {
-            return out;
-        }
-        for rec in self.records.values() {
-            for sym in &rec.symbols {
-                if sym.name.starts_with(prefix) {
-                    out.push((rec.path.clone(), sym));
-                    if out.len() >= 200 {
-                        return out;
-                    }
-                }
-            }
-        }
-        out.sort_by(|a, b| a.1.name.cmp(&b.1.name));
-        out
     }
 
     /// Symbols defined in one file.

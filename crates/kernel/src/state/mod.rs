@@ -164,6 +164,10 @@ pub struct Editor {
     /// Which list `:cn`/`:cp` walk: mirrored from the focused tool window by
     /// the GUI (commands only see the editor).  Falls back to build problems.
     pub quickfix_focus: crate::task::QuickfixList,
+    /// GUI surfaces requested by commands bound to chords (`gui-find`,
+    /// `gui-goto-file`, …).  Frontends drain this each frame: the keymap can
+    /// only name kernel commands, and "open the file picker" is chrome.
+    pub ui_requests: Vec<String>,
     pub vc: crate::vc::VcState,
     pub faces: std::collections::HashMap<String, crate::render::surface::Style>,
     pub scope_faces: Vec<(String, String)>,
@@ -300,6 +304,7 @@ impl Editor {
             quickfix_list: Vec::new(),
             quickfix_index: 0,
             quickfix_focus: crate::task::QuickfixList::Problems,
+            ui_requests: Vec::new(),
             vc: crate::vc::VcState::new(),
             faces: std::collections::HashMap::new(),
             scope_faces: Vec::new(),

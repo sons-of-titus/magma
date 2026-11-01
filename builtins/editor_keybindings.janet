@@ -129,6 +129,22 @@
 (keymap/set "ctrl-o" "mark-ring-jump-back"    :editor)
 (keymap/set "ctrl-i" "mark-ring-jump-forward" :editor)
 
+# GUI surfaces.  The chords are the ones the welcome card teaches: the
+# commands queue a request the shell drains (find bar, pickers), so the
+# keymap never needs to know what a window is.
+(keymap/set "ctrl-f" "gui-find" :editor)
+(keymap/set "ctrl-h" "gui-replace" :editor)
+(keymap/set "ctrl-shift-f" "gui-project-find" :editor)
+(keymap/set "ctrl-shift-o" "gui-goto-symbol" :editor)
+(keymap/set "ctrl-shift-p" "gui-command-palette" :editor)
+(keymap/set "ctrl-l" "gui-goto-line" :editor)
+(keymap/set "ctrl-q" "quit" :editor)
+
+# Editor zoom
+(keymap/set "ctrl-=" "zoom-in" :editor)
+(keymap/set "ctrl--" "zoom-out" :editor)
+(keymap/set "ctrl-0" "zoom-reset" :editor)
+
 # Session (global)
 (keymap/set "ctrl-s" "save-buffer")
 (keymap/set "ctrl-z" "undo")

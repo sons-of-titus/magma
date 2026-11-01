@@ -2,21 +2,30 @@
 mod helpers;
 // Keymap/GUI contract guards.
 //
-// The GUI consumes a small set of chords in normal mode (see
-// `DialogManager::shortcut` and the ctrl-q/ctrl-\ handlers in gui.rs).
-// If a keymap layer ever binds them to something else, one of the two
-// silently dies — this suite makes that drift a test failure.
+// The Slint shell consumes every chord through the keymap (`dispatch_key`
+// → resolve → command); there is no second consumer that could silently
+// die.  The navigation chords the UI advertises must therefore stay bound
+// to their `gui-*` requests, and the chords below must stay free so future
+// GUI surfaces can claim them without a keymap fight.
 
-/// Keys the GUI consumes in normal mode; none may be keymap-bound there.
+/// Chords nothing binds yet; reserved for GUI surfaces, so a plugin
+/// keymap that takes one is making a promise the shell does not know about.
 const GUI_RESERVED_NORMAL: &[&str] = &[
-    "ctrl-shift-n", // go to file
-    "ctrl-shift-f", // search dialog
-    "ctrl-shift-o", // go to symbol
+    "ctrl-shift-n", // go to file (egui legacy)
     "ctrl-alt-s",   // settings (JetBrains)
     "ctrl-comma",   // settings (macOS)
-    "ctrl-q",       // quit guard
     "ctrl-\\",      // sidebar toggle
     "ctrl-shift-l", // theme toggle
+];
+
+/// Navigation chords the shipped keymap must keep bound to the `gui-*`
+/// requests the shell drains into pickers and the find bar.
+const GUI_NAVIGATION: &[(&str, &str)] = &[
+    ("ctrl-f", "gui-find"),
+    ("ctrl-shift-f", "gui-project-find"),
+    ("ctrl-shift-o", "gui-goto-symbol"),
+    ("ctrl-shift-p", "gui-command-palette"),
+    ("ctrl-l", "gui-goto-line"),
 ];
 
 fn enter_normal_mode(ed: &mut kernel::state::Editor) {
@@ -24,7 +33,22 @@ fn enter_normal_mode(ed: &mut kernel::state::Editor) {
 }
 
 #[test]
-fn gui_reserved_keys_are_free_in_normal_mode() {
+fn navigation_chords_resolve_to_their_gui_commands() {
+    janet_test!(ed, {
+        enter_normal_mode(&mut ed);
+        for (key, command) in GUI_NAVIGATION {
+            assert_eq!(
+                ed.keymaps.resolve(key).as_deref(),
+                Some(*command),
+                "{key} is advertised as navigation, but the keymap binds it to {:?}",
+                ed.keymaps.resolve(key),
+            );
+        }
+    });
+}
+
+#[test]
+fn unclaimed_gui_chords_stay_free_in_normal_mode() {
     janet_test!(ed, {
         enter_normal_mode(&mut ed);
         for key in GUI_RESERVED_NORMAL {

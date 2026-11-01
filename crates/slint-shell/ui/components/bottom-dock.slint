@@ -307,9 +307,10 @@ export component TerminalView inherits Rectangle {
 
             Text {
                 width: 12px;
-                text: sessions.length == 0 ? "" : "❯";
+                text: sessions.length == 0 ? "" : "\u{F054}";
                 color: Theme.text-faint;
-                font-size: Theme.font-ui;
+                font-family: "Symbols Nerd Font";
+                font-size: 11px;
                 vertical-alignment: center;
             }
 
@@ -338,7 +339,7 @@ export component TerminalView inherits Rectangle {
             }
 
             Text {
-                text: sessions.length == 0 ? "start a session to send input" : "Enter sends · ⌃C to interrupt";
+                text: sessions.length == 0 ? "start a session to send input" : "Enter sends the line · Ctrl-C interrupts";
                 color: Theme.text-faint;
                 font-size: 10px;
                 vertical-alignment: center;

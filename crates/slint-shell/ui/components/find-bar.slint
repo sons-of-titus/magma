@@ -117,17 +117,20 @@ export component FindBar inherits Rectangle {
             }
 
             ToolbarIcon {
-                glyph: "↑";
+                glyph: "\u{F062}";
+                symbol: true;
                 tint: Theme.text-muted;
                 clicked => { root.find-prev(); }
             }
             ToolbarIcon {
-                glyph: "↓";
+                glyph: "\u{F063}";
+                symbol: true;
                 tint: Theme.text-muted;
                 clicked => { root.find-next(); }
             }
             ToolbarIcon {
-                glyph: root.replace-visible ? "∧" : "∨";
+                glyph: root.replace-visible ? "\u{F077}" : "\u{F078}";
+                symbol: true;
                 tint: Theme.text-muted;
                 clicked => { root.toggle-replace(); }
             }

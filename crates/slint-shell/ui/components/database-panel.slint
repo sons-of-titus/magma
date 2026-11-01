@@ -135,12 +135,14 @@ export component DatabasePanel inherits Rectangle {
                 IconButton {
                     y: 3px;
                     glyph: root.connected ? "\u{F0375}" : "\u{F0134}";
+                    symbol: true;
                     tint: root.connected ? Theme.warning : Theme.success;
                     clicked => { root.connect-toggle(); }
                 }
                 IconButton {
                     y: 3px;
                     glyph: "\u{F0450}";
+                    symbol: true;
                     enabled: root.connected;
                     tint: root.connected ? Theme.text-muted : Theme.text-faint;
                     clicked => { root.refresh(); }

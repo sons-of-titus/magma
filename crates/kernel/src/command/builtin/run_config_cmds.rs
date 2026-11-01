@@ -2,8 +2,40 @@
 
 use crate::state::Editor;
 
+/// Launch the detection-seeded `build`/`test` config for the project,
+/// with an error that names the detected language when there is none.
+fn launch_preset(editor: &mut Editor, name: &str) -> Result<(), String> {
+    let language = editor.project_manager.project.language.clone();
+    if editor.project_manager.run_configs.named(name).is_none() {
+        return Err(if language.is_empty() {
+            format!("no {name} task detected — open a project with a known build system")
+        } else {
+            format!("no {name} task for this project (detected: {language})")
+        });
+    }
+    let Some(bg) = editor.background.clone() else {
+        return Err("no background runtime".to_string());
+    };
+    let id = editor
+        .project_manager
+        .launch_config(name, &mut editor.task_scheduler, &bg)?;
+    crate::run_config::announce_launch(editor, id);
+    Ok(())
+}
+
 pub(super) fn register(editor: &mut Editor) {
     let cmds = &mut editor.commands;
+
+    // Toolbar Build/Test dispatch here: the detection-seeded configs are
+    // named "build"/"test", so the buttons run the project's real task
+    // instead of a hard-coded `make`.  A project with no detected task
+    // gets a sentence, not a foreign build system's failure.
+    cmds.register_fn("task-build", "Run the project's build task", vec![], |editor, _args| {
+        launch_preset(editor, "build")
+    });
+    cmds.register_fn("task-test", "Run the project's tests", vec![], |editor, _args| {
+        launch_preset(editor, "test")
+    });
 
     cmds.register_fn(
         "run-config",

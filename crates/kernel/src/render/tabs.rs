@@ -51,8 +51,8 @@ pub fn collect_tabs(editor: &Editor) -> Vec<TabModel> {
                     (buf.name.clone(), buf.modified())
                 })
                 .unwrap_or_else(|| ("?".to_string(), false));
-            let short = label.rsplit('/').next().unwrap_or(&label).to_string();
-            let icon = (!short.starts_with('*'))
+            let short = display_label(&label);
+            let icon = (!label.starts_with('*'))
                 .then(|| editor.icons.lookup(&short))
                 .flatten()
                 .cloned();
@@ -67,7 +67,26 @@ pub fn collect_tabs(editor: &Editor) -> Vec<TabModel> {
         .collect()
 }
 
-/// Close a tab.  A pane belonging to the side-by-side diff closes the whole
+/// The user-facing name of a buffer: internal names (`*make*(# make)`,
+/// `*scratch*`) render as their subject (`make`, `scratch`); file buffers
+/// keep their file name.  Tabs, the status bar, and pickers all show this.
+pub fn display_label(raw: &str) -> String {
+    let short = raw.rsplit('/').next().unwrap_or(raw);
+    if !short.starts_with('*') {
+        return short.to_string();
+    }
+    let inner = short.trim_start_matches('*').trim_end_matches('*');
+    match inner.split_once('(') {
+        Some((_, cmd)) => cmd
+            .trim_end_matches(')')
+            .trim_start_matches("# ")
+            .trim()
+            .to_string(),
+        None => inner.to_string(),
+    }
+}
+
+/// Close a tab. A pane belonging to the side-by-side diff closes the whole
 /// pair; closing the last tab leaves an empty editor area rather than
 /// resurrecting a scratch buffer.  The session flushes here so a closed tab
 /// stays closed even if the app never exits cleanly.

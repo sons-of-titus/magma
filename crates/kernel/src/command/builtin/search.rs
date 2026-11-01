@@ -85,6 +85,87 @@ pub(super) fn register(editor: &mut Editor) {
     );
 
     cmds.register_fn(
+        "search-buffer",
+        "Search the focused buffer for a pattern, highlighting every match and jumping to the first one at or after the cursor",
+        vec![crate::command::args::ArgSpec::new(
+            "pattern",
+            crate::command::args::ArgType::String,
+        )],
+        |editor, args| {
+            let pattern = args
+                .get("pattern")
+                .and_then(|a| a.as_string())
+                .unwrap_or_default()
+                .to_string();
+            search_buffer(editor, &pattern, true)
+        },
+    );
+
+    cmds.register_fn(
+        "search-clear",
+        "Clear the search highlights and forget the last pattern",
+        vec![],
+        |editor, _args| {
+            editor.search.pattern = None;
+            editor.search.last_match_count = 0;
+            let buf_id = get_current_buffer_id(editor);
+            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+                view.clear_highlights();
+            }
+            emit_cursor_moved(editor);
+            Ok(())
+        },
+    );
+
+    cmds.register_fn(
+        "replace-next",
+        "Replace the next match of the pattern in the focused buffer",
+        vec![
+            crate::command::args::ArgSpec::new("pattern", crate::command::args::ArgType::String),
+            crate::command::args::ArgSpec::new("replacement", crate::command::args::ArgType::String),
+        ],
+        |editor, args| {
+            let (pattern, replacement) = search_args(args)?;
+            let replaced =
+                super::search_query::replace_next(editor, pattern, replacement, false)?;
+            if replaced {
+                search_buffer(editor, pattern, true)?;
+            }
+            Ok(())
+        },
+    );
+
+    cmds.register_fn(
+        "replace-all",
+        "Replace every match of the pattern in the focused buffer (one undo step)",
+        vec![
+            crate::command::args::ArgSpec::new("pattern", crate::command::args::ArgType::String),
+            crate::command::args::ArgSpec::new("replacement", crate::command::args::ArgType::String),
+        ],
+        |editor, args| {
+            let (pattern, replacement) = search_args(args)?;
+            let count = super::search_query::replace_all(editor, &pattern, &replacement, false)?;
+            if count == 0 {
+                editor.show_message(
+                    crate::state::MessageKind::Info,
+                    format!("no matches for “{pattern}”"),
+                );
+            } else {
+                editor.search.last_match_count = 0;
+                let buf_id = get_current_buffer_id(editor);
+                if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+                    view.clear_highlights();
+                }
+                editor.show_message(
+                    crate::state::MessageKind::Info,
+                    format!("replaced {count} match(es)"),
+                );
+            }
+            Ok(())
+        },
+    );
+
+    cmds.register_fn(
         "keyword-context",
         "List every line containing the word under the cursor in the Find in Files panel",
         vec![],
@@ -146,6 +227,68 @@ pub(super) fn register(editor: &mut Editor) {
             Ok(())
         },
     );
+}
+
+/// The find-bar entry point: compile (smart case), highlight every match,
+/// jump to the first one at/after the cursor, and record the match count.
+fn search_buffer(editor: &mut Editor, pattern: &str, forward: bool) -> CommandResult {
+    if pattern.is_empty() {
+        editor.search.pattern = None;
+        editor.search.last_match_count = 0;
+        let buf_id = get_current_buffer_id(editor);
+        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+            view.clear_highlights();
+        }
+        emit_cursor_moved(editor);
+        return Ok(());
+    }
+    let query = crate::command::builtin::search_query::SearchQuery::compile(pattern, false)?;
+    let buf_id = get_current_buffer_id(editor);
+    let pos = editor
+        .view_of_buffer(buf_id)
+        .map(|v| v.cursor_offset())
+        .unwrap_or(0);
+    let (spans, jump) = {
+        let Some(arc) = editor.buffers.get(buf_id) else {
+            return Ok(());
+        };
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        let spans = query.find_all(&buf, 0, 10_000);
+        // Inclusive of a match at the cursor: the first query selects what
+        // is under the caret; stepping on uses repeat-search (pos + 1).
+        let jump = query
+            .find_from(&buf, pos)
+            .or_else(|| query.find_from(&buf, 0));
+        (spans, jump)
+    };
+    editor.search.set(pattern.to_string(), forward);
+    editor.search.last_match_count = spans.len();
+    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+        let ranges: Vec<(usize, usize, String)> = spans
+            .iter()
+            .map(|(s, e)| (*s, *e, "search".to_string()))
+            .collect();
+        view.set_highlights(ranges);
+        if let Some((start, end)) = jump {
+            view.set_cursor(end.max(start));
+        }
+    }
+    emit_cursor_moved(editor);
+    Ok(())
+}
+
+fn search_args<'a>(
+    args: &'a std::collections::HashMap<String, crate::command::args::ArgValue>,
+) -> Result<(&'a str, &'a str), String> {
+    let pattern = args
+        .get("pattern")
+        .and_then(|a| a.as_string())
+        .ok_or("pattern required")?;
+    let replacement = args
+        .get("replacement")
+        .and_then(|a| a.as_string())
+        .unwrap_or_default();
+    Ok((pattern, replacement))
 }
 
 /// The word around the cursor plus the next/previous occurrence's offset.

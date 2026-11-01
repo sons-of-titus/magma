@@ -19,6 +19,8 @@ pub struct SearchState {
     pub results: Vec<QuickfixEntry>,
     /// Cursor into `results` for find-result stepping.
     pub index: usize,
+    /// Matches of the last in-buffer search; the find bar shows "n of m".
+    pub last_match_count: usize,
 }
 
 impl SearchState {

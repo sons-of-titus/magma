@@ -35,6 +35,9 @@ impl OptionCategory {
 #[derive(Debug, Clone, Copy)]
 pub struct OptionSpec {
     pub name: &'static str,
+    /// Human title shown in the Settings UI; the registry `name` is for
+    /// scripts and persistence, not for reading.
+    pub label: &'static str,
     pub kind: OptionKind,
     /// Choices for `OptionKind::Enum`.
     pub choices: &'static [&'static str],
@@ -47,6 +50,7 @@ pub struct OptionSpec {
 pub const OPTION_SPECS: &[OptionSpec] = &[
     OptionSpec {
         name: "gui-theme",
+        label: "Theme",
         kind: OptionKind::Enum,
         choices: &[
             "intellij-dark",
@@ -82,6 +86,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "breadcrumb-enabled",
+        label: "Show breadcrumb",
         kind: OptionKind::Bool,
         choices: &[],
         default: "true",
@@ -90,6 +95,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "minimap-enabled",
+        label: "Show minimap",
         kind: OptionKind::Bool,
         choices: &[],
         default: "false",
@@ -98,6 +104,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "number",
+        label: "Line numbers",
         kind: OptionKind::Bool,
         choices: &[],
         default: "true",
@@ -106,6 +113,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "scrolloff",
+        label: "Scroll offset",
         kind: OptionKind::Int,
         choices: &[],
         default: "3",
@@ -114,6 +122,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "mouse-support",
+        label: "Mouse support",
         kind: OptionKind::Bool,
         choices: &[],
         default: "true",
@@ -122,6 +131,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "auto-save",
+        label: "Auto-save",
         kind: OptionKind::Bool,
         choices: &[],
         default: "false",
@@ -130,6 +140,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "agent.provider",
+        label: "Agent provider",
         kind: OptionKind::Enum,
         choices: &["openai", "deepseek", "kimi", "zai"],
         default: "openai",
@@ -138,6 +149,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "plugins-enabled",
+        label: "Enable plugins",
         kind: OptionKind::Bool,
         choices: &[],
         default: "true",
@@ -146,6 +158,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     },
     OptionSpec {
         name: "plugins-root",
+        label: "Plugins directory",
         kind: OptionKind::Str,
         choices: &[],
         // Empty means unset: the fallback (~/.config/magma/plugins) is
@@ -158,6 +171,7 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     // as a raw row nowhere.
     OptionSpec {
         name: "plugins-disabled",
+        label: "Disabled plugins",
         kind: OptionKind::Str,
         choices: &[],
         default: "",

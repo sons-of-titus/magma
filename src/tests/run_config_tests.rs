@@ -268,7 +268,7 @@ fn build_before_run_launches_target_after_build_succeeds() {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
     ed.background = Some(bg);
     let root = temp_root("chain");
-    open_root(&mut ed, &root.to_string_lossy());
+    open_root(&mut ed, &root.to_string_lossy()).unwrap();
 
     let mut build = make_config("build", "/bin/echo", &["building"]);
     build.name = "build".to_string();
@@ -298,7 +298,7 @@ fn failed_build_blocks_the_target() {
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
     ed.background = Some(bg);
     let root = temp_root("chainfail");
-    open_root(&mut ed, &root.to_string_lossy());
+    open_root(&mut ed, &root.to_string_lossy()).unwrap();
 
     let mut fail = make_config("build", "sh", &["-c", "exit 3"]);
     fail.name = "build".to_string();

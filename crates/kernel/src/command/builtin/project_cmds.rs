@@ -31,13 +31,11 @@ pub(super) fn register(editor: &mut Editor) {
             if !std::path::Path::new(&path).is_dir() {
                 return Err(format!("Not a directory: {path}"));
             }
-            // Switching projects snapshots the outgoing session first, so
-            // each project reopens exactly as it was left.
-            crate::session::save_if_project(editor);
-            // Shell first: the context swap is in-memory; the file walk,
-            // session restore, and task detection all continue in the
+            // Shell first: open_root snapshots the outgoing session and
+            // refuses the switch while buffers hold unsaved work; the file
+            // walk, session restore, and task detection all continue in the
             // background and land as generation-stamped events.
-            crate::project::open_root(editor, &path);
+            crate::project::open_root(editor, &path)?;
             crate::project::spawn_file_index(editor);
             crate::session::restore_async(editor, std::path::Path::new(&path));
             // An active project implies a live session: reopening from the

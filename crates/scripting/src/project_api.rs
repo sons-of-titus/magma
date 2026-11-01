@@ -19,11 +19,19 @@ unsafe extern "C-unwind" fn c_project_root(_argc: i32, _argv: *mut Janet) -> Jan
 unsafe extern "C-unwind" fn c_project_set_root(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         match conv::get_str(argc, argv, 0) {
-            Some(path) => kernel::project::open_root(ed, &path),
+            Some(path) => {
+                if let Err(e) = kernel::project::open_root(ed, &path) {
+                    ed.show_message(kernel::state::MessageKind::Error, e);
+                }
+            }
             None => {
                 let was_active = ed.project_manager.project.root.is_some();
+                if was_active {
+                    kernel::session::save_if_project(ed);
+                }
                 ed.project_manager.project = Project::default();
                 ed.project_manager.current_project = None;
+                kernel::project::close_all_buffers(ed);
                 if was_active {
                     ed.events
                         .emit_typed(keys::events::PROJECT_CLOSED, EmptyPayload);

@@ -95,6 +95,9 @@ impl WorkspaceRuntime {
 /// returning to the welcome flow.
 pub fn close_editor_session(ed: &mut Editor) {
     crate::session::save_if_project(ed);
+    // The outgoing project's files must not still be on screen when the
+    // launcher hands the editor to a different project.
+    crate::project::close_all_buffers(ed);
     if ed.project_manager.project.root.take().is_some() {
         ed.project_manager.current_project = None;
         ed.events.emit_typed(

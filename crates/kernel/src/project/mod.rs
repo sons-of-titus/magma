@@ -219,20 +219,54 @@ pub fn resolve_path(root: Option<&std::path::Path>, path: &str) -> String {
     }
 }
 
+/// Close every buffer and clear pane buffer references — the teardown of
+/// one editing context.  A project switch or editor close must not carry
+/// this project's files into the next one's tabs.  Call only when no
+/// unsaved user work remains (`dirty_buffer_names` is empty): dropped
+/// buffers are gone, there is no undo across the boundary.
+pub fn close_all_buffers(ed: &mut crate::state::Editor) {
+    let doomed: Vec<usize> = ed.buffers.iter().map(|(k, _)| k).collect();
+    for key in doomed {
+        ed.events.emit_typed(
+            crate::event::keys::events::BUFFER_CLOSED,
+            crate::event::payload::BufferClosedPayload {
+                buffer_id: key.to_string(),
+            },
+        );
+        ed.drop_buffer(key);
+    }
+    ed.alternate_buffer = None;
+    ed.project_manager.buffer_projects.clear();
+    ed.io.saves_in_flight.clear();
+}
+
 /// Set `path` as the active project root, register it, emit `project-opened`,
 /// and record it in the recent-projects list.  Emits `project-closed` first
-/// when a project was already active.  Call `dispatch_events_scoped` after to
-/// run Janet handlers (workspace detection, run-config seeding).  The run
+/// when a project was already active — refusing the switch while buffers
+/// hold unsaved work, snapshotting the outgoing session, and closing its
+/// buffers otherwise.  Call `dispatch_events_scoped` after to run Janet
+/// handlers (workspace detection, run-config seeding).  The run
 /// configuration store resets here and is re-seeded by `detect`.
-pub fn open_root(editor: &mut crate::state::Editor, path: &str) {
+pub fn open_root(editor: &mut crate::state::Editor, path: &str) -> Result<(), String> {
     use crate::event::keys;
 
     let was_active = editor.project_manager.project.root.is_some();
     if was_active {
+        let dirty = editor.dirty_buffer_names();
+        if !dirty.is_empty() {
+            return Err(format!(
+                "Save or close {} modified buffer(s) before switching projects",
+                dirty.len()
+            ));
+        }
+        // Switching projects snapshots the outgoing session first, so
+        // each project reopens exactly as it was left.
+        crate::session::save_if_project(editor);
         editor.events.emit_typed(
             keys::events::PROJECT_CLOSED,
             crate::event::payload::EmptyPayload,
         );
+        close_all_buffers(editor);
     }
 
     let pb = PathBuf::from(path);
@@ -273,6 +307,7 @@ pub fn open_root(editor: &mut crate::state::Editor, path: &str) {
             name,
         },
     );
+    Ok(())
 }
 
 /// Move `path` to the front of the recent list (deduped, capped at 50)

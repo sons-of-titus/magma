@@ -1023,7 +1023,7 @@ Return the project root path, or nil.
 
 ### `(project/set-root path)` → nil
 
-Set the project root. Pass nil to clear. Emits `project-opened` or `project-closed`.
+Set the project root, closing the outgoing project's open files. Pass nil to clear. Refuses with an error surface when unsaved work exists. Emits `project-opened` or `project-closed`.
 
 ### `(project/name)` → string or nil
 

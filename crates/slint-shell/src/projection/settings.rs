@@ -21,7 +21,10 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
         let value = kernel::state::options::effective(ed, spec);
         let int_value: i32 = value.parse().unwrap_or(0);
         SettingsRow {
-            name: spec.name.into(),
+            // Users read labels; the registry key stays available (meta row,
+            // scripts) and is what the controls write back to.
+            name: spec.label.into(),
+            key: spec.name.into(),
             description: spec.description.into(),
             kind: match spec.kind {
                 OptionKind::Bool => "bool",
@@ -103,6 +106,7 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
             names.sort();
             rows.extend(names.into_iter().map(|name| SettingsRow {
                 name: name.clone().into(),
+                key: name.clone().into(),
                 description: "custom option".into(),
                 kind: "str".into(),
                 value: ed.options.get(name).cloned().unwrap_or_default().into(),
@@ -112,7 +116,10 @@ pub fn settings_rows(ed: &Editor, category: i32, filter: &str) -> Vec<SettingsRo
             }));
         }
     }
-    rows.retain(|r| want(r.name.as_str(), r.description.as_str()));
+    rows.retain(|r| {
+        want(r.name.as_str(), r.description.as_str())
+            || (!r.key.is_empty() && want(r.key.as_str(), ""))
+    });
     rows
 }
 

@@ -16,10 +16,11 @@ import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } fro
 import { StatusBar } from "components/status-bar.slint";
 import { ProgressStrip, ProgressTask } from "components/progress-strip.slint";
 import { EditorView } from "components/editor-view.slint";
-import { BottomBar, BottomDock, FindRow, GitHistoryRow, ProblemRow } from "components/bottom-dock.slint";
+import { FindBar } from "components/find-bar.slint";
+import { BottomBar, BottomDock, FindRow, GitHistoryRow, OutputLine, ProblemRow } from "components/bottom-dock.slint";
 import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.slint";
 import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint";
-import { DialogView } from "views/dialog-view.slint";
+import { PickerView, PickerRow } from "views/picker-view.slint";
 import { QuitView } from "views/quit-view.slint";
 import { NewProjectView, TemplateItem, TemplateVar } from "views/new-project-view.slint";
 import { HoverCard, CompletionPopup, QuickfixMenu, CompletionEntry } from "views/overlays.slint";
@@ -128,15 +129,17 @@ export component AppWindow inherits Window {
     in property <[string]> terminal-sessions;
     in property <int> terminal-active: 0;
     in property <[FindRow]> find-rows;
+    in-out property <string> find-query: "";
+    in property <string> find-status;
+    in-out property <string> terminal-input: "";
     in property <string> output-title;
-    in property <string> output-text;
+    in property <[OutputLine]> output-lines;
     in property <[ProblemRow]> problems;
     in property <int> bottom-problems-count: 0;
     in property <int> bottom-terminal-count: 0;
     in property <length> dock-height: 240px;
     in property <bool> output-follow: true;
     in property <[GitHistoryRow]> git-history;
-    in property <string> bottom-title;
     in property <[ProgressTask]> progress-tasks;
 
     // ── Right dock ───────────────────────────────────────────────────────
@@ -169,6 +172,7 @@ export component AppWindow inherits Window {
 
     // ── Overlays ─────────────────────────────────────────────────────────
     in property <[CustomMenuItem]> menu-items;
+    in property <[CustomMenuItem]> context-items;
     in-out property <bool> menu-visible;
     in property <length> menu-x: 0px;
 
@@ -193,10 +197,27 @@ export component AppWindow inherits Window {
     in property <[string]> quickfix-items;
     in property <int> quickfix-selected: 0;
 
-    // ── Dialog ───────────────────────────────────────────────────────────
-    in-out property <bool> dialog-visible: false;
-    in property <string> dialog-title: "";
-    in-out property <string> dialog-input: "";
+    // ── Picker (Go to File/Symbol, buffers, palette, prompts) ────────────
+    in-out property <bool> picker-visible: false;
+    in property <string> picker-title: "";
+    in property <string> picker-placeholder: "";
+    in property <string> picker-hint: "";
+    in-out property <string> picker-query: "";
+    in property <[PickerRow]> picker-rows;
+    in property <int> picker-selected: 0;
+
+    // ── Find bar (in-buffer search/replace) ──────────────────────────────
+    in-out property <bool> find-bar-visible: false;
+    in-out property <string> find-bar-query: "";
+    in-out property <string> find-bar-replacement: "";
+    in property <bool> find-bar-replace-visible: false;
+    in property <string> find-bar-match-text: "";
+    in property <bool> find-bar-has-error: false;
+
+    // ── Context menu ─────────────────────────────────────────────────────
+    in property <bool> context-menu-visible: false;
+    in property <length> context-menu-x: 0px;
+    in property <length> context-menu-y: 0px;
 
     // ── New Project wizard ───────────────────────────────────────────────
     in property <bool> new-project-visible: false;
@@ -296,6 +317,26 @@ export component AppWindow inherits Window {
     callback terminal-close(int);
     callback terminal-scroll(length);
     callback find-open(string, int);
+    callback find-search(string);
+    callback terminal-send(string);
+    callback copy-file-path();
+    callback picker-query-changed();
+    callback picker-confirm();
+    callback picker-cancel();
+    callback picker-move(int);
+    callback picker-row-clicked(int);
+    callback find-bar-changed();
+    callback find-bar-next();
+    callback find-bar-prev();
+    callback find-bar-replace-next();
+    callback find-bar-replace-all();
+    callback find-bar-toggle-replace();
+    callback find-bar-close();
+    callback context-command(string);
+    callback context-dismissed();
+    callback breadcrumb-clicked(int);
+    callback tab-context(int, length, length);
+    callback tree-context(string, length, length);
     callback debug-cmd(string);
     callback debug-frame-selected(int);
     callback debug-toggle-expand(int);
@@ -338,7 +379,16 @@ export component AppWindow inherits Window {
             MenuItem { title: "Undo"; activated => { root.command("undo"); } }
             MenuItem { title: "Redo"; activated => { root.command("redo"); } }
             MenuSeparator {}
-            MenuItem { title: "Find in Buffers…"; activated => { root.command("dialog:find"); } }
+            MenuItem { title: "Cut"; activated => { root.command("editor-cut"); } }
+            MenuItem { title: "Copy"; activated => { root.command("editor-copy"); } }
+            MenuItem { title: "Paste"; activated => { root.command("put-after-cursor"); } }
+            MenuItem { title: "Select All"; activated => { root.command("select-all"); } }
+            MenuSeparator {}
+            MenuItem { title: "Find…"; activated => { root.command("dialog:find"); } }
+            MenuItem { title: "Replace…"; activated => { root.command("dialog:replace"); } }
+            MenuItem { title: "Find in Project…"; activated => { root.command("dialog:project-find"); } }
+            MenuSeparator {}
+            MenuItem { title: "Go to Line…"; activated => { root.command("dialog:goto-line"); } }
         }
         Menu {
             title: "View";
@@ -346,15 +396,24 @@ export component AppWindow inherits Window {
             MenuItem { title: "Commit"; activated => { root.command("rail:1"); } }
             MenuSeparator {}
             MenuItem { title: "Toggle Theme"; activated => { root.command("toggle-theme"); } }
+            MenuItem { title: "Zoom In"; activated => { root.command("zoom-in"); } }
+            MenuItem { title: "Zoom Out"; activated => { root.command("zoom-out"); } }
+            MenuItem { title: "Reset Zoom"; activated => { root.command("zoom-reset"); } }
+            MenuSeparator {}
             MenuItem { title: "Settings…"; activated => { root.command("dialog:settings"); } }
         }
         Menu {
             title: "Navigate";
+            MenuItem { title: "Go to File…"; activated => { root.command("dialog:goto-file"); } }
+            MenuItem { title: "Go to Symbol…"; activated => { root.command("dialog:goto-symbol"); } }
+            MenuItem { title: "Switch Buffer…"; activated => { root.command("dialog:buffers"); } }
+            MenuItem { title: "Go to Line…"; activated => { root.command("dialog:goto-line"); } }
+            MenuItem { title: "Go to Definition"; activated => { root.command("goto-definition"); } }
+            MenuSeparator {}
             MenuItem { title: "Next Tab"; activated => { root.command("buffer-next"); } }
             MenuItem { title: "Previous Tab"; activated => { root.command("buffer-prev"); } }
             MenuSeparator {}
-            MenuItem { title: "Go to File…"; activated => { root.command("dialog:goto-file"); } }
-            MenuItem { title: "Go to Symbol…"; activated => { root.command("dialog:goto-symbol"); } }
+            MenuItem { title: "Command Palette…"; activated => { root.command("dialog:run-command"); } }
         }
         Menu {
             title: "Run";
@@ -389,8 +448,8 @@ export component AppWindow inherits Window {
                         run => { root.command("run-config"); }
                         debug => { root.command("debug-config"); }
                         stop => { root.command("stop-config"); }
-                        build => { root.command("make"); }
-                        test => { root.command("make"); }
+                        build => { root.command("task-build"); }
+                        test => { root.command("task-test"); }
                         settings => { root.command("dialog:settings"); }
                     }
 
@@ -417,9 +476,14 @@ export component AppWindow inherits Window {
             tabs: root.tabs;
             selected(i) => { root.tab-clicked(i); }
             closed(i) => { root.tab-closed(i); }
+            context-menu(i, x, y) => { root.tab-context(i, x, y); }
         }
 
-        Breadcrumb { segments: root.breadcrumbs; visible: root.breadcrumb-enabled; }
+        Breadcrumb {
+            segments: root.breadcrumbs;
+            visible: root.breadcrumb-enabled;
+            segment-clicked(i) => { root.breadcrumb-clicked(i); }
+        }
 
         // ── Rail + left dock + editor + right dock ───────────────────────
         HorizontalLayout {
@@ -436,6 +500,7 @@ export component AppWindow inherits Window {
                 selected-path: root.selected-path;
                 empty-message: root.tree-empty;
                 activated(path) => { root.tree-clicked(path); }
+                context-menu(path, x, y) => { root.tree-context(path, x, y); }
                 refresh => { root.sidebar-refresh(); }
                 collapse => { root.sidebar-collapse(); }
             }
@@ -668,14 +733,16 @@ export component AppWindow inherits Window {
         if root.bottom-tool >= 0 : BottomDock {
             tool: root.bottom-tool;
             dock-height: root.dock-height;
-            title: root.bottom-title;
             terminal-text: root.terminal-text;
             terminal-image: root.terminal-image;
             terminal-sessions: root.terminal-sessions;
             terminal-active: root.terminal-active;
+            terminal-input <=> root.terminal-input;
             find-rows: root.find-rows;
+            find-query <=> root.find-query;
+            find-status: root.find-status;
             output-title: root.output-title;
-            output-text: root.output-text;
+            output-lines: root.output-lines;
             output-follow: root.output-follow;
             problems: root.problems;
             git-history: root.git-history;
@@ -686,6 +753,8 @@ export component AppWindow inherits Window {
             terminal-focus(i) => { root.terminal-focus(i); }
             terminal-close(i) => { root.terminal-close(i); }
             terminal-scroll(d) => { root.terminal-scroll(d); }
+            terminal-send(t) => { root.terminal-send(t); }
+            find-search(q) => { root.find-search(q); }
             find-open(path, line) => { root.find-open(path, line); }
             output-clear => { root.output-clear(); }
             output-toggle-follow => { root.output-toggle-follow(); }
@@ -712,6 +781,9 @@ export component AppWindow inherits Window {
             position: root.status-position;
             mode: root.status-mode;
             encoding: root.status-encoding;
+            file-clicked => { root.copy-file-path(); }
+            branch-clicked => { root.command("gui-branches"); }
+            position-clicked => { root.command("gui-goto-line"); }
         }
     }
 
@@ -735,6 +807,29 @@ export component AppWindow inherits Window {
         activated(cmd) => {
             root.menu-visible = false;
             root.command(cmd);
+        }
+    }
+
+    // ── Context menu (tabs, project tree, editor) ────────────────────────
+    if root.context-menu-visible : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+
+        TouchArea {
+            clicked => { root.context-dismissed(); }
+        }
+    }
+
+    if root.context-menu-visible : MenuPopup {
+        x: Math.min(root.context-menu-x, parent.width - 212px).max(4px);
+        y: Math.min(root.context-menu-y, parent.height - 80px).max(4px);
+        items: root.context-items;
+        activated(cmd) => {
+            root.context-dismissed();
+            root.context-command(cmd);
         }
     }
 
@@ -843,12 +938,37 @@ export component AppWindow inherits Window {
         }
     }
 
-    // ── Dialog overlay ───────────────────────────────────────────────────
-    if root.dialog-visible : DialogView {
-        dialog-title: root.dialog-title;
-        dialog-input <=> root.dialog-input;
-        command(cmd) => { root.command(cmd); }
-        close => { root.dialog-visible = false; }
+    // ── Picker overlay (Go to File/Symbol, buffers, palette, prompts) ────
+    if root.picker-visible : PickerView {
+        title: root.picker-title;
+        placeholder: root.picker-placeholder;
+        hint: root.picker-hint;
+        query <=> root.picker-query;
+        rows: root.picker-rows;
+        selected: root.picker-selected;
+        query-changed => { root.picker-query-changed(); }
+        confirm => { root.picker-confirm(); }
+        cancel => { root.picker-cancel(); }
+        move-selection(d) => { root.picker-move(d); }
+        row-clicked(i) => { root.picker-row-clicked(i); }
+    }
+
+    // ── Find bar (in-buffer search/replace) ──────────────────────────────
+    if root.find-bar-visible : FindBar {
+        x: parent.width - self.preferred-width - 24px;
+        y: Theme.menu-height + Theme.tab-height + 8px;
+        query <=> root.find-bar-query;
+        replacement <=> root.find-bar-replacement;
+        replace-visible: root.find-bar-replace-visible;
+        match-text: root.find-bar-match-text;
+        has-error: root.find-bar-has-error;
+        query-changed => { root.find-bar-changed(); }
+        find-next => { root.find-bar-next(); }
+        find-prev => { root.find-bar-prev(); }
+        replace-next => { root.find-bar-replace-next(); }
+        replace-all => { root.find-bar-replace-all(); }
+        toggle-replace => { root.find-bar-toggle-replace(); }
+        close => { root.find-bar-close(); }
     }
 
     // ── Quit confirmation overlay ────────────────────────────────────────

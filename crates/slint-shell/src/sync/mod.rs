@@ -6,19 +6,21 @@
 
 mod agent;
 mod db;
+mod geometry;
 mod overlays;
 mod render;
 mod terminal;
 mod tool_windows;
 mod tree;
 
+pub(crate) use geometry::{editor_grid, revision_of, ModelGate};
+
 use std::time::Duration;
 
 use slint::ComponentHandle;
-use slint::{ModelRc, VecModel};
-
 use kernel::render::frame::{render_frame_with, sync_viewport_scroll};
 
+use crate::actions::picker;
 use crate::new_project;
 use crate::pane;
 use crate::{AppState, AppWindow, TabItem, logical_size, projection, theme};
@@ -31,66 +33,6 @@ const STATUS_TTL: Duration = Duration::from_secs(6);
 /// The milestone log fires on the first stabilized layout only; welcome
 /// transitions re-arm the gate and would otherwise log a second "first".
 static FIRST_FRAME_LOGGED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-
-/// Re-projects a model-valued property only when the row data actually
-/// changed: replacing the model every refresh dirties Slint's scene graph
-/// and forces a full re-layout even when nothing moved.
-pub(crate) struct ModelGate<T> {
-    last: Vec<T>,
-}
-
-impl<T: PartialEq + Clone + 'static> ModelGate<T> {
-    pub(crate) fn new() -> Self {
-        ModelGate { last: Vec::new() }
-    }
-
-    pub(crate) fn set(&mut self, next: Vec<T>, set: impl FnOnce(ModelRc<T>)) {
-        if self.last == next {
-            return;
-        }
-        self.last = next.clone();
-        set(ModelRc::new(VecModel::from(next)));
-    }
-}
-
-/// Editor grid from the actual laid-out pane, so the image, the surface, and
-/// click hit-testing all agree with what is on screen.  Before the first
-/// layout pass the element has no size yet; fall back to the window size
-/// minus the fixed chrome (menu, tabs, breadcrumb, bottom bar, status).
-pub(crate) fn editor_grid(app: &AppWindow, cell_w: u32, cell_h: u32) -> (u32, u32) {
-    let mut w = app.get_editor_view_width() as f32;
-    let mut h = app.get_editor_view_height() as f32;
-    // Before the first real layout pass the view reports its minimum size.
-    // Deriving the viewport scroll from that postage stamp sticks once the
-    // pane reaches its real size — the cursor-follow rules only guarantee
-    // the cursor stays inside, never that the view re-centers — so treat
-    // unbelievable sizes the same as "no size yet".
-    if w < 200.0 || h < 100.0 {
-        let (mut lw, mut lh) = logical_size(app);
-        // A not-yet-mapped window reports a stub size; sizing the surface
-        // from it would freeze the viewport scroll at a postage stamp.
-        // The window's preferred size is the honest guess until the real
-        // layout lands.
-        if lw < 300.0 || lh < 200.0 {
-            lw = 1280.0;
-            lh = 800.0;
-        }
-        w = (lw - 304.0).max(80.0);
-        h = (lh - 132.0).max(40.0);
-    }
-    (
-        (w / cell_w.max(1) as f32).floor().max(1.0) as u32,
-        (h / cell_h.max(1) as f32).floor().max(1.0) as u32,
-    )
-}
-
-pub(crate) fn revision_of(editor: &Editor) -> u64 {
-    editor
-        .buffers
-        .iter()
-        .map(|(_, arc)| arc.lock().unwrap_or_else(|e| e.into_inner()).revision())
-        .sum()
-}
 
 pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     let Some(app) = weak.upgrade() else { return };
@@ -132,6 +74,16 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     // Commands and chrome actions queue editor events (buffer-created drives
     // syntax highlighting and LSP attach); nothing else would drain them.
     state.editor.dispatch_events_scoped();
+
+    // Chord-bound `gui-*` commands ask for chrome surfaces here.
+    if !state.editor.ui_requests.is_empty() {
+        let requests = std::mem::take(&mut state.editor.ui_requests);
+        for request in requests {
+            if !picker::handle_request(weak, state, &request) {
+                logging::warn!("unhandled ui_request: {request}");
+            }
+        }
+    }
 
     let ppx = app.window().scale_factor() as f32;
     let ppx = if ppx < 1.0 { 1.0 } else { ppx };
@@ -296,24 +248,16 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     app.set_bottom_tool(state.bottom);
     app.set_bottom_problems_count(ed.quickfix_list.len() as i32);
     app.set_bottom_terminal_count(ed.io.terminals.sessions.len() as i32);
-    app.set_bottom_title(
-        match state.bottom {
-            0 => "Terminal",
-            1 => "Find in Files",
-            2 => "Output",
-            3 => "Git History",
-            4 => "Problems",
-            _ => "",
-        }
-        .into(),
-    );
     app.set_terminal_text(projection::terminal_text(ed).into());
     state.m_find_rows.set(projection::find_rows(ed), |m| {
         app.set_find_rows(m);
     });
-    let (output_title, output_text) = projection::output(ed);
+    app.set_find_status(find_status(ed).as_str().into());
+    let (output_title, _) = projection::output(ed);
     app.set_output_title(output_title.as_str().into());
-    app.set_output_text(output_text.as_str().into());
+    state
+        .m_output_lines
+        .set(projection::output_lines(ed), |m| app.set_output_lines(m));
     state.m_problems.set(projection::problem_rows(ed), |m| {
         app.set_problems(m);
     });
@@ -361,6 +305,13 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         }
     }
 
+    app.set_picker_visible(state.picker != picker::PickerKind::None);
+    app.set_find_bar_visible(state.find_visible);
+    app.set_find_bar_replace_visible(state.find_replace_visible);
+    app.set_find_bar_match_text(state.find_match_text.as_str().into());
+    app.set_find_bar_has_error(state.find_has_error);
+    app.set_context_menu_visible(state.context_menu.is_some());
+
     agent::sync(&app, state);
     tool_windows::sync_commit(&app, &mut state.editor, &state.message);
     tool_windows::sync_debug(&app, state);
@@ -383,6 +334,16 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     // Input callbacks refresh synchronously; without this the frame timer
     // would run the whole pipeline a second time ≤20 ms later.
     state.editor.frame_dirty = false;
+}
+
+/// The Search panel's status readout: what the last query produced.
+fn find_status(ed: &Editor) -> String {
+    let count = ed.search.results.len();
+    match ed.search.pattern.as_deref() {
+        Some(pattern) if count > 0 => format!("{count} hits · “{pattern}”"),
+        Some(pattern) => format!("no hits · “{pattern}”"),
+        _ => String::new(),
+    }
 }
 
 /// Commit tool window: repository identity, grouped changes, busy and error

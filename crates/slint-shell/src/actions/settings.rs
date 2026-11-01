@@ -4,10 +4,8 @@
 //! state and closing the window never discards anything.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
-use kernel::command::execute_command;
 use kernel::state::persist;
 use slint::ComponentHandle;
 
@@ -246,6 +244,7 @@ pub(super) fn open(weak: &slint::Weak<AppWindow>, s: &mut AppState, category: i3
 
 /// `command()` cases routed from the shared dispatcher.
 pub(super) fn command(weak: &slint::Weak<AppWindow>, s: &mut AppState, command: &str) {
+    use super::picker::{self, PickerKind};
     match command {
         "dialog:settings" => {
             let category = match s.settings_category {
@@ -254,37 +253,32 @@ pub(super) fn command(weak: &slint::Weak<AppWindow>, s: &mut AppState, command: 
             };
             open(weak, s, category);
         }
-        "dialog:find" | "dialog:goto-file" | "dialog:goto-symbol" | "dialog:run-command" => {
-            s.dialog_title = match command {
-                "dialog:find" => "Find in Buffers",
-                "dialog:goto-file" => "Go to File",
-                "dialog:run-command" => "Run Command",
-                _ => "Go to Symbol",
-            }
-            .into();
-            s.dialog_input.clear();
-            s.dialog_visible = true;
-            if let Some(a) = weak.upgrade() {
-                a.set_dialog_input("".into());
-            }
+        // The four former navigation dialogs are real surfaces now: the
+        // picker for files/symbols/buffers/commands, the find bar for
+        // buffer search, the dock's search input for the project.  None of
+        // them executes free text on Enter.
+        "dialog:find" => {
+            s.find_visible = true;
+            s.find_replace_visible = false;
+            s.editor.frame_dirty = true;
+            refresh(weak, s);
         }
-        "dialog:ok" => {
-            let cmd = weak
-                .upgrade()
-                .map(|a| a.get_dialog_input().to_string())
-                .unwrap_or_default();
-            if !cmd.trim().is_empty() {
-                match execute_command(&mut s.editor, &cmd, &HashMap::new()) {
-                    Ok(()) => s.message.clear(),
-                    Err(e) => s.message = e,
-                }
-            }
-            s.dialog_visible = false;
-            s.dialog_input.clear();
-            if let Some(a) = weak.upgrade() {
-                a.set_dialog_input("".into());
-            }
+        "dialog:replace" => {
+            s.find_visible = true;
+            s.find_replace_visible = true;
+            s.editor.frame_dirty = true;
+            refresh(weak, s);
         }
+        "dialog:project-find" => {
+            s.bottom = 1;
+            s.editor.frame_dirty = true;
+            refresh(weak, s);
+        }
+        "dialog:goto-file" => picker::open(weak, s, PickerKind::Files),
+        "dialog:goto-symbol" => picker::open(weak, s, PickerKind::Symbols),
+        "dialog:buffers" => picker::open(weak, s, PickerKind::Buffers),
+        "dialog:run-command" => picker::open(weak, s, PickerKind::Commands),
+        "dialog:goto-line" => picker::open(weak, s, PickerKind::GotoLine),
         c if c.starts_with("settings:theme:") => {
             let name = c.trim_start_matches("settings:theme:");
             s.editor.options.insert("gui-theme".into(), name.into());

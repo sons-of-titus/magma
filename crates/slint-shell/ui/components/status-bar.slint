@@ -56,7 +56,9 @@ export component StatusBar inherits Rectangle {
 
         StatusPill {
             label: root.message;
-            tint: root.message-error ? Theme.danger : Theme.warning;
+            // Neutral text for state and confirmations; danger red is the
+            // only alarm colour, so failures still stand out.
+            tint: root.message-error ? Theme.danger : Theme.text-muted;
             show: root.message != "";
         }
 

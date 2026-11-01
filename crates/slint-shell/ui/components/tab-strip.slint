@@ -14,6 +14,7 @@ component Tab inherits Rectangle {
     in property <TabItem> item;
     callback selected();
     callback closed();
+    callback context-menu(length, length);
 
     height: Theme.tab-height;
     width: Math.max(96px, label.preferred-width + 52px + (item.modified ? 10px : 0px) + (item.icon-path != "" || item.icon != "" ? 18px : 0px));
@@ -28,6 +29,13 @@ component Tab inherits Rectangle {
         height: root.height;
         mouse-cursor: pointer;
         clicked => { root.selected(); }
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                root.context-menu(self.absolute-position.x + self.mouse-x,
+                                  self.absolute-position.y + self.mouse-y);
+            }
+        }
     }
 
     // Modified marker: a blue dot before the title, matching the egui tab.
@@ -104,6 +112,7 @@ export component TabStrip inherits Rectangle {
     in property <[TabItem]> tabs;
     callback selected(int);
     callback closed(int);
+    callback context-menu(int, length, length);
 
     height: Theme.tab-height;
     background: Theme.chrome;
@@ -115,14 +124,19 @@ export component TabStrip inherits Rectangle {
         background: Theme.fill-muted;
     }
 
-    HorizontalLayout {
-        spacing: 0px;
-        alignment: start;
+    // Tabs overflow by scrolling, not clipping: the working set outgrows the
+    // strip long before it outgrows the project.
+    Flickable {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
 
         for tab[i] in root.tabs : Tab {
             item: tab;
             selected => { root.selected(i); }
             closed => { root.closed(i); }
+            context-menu(x, y) => { root.context-menu(i, x, y); }
         }
     }
 }

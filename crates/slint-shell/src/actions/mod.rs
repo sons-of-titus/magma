@@ -6,11 +6,16 @@
 //! editor input, docks, the agent tool window, and dialogs/settings.
 
 mod agent;
+mod context_menu;
 mod db;
 mod debug;
 mod dock;
 mod editor;
+mod editor_mouse;
+pub(crate) mod find_bar;
 pub(crate) mod fonts;
+mod navigation;
+pub(crate) mod picker;
 mod settings;
 
 use std::cell::RefCell;
@@ -29,6 +34,9 @@ pub(crate) fn install(app: &crate::AppWindow, state: Rc<RefCell<AppState>>) {
     debug::install(&app, Rc::clone(&state));
     agent::install(&app, Rc::clone(&state));
     settings::install(&app, Rc::clone(&state));
+    navigation::install(&app, Rc::clone(&state));
+    find_bar::install(&app, Rc::clone(&state));
+    context_menu::install(&app, Rc::clone(&state));
 }
 
 /// Folder-picker → `open-project`.  Shared by the editor's menu action and

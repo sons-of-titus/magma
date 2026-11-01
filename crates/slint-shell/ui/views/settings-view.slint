@@ -7,6 +7,7 @@ import { Button, ToolbarIcon } from "../components/button.slint";
 // controls write straight back through `set-option`.
 export struct SettingsRow {
     name: string,
+    key: string,        // registry key the controls write to
     description: string,
     kind: string,       // bool | int | enum | str
     value: string,
@@ -43,10 +44,22 @@ component OptionRow inherits Rectangle {
             spacing: 2px;
             alignment: start;
 
-            Text {
-                text: spec.name;
-                color: Theme.text-primary;
-                font-size: Theme.font-ui;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Text {
+                    text: spec.name;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    vertical-alignment: center;
+                }
+                if spec.key != spec.name : Text {
+                    text: spec.key;
+                    color: Theme.text-faint;
+                    font-size: 10px;
+                    font-family: Theme.font-mono;
+                    vertical-alignment: center;
+                }
             }
             desc := Text {
                 text: spec.description;
@@ -61,24 +74,24 @@ component OptionRow inherits Rectangle {
         if spec.kind == "bool" : bool-check := Check {
             y: (parent.height - self.height) / 2;
             checked: spec.value == "true";
-            toggled => { root.set(spec.name, bool-check.checked ? "true" : "false"); }
+            toggled => { root.set(spec.key, bool-check.checked ? "true" : "false"); }
         }
         if spec.kind == "int" : NumberField {
             y: (parent.height - self.height) / 2;
             value: spec.int-value;
-            changed(v) => { root.set(spec.name, "\{v}"); }
+            changed(v) => { root.set(spec.key, "\{v}"); }
         }
         if spec.kind == "enum" : Picker {
             y: (parent.height - self.height) / 2;
             choices: spec.choices;
             current-value: spec.value;
-            changed(v) => { root.set(spec.name, v); }
+            changed(v) => { root.set(spec.key, v); }
         }
         if spec.kind == "str" : str-field := Field {
             y: (parent.height - self.height) / 2;
             width: 220px;
             text: spec.value;
-            accepted => { root.set(spec.name, str-field.text); }
+            accepted => { root.set(spec.key, str-field.text); }
         }
 
         if spec.modified : Rectangle {
@@ -96,7 +109,7 @@ component OptionRow inherits Rectangle {
             }
             reset-touch := TouchArea {
                 mouse-cursor: pointer;
-                clicked => { root.reset(spec.name); }
+                clicked => { root.reset(spec.key); }
             }
         }
     }

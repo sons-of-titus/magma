@@ -1,0 +1,193 @@
+import { Theme } from "../theme.slint";
+import { ListView } from "std-widgets.slint";
+
+// One entry of a picker list: primary label, secondary detail, and a
+// right-aligned meta column (path, kind, line number).
+export struct PickerRow {
+    title: string,
+    detail: string,
+    meta: string,
+}
+
+// A modal filter list — Go to File, Go to Symbol, the command palette, the
+// buffer switcher, the branch switcher, and plain prompts (go-to-line, new
+// file).  Owns its keyboard contract: the input takes focus on open, Escape
+// cancels, Return confirms, and the arrows move the selection, so the modal
+// never needs a mouse to enter or leave.
+export component PickerView inherits Rectangle {
+    in property <string> title;
+    in property <string> placeholder: "";
+    in-out property <string> query;
+    in property <[PickerRow]> rows;
+    in property <int> selected: 0;
+    in property <string> hint: "";
+
+    callback query-changed();
+    callback confirm();
+    callback cancel();
+    callback move-selection(int);
+    callback row-clicked(int);
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000066;
+
+    // The overlay swallows every click: outside presses neither dismiss
+    // (that would discard typed text) nor reach the editor beneath.
+    TouchArea { }
+
+    // Outside clicks land on the backdrop and are ignored: a stray click
+    // must not discard typed text.  Escape and Cancel are the exits.
+    Rectangle {
+        x: (parent.width - 560px) / 2;
+        y: 96px;
+        width: 560px;
+        height: 412px;
+        background: Theme.surface-panel;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        drop-shadow-offset-y: 6px;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: root.title;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.hint != "" : Text {
+                    text: root.hint;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                }
+            }
+
+            input-holder := Rectangle {
+                height: 30px;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: picker-input.has-focus ? Theme.accent : Theme.border;
+                background: Theme.chrome;
+
+                picker-input := TextInput {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    text <=> root.query;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    single-line: true;
+                    edited => { root.query-changed(); }
+                    accepted => { root.confirm(); }
+
+                    key-pressed(event) => {
+                        if event.text == Key.Escape {
+                            root.cancel();
+                            accept
+                        } else if event.text == Key.UpArrow {
+                            root.move-selection(-1);
+                            accept
+                        } else if event.text == Key.DownArrow {
+                            root.move-selection(1);
+                            accept
+                        } else if event.text == Key.Tab {
+                            // Focus trap: the modal owns the keyboard, Tab
+                            // must not wander into the dimmed UI.
+                            accept
+                        } else {
+                            reject
+                        }
+                    }
+                }
+
+                if root.query == "" && !picker-input.has-focus : Text {
+                    x: 8px;
+                    text: root.placeholder;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-ui;
+                    vertical-alignment: center;
+                }
+            }
+
+            if root.rows.length == 0 : Rectangle {
+                vertical-stretch: 1;
+                Text {
+                    width: parent.width - 24px;
+                    text: root.hint == "" ? "No matches." : root.hint;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-ui;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            if root.rows.length > 0 : Rectangle {
+                vertical-stretch: 1;
+                clip: true;
+
+                ListView {
+                    for row[i] in root.rows : Rectangle {
+                        height: 26px;
+                        background: i == root.selected ? Theme.selection
+                            : row-touch.has-hover ? Theme.fill-muted : transparent;
+
+                        Text {
+                            x: 10px;
+                            width: parent.width - 150px;
+                            text: row.title;
+                            color: i == root.selected ? Theme.text-primary : Theme.text-secondary;
+                            font-size: Theme.font-ui;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: 10px + parent.width * 0.45;
+                            width: parent.width * 0.55 - 120px;
+                            text: row.detail;
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            x: parent.width - self.preferred-width - 10px;
+                            text: row.meta;
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            font-family: Theme.font-mono;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            width: 110px;
+                        }
+
+                        row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.row-clicked(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    init => {
+        picker-input.focus();
+    }
+}

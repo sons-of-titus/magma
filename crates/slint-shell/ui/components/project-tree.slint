@@ -20,6 +20,7 @@ component TreeRow inherits Rectangle {
     in property <TreeItem> item;
     in property <bool> selected: false;
     callback activated();
+    callback context-menu(length, length);
 
     height: Theme.row-height;
     background: selected ? Theme.selection : (touch.has-hover ? Theme.fill : transparent);
@@ -68,6 +69,13 @@ component TreeRow inherits Rectangle {
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.activated(); }
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                root.context-menu(self.absolute-position.x + self.mouse-x,
+                                  self.absolute-position.y + self.mouse-y);
+            }
+        }
     }
 }
 
@@ -77,6 +85,7 @@ export component ProjectTree inherits Rectangle {
     in property <string> selected-path;
     in property <string> empty-message: "No project open";
     callback activated(string);
+    callback context-menu(string, length, length);
     callback refresh();
     callback collapse();
 
@@ -96,14 +105,21 @@ export component ProjectTree inherits Rectangle {
                 vertical-alignment: center;
             }
 
-            Text {
+            Rectangle {
                 x: root.width - 44px;
-                width: 16px;
-                text: "↻";
-                color: refresh-touch.has-hover ? Theme.text-primary : Theme.text-faint;
-                font-size: Theme.font-small;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+                y: 4px;
+                width: 18px;
+                height: 22px;
+                border-radius: Theme.radius;
+                background: refresh-touch.has-hover ? Theme.fill : transparent;
+
+                Text {
+                    text: "↻";
+                    color: refresh-touch.has-hover ? Theme.text-primary : Theme.text-faint;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
 
                 refresh-touch := TouchArea {
                     mouse-cursor: pointer;
@@ -111,14 +127,21 @@ export component ProjectTree inherits Rectangle {
                 }
             }
 
-            Text {
+            Rectangle {
                 x: root.width - 24px;
-                width: 16px;
-                text: "−";
-                color: collapse-touch.has-hover ? Theme.text-primary : Theme.text-faint;
-                font-size: Theme.font-small;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+                y: 4px;
+                width: 18px;
+                height: 22px;
+                border-radius: Theme.radius;
+                background: collapse-touch.has-hover ? Theme.fill : transparent;
+
+                Text {
+                    text: "−";
+                    color: collapse-touch.has-hover ? Theme.text-primary : Theme.text-faint;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
 
                 collapse-touch := TouchArea {
                     mouse-cursor: pointer;
@@ -141,6 +164,7 @@ export component ProjectTree inherits Rectangle {
                 item: row;
                 selected: row.path == root.selected-path;
                 activated => { root.activated(row.path); }
+                context-menu(x, y) => { root.context-menu(row.path, x, y); }
             }
         }
 

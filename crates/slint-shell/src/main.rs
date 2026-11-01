@@ -6,6 +6,8 @@
 //! every other frontend uses.
 
 mod actions;
+mod app_state;
+mod context;
 mod catppuccin;
 mod dracula;
 mod input;
@@ -23,133 +25,20 @@ mod window_chrome;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
 use kernel::boot::{self, BootOptions};
-use kernel::project::tree::FileNode;
 use kernel::render::gpu_atlas::GpuGlyphAtlas;
 use kernel::render::surface::Surface;
-use kernel::runtime::{BackgroundEvent, process_background_event};
-use kernel::state::Editor;
+use kernel::runtime::process_background_event;
 use kernel::workspace::{self, WorkspaceRuntime};
+
+use crate::actions::picker;
+pub(crate) use crate::app_state::{system_prefers_dark, AppState};
 #[cfg(feature = "janet")]
 use scripting;
 slint::include_modules!();
-
-struct AppState {
-    editor: Editor,
-    bg_receiver: tokio::sync::mpsc::UnboundedReceiver<BackgroundEvent>,
-    atlas: GpuGlyphAtlas,
-    atlas_ppx: f32,
-    cell_w: u32,
-    cell_h: u32,
-    /// Empty leading above the glyphs in a row; the caret starts below it.
-    caret_inset: f32,
-    /// Beam height in logical px: cap line to baseline, measured from the
-    /// atlas like `caret_inset` so the beam ends where the ink ends.
-    caret_height: f32,
-    surface: Surface,
-    terminal_grid: (usize, u32, u32),
-    surface_sig: u64,
-    gutter_sig: u64,
-    image_pane_key: u64,
-    rendered_revision: u64,
-    message: String,
-    workspace: WorkspaceRuntime,
-    tree_nodes: Vec<FileNode>,
-    dirs: HashSet<String>,
-    expanded: HashSet<String>,
-    tree_epoch: u64,
-    tree_root: Option<PathBuf>,
-    rail: i32,
-    sidebar_open: bool,
-    /// Bottom dock height; the top-edge drag handle edits it.
-    bottom_height: f32,
-    /// Output pane follows the newest lines as they land.
-    output_follow: bool,
-    /// Per-tool dock widths (project, commit, debug); the drag handle edits
-    /// the active one.
-    sidebar_widths: [f32; 3],
-    /// DAP variablesReferences the user opened in the variables tree.
-    /// The Database tool window on the right, beneath the Agent dock.
-    db_open: bool,
-    db_height: f32,
-    db_form_open: bool,
-    db_form_note: String,
-    db_expanded: HashSet<usize>,
-    debug_expanded: HashSet<i64>,
-    /// The scope reference those expansions belong to; a new stop resets.
-    debug_scope_seen: Option<i64>,
-    /// Slot table from the last debug sync: UI row ids → DAP ids.
-    debug_ref_slots: Vec<i64>,
-    /// Chrome syncs from the first frame; only the editor surface waits for
-    /// the window's real size — the pre-map stub sizes would otherwise
-    /// derive a viewport scroll that never unwinds.
-    window_ready: bool,
-    last_logical_width: f32,
-    /// The launcher window; visible exactly while no project is open.
-    welcome: slint::Weak<WelcomeWindow>,
-    launcher_visible: bool,
-    theme_name: String,
-    app_font_name: String,
-    app_font_size: f32,
-    menu_title: Option<&'static str>,
-    menu_x: f32,
-    menu_visible: bool,
-    bottom: i32,
-    agent_open: bool,
-    /// Pinned session for the agent dock; `None` follows the newest.
-    agent_active: Option<u64>,
-    /// Transcript entries the user folded open, keyed by (session, index).
-    agent_expanded: HashSet<(u64, usize)>,
-    agent_dock_width: f32,
-    last_px: f32,
-    last_py: f32,
-    hovering: bool,
-    dialog_visible: bool,
-    dialog_title: String,
-    dialog_input: String,
-    /// The unsaved-changes dialog raised over a refused quit.
-    quit_confirm_visible: bool,
-    /// New Project wizard overlay state.
-    new_project: new_project::NewProjectState,
-    /// Save was chosen in that dialog; quit once the dirty set drains
-    /// (async writes keep buffers dirty until the write-confirmed events
-    /// land).
-    quit_when_clean: bool,
-    settings_visible: bool,
-    settings_category: i32,
-    settings_search: String,
-    /// Options/page changed and the settings rows need re-projection.
-    settings_rows_dirty: bool,
-    terminal_scroll: usize,
-    git_history: Vec<GitHistoryRow>,
-    wheel_y: f32,
-    wheel_x: f32,
-    /// Signature gates so idle refreshes skip re-blitting textures.
-    minimap_sig: u64,
-    terminal_sig: u64,
-    /// Decoded file-type icons, keyed by SVG path.
-    icon_images: HashMap<String, slint::Image>,
-    m_tabs: sync::ModelGate<TabItem>,
-    m_tree: sync::ModelGate<TreeItem>,
-    m_crumbs: sync::ModelGate<slint::SharedString>,
-    m_find_rows: sync::ModelGate<FindRow>,
-    m_problems: sync::ModelGate<ProblemRow>,
-    m_progress: sync::ModelGate<ProgressTask>,
-    m_recents: sync::ModelGate<slint::SharedString>,
-    m_sessions: sync::ModelGate<slint::SharedString>,
-    m_git_history: sync::ModelGate<GitHistoryRow>,
-    m_menu: sync::ModelGate<MenuItem>,
-    m_new_project_templates: sync::ModelGate<TemplateItem>,
-    m_new_project_vars: sync::ModelGate<TemplateVar>,
-    m_new_project_languages: sync::ModelGate<slint::SharedString>,
-    m_hover_lines: sync::ModelGate<slint::SharedString>,
-    m_completion_entries: sync::ModelGate<CompletionEntry>,
-    m_quickfix_items: sync::ModelGate<slint::SharedString>,
-}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = boot_clock();
@@ -185,6 +74,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut editor = boot.editor;
     if editor.font_config.loaded_fonts.is_empty() {
         editor.font_config.bootstrap_default_font();
+    }
+    // Follow the OS appearance for the first launch; a persisted choice
+    // (Settings › Theme) always wins over the system default.
+    if !editor.options.contains_key("gui-theme") {
+        let dark = system_prefers_dark();
+        editor.options.insert(
+            "gui-theme".into(),
+            if dark { "intellij-dark".into() } else { "intellij-light".into() },
+        );
     }
     if editor.buffers.is_empty() {
         let key = editor.create_buffer("*scratch*");
@@ -260,9 +158,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_px: 0.0,
         last_py: 0.0,
         hovering: false,
-        dialog_visible: false,
-        dialog_title: String::new(),
-        dialog_input: String::new(),
+        picker: picker::PickerKind::None,
+        picker_query: String::new(),
+        picker_selected: 0,
+        picker_items: Vec::new(),
+        visible_items: Vec::new(),
+        find_visible: false,
+        find_replace_visible: false,
+        find_query: String::new(),
+        find_replacement: String::new(),
+        find_match_text: String::new(),
+        find_has_error: false,
+        context_menu: None,
+        context_path: String::new(),
         quit_confirm_visible: false,
         new_project: new_project::NewProjectState::default(),
         quit_when_clean: false,
@@ -281,6 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         m_tree: sync::ModelGate::new(),
         m_crumbs: sync::ModelGate::new(),
         m_find_rows: sync::ModelGate::new(),
+        m_output_lines: sync::ModelGate::new(),
         m_problems: sync::ModelGate::new(),
         m_progress: sync::ModelGate::new(),
         m_recents: sync::ModelGate::new(),

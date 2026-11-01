@@ -1,0 +1,190 @@
+import { Theme } from "../theme.slint";
+import { ToolbarIcon } from "button.slint";
+
+component MiniButton inherits Rectangle {
+    in property <string> label;
+    callback clicked();
+
+    height: 22px;
+    width: label-text.preferred-width + 14px;
+    border-radius: Theme.radius;
+    background: touch.has-hover ? Theme.fill : transparent;
+
+    label-text := Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// In-buffer find/replace bar, docked over the editor's top edge.  The query
+// field takes focus on open; Escape closes, Return finds next, Shift+Return
+// finds previous.
+export component FindBar inherits Rectangle {
+    in-out property <string> query;
+    in-out property <string> replacement;
+    in property <bool> replace-visible: false;
+    in property <string> match-text: "";
+    in property <bool> has-error: false;
+
+    callback query-changed();
+    callback find-next();
+    callback find-prev();
+    callback replace-next();
+    callback replace-all();
+    callback toggle-replace();
+    callback close();
+
+    height: replace-visible ? 64px : 36px;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface-panel;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000055;
+    drop-shadow-offset-y: 3px;
+
+    TouchArea { }
+
+    VerticalLayout {
+        padding: 4px;
+        spacing: 4px;
+
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            query-holder := Rectangle {
+                width: 200px;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: find-input.has-focus ? Theme.accent : Theme.border;
+                background: Theme.chrome;
+
+                find-input := TextInput {
+                    x: 6px;
+                    width: parent.width - 12px;
+                    text <=> root.query;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    single-line: true;
+                    edited => { root.query-changed(); }
+                    accepted => { root.find-next(); }
+
+                    key-pressed(event) => {
+                        if event.text == Key.Escape {
+                            root.close();
+                            accept
+                        } else if event.text == Key.Return {
+                            // Shift+Return searches backwards.
+                            if event.modifiers.shift {
+                                root.find-prev();
+                            } else {
+                                root.find-next();
+                            }
+                            accept
+                        } else if event.text == Key.Tab {
+                            accept
+                        } else {
+                            reject
+                        }
+                    }
+                }
+
+                if root.query == "" && !find-input.has-focus : Text {
+                    x: 6px;
+                    text: "Find";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-ui;
+                    vertical-alignment: center;
+                }
+            }
+
+            Text {
+                width: 90px;
+                text: root.match-text;
+                color: root.has-error ? Theme.danger : Theme.text-faint;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            ToolbarIcon {
+                glyph: "↑";
+                tint: Theme.text-muted;
+                clicked => { root.find-prev(); }
+            }
+            ToolbarIcon {
+                glyph: "↓";
+                tint: Theme.text-muted;
+                clicked => { root.find-next(); }
+            }
+            ToolbarIcon {
+                glyph: root.replace-visible ? "∧" : "∨";
+                tint: Theme.text-muted;
+                clicked => { root.toggle-replace(); }
+            }
+            ToolbarIcon {
+                glyph: "×";
+                tint: Theme.text-muted;
+                clicked => { root.close(); }
+            }
+        }
+
+        if root.replace-visible : HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Rectangle {
+                width: 200px;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: replace-input.has-focus ? Theme.accent : Theme.border;
+                background: Theme.chrome;
+
+                replace-input := TextInput {
+                    x: 6px;
+                    width: parent.width - 12px;
+                    text <=> root.replacement;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    single-line: true;
+                    accepted => { root.replace-next(); }
+
+                    key-pressed(event) => {
+                        if event.text == Key.Escape {
+                            root.close();
+                            accept
+                        } else if event.text == Key.Tab {
+                            accept
+                        } else {
+                            reject
+                        }
+                    }
+                }
+
+                if root.replacement == "" && !replace-input.has-focus : Text {
+                    x: 6px;
+                    text: "Replace with";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-ui;
+                    vertical-alignment: center;
+                }
+            }
+
+            MiniButton { label: "Replace"; clicked => { root.replace-next(); } }
+            MiniButton { label: "Replace All"; clicked => { root.replace-all(); } }
+        }
+    }
+
+    init => {
+        find-input.focus();
+    }
+}

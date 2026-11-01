@@ -6,6 +6,7 @@
 mod agent;
 mod db;
 mod debug_view;
+mod menus;
 mod settings;
 
 pub use agent::{
@@ -17,6 +18,7 @@ pub use db::{
     db_sources, db_status, db_tree,
 };
 pub use debug_view::snapshot as debug_snapshot;
+pub use menus::{menu_items, menu_title};
 pub use settings::{disabled_plugins, plugin_rows, settings_rows};
 
 use std::collections::HashSet;
@@ -24,7 +26,9 @@ use std::collections::HashSet;
 use kernel::project::tree::{FileNode, relative_to_project, segments, visible_rows};
 use kernel::state::{Editor, MessageKind};
 
-use crate::{FindRow, MenuItem, ProblemRow, ProgressTask, TreeItem};
+use kernel::render::tabs;
+
+use crate::{FindRow, OutputLine, ProblemRow, ProgressTask, TreeItem};
 
 pub fn focused_key(ed: &Editor) -> Option<usize> {
     ed.view_tree
@@ -39,7 +43,7 @@ pub fn focused_file(ed: &Editor) -> (String, bool) {
     match ed.buffers.get(key) {
         Some(arc) => {
             let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-            (buf.name.clone(), buf.modified())
+            (tabs::display_label(&buf.name), buf.modified())
         }
         None => ("No buffer".into(), false),
     }
@@ -243,67 +247,6 @@ fn icon_for(
     };
     (glyph_str, color, icon_path, icon_image)
 }
-pub fn menu_title(title: &str) -> &'static str {
-    match title {
-        "Edit" => "Edit",
-        "View" => "View",
-        "Navigate" => "Navigate",
-        "Run" => "Run",
-        _ => "File",
-    }
-}
-
-pub fn menu_items(title: &'static str) -> Vec<MenuItem> {
-    let rows: &[(&str, &str)] = match title {
-        "File" => &[
-            ("Open Folder…", "open-project-dialog"),
-            ("", ""),
-            ("Save", "save-buffer"),
-            ("Save All", "save-all"),
-            ("", ""),
-            ("Close Buffer", "close-buffer"),
-            ("Quit", "quit"),
-        ],
-        "Edit" => &[
-            ("Undo", "undo"),
-            ("Redo", "redo"),
-            ("", ""),
-            ("Find in Buffers…", "dialog:find"),
-        ],
-        "View" => &[
-            ("Project", "rail:0"),
-            ("Commit", "rail:1"),
-            ("Debugger", "rail:2"),
-            ("", ""),
-            ("Toggle Theme", "toggle-theme"),
-            ("Settings…", "dialog:settings"),
-        ],
-        "Navigate" => &[
-            ("Next Tab", "buffer-next"),
-            ("Previous Tab", "buffer-prev"),
-            ("", ""),
-            ("Go to File…", "dialog:goto-file"),
-            ("Go to Symbol…", "dialog:goto-symbol"),
-            ("", ""),
-            ("Run Command…", "dialog:run-command"),
-        ],
-        _ => &[
-            ("Run", "run-config"),
-            ("Debug", "debug-config"),
-            ("Stop", "stop-config"),
-            ("", ""),
-            ("Refresh Version Control", "vc-refresh"),
-        ],
-    };
-    rows.iter()
-        .map(|(label, command)| MenuItem {
-            label: (*label).into(),
-            command: (*command).into(),
-            separator: label.is_empty(),
-        })
-        .collect()
-}
-
 // ── Tool windows ──────────────────────────────────────────────────────────────
 
 pub fn terminal_text(ed: &Editor) -> String {
@@ -318,8 +261,11 @@ pub fn terminal_text(ed: &Editor) -> String {
     session.screen.tail(60).join("\n")
 }
 
+/// The Search panel's rows: hits of the last project search / keyword
+/// context — its own dataset, never the build problems list.
 pub fn find_rows(ed: &Editor) -> Vec<FindRow> {
-    ed.quickfix_list
+    ed.search
+        .results
         .iter()
         .take(200)
         .map(|entry| FindRow {
@@ -327,6 +273,28 @@ pub fn find_rows(ed: &Editor) -> Vec<FindRow> {
             detail: entry.message.clone().into(),
             path: entry.filename.clone().into(),
             line: entry.line as i32,
+        })
+        .collect()
+}
+
+/// Task output as per-line rows; lines carrying a `file:line:col` location
+/// become clickable jumps into the code.
+pub fn output_lines(ed: &Editor) -> Vec<OutputLine> {
+    let Some((_, text)) = &ed.last_task else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(|line| match kernel::task::diag_parse::find_location_prefix(line) {
+            Some((path, line_no)) => OutputLine {
+                text: line.into(),
+                path: path.into(),
+                line: line_no,
+            },
+            None => OutputLine {
+                text: line.into(),
+                path: "".into(),
+                line: 0,
+            },
         })
         .collect()
 }
@@ -387,17 +355,3 @@ fn short_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
-#[cfg(test)]
-mod menu_tests {
-    use super::*;
-
-    #[test]
-    fn navigate_menu_offers_run_command() {
-        let items = menu_items("Navigate");
-        assert!(
-            items.iter().any(|i| i.command == "dialog:run-command"),
-            "Navigate menu must expose Run Command…, got {:?}",
-            items.iter().map(|i| i.label.clone()).collect::<Vec<_>>()
-        );
-    }
-}

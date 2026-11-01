@@ -67,9 +67,9 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         .iter()
         .map(|m| (*m).into())
         .collect();
-    app.set_agent_models(ModelRc::new(VecModel::from(models))); // ── Dialog sync ────────────────────────────────────────────────────────
-    app.set_dialog_visible(state.dialog_visible);
-    app.set_dialog_title(state.dialog_title.as_str().into());
+    app.set_agent_models(ModelRc::new(VecModel::from(models)));
+
+    // ── Dialog sync ────────────────────────────────────────────────────────
     // The unsaved-changes dialog projects the live dirty set: buffers that
     // finish saving while it is open drop off the list.
     app.set_quit_confirm_visible(state.quit_confirm_visible);

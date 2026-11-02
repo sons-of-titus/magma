@@ -534,6 +534,26 @@ fn walk_matching(cwd: &std::path::Path, pattern: &str) -> Vec<String> {
             if ignore.iter().any(|i| path.to_string_lossy().contains(i)) {
                 continue;
             }
+            // Symlinked dirs are excluded entirely (like the project walk):
+            // `is_dir` follows links, and a cycle (`ln -s . loop`) would
+            // otherwise spin this blocking walk forever.  Symlinked files
+            // still match by their own name.
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            if file_type.is_symlink() {
+                let rel = path
+                    .strip_prefix(cwd)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                if !file_type.is_dir() && (pattern.is_empty() || rel.to_lowercase().contains(pattern))
+                {
+                    files.push(rel);
+                }
+                continue;
+            }
             if path.is_dir() {
                 dirs.push(path);
             } else if path.is_file() {

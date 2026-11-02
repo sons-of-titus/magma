@@ -156,18 +156,37 @@ pub fn execute_command(
         (Arc::clone(&entry.handler), resolved)
     };
 
+    // Any named command ends the typing session: a typed run is one undo
+    // step until an explicit action interrupts it.
+    for (_, arc) in editor.buffers.iter() {
+        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        if buf.has_open_undo_session() {
+            buf.close_undo_session();
+        }
+    }
+
+    let focused_before = editor
+        .view_tree
+        .focused_window()
+        .and_then(|wid| editor.view_tree.buffer(wid));
+    let rev_before = focused_before
+        .and_then(|id| editor.buffers.get(id))
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
+
     let result = handler(editor, &resolved_args);
 
-    // Record cursor position in change list for edit commands
-    if result.is_ok() && is_change_command(name) {
-        let buf_id = editor
-            .view_tree
-            .focused_window()
-            .and_then(|wid| editor.view_tree.buffer(wid))
-            .unwrap_or(0);
-        if editor.buffers.contains(buf_id) {
+    // Record the cursor in the change list — but only when the command
+    // actually changed the focused buffer's revision.  The name blocklist
+    // this replaces both missed mutations (janet-defined) and recorded
+    // non-mutations (save, toggle-fold).
+    if result.is_ok() {
+        let changed = focused_before
+            .and_then(|id| editor.buffers.get(id))
+            .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision())
+            != rev_before;
+        if changed {
             let pos = editor
-                .view_of_buffer(buf_id)
+                .view_of_buffer(focused_before.unwrap_or(0))
                 .map(|v| v.cursor_offset())
                 .unwrap_or(0);
             editor.editing.change_list.push(pos);
@@ -226,24 +245,6 @@ pub fn execute_command_line(editor: &mut Editor, input: &str) -> CommandResult {
     execute_command(editor, name, &args)
 }
 
-fn is_change_command(name: &str) -> bool {
-    !name.starts_with("move-")
-        && !name.starts_with("cursor-")
-        && !name.starts_with("scroll-")
-        && !name.starts_with("find-")
-        && !name.starts_with("search-")
-        && !name.starts_with("repeat-")
-        && !name.starts_with("goto-")
-        && !name.starts_with("enter-")
-        && !name.starts_with("exit-")
-        && !name.starts_with("window-")
-        && name != "force-quit"
-        && name != "save-and-quit"
-        && name != "alternate-buffer"
-        && name != "reselect-last-visual"
-        && name != "undo"
-        && name != "redo"
-}
 
 // Make commands field accessible from execute_command
 impl CommandRegistry {

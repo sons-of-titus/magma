@@ -253,7 +253,17 @@ pub fn handle_text_input(ed: &mut crate::state::Editor, key: &str) {
             return;
         }
 
+        // A typed run is one undo step: open the insert session on the
+        // first keystroke and let execute_command close it when any
+        // explicit command interrupts the typing.
+        let session_open = ed
+            .buffers
+            .get(slab)
+            .is_some_and(|a| a.lock().unwrap_or_else(|e| e.into_inner()).has_open_undo_session());
         if let Some(view) = ed.view_of_buffer_mut(slab) {
+            if !session_open {
+                view.open_undo_session();
+            }
             let cur = view.cursor_offset();
             view.insert(cur, key);
         }
@@ -275,34 +285,43 @@ fn is_word_input(key: &str) -> bool {
             .is_some_and(|c| c.is_alphanumeric() || c == '_')
 }
 
-/// Apply a text input operation to all cursors (primary + extras).
+/// Apply a text input operation to all cursors (primary + extras): one
+/// transaction (one undo step), and every cursor lands after its own
+/// insertion so the next keystroke cannot insert into stale offsets.
 fn apply_to_all_cursors(ed: &mut crate::state::Editor, slab: usize, key: &str) {
-    let mut cursors: Vec<usize> = Vec::new();
-    cursors.push({
-        if let Some(view) = ed.view_of_buffer(slab) {
-            view.cursor_offset()
-        } else {
-            return;
-        }
-    });
-    for ec in &ed.multi_cursor.extra_cursors {
-        cursors.push(ec.pos);
+    let mut cursors: Vec<(usize, Option<usize>)> = Vec::new();
+    if let Some(view) = ed.view_of_buffer(slab) {
+        cursors.push((view.cursor_offset(), None));
+    } else {
+        return;
+    }
+    for (i, ec) in ed.multi_cursor.extra_cursors.iter().enumerate() {
+        cursors.push((ec.pos, Some(i)));
     }
     cursors.sort();
-    cursors.dedup();
+    cursors.dedup_by(|a, b| a.0 == b.0);
 
-    for &pos in cursors.iter().rev() {
-        if let Some(view) = ed.view_of_buffer_mut(slab) {
-            view.set_cursor(pos);
-            view.insert(pos, key);
-        }
+    let edits: Vec<(usize, &str)> = cursors.iter().map(|&(p, _)| (p, key)).collect();
+    let Some(view) = ed.view_of_buffer_mut(slab) else {
+        return;
+    };
+    if view.insert_many(&edits).is_none() {
+        return;
     }
-
-    if let Some(&first) = cursors.first()
-        && let Some(view) = ed.view_of_buffer_mut(slab)
-    {
-        let adjustment = key.len();
-        view.set_cursor(first + adjustment);
+    // The i-th sorted cursor has i earlier insertions before it; its own
+    // insertion (right-sticky anchor) puts it one key-length past those.
+    let klen = key.len();
+    let primary_new = cursors
+        .first()
+        .map(|&(p, _)| p + klen)
+        .unwrap_or_else(|| view.cursor_offset());
+    view.set_cursor(primary_new);
+    for (i, &(_, slot)) in cursors.iter().enumerate() {
+        if let Some(ix) = slot
+            && let Some(ec) = ed.multi_cursor.extra_cursors.get_mut(ix)
+        {
+            ec.pos = cursors[i].0 + (i + 1) * klen;
+        }
     }
 }
 

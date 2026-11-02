@@ -3,12 +3,15 @@ import { ToolbarIcon } from "button.slint";
 
 component MiniButton inherits Rectangle {
     in property <string> label;
+    in property <bool> active: false;
     callback clicked();
 
     height: 22px;
     width: label-text.preferred-width + 14px;
     border-radius: Theme.radius;
-    background: touch.has-hover ? Theme.fill : transparent;
+    border-width: root.active ? 1px : 0px;
+    border-color: Theme.accent;
+    background: root.active ? Theme.fill : (touch.has-hover ? Theme.fill : transparent);
 
     label-text := Text {
         text: root.label;
@@ -33,6 +36,7 @@ export component FindBar inherits Rectangle {
     in property <bool> replace-visible: false;
     in property <string> match-text: "";
     in property <bool> has-error: false;
+    in property <bool> regex: false;
 
     callback query-changed();
     callback find-next();
@@ -40,6 +44,7 @@ export component FindBar inherits Rectangle {
     callback replace-next();
     callback replace-all();
     callback toggle-replace();
+    callback toggle-regex();
     callback close();
 
     height: replace-visible ? 64px : 36px;
@@ -127,6 +132,11 @@ export component FindBar inherits Rectangle {
                 symbol: true;
                 tint: Theme.text-muted;
                 clicked => { root.find-next(); }
+            }
+            MiniButton {
+                label: ".*";
+                active: root.regex;
+                clicked => { root.toggle-regex(); }
             }
             ToolbarIcon {
                 glyph: root.replace-visible ? "\u{F077}" : "\u{F078}";

@@ -211,6 +211,7 @@ export component AppWindow inherits Window {
     in-out property <string> find-bar-query: "";
     in-out property <string> find-bar-replacement: "";
     in property <bool> find-bar-replace-visible: false;
+    in property <bool> find-bar-regex: false;
     in property <string> find-bar-match-text: "";
     in property <bool> find-bar-has-error: false;
 
@@ -331,6 +332,7 @@ export component AppWindow inherits Window {
     callback find-bar-replace-next();
     callback find-bar-replace-all();
     callback find-bar-toggle-replace();
+    callback find-bar-toggle-regex();
     callback find-bar-close();
     callback context-command(string);
     callback context-dismissed();
@@ -962,12 +964,14 @@ export component AppWindow inherits Window {
         replace-visible: root.find-bar-replace-visible;
         match-text: root.find-bar-match-text;
         has-error: root.find-bar-has-error;
+        regex: root.find-bar-regex;
         query-changed => { root.find-bar-changed(); }
         find-next => { root.find-bar-next(); }
         find-prev => { root.find-bar-prev(); }
         replace-next => { root.find-bar-replace-next(); }
         replace-all => { root.find-bar-replace-all(); }
         toggle-replace => { root.find-bar-toggle-replace(); }
+        toggle-regex => { root.find-bar-toggle-regex(); }
         close => { root.find-bar-close(); }
     }
 

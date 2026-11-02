@@ -75,6 +75,19 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_find_bar_toggle_regex(move || {
+            let mut s = state.borrow_mut();
+            s.find_regex = !s.find_regex;
+            // Re-run the live query under the new mode; an invalid pattern
+            // shows the same find-bar error path as plain typing.
+            let query = s.find_query.clone();
+            find_in_buffer(&mut s, &query);
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_find_bar_close(move || {
             let mut s = state.borrow_mut();
             s.find_visible = false;
@@ -96,6 +109,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
 fn find_in_buffer(s: &mut AppState, pattern: &str) {
     let mut args = HashMap::new();
     args.insert("pattern".to_string(), ArgValue::String(pattern.to_string()));
+    if s.find_regex {
+        args.insert("regex".to_string(), ArgValue::Boolean(true));
+    }
     match execute_command(&mut s.editor, "search-buffer", &args) {
         Ok(()) => {
             s.find_has_error = false;
@@ -126,6 +142,9 @@ fn run_replace(weak: &slint::Weak<AppWindow>, s: &mut AppState, all: bool) {
         "replacement".to_string(),
         ArgValue::String(s.find_replacement.clone()),
     );
+    if s.find_regex {
+        args.insert("regex".to_string(), ArgValue::Boolean(true));
+    }
     let command = if all { "replace-all" } else { "replace-next" };
     match execute_command(&mut s.editor, command, &args) {
         Ok(()) => s.find_has_error = false,

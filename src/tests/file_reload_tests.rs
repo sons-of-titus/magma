@@ -212,3 +212,76 @@ fn sync_save_without_pool_is_immediately_clean() {
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "two one\n");
 }
+
+#[test]
+fn the_watcher_reports_external_deletion_of_a_watched_file() {
+    // The event filter used to `?` on canonicalize, which fails for a
+    // removed path: every Remove event was silently dropped and open
+    // buffers never learned their file was gone.
+    use crate::kernel::storage::watcher::FileWatcher;
+    use std::time::{Duration, Instant};
+
+    let dir = std::env::temp_dir().join("magma_watch_remove");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("gone.txt");
+    std::fs::write(&file, "data").unwrap();
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut watcher = FileWatcher::new(tx).expect("watcher created");
+    watcher.watch(&file.to_string_lossy());
+
+    std::fs::remove_file(&file).unwrap();
+
+    let mut seen_removal = false;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && !seen_removal {
+        while let Ok(ev) = rx.try_recv() {
+            if let crate::kernel::runtime::BackgroundEvent::FileChanged { kind, .. } = &ev {
+                if kind == "removed" {
+                    seen_removal = true;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(seen_removal, "deleting a watched file must produce a removed event");
+}
+
+#[test]
+fn apply_reload_never_clobbers_a_buffer_that_became_dirty() {
+    // The dirtiness check ran at event time; the disk read came back
+    // later.  Keystrokes landing in between must not be overwritten by
+    // the (now stale) disk text — apply_reload re-checks at apply time.
+    let (mut ed, _bg, _rx) = helpers::editor_with_background();
+    let path = std::env::temp_dir().join("magma_reload_race.txt");
+    std::fs::write(&path, "disk version").unwrap();
+
+    let key = ed.create_buffer_from_str(
+        "race.txt",
+        "disk version",
+    );
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap_or_else(|e| e.into_inner()).path =
+            Some(path.to_string_lossy().into_owned());
+    }
+    // The user types after the event check, before the read lands.
+    if let Some(view) = ed.view_of_buffer_mut(key) {
+        view.insert(12, " plus my edits");
+    }
+    assert!(ed.buffers.get(key).unwrap().lock().unwrap().modified());
+
+    crate::kernel::storage::reload::apply_reload(
+        &mut ed,
+        key,
+        Ok("disk version".to_string()),
+    );
+
+    let text = ed.buffers.get(key).unwrap().lock().unwrap().slice(0, 999);
+    assert_eq!(
+        text, "disk version plus my edits",
+        "the user's unsaved edits survive the stale reload"
+    );
+    let _ = std::fs::remove_file(&path);
+}

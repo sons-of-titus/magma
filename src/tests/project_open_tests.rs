@@ -585,3 +585,123 @@ fn project_defaults_keep_generation_zero_for_embedded_hosts() {
     assert!(!project.indexing);
     assert!(!project.detecting_tasks);
 }
+
+#[test]
+fn switching_projects_shuts_down_lsp_terminals_and_debug() {
+    // PM-02/PM-03/PM-06: the outgoing project's language servers (rooted
+    // in it), terminals, and debug sessions must follow it out — a
+    // survivor would answer the new project with the old workspace — and
+    // the new project's index must serve immediately, not the old one.
+    use kernel::semantic::lsp::{EventSink, LspHandle};
+    use std::sync::Arc;
+
+    struct NoopSink;
+    impl EventSink for NoopSink {
+        fn send(&self, _event: kernel::semantic::lsp::Event) {}
+    }
+
+    fn temp(root_name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(root_name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.rs"), "fn a() {}\n").unwrap();
+        dir
+    }
+    let a = temp("magma_switch_a");
+    let b = temp("magma_switch_b");
+
+    let (mut ed, _bg, mut rx) = crate::tests::helpers::editor_with_background();
+    open_project(&mut ed, a.to_string_lossy().as_ref());
+    pump_until(&mut ed, &mut rx, |ed| {
+        !ed.project_manager.project.files.is_empty()
+    });
+
+    // A live fake language server rooted in project A (`cat` stays alive
+    // reading stdin; shutdown() closes it in order).
+    let handle = LspHandle::start(
+        "cat",
+        &[],
+        "rust",
+        Some(a.to_string_lossy().into_owned()),
+        NoopSink,
+    )
+    .expect("fake server starts");
+    ed.lsp.insert("rust", Arc::new(handle));
+
+    open_project(&mut ed, b.to_string_lossy().as_ref());
+    assert_eq!(
+        ed.project_manager.current_project.as_deref(),
+        Some("magma_switch_b"),
+        "the switch itself completes"
+    );
+
+    assert!(
+        ed.lsp.get("rust").is_none(),
+        "the outgoing project's language server must not survive the switch"
+    );
+    assert!(
+        ed.io.terminals.sessions.is_empty(),
+        "terminals follow the project out"
+    );
+    assert!(
+        ed.debug.active_session().is_none(),
+        "debug sessions follow the project out"
+    );
+    let a_file = a.join("a.rs").to_string_lossy().into_owned();
+    assert!(
+        ed.index.symbols_in_file(&a_file).is_empty(),
+        "project A's index records must not leak into project B queries"
+    );
+
+    let _ = std::fs::remove_dir_all(&a);
+    let _ = std::fs::remove_dir_all(&b);
+}
+
+#[test]
+fn session_persists_and_restores_split_panes() {
+    // PM-08: a split arrangement must survive close/reopen — one split
+    // per recorded fork, showing its buffer, focus untouched.
+    use kernel::state::id::WindowId;
+    let root = temp_project(
+        "project_open_splits",
+        &[("a.rs", "fn a() {}\n"), ("b.rs", "fn b() {}\n")],
+    );
+    let (mut ed, _bg, mut rx) = crate::tests::helpers::editor_with_background();
+    open_project(&mut ed, root.to_string_lossy().as_ref());
+    pump_until(&mut ed, &mut rx, |ed| {
+        !ed.project_manager.project.files.is_empty()
+    });
+
+    let a_path = root.join("a.rs").to_string_lossy().into_owned();
+    let b_path = root.join("b.rs").to_string_lossy().into_owned();
+    kernel::session::open_path(&mut ed, &a_path);
+    let a_key = ed.focused_buffer_key();
+    kernel::session::open_path(&mut ed, &b_path);
+    let b_key = ed.focused_buffer_key();
+
+    // Fork b into a second window (what a split creates).
+    ed.fork_view_for_window(WindowId(9), b_key);
+
+    let state = kernel::session::capture(&ed);
+    assert_eq!(
+        state.split_buffers,
+        vec![b_path.clone()],
+        "the forked buffer is recorded as a split"
+    );
+
+    // Simulate reopen: a fresh editor without a background pool restores
+    // the session synchronously inside open-project — no second call.
+    kernel::session::save(&ed, &root).expect("session write");
+    let mut ed2 = crate::tests::helpers::make_editor();
+    open_project(&mut ed2, root.to_string_lossy().as_ref());
+    assert_eq!(
+        ed2.window_views.len(),
+        1,
+        "the split fork exists again after restore"
+    );
+    let (_, view) = ed2.window_views.iter().next().unwrap();
+    assert_eq!(view.buffer.lock().unwrap().path.as_deref(), Some(b_path.as_str()));
+
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = a_key;
+}

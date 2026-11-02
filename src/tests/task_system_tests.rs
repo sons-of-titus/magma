@@ -329,3 +329,91 @@ fn cancelling_a_task_kills_its_grandchildren() {
     assert!(gone, "grandchild survived the task cancel — process group kill failed");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── Output pane tail cap ─────────────────────────────────────────────────────
+
+#[test]
+fn streamed_output_keeps_only_the_tail_of_a_huge_log() {
+    // The Output pane projection used to re-clone and re-parse the whole
+    // stream on every keystroke; the kernel now caps the pane's copy and
+    // bumps a generation counter the frontend can cache on.  Diagnostics
+    // parsing still sees the full RunCompleted payload — this cap is only
+    // the pane's view.
+    use crate::kernel::runtime::process_background_event;
+
+    let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
+    for i in 0..40_000 {
+        let ev = crate::kernel::runtime::BackgroundEvent::Task(
+            crate::kernel::task::Event::OutputLine {
+                id: 0,
+                stream: "stdout".to_string(),
+                line: format!("line-{i:06}-éé-{i:06}"),
+            },
+        );
+        process_background_event(&mut ed, ev);
+    }
+
+    let (_, output) = ed.last_task.expect("streamed output stored");
+    assert!(
+        output.len() <= 512 * 1024 + 4096,
+        "pane copy must be tail-capped, got {} bytes",
+        output.len()
+    );
+    assert!(
+        output.contains("line-039999"),
+        "the newest lines survive the cap"
+    );
+    assert!(
+        !output.contains("line-000000"),
+        "the oldest lines are dropped, not retained"
+    );
+    assert!(ed.last_task_generation > 0, "every write bumps the generation");
+}
+
+#[test]
+fn a_new_task_stream_resets_the_output_snapshot() {
+    use crate::kernel::runtime::process_background_event;
+
+    let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
+    let task = |name: &str| crate::kernel::task::Task {
+        id: 0,
+        name: name.to_string(),
+        command: String::new(),
+        args: vec![],
+        cwd: None,
+        environment: Default::default(),
+        dependencies: vec![],
+        status: crate::kernel::task::TaskStatus::Pending,
+        output: None,
+    };
+    ed.task_scheduler.tasks.insert(0, task("first"));
+    ed.task_scheduler.tasks.insert(1, task("second"));
+    for i in 0..10 {
+        process_background_event(
+            &mut ed,
+            crate::kernel::runtime::BackgroundEvent::Task(
+                crate::kernel::task::Event::OutputLine {
+                    id: 0,
+                    stream: "stdout".to_string(),
+                    line: format!("first-{i}"),
+                },
+            ),
+        );
+    }
+    for i in 0..10 {
+        process_background_event(
+            &mut ed,
+            crate::kernel::runtime::BackgroundEvent::Task(
+                crate::kernel::task::Event::OutputLine {
+                    id: 1,
+                    stream: "stdout".to_string(),
+                    line: format!("second-{i}"),
+                },
+            ),
+        );
+    }
+    let (name, output) = ed.last_task.expect("newest stream replaces the old one");
+    assert!(output.contains("second-9"), "new stream content present");
+    assert!(!output.contains("first-"), "old stream content is not concatenated");
+    assert_eq!(name, "second", "the pane shows the newest task's name");
+}

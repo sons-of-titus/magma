@@ -36,9 +36,10 @@ impl SearchQuery {
     }
 
     /// Next match at/after `from`: `(start, end)` byte offsets.
-    /// Regex mode materializes the buffer once per call — search is an
-    /// explicit action, not a per-keystroke path (the literal fast path
-    /// stays chunk-scanned).
+    /// Regex mode materializes the buffer tail once per call — the literal
+    /// fast path stays chunk-scanned.  (A regex assertion anchored to the
+    /// slice start sees the seam, not the real preceding text; that costs
+    /// one boundary case instead of a per-call document copy.)
     pub fn find_from(
         &self,
         buf: &crate::text_engine::Buffer,
@@ -49,8 +50,33 @@ impl SearchQuery {
                 .find_sub_from(from, needle)
                 .map(|at| (at, at + needle.len())),
             SearchQuery::Regex(re) => {
-                let text = buf.slice(0, buf.len());
-                re.find_at(&text, from).map(|m| (m.start(), m.end()))
+                let from = from.min(buf.len());
+                let text = buf.slice(from, buf.len());
+                re.find_at(&text, 0).map(|m| (from + m.start(), from + m.end()))
+            }
+        }
+    }
+
+    /// Last match strictly before `before`: `(start, end)` byte offsets.
+    /// The backward step of `find_from` — one bounded materialization per
+    /// call, no per-match rescans.
+    pub fn rfind_before(
+        &self,
+        buf: &crate::text_engine::Buffer,
+        before: usize,
+    ) -> Option<(usize, usize)> {
+        match self {
+            SearchQuery::Literal(needle) => buf
+                .rfind_sub_before(before, needle)
+                .map(|at| (at, at + needle.len())),
+            SearchQuery::Regex(re) => {
+                let before = before.min(buf.len());
+                let text = buf.slice(0, before);
+                let mut last = None;
+                for m in re.find_iter(&text) {
+                    last = Some((m.start(), m.end()));
+                }
+                last
             }
         }
     }
@@ -72,6 +98,9 @@ impl SearchQuery {
     }
 
     /// All matches `(start, end)` from `from`, capped at `limit`.
+    /// The regex path materializes the tail once and iterates in place —
+    /// one bounded copy per query, not one per match (the find bar runs
+    /// this on every keystroke).
     pub fn find_all(
         &self,
         buf: &crate::text_engine::Buffer,
@@ -79,13 +108,40 @@ impl SearchQuery {
         limit: usize,
     ) -> Vec<(usize, usize)> {
         let mut out = Vec::new();
-        let mut at = from;
-        while let Some((s, e)) = self.find_from(buf, at) {
-            if out.len() >= limit {
-                break;
+        match self {
+            SearchQuery::Literal(needle) => {
+                let mut at = from;
+                while out.len() < limit {
+                    match buf.find_sub_from(at, needle) {
+                        Some(s) => {
+                            out.push((s, s + needle.len()));
+                            at = s + needle.len();
+                        }
+                        None => break,
+                    }
+                }
             }
-            out.push((s, e));
-            at = if e > s { e } else { s + 1 }; // empty matches advance
+            SearchQuery::Regex(re) => {
+                let from = from.min(buf.len());
+                let text = buf.slice(from, buf.len());
+                let mut at = 0;
+                while out.len() < limit {
+                    match re.find_at(&text, at) {
+                        Some(m) => {
+                            out.push((from + m.start(), from + m.end()));
+                            at = if m.end() > m.start() {
+                                m.end()
+                            } else {
+                                m.start() + 1
+                            };
+                        }
+                        None => break,
+                    }
+                    if at > text.len() {
+                        break;
+                    }
+                }
+            }
         }
         out
     }
@@ -160,8 +216,12 @@ pub fn replace_next(
     let Some((start, end)) = found else {
         return Ok(false);
     };
-    view.replace(start, end, replacement);
-    view.set_cursor(start + replacement.len());
+    let expanded = {
+        let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+        query.expand(&buf.slice(start, end), replacement)
+    };
+    view.replace(start, end, &expanded);
+    view.set_cursor(start + expanded.len());
     ed.frame_dirty = true;
     Ok(true)
 }

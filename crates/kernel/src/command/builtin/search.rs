@@ -52,6 +52,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some((word, next)) = found {
                 editor.search.pattern = Some(word);
                 editor.search.forward = true;
+                editor.search.regex = false;
                 if let Some(np) = next
                     && let Some(view) = editor.view_of_buffer_mut(buf_id)
                 {
@@ -73,6 +74,7 @@ pub(super) fn register(editor: &mut Editor) {
             if let Some((word, prev)) = found {
                 editor.search.pattern = Some(word);
                 editor.search.forward = false;
+                editor.search.regex = false;
                 if let Some(np) = prev
                     && let Some(view) = editor.view_of_buffer_mut(buf_id)
                 {
@@ -87,17 +89,25 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn(
         "search-buffer",
         "Search the focused buffer for a pattern, highlighting every match and jumping to the first one at or after the cursor",
-        vec![crate::command::args::ArgSpec::new(
-            "pattern",
-            crate::command::args::ArgType::String,
-        )],
+        vec![
+            crate::command::args::ArgSpec::new(
+                "pattern",
+                crate::command::args::ArgType::String,
+            ),
+            crate::command::args::ArgSpec::optional(
+                "regex",
+                crate::command::args::ArgType::Boolean,
+                crate::command::args::ArgValue::Boolean(false),
+            ),
+        ],
         |editor, args| {
             let pattern = args
                 .get("pattern")
                 .and_then(|a| a.as_string())
                 .unwrap_or_default()
                 .to_string();
-            search_buffer(editor, &pattern, true)
+            let regex = args.get("regex").and_then(|a| a.as_bool()).unwrap_or(false);
+            search_buffer(editor, &pattern, true, regex)
         },
     );
 
@@ -126,10 +136,12 @@ pub(super) fn register(editor: &mut Editor) {
         ],
         |editor, args| {
             let (pattern, replacement) = search_args(args)?;
+            let regex = args.get("regex").and_then(|a| a.as_bool()).unwrap_or(false);
             let replaced =
-                super::search_query::replace_next(editor, pattern, replacement, false)?;
+                super::search_query::replace_next(editor, pattern, replacement, regex)?;
             if replaced {
-                search_buffer(editor, pattern, true)?;
+                let regex_mode = editor.search.regex;
+                search_buffer(editor, pattern, true, regex_mode)?;
             }
             Ok(())
         },
@@ -144,7 +156,8 @@ pub(super) fn register(editor: &mut Editor) {
         ],
         |editor, args| {
             let (pattern, replacement) = search_args(args)?;
-            let count = super::search_query::replace_all(editor, &pattern, &replacement, false)?;
+            let regex = args.get("regex").and_then(|a| a.as_bool()).unwrap_or(false);
+            let count = super::search_query::replace_all(editor, &pattern, &replacement, regex)?;
             if count == 0 {
                 editor.show_message(
                     crate::state::MessageKind::Info,
@@ -178,7 +191,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor_offset();
                 let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                 let word_start = buf
-                    .rfind_char_before(pos, |c| !is_word_char(c))
+                    .rfind_char_backwards(pos, |c| !is_word_char(c))
                     .map(|i| i + 1)
                     .unwrap_or(0);
                 let word_end = buf
@@ -231,7 +244,7 @@ pub(super) fn register(editor: &mut Editor) {
 
 /// The find-bar entry point: compile (smart case), highlight every match,
 /// jump to the first one at/after the cursor, and record the match count.
-fn search_buffer(editor: &mut Editor, pattern: &str, forward: bool) -> CommandResult {
+fn search_buffer(editor: &mut Editor, pattern: &str, forward: bool, regex_mode: bool) -> CommandResult {
     if pattern.is_empty() {
         editor.search.pattern = None;
         editor.search.last_match_count = 0;
@@ -242,7 +255,8 @@ fn search_buffer(editor: &mut Editor, pattern: &str, forward: bool) -> CommandRe
         emit_cursor_moved(editor);
         return Ok(());
     }
-    let query = crate::command::builtin::search_query::SearchQuery::compile(pattern, false)?;
+    let query = crate::command::builtin::search_query::SearchQuery::compile(pattern, regex_mode)?;
+    editor.search.regex = regex_mode;
     let buf_id = get_current_buffer_id(editor);
     let pos = editor
         .view_of_buffer(buf_id)
@@ -301,7 +315,7 @@ pub(super) fn word_and_next(
     let pos = view.cursor_offset();
     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
     let word_start = buf
-        .rfind_char_before(pos, |c| !is_word_char(c))
+        .rfind_char_backwards(pos, |c| !is_word_char(c))
         .map(|i| i + 1)
         .unwrap_or(0);
     let word_end = buf
@@ -321,29 +335,6 @@ pub(super) fn word_and_next(
     Some((word, occurrence))
 }
 
-fn highlight_all_matches(editor: &mut Editor, buf_id: usize, pattern: &str) {
-    let ranges = {
-        let Some(arc) = editor.buffers.get(buf_id) else {
-            return;
-        };
-        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ranges = Vec::new();
-        let mut from = 0usize;
-        let plen = pattern.len();
-        while let Some(at) = buf.find_sub_from(from, pattern) {
-            ranges.push((at, at + plen, "search".to_string()));
-            from = at + 1;
-            if ranges.len() > 10_000 {
-                break;
-            } // sanity cap
-        }
-        ranges
-    };
-    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-        view.set_highlights(ranges);
-    }
-}
-
 fn execute_search(editor: &mut Editor, pattern: &str, forward: bool) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
     let pos = {
@@ -360,37 +351,49 @@ fn execute_search(editor: &mut Editor, pattern: &str, forward: bool) -> CommandR
         return Ok(());
     }
 
-    highlight_all_matches(editor, buf_id, pattern);
+    // The same compiled query the find bar used — n/N step the highlighted
+    // match set (smart case and regex mode included), never a re-scan of it.
+    let regex_mode = editor.search.regex;
+    let query = crate::command::builtin::search_query::SearchQuery::compile(pattern, regex_mode)?;
 
-    let found = {
+    let (found, spans) = {
         let Some(arc) = editor.buffers.get(buf_id) else {
             return Ok(());
         };
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        if forward {
-            let start = (pos + 1).min(buf.len());
-            buf.find_sub_from(start, pattern).or_else(|| {
+        let found = if forward {
+            query.find_from(&buf, (pos + 1).min(buf.len())).or_else(|| {
                 // Wrap: the first match that ends before the restart point.
-                buf.find_sub_from(0, pattern)
-                    .filter(|at| at + pattern.len() < start)
+                query
+                    .find_from(&buf, 0)
+                    .filter(|(_, e)| *e < (pos + 1).min(buf.len()))
             })
         } else {
-            buf.rfind_sub_before(pos, pattern).or_else(|| {
+            query.rfind_before(&buf, pos).or_else(|| {
                 // Wrap: the last match at/after the cursor.
                 let mut last = None;
-                let mut from = pos;
-                while let Some(at) = buf.find_sub_from(from, pattern) {
-                    last = Some(at);
-                    from = at + 1;
+                let mut at = pos;
+                while let Some((s, e)) = query.find_from(&buf, at) {
+                    last = Some((s, e));
+                    at = if e > s { e } else { s + 1 };
                 }
                 last
             })
-        }
+        };
+        let spans = query.find_all(&buf, 0, 10_000);
+        (found, spans)
     };
-    if let Some(np) = found {
-        if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-            view.set_cursor(np);
+    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+        let ranges: Vec<(usize, usize, String)> = spans
+            .iter()
+            .map(|(s, e)| (*s, *e, "search".to_string()))
+            .collect();
+        view.set_highlights(ranges);
+        if let Some((start, _)) = found {
+            view.set_cursor(start);
         }
+    }
+    if found.is_some() {
         emit_cursor_moved(editor);
     }
     Ok(())

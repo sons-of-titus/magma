@@ -21,6 +21,9 @@ pub struct SearchState {
     pub index: usize,
     /// Matches of the last in-buffer search; the find bar shows "n of m".
     pub last_match_count: usize,
+    /// Whether the last search ran in regex mode — `n`/`N` must step the
+    /// same match set the find bar highlighted.
+    pub regex: bool,
 }
 
 impl SearchState {
@@ -35,5 +38,8 @@ impl SearchState {
         self.results = results;
         self.results.truncate(QUICKFIX_MAX_RESULTS);
         self.index = 0;
+        // A foreground set supersedes whatever generation was in flight;
+        // the shell's Find-panel projection caches on this counter.
+        self.generation += 1;
     }
 }

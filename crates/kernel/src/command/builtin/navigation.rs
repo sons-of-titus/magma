@@ -197,17 +197,16 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let line = current_line(view);
-                let target = line.saturating_sub(20);
-                let offset = view
-                    .buffer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .line_start_offset(target);
-                if let Some(offset) = offset {
-                    view.set_cursor(offset);
-                }
+            // The real viewport top, not a hardcoded 20-line guess.
+            let target = editor
+                .view_tree
+                .focused_window()
+                .and_then(|wid| editor.view_tree.window(wid))
+                .and_then(|pane| crate::render::frame::pane_scroll_top_synced(pane, buf_id));
+            if let Some(line) = target
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                move_to_line_col(view, line, 0);
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -220,17 +219,16 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let line = current_line(view);
-                let target = line.saturating_sub(10);
-                let offset = view
-                    .buffer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .line_start_offset(target);
-                if let Some(offset) = offset {
-                    view.set_cursor(offset);
-                }
+            let target = editor.view_tree.focused_window().and_then(|wid| {
+                editor.view_tree.window(wid).and_then(|pane| {
+                    let top = crate::render::frame::pane_scroll_top_synced(pane, buf_id)?;
+                    Some(top + pane.height as usize / 2)
+                })
+            });
+            if let Some(line) = target
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                move_to_line_col(view, line, 0);
             }
             emit_cursor_moved(editor);
             Ok(())
@@ -243,9 +241,22 @@ pub(super) fn register(editor: &mut Editor) {
         vec![],
         |editor, _args| {
             let buf_id = get_current_buffer_id(editor);
-            if let Some(view) = editor.view_of_buffer_mut(buf_id) {
-                let len = view.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
-                view.set_cursor(len);
+            let target = editor.view_tree.focused_window().and_then(|wid| {
+                editor.view_tree.window(wid).and_then(|pane| {
+                    let top = crate::render::frame::pane_scroll_top_synced(pane, buf_id)?;
+                    Some(top + (pane.height as usize).saturating_sub(1))
+                })
+            });
+            if let Some(line) = target
+                && let Some(view) = editor.view_of_buffer_mut(buf_id)
+            {
+                let last = view
+                    .buffer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .line_count()
+                    .saturating_sub(1);
+                move_to_line_col(view, line.min(last), 0);
             }
             emit_cursor_moved(editor);
             Ok(())

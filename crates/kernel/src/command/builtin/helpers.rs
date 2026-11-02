@@ -15,6 +15,23 @@ pub(super) fn get_current_buffer_id(editor: &Editor) -> usize {
 
 pub(super) fn emit_cursor_moved(editor: &mut Editor) {
     let buf_id = get_current_buffer_id(editor);
+    // Navigation that lands inside a closed fold opens it — the caret must
+    // never sit on an invisible row.
+    if let Some(view) = editor.view_of_buffer_mut(buf_id) {
+        let offset = view.cursor.offset;
+        let inside: Vec<(usize, usize)> = view
+            .folds
+            .iter()
+            .filter(|&&(s, e)| s <= offset && offset < e)
+            .copied()
+            .collect();
+        if !inside.is_empty() {
+            for (s, e) in inside {
+                view.remove_fold(s, e);
+            }
+            editor.frame_dirty = true;
+        }
+    }
     let cursor = editor
         .view_of_buffer(buf_id)
         .map(|v| v.cursor.offset.to_string());
@@ -36,14 +53,24 @@ pub(super) fn current_col(view: &BufferView) -> usize {
 }
 
 pub(super) fn move_to_line_col(view: &mut BufferView, line: usize, col: usize) {
-    let (offset, line_len) = {
+    let target = {
         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-        let offset = buf.line_start_offset(line);
-        let line_text = buf.line(line).unwrap_or_default();
-        (offset, line_text.len())
+        // `col` is a char count (the cursor's logical column); the byte
+        // target is the char-th boundary into the line, clamped to the
+        // line's end.  Mixing the two shifted the cursor left on every
+        // multibyte target line and could land mid-char.
+        buf.line_start_offset(line).map(|start| {
+            let line_text = buf.line(line).unwrap_or_default();
+            let byte_col = line_text
+                .char_indices()
+                .nth(col)
+                .map(|(i, _)| i)
+                .unwrap_or(line_text.len());
+            start + byte_col
+        })
     };
-    if let Some(offset) = offset {
-        view.set_cursor(offset + col.min(line_len));
+    if let Some(offset) = target {
+        view.set_cursor(offset);
     }
 }
 
@@ -51,17 +78,28 @@ pub(super) fn move_cursor(editor: &mut Editor, delta: isize) {
     let buf_id = get_current_buffer_id(editor);
     if let Some(view) = editor.view_of_buffer_mut(buf_id) {
         let pos = view.cursor.offset;
+        // Grapheme stepping over a bounded window: one small rope slice per
+        // keypress (clusters longer than the window degrade to char steps),
+        // never a document-sized copy — and the cursor never lands inside
+        // a combining cluster the renderer treats as one cell.
+        const GRAPHEME_WINDOW: usize = 64;
         let new_pos = {
             let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            let len = buf.len();
             if delta < 0 {
-                let text = buf.slice(0, pos);
-                text.chars().last().map(|c| pos - c.len_utf8()).unwrap_or(0)
+                if pos == 0 {
+                    0
+                } else {
+                    let from = pos.saturating_sub(GRAPHEME_WINDOW);
+                    let window = buf.slice(from, pos);
+                    from + crate::text_engine::text_layout::prev_grapheme(&window, window.len())
+                }
+            } else if pos >= len {
+                len
             } else {
-                let text = buf.slice(pos, buf.len());
-                text.chars()
-                    .next()
-                    .map(|c| pos + c.len_utf8())
-                    .unwrap_or(buf.len())
+                let to = (pos + GRAPHEME_WINDOW).min(len);
+                let window = buf.slice(pos, to);
+                pos + crate::text_engine::text_layout::next_grapheme(&window, 0)
             }
         };
         view.set_cursor(new_pos);

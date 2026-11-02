@@ -76,10 +76,9 @@ pub(super) fn register(editor: &mut Editor) {
                 if pos > 0 {
                     let start = {
                         let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                        // Rope scan: the start of the char before the cursor,
-                        // no document-prefix copy.
-                        buf.rfind_char_before(pos, |_| true)
-                            .unwrap_or(pos.saturating_sub(1))
+                        // Rope boundary lookup: the start of the char before
+                        // the cursor, O(log n), no scan and no prefix walk.
+                        buf.prev_char_boundary(pos)
                     };
                     view.delete(start, pos);
                 }
@@ -134,8 +133,8 @@ pub(super) fn register(editor: &mut Editor) {
                     } else {
                         ch.to_string()
                     };
-                    view.delete(pos, end);
-                    view.insert(pos, &replacement);
+                    // One replace transaction: one undo step, one event.
+                    view.replace(pos, end, &replacement);
                 }
             }
             emit_cursor_moved(editor);
@@ -166,8 +165,7 @@ pub(super) fn register(editor: &mut Editor) {
                 if let (Some(eol), Some(next_start)) = (eol, next_start)
                     && line + 1 < line_count
                 {
-                    view.delete(eol, next_start);
-                    view.insert(eol, " ");
+                    view.replace(eol, next_start, " ");
                     view.set_cursor(eol);
                 }
             }
@@ -236,15 +234,16 @@ pub(super) fn register(editor: &mut Editor) {
                 }
                 let word_start = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    // Rope scans: skip the trailing non-word run, then the
-                    // word run before it.
-                    match buf.rfind_char_before(pos, is_word_char) {
+                    // Backward rope scans: skip the trailing non-word run,
+                    // then the word run before it — cost is the distance to
+                    // the word start, never the prefix length.
+                    match buf.rfind_char_backwards(pos, is_word_char) {
                         None => {
                             // Nothing but non-word chars: one char goes.
-                            buf.rfind_char_before(pos, |_| true).unwrap_or(pos)
+                            buf.prev_char_boundary(pos)
                         }
                         Some(last_word) => buf
-                            .rfind_char_before(last_word, |c| !is_word_char(c))
+                            .rfind_char_backwards(last_word, |c| !is_word_char(c))
                             .map(|i| i + 1)
                             .unwrap_or(0),
                     }
@@ -299,8 +298,7 @@ pub(super) fn register(editor: &mut Editor) {
                         })
                         .unwrap_or_else(|| ch.to_string());
                     let end = pos + ch.len_utf8();
-                    view.delete(pos, end);
-                    view.insert(pos, &toggled);
+                    view.replace(pos, end, &toggled);
                 }
             }
             emit_cursor_moved(editor);
@@ -324,8 +322,7 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(ch) = ch {
                     let lower = ch.to_lowercase().to_string();
                     let end = pos + ch.len_utf8();
-                    view.delete(pos, end);
-                    view.insert(pos, &lower);
+                    view.replace(pos, end, &lower);
                 }
             }
             emit_cursor_moved(editor);
@@ -349,8 +346,7 @@ pub(super) fn register(editor: &mut Editor) {
                 if let Some(ch) = ch {
                     let upper = ch.to_uppercase().to_string();
                     let end = pos + ch.len_utf8();
-                    view.delete(pos, end);
-                    view.insert(pos, &upper);
+                    view.replace(pos, end, &upper);
                 }
             }
             emit_cursor_moved(editor);
@@ -442,12 +438,12 @@ fn adjust_number(editor: &mut Editor, delta: isize) -> CommandResult {
     let buf_id = get_current_buffer_id(editor);
     if let Some(view) = editor.view_of_buffer(buf_id) {
         let pos = view.cursor.offset;
-        // Rope scans: locate the number at/around the cursor without a
-        // document copy.
+        // Backward rope scans: locate the number at/around the cursor —
+        // cost is the number's length, never the prefix.
         let (num_start, num_text) = {
             let b = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
             let num_start = b
-                .rfind_char_before(pos, |c| !(c.is_ascii_digit() || c == '-'))
+                .rfind_char_backwards(pos, |c| !(c.is_ascii_digit() || c == '-'))
                 .map(|i| i + 1)
                 .unwrap_or(0);
             let num_end = b

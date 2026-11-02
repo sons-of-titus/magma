@@ -18,14 +18,18 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let (new_pos, buf_len) = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    let np = match buf.find_char_from(pos, is_word_char) {
-                        Some(ws) => {
-                            let we = buf
-                                .find_char_from(ws, |c| !is_word_char(c))
-                                .unwrap_or(buf.len());
-                            buf.find_char_from(we, is_word_char).unwrap_or(buf.len())
-                        }
-                        None => buf.len(),
+                    // Word-wise right: next word start.  From inside a
+                    // word that is the start after this word ends; from a
+                    // delimiter it is the next word start directly — the
+                    // old start→end→next-start chain hopped one word too
+                    // far whenever the cursor sat on whitespace.
+                    let np = if buf.char_at(pos).map(is_word_char).unwrap_or(false) {
+                        let we = buf
+                            .find_char_from(pos, |c| !is_word_char(c))
+                            .unwrap_or(buf.len());
+                        buf.find_char_from(we, is_word_char).unwrap_or(buf.len())
+                    } else {
+                        buf.find_char_from(pos, is_word_char).unwrap_or(buf.len())
                     };
                     (np, buf.len())
                 };
@@ -49,12 +53,22 @@ pub(super) fn register(editor: &mut Editor) {
                 }
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    let Some(last_word) = buf.rfind_char_before(pos, is_word_char) else {
-                        return Ok(());
-                    };
-                    buf.rfind_char_before(last_word + 1, |c| !is_word_char(c))
-                        .map(|i| i + 1)
-                        .unwrap_or(0)
+                    // Word-wise left: the cursor already inside a word goes
+                    // to that word's start; from a delimiter it skips the
+                    // non-word run and lands on the previous word's start.
+                    if buf.char_at(pos.saturating_sub(1)).map(is_word_char).unwrap_or(false) {
+                        buf.rfind_char_backwards(pos, |c| !is_word_char(c))
+                            .map(|i| i + 1)
+                            .unwrap_or(0)
+                    } else {
+                        match buf.rfind_char_backwards(pos, is_word_char) {
+                            Some(last_word) => buf
+                                .rfind_char_backwards(last_word + 1, |c| !is_word_char(c))
+                                .map(|i| i + 1)
+                                .unwrap_or(0),
+                            None => 0,
+                        }
+                    }
                 };
                 view.set_cursor(new_pos);
             }
@@ -99,7 +113,11 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    buf.find_char_from(pos, |c| c == ch)
+                    // Strictly forward: a target sitting under the cursor
+                    // must not match itself (vim `f` semantics; `t` relies
+                    // on this too).
+                    let skip = buf.char_at(pos).map(|c| c.len_utf8()).unwrap_or(0);
+                    buf.find_char_from(pos + skip, |c| c == ch)
                 };
                 if let Some(np) = new_pos {
                     view.set_cursor(np);
@@ -126,7 +144,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let pos = view.cursor.offset;
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
-                    buf.rfind_char_before(pos, |c| c == ch)
+                    buf.rfind_char_backwards(pos, |c| c == ch)
                 };
                 if let Some(np) = new_pos {
                     view.set_cursor(np);
@@ -157,7 +175,7 @@ pub(super) fn register(editor: &mut Editor) {
                     // preceding char (which may be multibyte).
                     buf.find_char_from(pos.saturating_sub(0), |c| c == ch)
                         .filter(|&at| at > pos)
-                        .and_then(|at| buf.rfind_char_before(at, |_| true))
+                        .and_then(|at| buf.rfind_char_backwards(at, |_| true))
                 };
                 if let Some(np) = new_pos {
                     view.set_cursor(np);
@@ -185,7 +203,7 @@ pub(super) fn register(editor: &mut Editor) {
                 let new_pos = {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // Stop one char after the target (multibyte-aware).
-                    buf.rfind_char_before(pos, |c| c == ch)
+                    buf.rfind_char_backwards(pos, |c| c == ch)
                         .map(|at| at + ch.len_utf8())
                         .filter(|next| *next < pos)
                 };
@@ -457,7 +475,7 @@ pub(super) fn register(editor: &mut Editor) {
                     let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
                     // Rope scans: the closest sentence terminator before the
                     // cursor, then past its trailing punctuation/space run.
-                    buf.rfind_char_before(pos, |c| c == '.' || c == '!' || c == '?')
+                    buf.rfind_char_backwards(pos, |c| c == '.' || c == '!' || c == '?')
                         .map(|term| {
                             buf.find_char_from(term, |c| {
                                 c != '.' && c != '!' && c != '?' && c != ' ' && c != '\t'

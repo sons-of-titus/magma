@@ -1,43 +1,16 @@
-//! Surface → Slint image: the editor pane's presentation path.
+//! Grid → RGBA rasterization and the content signatures that gate it.
 //!
-//! The kernel renders editor semantics into a character grid.  This module
-//! turns that grid into RGBA pixels using the glyph atlas, then hands them to
-//! Slint as an `Image`.  No widget toolkit types reach the kernel.
+//! The editor pane blits one atlas cell per grid cell; the terminal blit
+//! paints styled column runs.  `surface_signature` fingerprints the grid so
+//! callers can skip the blit when nothing visible changed — it must hash
+//! every style bit the blit renders, or attribute-only updates never
+//! repaint.
 
 use kernel::render::gpu_atlas::{GlyphUv, GpuGlyphAtlas};
 use kernel::render::surface::Surface;
 
+use super::{cell_size, MINIMAP_W};
 use crate::theme::{Rgb, TerminalPalette};
-
-pub const CHAR_W: u32 = 7;
-pub const LINE_H: u32 = 17;
-
-/// Terminal dock inner height: the dock is 200px, its header 26px.
-pub const TERMINAL_DOCK_BODY_H: f32 = 174.0;
-pub const TERMINAL_TABS_H: f32 = 26.0;
-
-/// Grid for the terminal body.  The dock spans the window width; the session
-/// tab strip is carved out of its height, and the body is rounded down to
-/// whole rows so the rendered texture is never scaled.
-pub fn terminal_grid_size(logical_w: f32, sessions: usize, cell_w: u32, cell_h: u32) -> (u32, u32) {
-    let tabs = if sessions > 0 { TERMINAL_TABS_H } else { 0.0 };
-    let cell_w = cell_w.max(1) as f32;
-    let cell_h = cell_h.max(1) as f32;
-    let body = (TERMINAL_DOCK_BODY_H - tabs).max(cell_h);
-    (
-        (logical_w / cell_w).floor().max(1.0) as u32,
-        (body / cell_h).floor().max(1.0) as u32,
-    )
-}
-
-/// Device-pixel size of one grid cell at `scale`.
-pub fn cell_size(cell_w: u32, cell_h: u32, scale: f32) -> (u32, u32) {
-    let scale = if scale < 1.0 { 1.0 } else { scale };
-    (
-        (cell_w.max(1) as f32 * scale).round().max(1.0) as u32,
-        (cell_h.max(1) as f32 * scale).round().max(1.0) as u32,
-    )
-}
 
 /// Coverage of one on-screen pixel from the glyph's atlas cell.  A cell
 /// rasterized at the screen's exact pixel size is a straight texel copy; a
@@ -108,6 +81,11 @@ pub fn blit_rgba(
                 fg = fg.saturating_add(24);
                 fb = fb.saturating_add(24);
             }
+            if cell.style.dim {
+                fr /= 2;
+                fg /= 2;
+                fb /= 2;
+            }
             // Control chars are row terminators, not visible glyphs; painting
             // them through the box fallback would leave a marker at every
             // line end.  Missing visible glyphs (CJK) still get the box.
@@ -124,62 +102,78 @@ pub fn blit_rgba(
             for py in 0..cell_h {
                 let row = (cy as u32 * cell_h + py) * w + x0;
                 let out = &mut dst[(row * 4) as usize..((row + cell_w) * 4) as usize];
-                let Some(uv) = glyph else {
-                    // SAFETY: out has cell_w*4 bytes.
-                    unsafe {
-                        let mut p = out.as_mut_ptr();
-                        let end = p.add(out.len());
-                        while p < end {
-                            *p = br;
-                            *p.add(1) = bg;
-                            *p.add(2) = bb;
-                            *p.add(3) = 255;
-                            p = p.add(4);
+                match glyph {
+                    None => {
+                        for o in out.chunks_exact_mut(4) {
+                            o[0] = br;
+                            o[1] = bg;
+                            o[2] = bb;
+                            o[3] = 255;
                         }
                     }
-                    continue;
-                };
-
-                if uv.w == cell_w && uv.h == cell_h {
-                    // Atlas cell == screen cell: a direct texel row copy.
-                    let src_row = (((uv.y + py) * aw + uv.x) * 4 + 3) as usize;
-                    // SAFETY: atlas cell and screen cell dimensions match, so the
-                    // src and dst ranges are in bounds.
-                    unsafe {
-                        let mut src_ptr = atlas.atlas_pixels.as_ptr().add(src_row);
-                        let mut dst_ptr = out.as_mut_ptr();
-                        for _ in 0..cell_w {
-                            let a = *src_ptr;
-                            if a == 0 {
-                                *dst_ptr = br;
-                                *dst_ptr.add(1) = bg;
-                                *dst_ptr.add(2) = bb;
-                                *dst_ptr.add(3) = 255;
-                            } else if a == 255 {
-                                *dst_ptr = fr;
-                                *dst_ptr.add(1) = fg;
-                                *dst_ptr.add(2) = fb;
-                                *dst_ptr.add(3) = 255;
-                            } else {
-                                *dst_ptr = blend(fr, br, a);
-                                *dst_ptr.add(1) = blend(fg, bg, a);
-                                *dst_ptr.add(2) = blend(fb, bb, a);
-                                *dst_ptr.add(3) = 255;
-                            }
-                            src_ptr = src_ptr.add(4);
-                            dst_ptr = dst_ptr.add(4);
-                        }
-                    }
-                } else {
-                    for (px, o) in out.chunks_exact_mut(4).enumerate() {
-                        let a = glyph_alpha(atlas, uv, px as u32, py, cell_w, cell_h);
-                        // SAFETY: `o` is a 4-byte chunk from chunks_exact_mut(4).
+                    Some(uv) if uv.w == cell_w && uv.h == cell_h && !cell.style.italic => {
+                        // Atlas cell == screen cell: a direct texel row copy.
+                        let src_row = (((uv.y + py) * aw + uv.x) * 4 + 3) as usize;
+                        // SAFETY: out has cell_w*4 bytes and the atlas range is in bounds.
                         unsafe {
-                            *o.get_unchecked_mut(0) = blend(fr, br, a);
-                            *o.get_unchecked_mut(1) = blend(fg, bg, a);
-                            *o.get_unchecked_mut(2) = blend(fb, bb, a);
-                            *o.get_unchecked_mut(3) = 255;
+                            let mut src_ptr = atlas.atlas_pixels.as_ptr().add(src_row);
+                            let mut dst_ptr = out.as_mut_ptr();
+                            for _ in 0..cell_w {
+                                let a = *src_ptr;
+                                if a == 0 {
+                                    *dst_ptr = br;
+                                    *dst_ptr.add(1) = bg;
+                                    *dst_ptr.add(2) = bb;
+                                    *dst_ptr.add(3) = 255;
+                                } else if a == 255 {
+                                    *dst_ptr = fr;
+                                    *dst_ptr.add(1) = fg;
+                                    *dst_ptr.add(2) = fb;
+                                    *dst_ptr.add(3) = 255;
+                                } else {
+                                    *dst_ptr = blend(fr, br, a);
+                                    *dst_ptr.add(1) = blend(fg, bg, a);
+                                    *dst_ptr.add(2) = blend(fb, bb, a);
+                                    *dst_ptr.add(3) = 255;
+                                }
+                                src_ptr = src_ptr.add(4);
+                                dst_ptr = dst_ptr.add(4);
+                            }
                         }
+                    }
+                    Some(uv) => {
+                        // Italic fakes the oblique by shearing the sample:
+                        // the top of the cell reads ink from further left,
+                        // which slants the glyph forward without a second
+                        // rasterization of the face.
+                        for (px, o) in out.chunks_exact_mut(4).enumerate() {
+                            let alpha = if cell.style.italic {
+                                let shift = ((cell_h - 1 - py) / 4).min(cell_w - 1);
+                                if (px as u32) < shift {
+                                    0
+                                } else {
+                                    glyph_alpha(atlas, uv, px as u32 - shift, py, cell_w, cell_h)
+                                }
+                            } else {
+                                glyph_alpha(atlas, uv, px as u32, py, cell_w, cell_h)
+                            };
+                            o[0] = blend(fr, br, alpha);
+                            o[1] = blend(fg, bg, alpha);
+                            o[2] = blend(fb, bb, alpha);
+                            o[3] = 255;
+                        }
+                    }
+                }
+                // Line attributes draw over the glyph ink: underline on the
+                // cell's bottom row, strike through its middle.
+                if (cell.style.underline && py + 1 == cell_h)
+                    || (cell.style.strikethrough && py == cell_h / 2)
+                {
+                    for o in out.chunks_exact_mut(4) {
+                        o[0] = fr;
+                        o[1] = fg;
+                        o[2] = fb;
+                        o[3] = 255;
                     }
                 }
             }
@@ -247,91 +241,25 @@ pub fn surface_signature(surface: &Surface) -> u64 {
             // SAFETY: (x, y) is within surface dimensions.
             let c = unsafe { cells.get_unchecked((y as usize) * surf_w + (x as usize)) };
             feed(c.ch as u64);
+            // Every style bit the blit renders must reach the hash, or an
+            // attribute-only change (dim/italic/underline/strike) reuses a
+            // stale frame.
             feed(
-                u32::from_be_bytes([c.style.fg.0, c.style.fg.1, c.style.fg.2, c.style.bold as u8])
-                    as u64,
+                u32::from_be_bytes([
+                    c.style.fg.0,
+                    c.style.fg.1,
+                    c.style.fg.2,
+                    c.style.bold as u8
+                        | (c.style.italic as u8) << 1
+                        | (c.style.underline as u8) << 2
+                        | (c.style.strikethrough as u8) << 3
+                        | (c.style.dim as u8) << 4,
+                ]) as u64,
             );
             feed(u32::from_be_bytes([c.style.bg.0, c.style.bg.1, c.style.bg.2, 0]) as u64);
         }
     }
     h
-}
-
-/// Measure the tight cell size (logical pixels) for a font at `font_size`.
-pub fn measure_cell(font_bytes: &[u8], font_size: f32) -> (u32, u32) {
-    use ab_glyph::{Font as _, FontRef, PxScale, ScaleFont as _};
-    let Ok(font) = FontRef::try_from_slice(font_bytes) else {
-        return (CHAR_W, LINE_H);
-    };
-    let scaled = font.as_scaled(PxScale::from(font_size));
-    let gid = scaled.glyph_id('M');
-    let adv = scaled.h_advance(gid);
-    let cell_w = adv.ceil().max(1.0) as u32;
-    let glyph_h = (scaled.ascent() - scaled.descent()).ceil().max(1.0) as u32;
-    let cell_h = ((font_size * 1.15).ceil() as u32).max(glyph_h);
-    (cell_w.max(4), cell_h)
-}
-
-/// Caret geometry from font metrics only: `(cap-line inset, beam height)`
-/// in logical pixels.  The beam runs from the cap line down to the baseline
-/// (a capital's ink span).  Serves as the pre-first-frame fallback; once
-/// the atlas exists, [`atlas_ink_span_px`] measures the real ink and is
-/// exact.
-pub fn caret_metrics_fallback(font_bytes: &[u8], font_size: f32) -> (f32, f32) {
-    use ab_glyph::{Font as _, FontRef, PxScale, ScaleFont as _};
-    let Ok(font) = FontRef::try_from_slice(font_bytes) else {
-        return (0.0, font_size);
-    };
-    let scale = PxScale::from(font_size);
-    let scaled = font.as_scaled(scale);
-    let cap = scaled
-        .glyph_id('M')
-        .with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
-    let Some(outline) = font.outline_glyph(cap) else {
-        return (0.0, font_size);
-    };
-    let inset = (scaled.ascent() + outline.px_bounds().min.y).max(0.0);
-    (inset, -outline.px_bounds().min.y)
-}
-
-/// The vertical ink span of a capital letter inside its atlas cell:
-/// `(first ink row, last ink row)` in device pixels.  Measured from the
-/// same rasterized pixels the text is blitted from, so it *is* the glyph
-/// geometry on screen — font-metric math can miss it by a pixel because
-/// the rasterizer quantizes outlines at device scale.
-pub fn atlas_ink_span_px(atlas: &GpuGlyphAtlas) -> Option<(u32, u32)> {
-    let uv = atlas.glyphs.get(&'M')?;
-    let covered = |py: u32| {
-        (0..uv.w).any(|px| {
-            atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4) as usize] > 0
-        })
-    };
-    let top = (0..uv.h).find(|&py| covered(py))?;
-    let bottom = (0..uv.h).rev().find(|&py| covered(py))?;
-    Some((top, bottom))
-}
-
-/// The logical size one grid cell actually occupies on screen: the atlas and
-/// the pane blit work in whole device pixels (`round(cell * ppx)`), so a
-/// non-integral `cell × ppx` leaves sub-pixel slack that accumulates down
-/// the screen.  Overlays that must land on a glyph row compute their
-/// geometry from these units, never from the raw integer grid.
-pub fn logical_cell(cell_w: u32, cell_h: u32, ppx: f32) -> (f32, f32) {
-    let (dw, dh) = cell_size(cell_w, cell_h, ppx);
-    let ppx = ppx.max(1.0);
-    (dw as f32 / ppx, dh as f32 / ppx)
-}
-
-pub const MINIMAP_W: u32 = 90;
-
-/// Resolve a terminal color against the active theme's console palette.
-fn term_color(c: kernel::terminal::Color, palette: &TerminalPalette, default: Rgb) -> Rgb {
-    use kernel::terminal::Color;
-    match c {
-        Color::Default => default,
-        Color::Rgb(r, g, b) => (r, g, b),
-        Color::Indexed(i) => palette.ansi[(i as usize).min(15)],
-    }
 }
 
 pub fn blit_minimap(
@@ -661,6 +589,16 @@ pub fn blit_terminal_rgba(
     (dst, w, h)
 }
 
+/// Resolve a terminal color against the active theme's console palette.
+fn term_color(c: kernel::terminal::Color, palette: &TerminalPalette, default: Rgb) -> Rgb {
+    use kernel::terminal::Color;
+    match c {
+        Color::Default => default,
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Indexed(i) => palette.ansi[(i as usize).min(15)],
+    }
+}
+
 /// `fg * a/255 + bg * (1 - a/255)` without an integer division in the
 /// per-pixel loop.  `x <= 255 * 255`, so the 16.16 multiply-and-round is
 /// exact for this range.
@@ -676,125 +614,25 @@ mod tests {
     use super::*;
     use kernel::render::surface::Style;
 
-    const FONT: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    const FONT: &[u8] = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
 
-    #[test]
-    fn gutter_digits_and_text_share_surface_rows() {
-        use kernel::render::frame::render_frame_with;
-        use kernel::render::surface::Surface;
-
-        let mut ed =
-            kernel::state::Editor::new(Box::new(kernel::storage::disk::DiskFileSystem::new()));
-        kernel::command::builtin::register_builtin_commands(&mut ed);
-        let key = ed.create_buffer_from_str(
-            "lib.rs",
-            "fn main() {\n    let alpha = 1;\n    let beta = 2;\n}",
-        );
-        if let Some(win) = ed.view_tree.focused_window_mut() {
-            win.buffer_id = Some(key);
-        }
-        ed.view_tree.resize(60, 8);
-        let mut surface = Surface::new(60, 8);
-        render_frame_with(&ed, &mut surface, kernel::render::CursorPaint::Skip);
-
-        let row_of = |want: &str, x_range: std::ops::Range<u16>| {
-            (0..surface.height).find(|&y| {
-                (x_range.clone())
-                    .any(|x| surface.cell(x, y).map(|c| c.ch.to_string()) == Some(want.to_string()))
-            })
-        };
-        let digit_row = row_of("1", 0..8);
-        let f_row = row_of("f", 8..30);
-        println!("digit '1' row {digit_row:?}, 'f' row {f_row:?}");
-        for y in 0..surface.height {
-            let mut line = String::new();
-            for x in 0..surface.width {
-                line.push(surface.cell(x, y).map(|c| c.ch).unwrap_or('?'));
-            }
-            println!("{y:2}|{line}|");
-        }
-        assert_eq!(
-            digit_row, f_row,
-            "gutter digit and its line's text must share a row"
-        );
+    fn meas() -> (u32, u32) {
+        super::super::measure_cell(FONT, 15.0)
     }
 
-    /// First atlas row of `ch`'s cell carrying any coverage — the exact
-    /// pixel row where the glyph's ink starts on screen.
-    fn atlas_ink_top(atlas: &GpuGlyphAtlas, ch: char) -> u32 {
-        let uv = atlas.glyphs.get(&ch).expect("glyph in atlas charset");
-        (0..uv.h)
-            .find(|&py| {
-                (0..uv.w).any(|px| {
-                    atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4) as usize]
-                        > 0
-                })
-            })
-            .expect("glyph has visible pixels")
-    }
-
-    #[test]
-    fn measured_ink_span_covers_exactly_the_capital_ink() {
-        // atlas_ink_span_px reads the same pixels the text blits from: the
-        // beam built on it must start on the first ink row, end on the last,
-        // and stay on the device grid, at every size and scale.
-        for size in [12.0_f32, 15.0, 17.5] {
-            for ppx in [1.0_f32, 2.0] {
-                let (cell_w, cell_h) = measure_cell(FONT, size);
-                let mut atlas = GpuGlyphAtlas::new();
-                atlas.rasterize_for_grid(FONT, size, ppx, cell_w, cell_h);
-                let (top, bottom) = atlas_ink_span_px(&atlas).expect("'M' has ink");
-                assert_eq!(top, atlas_ink_top(&atlas, 'M'));
-                let (inset, beam) = (top as f32 / ppx, (bottom - top + 1) as f32 / ppx);
-                assert_eq!(inset * ppx, top as f32, "inset stays on the device grid");
-                assert_eq!(beam * ppx, (bottom - top + 1) as f32);
-                assert!(
-                    inset + beam <= cell_h as f32,
-                    "size {size} ppx {ppx}: beam must fit inside the cell"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn font_metric_fallback_stays_within_a_pixel_of_the_real_ink() {
-        // Before the first atlas exists the caret uses font-math; the cap
-        // line must never be off by more than a device pixel or the beam
-        // visibly floats until the first frame.
-        for size in [12.0_f32, 15.0, 17.5] {
-            let (cell_w, cell_h) = measure_cell(FONT, size);
-            let mut atlas = GpuGlyphAtlas::new();
-            atlas.rasterize_for_grid(FONT, size, 1.0, cell_w, cell_h);
-            let (ink_top, ink_bottom) = atlas_ink_span_px(&atlas).expect("'M' has ink");
-            let (inset, beam) = caret_metrics_fallback(FONT, size);
-            assert!(
-                (inset - ink_top as f32).abs() <= 1.0,
-                "size {size}: fallback inset {inset} vs ink top {ink_top}"
-            );
-            assert!(
-                ((inset + beam) - (ink_bottom as f32 + 1.0)).abs() <= 1.0,
-                "size {size}: fallback beam bottom {} vs ink bottom {ink_bottom}",
-                inset + beam
-            );
-        }
-    }
-
-    #[test]
-    fn logical_cell_round_trips_through_device_pixels() {
-        for ppx in [1.0_f32, 2.0, 1.5, 2.25] {
-            let (lw, lh) = logical_cell(9, 17, ppx);
-            let (dw, dh) = cell_size(9, 17, ppx);
-            assert_eq!(lw * ppx, dw as f32, "width at ppx {ppx}");
-            assert_eq!(lh * ppx, dh as f32, "height at ppx {ppx}");
-        }
+    fn atlas_with_font() -> GpuGlyphAtlas {
+        let mut atlas = GpuGlyphAtlas::new();
+        let (cw, ch) = meas();
+        atlas.rasterize_for_grid(FONT, 15.0, 1.0, cw, ch);
+        atlas
     }
 
     #[test]
     fn hidpi_blit_doubles_the_output_grid() {
         let surface = Surface::new(3, 2);
         let atlas = GpuGlyphAtlas::new();
-        let (rgba, w, h) = blit_rgba(&surface, &atlas, CHAR_W, LINE_H, 2.0);
-        assert_eq!((w, h), (3 * CHAR_W * 2, 2 * LINE_H * 2));
+        let (rgba, w, h) = blit_rgba(&surface, &atlas, 7, 17, 2.0);
+        assert_eq!((w, h), (3 * 7 * 2, 2 * 17 * 2));
         assert_eq!(rgba.len(), (w * h * 4) as usize);
     }
 
@@ -814,8 +652,8 @@ mod tests {
         );
 
         let atlas = GpuGlyphAtlas::new();
-        let (rgba, w, h) = blit_rgba(&surface, &atlas, CHAR_W, LINE_H, 1.0);
-        assert_eq!((w, h), (CHAR_W, LINE_H));
+        let (rgba, w, h) = blit_rgba(&surface, &atlas, 7, 17, 1.0);
+        assert_eq!((w, h), (7, 17));
         for px in rgba.chunks_exact(4) {
             assert_eq!(
                 &px[..3],
@@ -841,15 +679,178 @@ mod tests {
         );
 
         let atlas = GpuGlyphAtlas::new();
-        let (rgba, _, _) = blit_rgba(&surface, &atlas, CHAR_W, LINE_H, 1.0);
+        let (rgba, _, _) = blit_rgba(&surface, &atlas, 7, 17, 1.0);
         assert_eq!(&rgba[..3], &[fg.0, fg.1, fg.2]);
         assert_eq!(rgba[3], 255);
     }
 
     #[test]
+    fn signature_distinguishes_every_style_bit() {
+        // An attribute-only change (comment goes dim, code gets underlined,
+        // dead code is struck) must invalidate the signature even when glyph
+        // and colors are identical.
+        let style = |flags: fn(&mut Style)| {
+            let mut s = Style {
+                fg: (200, 200, 200),
+                bg: (0, 0, 0),
+                ..Style::default()
+            };
+            flags(&mut s);
+            s
+        };
+        let sig = |s: Style| {
+            let mut surface = Surface::new(2, 1);
+            surface.set_cell(0, 0, 'x', Some(s.clone()));
+            surface.set_cell(1, 0, 'y', Some(s));
+            surface_signature(&surface)
+        };
+        let base = sig(style(|_| {}));
+        assert_ne!(base, sig(style(|s| s.dim = true)));
+        assert_ne!(base, sig(style(|s| s.italic = true)));
+        assert_ne!(base, sig(style(|s| s.underline = true)));
+        assert_ne!(base, sig(style(|s| s.strikethrough = true)));
+        assert_ne!(base, sig(style(|s| s.bold = true)));
+    }
+
+    #[test]
+    fn dim_halves_the_foreground_on_glyph_ink() {
+        let (cw, ch) = meas();
+        let fg = (200u8, 210, 220);
+        let mut surface = Surface::new(1, 1);
+        surface.set_cell(
+            0,
+            0,
+            'M',
+            Some(Style {
+                bg: (0, 0, 0),
+                fg,
+                dim: true,
+                ..Style::default()
+            }),
+        );
+        let (plain_rgba, _, _) = {
+            let mut surface = Surface::new(1, 1);
+            surface.set_cell(
+                0,
+                0,
+                'M',
+                Some(Style {
+                    bg: (0, 0, 0),
+                    fg,
+                    ..Style::default()
+                }),
+            );
+            blit_rgba(&surface, &atlas_with_font(), cw, ch, 1.0)
+        };
+        let (rgba, _, _) = blit_rgba(&surface, &atlas_with_font(), cw, ch, 1.0);
+        // At this size every glyph pixel is antialiased, so the contract is
+        // strict darkening: dim ink never brightens any pixel and is
+        // strictly darker somewhere.
+        let mut darker = false;
+        for (dim_px, plain_px) in rgba.chunks_exact(4).zip(plain_rgba.chunks_exact(4)) {
+            for c in 0..3 {
+                assert!(
+                    dim_px[c] <= plain_px[c],
+                    "dim must not brighten ink: {dim_px:?} vs {plain_px:?}"
+                );
+            }
+            darker |= dim_px[..3] < plain_px[..3];
+        }
+        assert!(darker, "dim must darken the glyph somewhere");
+    }
+
+    #[test]
+    fn underline_paints_the_bottom_row_in_fg() {
+        let fg = (255u8, 255, 0);
+        let mut surface = Surface::new(1, 1);
+        surface.set_cell(
+            0,
+            0,
+            ' ',
+            Some(Style {
+                bg: (0, 0, 0),
+                fg,
+                underline: true,
+                ..Style::default()
+            }),
+        );
+        let atlas = atlas_with_font();
+        let (rgba, w, h) = blit_rgba(&surface, &atlas, 7, 17, 1.0);
+        let bottom = ((h - 1) * w) as usize * 4;
+        assert_eq!(
+            &rgba[bottom..bottom + 3],
+            &[fg.0, fg.1, fg.2],
+            "the underline row is full fg"
+        );
+        let mid = ((h / 2) * w) as usize * 4;
+        assert_eq!(&rgba[mid..mid + 3], &[0, 0, 0], "no strike row was asked for");
+    }
+
+    #[test]
+    fn strikethrough_paints_the_middle_row_in_fg() {
+        let fg = (0u8, 255, 255);
+        let mut surface = Surface::new(1, 1);
+        surface.set_cell(
+            0,
+            0,
+            ' ',
+            Some(Style {
+                bg: (0, 0, 0),
+                fg,
+                strikethrough: true,
+                ..Style::default()
+            }),
+        );
+        let atlas = atlas_with_font();
+        let (rgba, w, h) = blit_rgba(&surface, &atlas, 7, 17, 1.0);
+        let mid = ((h / 2) * w) as usize * 4;
+        assert_eq!(
+            &rgba[mid..mid + 3],
+            &[fg.0, fg.1, fg.2],
+            "the strike row is full fg"
+        );
+        let bottom = ((h - 1) * w) as usize * 4;
+        assert_eq!(&rgba[bottom..bottom + 3], &[0, 0, 0], "no underline was asked for");
+    }
+
+    #[test]
+    fn italic_shears_the_ink_forward() {
+        let first_ink_of_first_ink_row = |italic: bool| {
+            let mut surface = Surface::new(1, 1);
+            surface.set_cell(
+                0,
+                0,
+                'M',
+                Some(Style {
+                    bg: (0, 0, 0),
+                    fg: (255, 255, 255),
+                    italic,
+                    ..Style::default()
+                }),
+            );
+            let atlas = atlas_with_font();
+            let (cw, ch) = meas();
+            let (rgba, w, h) = blit_rgba(&surface, &atlas, cw, ch, 1.0);
+            for py in 0..h {
+                let row = &rgba[(py * w * 4) as usize..((py + 1) * w * 4) as usize];
+                if let Some(px) = (0..w as usize).find(|&px| row[px * 4..px * 4 + 3].iter().any(|&b| b > 0)) {
+                    return (py, px);
+                }
+            }
+            panic!("'M' must have ink");
+        };
+        let (row, upright_px) = first_ink_of_first_ink_row(false);
+        let (_, italic_px) = first_ink_of_first_ink_row(true);
+        assert!(
+            italic_px > upright_px,
+            "the italic glyph's ink at row {row} must start further right ({italic_px} vs {upright_px})"
+        );
+    }
+
+    #[test]
     fn terminal_grid_reserves_the_jetbrains_tab_strip() {
-        assert_eq!(terminal_grid_size(800.0, 0, 7, 17), (114, 10));
-        assert_eq!(terminal_grid_size(800.0, 1, 7, 17), (114, 8));
+        assert_eq!(super::super::terminal_grid_size(800.0, 0, 7, 17), (114, 10));
+        assert_eq!(super::super::terminal_grid_size(800.0, 1, 7, 17), (114, 8));
     }
 
     #[test]
@@ -894,3 +895,4 @@ mod tests {
         );
     }
 }
+

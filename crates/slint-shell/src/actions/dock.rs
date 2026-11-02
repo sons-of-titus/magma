@@ -56,6 +56,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         app.on_output_clear(move || {
             let mut s = state.borrow_mut();
             s.editor.last_task = None;
+            s.editor.last_task_generation += 1;
             refresh(&weak, &mut s);
         });
     }

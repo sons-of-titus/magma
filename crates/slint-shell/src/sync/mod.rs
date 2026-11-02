@@ -249,18 +249,29 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     app.set_bottom_problems_count(ed.quickfix_list.len() as i32);
     app.set_bottom_terminal_count(ed.io.terminals.sessions.len() as i32);
     app.set_terminal_text(projection::terminal_text(ed).into());
-    state.m_find_rows.set(projection::find_rows(ed), |m| {
-        app.set_find_rows(m);
-    });
+    let search_gen = ed.search.generation;
+    if state.find_rows_cache.as_ref().map(|(g, _)| *g) != Some(search_gen) {
+        let rows = projection::find_rows(ed);
+        state.find_rows_cache = Some((search_gen, rows.clone()));
+        state.m_find_rows.set(rows, |m| app.set_find_rows(m));
+    }
     app.set_find_status(find_status(ed).as_str().into());
-    let (output_title, _) = projection::output(ed);
-    app.set_output_title(output_title.as_str().into());
-    state
-        .m_output_lines
-        .set(projection::output_lines(ed), |m| app.set_output_lines(m));
-    state.m_problems.set(projection::problem_rows(ed), |m| {
-        app.set_problems(m);
-    });
+    app.set_output_title(projection::output_title(ed).as_str().into());
+    // The rows derive solely from `last_task`, so the kernel's generation
+    // counter gates the rebuild; without it every keystroke re-parsed the
+    // whole log.
+    let task_gen = ed.last_task_generation;
+    if state.output_cache.as_ref().map(|(g, _)| *g) != Some(task_gen) {
+        let rows = projection::output_lines(ed);
+        state.output_cache = Some((task_gen, rows.clone()));
+        state.m_output_lines.set(rows, |m| app.set_output_lines(m));
+    }
+    let qf_epoch = ed.quickfix_epoch;
+    if state.problems_cache.as_ref().map(|(g, _)| *g) != Some(qf_epoch) {
+        let rows = projection::problem_rows(ed);
+        state.problems_cache = Some((qf_epoch, rows.clone()));
+        state.m_problems.set(rows, |m| app.set_problems(m));
+    }
     app.set_dock_height(state.bottom_height);
     app.set_output_follow(state.output_follow);
     state.m_git_history.set(state.git_history.clone(), |m| {

@@ -49,6 +49,13 @@ pub(crate) struct AppState {
     pub(crate) bottom_height: f32,
     /// Output pane follows the newest lines as they land.
     pub(crate) output_follow: bool,
+    /// Row projection of `last_task`, rebuilt only when the kernel bumps
+    /// `last_task_generation` — never per keystroke.
+    pub(crate) output_cache: Option<(u64, Vec<OutputLine>)>,
+    /// Problem-panel rows, rebuilt only when `quickfix_epoch` changes.
+    pub(crate) problems_cache: Option<(u64, Vec<ProblemRow>)>,
+    /// Search-panel rows, rebuilt only when the search generation changes.
+    pub(crate) find_rows_cache: Option<(u64, Vec<FindRow>)>,
     /// Per-tool dock widths (project, commit, debug); the drag handle edits
     /// the active one.
     pub(crate) sidebar_widths: [f32; 3],
@@ -100,6 +107,8 @@ pub(crate) struct AppState {
     /// Find bar state: mode, and the match readout text.
     pub(crate) find_visible: bool,
     pub(crate) find_replace_visible: bool,
+    /// The find bar's `.*` toggle: search and replace compile as regex.
+    pub(crate) find_regex: bool,
     pub(crate) find_query: String,
     pub(crate) find_replacement: String,
     pub(crate) find_match_text: String,

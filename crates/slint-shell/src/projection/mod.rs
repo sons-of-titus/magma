@@ -299,10 +299,13 @@ pub fn output_lines(ed: &Editor) -> Vec<OutputLine> {
         .collect()
 }
 
-pub fn output(ed: &Editor) -> (String, String) {
+/// The Output pane's title: the finished task's name.  The text itself is
+/// projected only into `output_lines` (cached by generation) — cloning the
+/// whole log per refresh is what this exists to avoid.
+pub fn output_title(ed: &Editor) -> String {
     match &ed.last_task {
-        Some((name, output)) => (name.clone(), output.clone()),
-        None => (String::new(), String::new()),
+        Some((name, _)) => name.clone(),
+        None => String::new(),
     }
 }
 

@@ -1,5 +1,10 @@
 # Magma Engineering Audit — October 2026
 
+> **Superseded in status by the November 2026 round**: a fresh
+> verification pass found the closures below real, plus 30 new findings
+> in the code added since (14 fixed in-round).  Current status lives in
+> `PROGRESS.md` and `docs/audit-2026-11/`.
+
 Evidence-based audit of the Magma editor (Rust kernel + Janet userland)
 benchmarked against JetBrains IDEs (RustRover/IntelliJ as the primary
 reference). Companion documents: `capability-matrix.md`, `findings.md`,

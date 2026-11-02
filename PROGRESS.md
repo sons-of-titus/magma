@@ -19,10 +19,53 @@ about status, this file wins — findings.md narrates, this file tracks.
 | **After Wave 4 — backlog close-out** | **1,551 pass / 0 fail** | **0 warnings; `--no-default-features` builds again** |
 | **After GUI overhaul + follow-ups** | **1,590 pass / 0 fail** | **0 warnings; `cargo clippy --all-targets` clean** |
 | **After language plugins + project templates** | **1,947 pass / 0 fail (`cargo test --features janet --workspace`)** | new: `docs/plugins-templates.md` |
+| **Round 2 audit (2026-11): 14 fixes, 17 regression tests** | **2,045 pass / 0 fail** | 0 new warnings; evidence in `docs/audit-2026-11/` |
+| **Round 2 completion ("all fixed"): 27 fixes, 26 regression tests** | **2,055 pass / 0 fail (`--workspace`)** | 0 new warnings; every first-tranche OPEN finding addressed |
 
 Wave 4 closed every open finding and roadmap item from the audit
 (including the ones the roadmap had marked "deliberately not planned"),
 plus a real interactive-performance defect class reported from use.
+
+---
+
+## Round 2 audit — November 2026 (`docs/audit-2026-11/`)
+
+A fresh verification pass re-read the closures above (they hold) and
+audited the code added since.  Result: 30 new evidence-backed findings,
+14 fixed in-round.  The register lives in `docs/audit-2026-11/findings.md`;
+this table is the status authority for it.
+
+| ID | Sev | Finding | Status |
+|---|---|---|---|
+| EC-01 | P1 | `transform_range` mixes pre/post-edit coordinates on multi-edit transactions — highlights/folds corrupt | FIXED (`text/src/view.rs` + 3 tests) |
+| EC-02 | P1 | cursor-left/right copied the document prefix per keypress; char-stepping split graphemes | FIXED (bounded grapheme window) |
+| EC-03 | P1 | find bar: O(matches × document) copies per keystroke | FIXED (one bounded copy per query) |
+| EC-06 | P1 | multi-cursor typing broke after the first keystroke; N undo steps | FIXED (one `insert_many`, extras repositioned) |
+| EC-04 | P2 | word motion hopped a word too far from delimiters | FIXED |
+| EC-05 | P2 | cursor-up/down clamped char column against byte length | FIXED |
+| EC-08 | P2 | read-only enforced in insert but not delete/replace | FIXED |
+| EC-09 | P2 | backspace-class commands O(prefix) per keystroke | FIXED (`rfind_char_backwards`, `prev_char_boundary`) |
+| EC-10 | P2 | atomic commands = two undo steps | PARTLY FIXED (replace-char/join/case done; typing session open) |
+| EC-11/12 | P2 | `n`/`N` stepped a case-sensitive set; backward wrap was quadratic | FIXED (compiled query + `rfind_before`) |
+| PM-01 | P1 | watcher dropped every Remove event (canonicalize fails on deleted paths) | FIXED (+ real-watcher test) |
+| PM-04 | P2 | find-files hung forever on a symlink cycle | FIXED (+ cycle test) |
+| PM-05 | P2 | session.json written non-atomically | FIXED (`fs::atomic_write`) |
+| GUI-1 | P1 | pane blit dropped italic/underline/strike/dim; signature didn't hash them → stale frames | FIXED (pane split + 6 tests) |
+| GUI-2 | P2 | Output pane re-cloned/reparsed the uncapped task log per keystroke | FIXED (512 KiB tail cap + generation cache) |
+| EC-07 | P2 | regex mode + capture replacement reachable (find bar `.*` toggle; replace-next expands) | FIXED |
+| EC-10 | P2 | typing insert session — a typed run is one undo step | FIXED |
+| EC-13 | P3 | split-view coherence via per-buffer committed-txn tail + fork replay | FIXED |
+| EC-14 | P3 | decorations transform through transactions (`decor_view.rs`) | FIXED |
+| EC-15/16 | P3 | folds open under the caret; `f` strictly forward; viewport H/M/L; revision-based `g;` list; LSP applyEdit one undo step | FIXED |
+| PM-02/03/06 | P1/P2 | switch shuts down LSP/terminals/DAP, drops old watches, warms the index | FIXED |
+| PM-07 | P2 | FS-event path: cached root, O(1) membership, throttled emit | PARTLY (full re-walk remains) |
+| PM-08 | P2 | split panes persist + restore | PARTLY (geometry/tool windows remain) |
+| PM-09..12 | P3 | reload apply-time recheck; single manifest writer; sync exit clear; surfaced watch failures | FIXED |
+| GUI-3 | P3 | problems/find projections gated by epoch/generation | PARTLY (small constructions remain) |
+| LI/TB/VC/SEC re-audit | — | LSP lifecycle, tasks/debugger, VCS, security re-audit did not run (quota) | CARRY-OVER — first in next round |
+
+`pane.rs` (896 lines) split into `pane/mod.rs` + `pane/blit.rs` per the
+400-line gate before the GUI-1 changes landed.
 
 ---
 

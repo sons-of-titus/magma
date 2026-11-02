@@ -64,7 +64,9 @@ impl Editor {
             && shown == buf
             && self.window_views.contains_key(&(win, buf))
         {
-            return self.window_views.get_mut(&(win, buf));
+            let v = self.window_views.get_mut(&(win, buf))?;
+            v.sync_fork();
+            return Some(v);
         }
         let forked = self
             .window_views
@@ -72,8 +74,16 @@ impl Editor {
             .find(|((_, b), _)| *b == buf)
             .map(|((w, b), _)| (*w, *b));
         match forked {
-            Some(k) => self.window_views.get_mut(&k),
-            None => self.views.get_mut(&buf),
+            Some(k) => {
+                let v = self.window_views.get_mut(&k)?;
+                v.sync_fork();
+                Some(v)
+            }
+            None => {
+                let v = self.views.get_mut(&buf)?;
+                v.sync_fork();
+                Some(v)
+            }
         }
     }
 
@@ -88,10 +98,24 @@ impl Editor {
         mut f: impl FnMut(&mut crate::text_engine::BufferView),
     ) {
         for (_, v) in self.window_views.iter_mut().filter(|((_, b), _)| *b == buf) {
+            v.sync_fork();
             f(v);
         }
         if let Some(v) = self.views.get_mut(&buf) {
+            v.sync_fork();
             f(v);
+        }
+    }
+
+    /// Bring every view fork current with its buffer's committed
+    /// transactions — the render entry needs this so a split showing an
+    /// unedited fork paints what the editing fork did.
+    pub fn sync_all_forks(&mut self) {
+        for v in self.views.values_mut() {
+            v.sync_fork();
+        }
+        for v in self.window_views.values_mut() {
+            v.sync_fork();
         }
     }
 
@@ -175,6 +199,7 @@ impl Editor {
     /// a Janet scope: handlers run with the editor pointer installed from
     /// this live borrow (docs/core-redesign.md §11).
     pub fn dispatch_events_scoped(&mut self) {
+        self.sync_all_forks();
         self.publish_buffer_changes();
         crate::script_runtime::dispatch_events(self);
     }

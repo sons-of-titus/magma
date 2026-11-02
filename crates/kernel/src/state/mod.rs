@@ -160,6 +160,9 @@ pub struct Editor {
     pub options: std::collections::HashMap<String, String>,
     pub theme: std::collections::HashMap<String, (u8, u8, u8)>,
     pub quickfix_list: Vec<crate::task::QuickfixEntry>,
+    /// Bumped whenever `quickfix_list` is replaced — the shell's problem
+    /// panel projection caches on it instead of rebuilding per keystroke.
+    pub quickfix_epoch: u64,
     pub quickfix_index: usize,
     /// Which list `:cn`/`:cp` walk: mirrored from the focused tool window by
     /// the GUI (commands only see the editor).  Falls back to build problems.
@@ -199,7 +202,10 @@ pub struct Editor {
     pub status_message: Option<StatusMessage>,
     /// Snapshot of the most recently finished task: (name, combined output).
     /// The output panel renders this; `quickfix_list` carries the errors.
+    /// Bounded by the task handler's tail cap; `last_task_generation` bumps
+    /// on every write so frontends can cache the projection of it.
     pub last_task: Option<(String, String)>,
+    pub last_task_generation: u64,
     /// Buffers still queued for the async session restore of the active
     /// project; the GUI's progress strip drains it as buffers land.
     pub session_restore_pending: usize,
@@ -325,6 +331,8 @@ impl Editor {
             input_consumed: false,
             status_message: None,
             last_task: None,
+            last_task_generation: 0,
+            quickfix_epoch: 0,
             session_restore_pending: 0,
             quickfix_menu: None,
             module_paths: {

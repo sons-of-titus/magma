@@ -7,6 +7,45 @@ use crate::state::Editor;
 
 use super::super::BackgroundEvent;
 
+/// The Output pane keeps the tail of the task stream: a 100 MB build log
+/// must not become a per-keystroke allocation in the frontend.  Tool
+/// diagnostics parse the full output before this cap is applied.
+const LAST_TASK_MAX_BYTES: usize = 512 * 1024;
+
+fn set_last_task(ed: &mut Editor, name: String, mut output: String) {
+    clamp_output_tail(&mut output);
+    ed.last_task = Some((name, output));
+    ed.last_task_generation += 1;
+}
+
+fn push_last_task_stream(ed: &mut Editor, task_name: &str, line: &str) {
+    let line = format!("{line}\n");
+    match &mut ed.last_task {
+        Some((name, output)) if name == task_name => output.push_str(&line),
+        _ => ed.last_task = Some((task_name.to_string(), line)),
+    }
+    if let Some((_, output)) = &mut ed.last_task {
+        clamp_output_tail(output);
+    }
+    ed.last_task_generation += 1;
+}
+
+fn clamp_output_tail(output: &mut String) {
+    if output.len() <= LAST_TASK_MAX_BYTES {
+        return;
+    }
+    let mut cut = output.len() - LAST_TASK_MAX_BYTES;
+    while !output.is_char_boundary(cut) {
+        cut += 1;
+    }
+    // Keep whole lines: the pane renders line rows, so a half line at the
+    // top only ever shows as a fragment.
+    if let Some(nl) = output[cut..].find('\n') {
+        cut += nl + 1;
+    }
+    output.drain(0..cut);
+}
+
 pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
     match event {
         BackgroundEvent::WorkProgress { id, done, total } => {
@@ -94,11 +133,7 @@ fn handle_task_event(ed: &mut Editor, event: crate::task::Event) {
                     .get(&id)
                     .map(|t| t.name.clone())
                     .unwrap_or_default();
-                let line = format!("{line}\n");
-                match &mut ed.last_task {
-                    Some((name, output)) if name == &task_name => output.push_str(&line),
-                    _ => ed.last_task = Some((task_name, line)),
-                }
+                push_last_task_stream(ed, &task_name, &line);
             }
             let mut data = std::collections::HashMap::new();
             data.insert("task-id".to_string(), id.to_string());
@@ -164,20 +199,18 @@ fn handle_task_run_completed(
         .get(&id)
         .map(|t| t.name.clone())
         .unwrap_or_default();
+    let combined = format!(
+        "$ {}\n{}{}",
+        ed.task_scheduler
+            .tasks
+            .get(&id)
+            .map(|t| t.command.clone())
+            .unwrap_or_default(),
+        output.stdout,
+        output.stderr,
+    );
+    set_last_task(ed, task_name.clone(), combined);
     ed.task_scheduler.running.remove(&id);
-    ed.last_task = Some((
-        task_name.clone(),
-        format!(
-            "$ {}\n{}{}",
-            ed.task_scheduler
-                .tasks
-                .get(&id)
-                .map(|t| t.command.clone())
-                .unwrap_or_default(),
-            output.stdout,
-            output.stderr,
-        ),
-    ));
     if exit_code == 0 {
         ed.task_scheduler.mark_completed(id, output);
         ed.scheduler.complete_task(id);

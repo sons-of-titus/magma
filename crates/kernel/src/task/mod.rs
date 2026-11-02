@@ -116,6 +116,7 @@ pub fn apply_tool_diagnostics(ed: &mut Editor, command: &str, output: &str, cwd:
     let findings = diag_parse::parse_tool_output(command, output, cwd);
     ed.quickfix_list = findings.iter().map(|f| f.quickfix()).collect();
     ed.quickfix_index = 0;
+    ed.quickfix_epoch += 1;
 
     let mut by_path: std::collections::HashMap<String, Vec<crate::semantic::provider::Diagnostic>> =
         std::collections::HashMap::new();

@@ -23,6 +23,7 @@ fn write_then_read_round_trips_every_field() {
             cursor: 12,
         }],
         focused: Some("/a.rs".into()),
+        split_buffers: vec!["/b.rs".into()],
         breakpoints: vec![SessionBreakpoint {
             file: "/a.rs".into(),
             line: 3,

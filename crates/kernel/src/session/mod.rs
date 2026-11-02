@@ -40,6 +40,19 @@ pub fn capture(ed: &Editor) -> SessionState {
         }
     }
 
+    // Split panes: window forks with a file-backed buffer, in window order
+    // so restore recreates the arrangement deterministically.
+    let mut splits: Vec<(u64, String)> = ed
+        .window_views
+        .iter()
+        .filter_map(|((win, buf), _)| {
+            let path = ed.buffers.get(*buf)?.lock().unwrap_or_else(|e| e.into_inner()).path.clone()?;
+            Some((win.0, path))
+        })
+        .collect();
+    splits.sort();
+    let split_buffers = splits.into_iter().map(|(_, p)| p).collect();
+
     let breakpoints = ed
         .debug
         .breakpoints
@@ -57,6 +70,7 @@ pub fn capture(ed: &Editor) -> SessionState {
         focused,
         breakpoints,
         watches: ed.debug.watches.clone(),
+        split_buffers,
     }
 }
 
@@ -103,11 +117,36 @@ pub fn restore(ed: &mut Editor, root: &std::path::Path) {
     }
 
     apply_debug_state(ed, &state);
+    restore_splits(ed, &state.split_buffers);
 
     if let Some(focused) = &state.focused {
         let focused =
             crate::project::resolve_path(ed.project_manager.project.root.as_deref(), focused);
         open_path(ed, &focused);
+    }
+}
+
+/// Recreate the split arrangement: one horizontal split per recorded fork
+/// showing its buffer.  Focus is handled separately by the recorded
+/// `focused` file.
+pub fn restore_splits(ed: &mut Editor, splits: &[String]) {
+    for path in splits {
+        let path =
+            crate::project::resolve_path(ed.project_manager.project.root.as_deref(), path);
+        let Some(key) = ed.buffers.iter().find_map(|(k, arc)| {
+            (arc.lock().unwrap_or_else(|e| e.into_inner()).path.as_deref() == Some(path.as_str()))
+                .then_some(k)
+        }) else {
+            continue;
+        };
+        if let Some(win) = ed.view_tree.focused_window()
+            && let Some(new_id) = ed.view_tree.split_horizontal(win)
+        {
+            if let Some(new_win) = ed.view_tree.window_mut(new_id) {
+                new_win.buffer_id = Some(key);
+            }
+            ed.fork_view_for_window(new_id, key);
+        }
     }
 }
 
@@ -153,6 +192,7 @@ pub fn restore_async(ed: &mut Editor, root: &std::path::Path) {
             let _ = sender.send(crate::runtime::BackgroundEvent::SessionRestoreDone {
                 generation,
                 focused,
+                splits: state.split_buffers.clone(),
             });
         },
     );
@@ -182,7 +222,7 @@ fn apply_debug_state(ed: &mut Editor, state: &SessionState) {
 }
 
 /// Open a file through the `open-file` command (dedupe + focus semantics).
-pub(crate) fn open_path(ed: &mut Editor, path: &str) -> bool {
+pub fn open_path(ed: &mut Editor, path: &str) -> bool {
     let mut args = std::collections::HashMap::new();
     args.insert(
         "path".to_string(),

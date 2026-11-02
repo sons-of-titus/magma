@@ -1144,6 +1144,7 @@ name = "crash_recovery"
 version = "0.1.0"
 dependencies = [
  "fs",
+ "logging",
  "serde_json",
 ]
 
@@ -5419,6 +5420,7 @@ dependencies = [
 name = "session"
 version = "0.1.0"
 dependencies = [
+ "fs",
  "serde",
  "serde_json",
 ]

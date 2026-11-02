@@ -42,6 +42,10 @@ pub struct SessionState {
     pub breakpoints: Vec<SessionBreakpoint>,
     #[serde(default)]
     pub watches: Vec<String>,
+    /// Buffers that had their own split pane (window fork), in window
+    /// order.  Restored by re-forking after the buffers reopen.
+    #[serde(default)]
+    pub split_buffers: Vec<String>,
 }
 
 pub fn session_file(root: &Path) -> PathBuf {
@@ -56,7 +60,10 @@ pub fn write(root: &Path, state: &SessionState) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("create .magma: {e}"))?;
     }
     let text = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text + "\n").map_err(|e| format!("write {}: {e}", path.display()))
+    // Atomic (temp + fsync + rename): a crash mid-write must not cost the
+    // user their open-file set — the one session file torn write destroys.
+    fs::atomic_write(&path.to_string_lossy(), &(text + "\n"))
+        .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 /// Read the session for `root`.  A missing or unparsable file yields `None` —

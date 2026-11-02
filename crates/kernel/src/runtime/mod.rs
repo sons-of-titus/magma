@@ -105,6 +105,7 @@ pub enum BackgroundEvent {
     SessionRestoreDone {
         generation: u64,
         focused: Option<String>,
+        splits: Vec<String>,
     },
     // ── Sprint 13 Network API ─────────────────────────────────────────────
     /// An HTTP request completed successfully.

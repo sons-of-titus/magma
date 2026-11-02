@@ -55,11 +55,13 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
         BackgroundEvent::SessionRestoreDone {
             generation,
             focused,
+            splits,
         } => {
             if generation != ed.project_manager.project.generation {
                 return;
             }
             ed.session_restore_pending = 0;
+            crate::session::restore_splits(ed, &splits);
             if let Some(focused) = focused {
                 crate::session::open_path(ed, &focused);
             }

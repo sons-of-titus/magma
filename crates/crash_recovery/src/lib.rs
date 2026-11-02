@@ -62,6 +62,13 @@ pub fn snapshot_stem(name: &str, path: Option<&str>) -> String {
 /// Write one buffer's snapshot into `dir`.  Runs on the background pool.
 pub fn write_snapshot(dir: &Path, name: &str, path: Option<&str>, content: &str) {
     if content.len() > MAX_SNAPSHOT_BYTES {
+        // Oversized buffers silently had no crash safety net; at least say
+        // so once per skipped snapshot.
+        logging::warn!(
+            "crash recovery: skipping unsaved buffer {name:?} ({} bytes > cap {})",
+            content.len(),
+            MAX_SNAPSHOT_BYTES
+        );
         return;
     }
     if std::fs::create_dir_all(dir).is_err() {

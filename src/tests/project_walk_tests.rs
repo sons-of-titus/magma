@@ -67,7 +67,7 @@ fn walk_respects_gitignore_symlinks_and_cycles() {
 fn atomic_write_temp_files_never_mark_the_index_dirty() {
     use kernel::project::index_change_marks_dirty;
     let root = std::path::Path::new("/tmp/magma-walk-test");
-    let indexed = ["src/main.rs".to_string(), "src/lib.rs".to_string()];
+    let indexed = std::collections::HashSet::from(["src/main.rs".to_string(), "src/lib.rs".to_string()]);
 
     // The editor's own atomic-write temp file: saving an indexed file must
     // not re-walk the project.
@@ -105,4 +105,47 @@ fn atomic_write_temp_files_never_mark_the_index_dirty() {
         "removed",
         &indexed
     ));
+}
+
+#[test]
+fn find_files_survives_a_symlink_cycle_in_the_tree() {
+    // `walk_matching` used `path.is_dir()` (follows links) with no cycle
+    // guard: one `ln -s . loop` spun the blocking walk forever.  The sync
+    // path (no background pool in this editor) must return.
+    use crate::kernel::command;
+    use crate::tests::helpers;
+    use std::collections::HashMap;
+
+    let dir = std::env::temp_dir().join("magma_findfiles_cycle");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
+    std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
+
+    let mut ed = helpers::make_editor();
+    ed.project_manager.project.root = Some(dir.to_string_lossy().into_owned().into());
+
+    let mut args = HashMap::new();
+    args.insert(
+        "pattern".to_string(),
+        kernel::command::args::ArgValue::String("main".to_string()),
+    );
+    let result = command::execute_command(&mut ed, "find-files", &args);
+    assert!(result.is_ok(), "find-files must not hang or error on a cycle");
+    // Results land in the *finder:<pattern>* buffer.
+    let finder = ed
+        .buffers
+        .iter()
+        .find(|(_, a)| a.lock().unwrap_or_else(|e| e.into_inner()).name == "*finder:main*")
+        .map(|(_, a)| {
+            let b = a.lock().unwrap_or_else(|e| e.into_inner());
+            b.slice(0, b.len())
+        })
+        .unwrap_or_default();
+    assert!(
+        finder.contains("src/main.rs"),
+        "the real file is still found, got {finder:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

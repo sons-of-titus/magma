@@ -32,7 +32,7 @@ pub fn index_change_marks_dirty(
     root: &std::path::Path,
     path: &str,
     kind: &str,
-    indexed: &[String],
+    indexed: &std::collections::HashSet<String>,
 ) -> bool {
     // The editor's own atomic-write temp files are never index entries —
     // counting them would re-walk the whole project on every save.

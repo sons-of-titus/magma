@@ -34,6 +34,7 @@ fn handle_index_event(ed: &mut Editor, event: crate::index::Event) {
             }
             if let Some(proj) = ed.project_manager.projects.get_mut(&project_name) {
                 proj.files = files.clone();
+                proj.files_hash = files.iter().cloned().collect();
                 proj.ignored_files = ignored_files.iter().cloned().collect();
                 proj.files_epoch += 1;
                 proj.file_index_dirty = false;
@@ -42,6 +43,7 @@ fn handle_index_event(ed: &mut Editor, event: crate::index::Event) {
             {
                 let proj = &mut ed.project_manager.project;
                 proj.files = files.clone();
+                proj.files_hash = files.iter().cloned().collect();
                 proj.ignored_files = ignored_files.iter().cloned().collect();
                 proj.files_epoch += 1;
                 proj.file_index_dirty = false;

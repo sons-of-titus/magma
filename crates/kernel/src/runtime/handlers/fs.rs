@@ -51,24 +51,51 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             // debounced rescan — churn in ignored dirs (build output, VCS,
             // tool state) and writes to already-indexed files don't change
             // the file list, and re-walking on each of them re-indexed the
-            // project every couple of seconds during any build.
-            if let Some(root) = ed.project_manager.project.root.clone()
-                && let Some(canonical) = std::fs::canonicalize(&root).ok()
+            // project every couple of seconds during any build.  The root
+            // comes from the open-time cache and membership from the files
+            // hash set: per-event canonicalize + linear scan made a git
+            // checkout cost O(events × files) on the foreground.
+            let canonical = ed
+                .project_manager
+                .project
+                .canonical_root
+                .clone()
+                .or_else(|| {
+                    ed.project_manager
+                        .project
+                        .root
+                        .as_ref()
+                        .and_then(|r| std::fs::canonicalize(r).ok())
+                });
+            if let Some(canonical) = canonical
                 && path.starts_with(canonical.to_string_lossy().as_ref())
                 && crate::project::index_change_marks_dirty(
                     &canonical,
                     &path,
                     &kind,
-                    &ed.project_manager.project.files,
+                    &ed.project_manager.project.files_hash,
                 )
             {
                 ed.project_manager.project.file_index_dirty = true;
             }
             crate::storage::reload::handle_file_changed(ed, &path, &kind);
-            ed.events.emit_typed(
-                keys::events::FILE_CHANGED,
-                FileChangedPayload { path, kind },
-            );
+            // The scripting surface gets a throttled sample of bursts: the
+            // tree rescan is driven by `file_index_dirty`, not this event.
+            const FS_EMIT_MIN_INTERVAL: std::time::Duration =
+                std::time::Duration::from_millis(50);
+            let now = std::time::Instant::now();
+            let emit = ed
+                .project_manager
+                .project
+                .last_fs_emit
+                .is_none_or(|t| now.duration_since(t) >= FS_EMIT_MIN_INTERVAL);
+            if emit {
+                ed.project_manager.project.last_fs_emit = Some(now);
+                ed.events.emit_typed(
+                    keys::events::FILE_CHANGED,
+                    FileChangedPayload { path, kind },
+                );
+            }
         }
         BackgroundEvent::BufferReloaded { buf_key, content } => {
             crate::storage::reload::apply_reload(ed, buf_key, content);
@@ -89,12 +116,15 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                     .mark_saved_at(saved_rev);
             }
             // The content reached disk — its crash snapshot is obsolete.
+            // The Maintenance lane serializes this against snapshot
+            // writes: both mutate manifest.json, and an interleave could
+            // lose the just-added entry (dropping the buffer's recovery).
             if let Some(dir) = ed.io.crash_dir.clone() {
                 let label = name.unwrap_or_else(|| path.clone());
                 let dir2 = dir.clone();
                 let path2 = path.clone();
                 if let Some(bg) = ed.background.as_ref() {
-                    bg.spawn_blocking(move || {
+                    bg.spawn_on(crate::runtime::Lane::Maintenance, None, move || {
                         crate::storage::crash_recovery::drop_snapshot(&dir2, &label, Some(&path2));
                     })
                 }

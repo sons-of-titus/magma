@@ -41,9 +41,14 @@ impl FileWatcher {
                     let paths: Vec<String> = event
                         .paths
                         .iter()
-                        .filter_map(|p| {
-                            let canonical = std::fs::canonicalize(p).ok()?;
-                            Some(canonical.to_string_lossy().to_string())
+                        .map(|p| {
+                            // A removed path cannot be canonicalized — the
+                            // event must survive as the raw path, or external
+                            // deletions never reach reload or the index.
+                            std::fs::canonicalize(p)
+                                .unwrap_or_else(|_| p.clone())
+                                .to_string_lossy()
+                                .to_string()
                         })
                         .collect();
 
@@ -112,21 +117,55 @@ impl FileWatcher {
 
     /// Watch a project root recursively: any create/modify/remove underneath
     /// is reported, so the file index can be marked dirty and rescanned.
-    pub fn watch_project(&mut self, root: &str) {
+    /// The error is surfaced to the user — a silently unwatched project
+    /// shows a stale tree with no hint why (Linux `max_user_watches`).
+    pub fn watch_project(&mut self, root: &str) -> Result<(), String> {
         let canonical = std::fs::canonicalize(root)
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| root.to_string());
         {
             let mut roots = self.project_roots.lock().unwrap_or_else(|e| e.into_inner());
             if !roots.insert(canonical.clone()) {
-                return;
+                return Ok(());
             }
         }
-        if let Err(e) = self
-            ._watcher
+        self._watcher
             .watch(std::path::Path::new(&canonical), RecursiveMode::Recursive)
-        {
-            debug!("FileWatcher: failed to watch project {canonical:?}: {e}");
+            .map_err(|e| format!("watching {canonical:?}: {e}"))
+    }
+
+    /// Drop every watched project root except `keep`: a project switch
+    /// must not leave the old root's recursive watch feeding events (and
+    /// foreground work) forever.
+    pub fn retain_project_roots(&mut self, keep: &str) {
+        let canonical_keep = std::fs::canonicalize(keep)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| keep.to_string());
+        let stale: Vec<String> = {
+            let roots = self.project_roots.lock().unwrap_or_else(|e| e.into_inner());
+            roots
+                .iter()
+                .filter(|r| **r != canonical_keep)
+                .cloned()
+                .collect()
+        };
+        for r in &stale {
+            let _ = self._watcher.unwatch(std::path::Path::new(r));
+            let mut roots = self.project_roots.lock().unwrap_or_else(|e| e.into_inner());
+            roots.remove(r);
+        }
+    }
+
+    /// Forget all individually-watched file entries (and their parent-dir
+    /// notify watches).  The frame sync re-watches whatever is open next
+    /// frame; outgoing-project files must not stay watched after a switch.
+    pub fn clear_watched_files(&mut self) {
+        let mut w = self.watched.lock().unwrap_or_else(|e| e.into_inner());
+        for p in w.drain() {
+            let parent = std::path::Path::new(&p).parent().map(Path::to_path_buf);
+            if let Some(parent) = parent {
+                let _ = self._watcher.unwatch(&parent);
+            }
         }
     }
 

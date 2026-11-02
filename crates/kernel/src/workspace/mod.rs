@@ -63,13 +63,27 @@ impl WorkspaceRuntime {
         }
 
         let Some(root) = ed.project_manager.project.root.clone() else {
-            self.watched_project = None;
+            if self.watched_project.take().is_some()
+                && let Some(w) = self.file_watcher.as_mut()
+            {
+                w.retain_project_roots("");
+                w.clear_watched_files();
+            }
             return;
         };
         let root_str = root.to_string_lossy().into_owned();
         if self.watched_project.as_deref() != Some(root_str.as_str()) {
             if let Some(w) = self.file_watcher.as_mut() {
-                w.watch_project(&root_str);
+                // The outgoing project's recursive root watch and per-file
+                // watches must not keep feeding events after a switch.
+                w.retain_project_roots(&root_str);
+                w.clear_watched_files();
+                if let Err(e) = w.watch_project(&root_str) {
+                    ed.show_message(
+                        crate::state::MessageKind::Error,
+                        format!("file watching unavailable: {e} — the project tree will not refresh automatically"),
+                    );
+                }
             }
             self.watched_project = Some(root_str);
         }
@@ -118,8 +132,9 @@ pub fn persist_session(ed: &Editor) {
     crate::state::persist::save_settings(ed);
     crate::session::save_if_project(ed);
     if let Some(dir) = ed.io.crash_dir.clone() {
-        std::thread::spawn(move || {
-            crate::storage::crash_recovery::clear_session(&dir);
-        });
+        // Synchronous: the process exits right after this, and a detached
+        // thread loses that race — leaving "recovered" buffers the user
+        // explicitly discarded by quitting clean.
+        crate::storage::crash_recovery::clear_session(&dir);
     }
 }

@@ -80,6 +80,16 @@ pub struct Project {
     pub generation: u64,
     pub files: Vec<String>,
     pub ignored_files: HashSet<String>,
+    /// Mirror of `files` for O(1) membership in the per-watcher-event path
+    /// (a linear `contains` over 100k entries per FS event re-walked the
+    /// CPU during any build).
+    pub files_hash: HashSet<String>,
+    /// Canonicalized root, cached at open: the FS-event path needed it per
+    /// event and `canonicalize` is a syscall burst.
+    pub canonical_root: Option<PathBuf>,
+    /// Last time a `file-changed` event went to the scripting surface —
+    /// bursts (git checkout) are throttled to one per interval.
+    pub last_fs_emit: Option<std::time::Instant>,
     /// Bumped whenever the file list is rebuilt — render caches key on it.
     pub files_epoch: u64,
     pub file_index_dirty: bool,
@@ -267,6 +277,12 @@ pub fn open_root(editor: &mut crate::state::Editor, path: &str) -> Result<(), St
             crate::event::payload::EmptyPayload,
         );
         close_all_buffers(editor);
+        // Per-project subsystems follow the project out: language servers
+        // were rooted in it (a survivor would answer the new project with
+        // the old workspace), terminals and debug sessions run in it.
+        editor.lsp.shutdown_all();
+        editor.io.terminals.close_all();
+        editor.debug.disconnect_all();
     }
 
     let pb = PathBuf::from(path);
@@ -298,6 +314,12 @@ pub fn open_root(editor: &mut crate::state::Editor, path: &str) -> Result<(), St
         .project_manager
         .projects
         .insert(name.clone(), editor.project_manager.project.clone());
+    // Serve the new project's persisted index immediately: until the first
+    // walk lands, symbol queries would otherwise answer from the outgoing
+    // project's records (PM-06).
+    editor.index.open_project(path);
+    editor.project_manager.project.canonical_root =
+        std::fs::canonicalize(path).ok();
 
     push_recent(editor, path);
     editor.events.emit_typed(

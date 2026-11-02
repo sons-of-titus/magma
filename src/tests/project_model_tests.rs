@@ -229,7 +229,7 @@ fn ignored_dir_churn_never_marks_the_index_dirty() {
         "/proj/src/.hidden/state.bin",
     ] {
         for kind in ["modified", "created", "removed"] {
-            assert!(!index_change_marks_dirty(root, path, kind, &files),
+            assert!(!index_change_marks_dirty(root, path, kind, &std::collections::HashSet::from_iter(files.clone())),
                 "{path} ({kind}) sits under an ignored dir");
         }
     }
@@ -241,9 +241,9 @@ fn writing_an_indexed_file_does_not_dirty_the_index() {
 
     let root = std::path::Path::new("/proj");
     let files = vec!["src/main.rs".to_string(), ".gitignore".to_string()];
-    assert!(!index_change_marks_dirty(root, "/proj/src/main.rs", "modified", &files),
+    assert!(!index_change_marks_dirty(root, "/proj/src/main.rs", "modified", &std::collections::HashSet::from_iter(files.clone())),
         "a data write to an indexed file leaves the list unchanged");
-    assert!(!index_change_marks_dirty(root, "/proj/.gitignore", "modified", &files),
+    assert!(!index_change_marks_dirty(root, "/proj/.gitignore", "modified", &std::collections::HashSet::from_iter(files.clone())),
         "dotfiles at indexed levels are members too");
 }
 
@@ -253,10 +253,10 @@ fn creates_removals_and_unknown_paths_dirty_the_index() {
 
     let root = std::path::Path::new("/proj");
     let files = vec!["src/main.rs".to_string()];
-    assert!(index_change_marks_dirty(root, "/proj/src/extra.rs", "modified", &files),
+    assert!(index_change_marks_dirty(root, "/proj/src/extra.rs", "modified", &std::collections::HashSet::from_iter(files.clone())),
         "an unknown path reported as modified is a creation whose event was lost");
-    assert!(index_change_marks_dirty(root, "/proj/src/main.rs", "removed", &files));
-    assert!(index_change_marks_dirty(root, "/proj/src/new.rs", "created", &files));
-    assert!(!index_change_marks_dirty(root, "/elsewhere/file.txt", "created", &files),
+    assert!(index_change_marks_dirty(root, "/proj/src/main.rs", "removed", &std::collections::HashSet::from_iter(files.clone())));
+    assert!(index_change_marks_dirty(root, "/proj/src/new.rs", "created", &std::collections::HashSet::from_iter(files.clone())));
+    assert!(!index_change_marks_dirty(root, "/elsewhere/file.txt", "created", &std::collections::HashSet::from_iter(files.clone())),
         "paths outside the root are not the index's business");
 }

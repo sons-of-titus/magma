@@ -81,7 +81,10 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
         drop(buf);
 
         // Back to front, so earlier ranges stay valid while applying.
+        // One undo session per file: a server-driven edit (rename) is one
+        // undo step, not two per occurrence.
         spans.sort_by_key(|b| std::cmp::Reverse(b.0));
+        view.open_undo_session();
         for (start, end, new_text) in spans {
             let buf_len = buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
             if end > buf_len || start > end {
@@ -94,6 +97,7 @@ pub fn apply_workspace_edit(ed: &mut Editor, json: &serde_json::Value) {
                 view.insert(start, &new_text);
             }
         }
+        view.close_undo_session();
     }
 }
 

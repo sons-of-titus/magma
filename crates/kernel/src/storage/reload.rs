@@ -104,6 +104,27 @@ pub fn apply_reload(ed: &mut Editor, buf_key: usize, content: Result<String, Str
         return;
     }
 
+    // Re-check dirtiness at apply time: the event-time check happened
+    // before the background read, and keystrokes landing in between must
+    // not be clobbered by disk text (PM-09).
+    let (dirty, name) = ed
+        .buffers
+        .get(buf_key)
+        .map(|arc| {
+            let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+            (buf.modified(), buf.name.clone())
+        })
+        .unwrap_or((false, String::new()));
+    if dirty {
+        ed.show_message(
+            crate::state::MessageKind::Error,
+            format!(
+                "{name} changed on disk and has unsaved edits — saving will overwrite the disk file"
+            ),
+        );
+        return;
+    }
+
     let Some(view) = ed.view_of_buffer(buf_key) else {
         return;
     };

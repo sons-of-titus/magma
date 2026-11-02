@@ -5,6 +5,7 @@
 //! transactions grouped explicitly; save state is revision-based.
 
 mod breakpoint_anchors;
+mod decor_view;
 pub mod buffer;
 pub mod decoration;
 pub mod diagnostic;

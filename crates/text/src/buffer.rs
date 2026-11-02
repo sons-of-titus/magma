@@ -19,6 +19,11 @@ pub struct ImageData {
     pub height: u32,
     pub pixels: Vec<u8>,
 }
+/// Fork-sync tail: how many committed transactions a lagging split-view
+/// fork can replay.  Beyond this, a fork resyncs coarsely (cursor clamp;
+/// derived annotations re-publish).
+const RECENT_TXN_CAP: usize = 256;
+
 #[derive(Debug)]
 pub struct Buffer {
     pub id: BufferId,
@@ -34,6 +39,12 @@ pub struct Buffer {
     /// Transactions committed since the last change publication.  The event
     /// pump drains these into canonical `buffer-changed` events (§6).
     pending_changes: Vec<EditTransaction>,
+    /// Monotonic count of committed transactions, and the tail of them —
+    /// split-view forks replay what they missed from here instead of going
+    /// stale (their annotations/cursor/decorations are per-fork state the
+    /// shared undo log cannot reconstruct once evicted).
+    txn_seq: u64,
+    recent_txns: std::collections::VecDeque<(u64, EditTransaction)>,
     pub major_mode: MajorMode,
     pub encoding: String,
     /// LSP-owned diagnostics for this buffer, typed.  Kept apart from tool
@@ -70,6 +81,8 @@ impl Buffer {
             marks: MarkSet::new(),
             undo: UndoHistory::new(),
             pending_changes: Vec::new(),
+            txn_seq: 0,
+            recent_txns: std::collections::VecDeque::new(),
             major_mode: MajorMode::Fundamental,
             encoding: "utf-8".to_string(),
             lsp_diagnostics: Vec::new(),
@@ -211,7 +224,28 @@ impl Buffer {
         }
         self.undo.record(txn.clone(), cursor_before, cursor_after);
         self.pending_changes.push(txn.clone());
+        self.txn_seq += 1;
+        self.recent_txns.push_back((self.txn_seq, txn.clone()));
+        if self.recent_txns.len() > RECENT_TXN_CAP {
+            self.recent_txns.pop_front();
+        }
         Some(txn)
+    }
+
+    /// Sequence number of the last committed transaction.
+    pub fn txn_seq(&self) -> u64 {
+        self.txn_seq
+    }
+
+    /// Committed transactions after `seq`, oldest first.  Shorter than
+    /// `txn_seq - seq` when the tail cap evicted some — callers must treat
+    /// that as "cannot catch up" rather than replaying a lie.
+    pub fn txns_since(&self, seq: u64) -> Vec<EditTransaction> {
+        self.recent_txns
+            .iter()
+            .filter(|(s, _)| *s > seq)
+            .map(|(_, t)| t.clone())
+            .collect()
     }
 
     pub fn insert(&mut self, offset: usize, text: &str) {
@@ -261,6 +295,36 @@ impl Buffer {
 
     pub fn delete(&mut self, start: usize, end: usize) {
         let _ = self.delete_with_cursor(start, end, 0);
+    }
+
+    /// Delete several disjoint ranges in one transaction (multi-cursor).
+    /// Ranges are pre-transaction coordinates, ascending and disjoint —
+    /// the same contract `insert_many` documents.
+    pub fn delete_many(
+        &mut self,
+        ranges: &[(usize, usize)],
+        cursor_before: usize,
+    ) -> Option<EditTransaction> {
+        let len = self.doc.len();
+        let mut cursor_after = cursor_before;
+        let mut builder = TransactionBuilder::new();
+        for &(start, end) in ranges {
+            let start = self.doc.snap_offset(start.min(len));
+            let end = self.doc.snap_offset(end.min(len));
+            if start >= end {
+                continue;
+            }
+            if end <= cursor_before {
+                cursor_after -= end - start;
+            } else if start < cursor_before {
+                cursor_after -= cursor_before - start;
+            }
+            builder = builder.delete(start..end);
+        }
+        if builder.is_empty() {
+            return None;
+        }
+        self.commit(builder, cursor_before, cursor_after)
     }
 
     pub fn delete_with_cursor(
@@ -376,6 +440,12 @@ impl Buffer {
 
     pub fn open_undo_session_at(&mut self, _cursor_offset: usize) {
         self.undo.open_group();
+    }
+
+    /// Whether a typing session is open — everything committed until it
+    /// closes is one undo step.
+    pub fn has_open_undo_session(&self) -> bool {
+        self.undo.in_open_group()
     }
 
     pub fn close_undo_session(&mut self) {

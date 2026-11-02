@@ -21,6 +21,42 @@ impl Buffer {
             .map(|(off, _)| off)
     }
 
+    /// Byte offset of the last char strictly before `before` matching
+    /// `pred`, scanning backwards: the cost is the distance to the match
+    /// (geometrically growing windows), never the prefix length.  `before`
+    /// must be a char boundary.
+    pub fn rfind_char_backwards(&self, before: usize, pred: impl Fn(char) -> bool) -> Option<usize> {
+        let len = self.len();
+        let before = before.min(len);
+        if before == 0 {
+            return None;
+        }
+        let mut window = 64usize;
+        loop {
+            let from = before.saturating_sub(window);
+            let mut last: Option<usize> = None;
+            for (off, c) in self.char_span(from, before) {
+                if pred(c) {
+                    last = Some(off);
+                }
+            }
+            if last.is_some() || from == 0 {
+                return last;
+            }
+            window *= 8;
+        }
+    }
+
+    /// Byte offset of the char boundary immediately before `pos` — O(log n)
+    /// through the rope, no scan.  The backspace-class primitive.
+    pub fn prev_char_boundary(&self, pos: usize) -> usize {
+        if pos == 0 {
+            0
+        } else {
+            self.doc.snap_offset(pos - 1)
+        }
+    }
+
     /// Byte offset of the first occurrence of `needle` at/after `from`,
     /// across chunk boundaries.
     pub fn find_sub_from(&self, from: usize, needle: &str) -> Option<usize> {

@@ -329,3 +329,115 @@ fn a_fold_bridging_an_insert_stretches_with_it() {
     view.insert(6, ">>");
     assert_eq!(view.folds, vec![(4, 14)]);
 }
+
+// ── Multi-edit transactions: every edit is compared in pre-transaction
+//    coordinates, so a span that precedes a later edit it does not touch
+//    is never double-shifted ──
+
+fn view_text(view: &BufferView) -> String {
+    let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+    buf.slice(0, buf.len())
+}
+
+#[test]
+fn a_span_between_two_inserts_shifts_by_the_first_only() {
+    // Highlight on "abc" (9..12) in "0123456789abcdef"; one transaction
+    // inserts 10 bytes at 0 and 10 more at 11.  The span start precedes
+    // the second insertion, so only the first delta may move it; the tail
+    // stretches through both.
+    let mut view = buf_view("0123456789abcdef");
+    view.set_highlights(vec![(9, 12, "syntax".into())]);
+    view.insert_many(&[(0, "0123456789"), (11, "0123456789")]);
+    let (hl0, hl1) = (view.highlights[0].0, view.highlights[0].1);
+    assert_eq!(
+        (hl0, hl1),
+        (19, 32),
+        "start shifts through the first edit only; the tail stretches through both"
+    );
+    assert_eq!(&view_text(&view)[hl0..hl1], "9a0123456789b");
+}
+
+#[test]
+fn a_span_across_two_deletes_keeps_the_surviving_middle() {
+    // "alpha beta gamma delta": span (4, 19) covers "beta gamma del".
+    // One transaction deletes "beta " (6..11) and "delta" (17..22).  The
+    // head precedes the first delete; the tail lies inside the second
+    // delete's pre-transaction range and clamps to its start.
+    let mut view = buf_view("alpha beta gamma delta");
+    view.set_highlights(vec![(4, 19, "syntax".into())]);
+    view.delete_many(&[(6, 11), (17, 22)]);
+    assert_eq!(view_text(&view), "alpha gamma ");
+    let (hl0, hl1) = (view.highlights[0].0, view.highlights[0].1);
+    assert_eq!(
+        (hl0, hl1),
+        (4, 12),
+        "tail clamps to the second edit's pre-transaction start, shifted by the first"
+    );
+    assert_eq!(&view_text(&view)[hl0..hl1], "a gamma ");
+}
+
+#[test]
+fn delete_many_one_undo_step_restores_everything() {
+    let mut view = buf_view("alpha beta gamma delta");
+    view.delete_many(&[(6, 11), (17, 22)]);
+    assert_eq!(view_text(&view), "alpha gamma ");
+    assert!(view.undo());
+    assert_eq!(view_text(&view), "alpha beta gamma delta");
+}
+
+// ── Read-only buffers refuse every mutation path (kernel-managed special
+//    buffers were editable through delete/replace while insert refused) ──
+
+#[test]
+fn read_only_blocks_insert_delete_and_replace() {
+    let view = buf_view("frozen text");
+    view.buffer.lock().unwrap_or_else(|e| e.into_inner()).read_only = true;
+    let mut view = view;
+    view.insert(0, "X");
+    view.delete(0, 3);
+    view.replace(0, 3, "Y");
+    assert_eq!(view_text(&view), "frozen text");
+    view.delete_many(&[(0, 3)]);
+    view.insert_many(&[(0, "X")]);
+    assert_eq!(view_text(&view), "frozen text");
+}
+
+// ── Decorations follow edits (they were line-keyed and never moved) ──
+
+#[test]
+fn an_insert_above_moves_decorations_down_with_their_lines() {
+    let mut view = buf_view("alpha\nbeta\ngamma");
+    view.decor_set_eol("hints", 2, " <- end of gamma".into(), "hint".into());
+    view.insert(0, "one\ntwo\n");
+    let decs = view
+        .decoration_layers
+        .get("hints")
+        .expect("layer survives");
+    match &decs[0] {
+        crate::decoration::Decoration::EndOfLine { line, text, .. } => {
+            assert_eq!(*line, 4, "gamma moved from line 2 to line 4");
+            assert_eq!(text, " <- end of gamma");
+        }
+        other => panic!("unexpected decoration {other:?}"),
+    }
+    assert!(view.undo());
+    let decs = view.decoration_layers.get("hints").expect("layer after undo");
+    match &decs[0] {
+        crate::decoration::Decoration::EndOfLine { line, .. } => assert_eq!(*line, 2),
+        other => panic!("unexpected decoration {other:?}"),
+    }
+}
+
+#[test]
+fn an_insert_inside_the_decorated_line_keeps_its_column() {
+    let mut view = buf_view("alpha beta");
+    // Inline hint at line 0, char column 6 (after "alpha ").
+    view.decor_set_inline("hints", 0, 6, "β".into(), "hint".into());
+    view.insert(0, "XX"); // before the column
+    match &view.decoration_layers.get("hints").unwrap()[0] {
+        crate::decoration::Decoration::InlineText { line, col, .. } => {
+            assert_eq!((*line, *col), (0, 8), "the column shifts with the line text");
+        }
+        other => panic!("unexpected decoration {other:?}"),
+    }
+}

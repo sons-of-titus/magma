@@ -25,10 +25,14 @@ pub struct BufferView {
     pub highlights: Vec<(usize, usize, String)>,
     pub highlight_layers: HashMap<String, Vec<(usize, usize, String)>>,
     pub decoration_layers: HashMap<String, Vec<Decoration>>,
+    /// Last transaction sequence this fork replayed from the shared
+    /// buffer's tail — split-view forks stay coherent through it.
+    pub synced_txn_seq: u64,
 }
 
 impl BufferView {
     pub fn new(buffer: Arc<Mutex<Buffer>>) -> Self {
+        let synced = buffer.lock().unwrap_or_else(|e| e.into_inner()).txn_seq();
         BufferView {
             buffer,
             cursor: Position::zero(),
@@ -38,6 +42,7 @@ impl BufferView {
             highlights: Vec::new(),
             highlight_layers: HashMap::new(),
             decoration_layers: HashMap::new(),
+            synced_txn_seq: synced,
         }
     }
 
@@ -65,16 +70,69 @@ impl BufferView {
         self.set_cursor(anchor.offset);
     }
 
+    /// A view that just applied `txn` itself is current; record how far.
+    fn mark_synced(&mut self) {
+        let seq = self
+            .buffer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .txn_seq();
+        self.synced_txn_seq = seq;
+    }
+
+    /// Replay transactions another fork committed since our last sync into
+    /// this fork's cursor, annotations, and decorations — the split-view
+    /// coherence path.  A gap larger than the buffer's tail cap cannot be
+    /// replayed honestly: the cursor clamps and derived annotations stay
+    /// stale until their owner re-publishes.
+    pub fn sync_fork(&mut self) {
+        let (seq, txns) = {
+            let buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            (buf.txn_seq(), buf.txns_since(self.synced_txn_seq))
+        };
+        if txns.is_empty() {
+            self.synced_txn_seq = seq;
+            return;
+        }
+        let missed = seq.saturating_sub(self.synced_txn_seq) as usize;
+        let decor = self.decor_byte_offsets();
+        if txns.len() >= missed {
+            for txn in &txns {
+                let anchor = txn.transform_anchor(Anchor {
+                    offset: self.cursor.offset,
+                    affinity: Affinity::After,
+                });
+                self.transform_annotations(txn);
+                self.set_cursor(anchor.offset);
+            }
+            self.remap_decorations(&decor, &txns);
+                self.mark_synced();
+        } else {
+            // Evicted tail: bring the cursor somewhere legal and let the
+            // derived layers be re-published.
+            let len = self.buffer.lock().unwrap_or_else(|e| e.into_inner()).len();
+            self.set_cursor(len.min(self.cursor.offset));
+        }
+        self.synced_txn_seq = seq;
+    }
+
     /// Map a pre-transaction byte range to post-transaction coordinates.
     /// Ranges entirely after an edit shift by the delta — the same anchor
     /// arithmetic the cursor uses.  A range the edit cuts through keeps its
     /// surviving part (grows over an insertion inside it, clamps over a
     /// deletion): dropping it would blank a word or a whole string literal
     /// between the keystroke and the next parse landing.
+    ///
+    /// Edits are ascending and disjoint in *pre-transaction* coordinates
+    /// (§A.3), so the range must be compared against every edit in those
+    /// coordinates: the endpoints carry accumulated deltas and only the
+    /// final values are shifted.  Shifting in place (comparing post-edit
+    /// offsets against the next edit's pre-edit range) double-shifts a
+    /// start that precedes a later edit the tail overlaps.
     fn transform_range(txn: &EditTransaction, range: (usize, usize)) -> Option<(usize, usize)> {
         let (mut s, mut e) = range;
-        // Edits are ascending and disjoint (§A.3), so the first edit at or
-        // after the range settles it.
+        let mut shift_s: i64 = 0;
+        let mut shift_e: i64 = 0;
         for ce in &txn.edits {
             let (start, end) = (ce.edit.range.start, ce.edit.range.end);
             if e <= start {
@@ -82,8 +140,8 @@ impl BufferView {
             }
             let delta = ce.edit.inserted_text.len() as i64 - (end - start) as i64;
             if s >= end {
-                s = (s as i64 + delta).max(0) as usize;
-                e = (e as i64 + delta).max(0) as usize;
+                shift_s += delta;
+                shift_e += delta;
             } else {
                 // Overlap.  The parts of the span before and after the edit
                 // survive; only the span the edit fully covers disappears.
@@ -97,19 +155,25 @@ impl BufferView {
                         e = start;
                         break;
                     }
-                    // Span reduced to its tail after the edit.
+                    // Span reduced to its tail: the tail starts at this
+                    // edit's end in pre-transaction coordinates, so later
+                    // edits keep being compared against [end, e).
                     (false, true) => {
-                        s = (end as i64 + delta).max(0) as usize;
-                        e = (e as i64 + delta).max(0) as usize;
+                        s = end;
+                        shift_s += delta;
+                        shift_e += delta;
                     }
-                    // Span bridges the edit: it stretches or shrinks by the
-                    // delta and keeps its head.
+                    // Span bridges the edit: the head stays (every later
+                    // edit starts past it), the tail shifts and may still
+                    // overlap later edits.
                     (true, true) => {
-                        e = (e as i64 + delta).max(0) as usize;
+                        shift_e += delta;
                     }
                 }
             }
         }
+        let s = (s as i64 + shift_s).max(0) as usize;
+        let e = (e as i64 + shift_e).max(0) as usize;
         Some((s.min(e), e.max(s)))
     }
 
@@ -143,6 +207,7 @@ impl BufferView {
 
     pub fn insert(&mut self, offset: usize, text: &str) {
         let cursor_before = self.cursor.offset;
+        let decor = self.decor_byte_offsets();
         let txn = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             if buf.read_only {
@@ -153,6 +218,8 @@ impl BufferView {
         if let Some(txn) = txn {
             self.cursor_through(&txn);
             self.transform_annotations(&txn);
+            self.remap_decorations(&decor, std::slice::from_ref(&txn));
+            self.mark_synced();
         }
     }
 
@@ -160,6 +227,7 @@ impl BufferView {
     /// Returns the transaction so callers can transform extra cursors.
     pub fn insert_many(&mut self, edits: &[(usize, &str)]) -> Option<EditTransaction> {
         let cursor_before = self.cursor.offset;
+        let decor = self.decor_byte_offsets();
         let txn = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             if buf.read_only {
@@ -170,35 +238,70 @@ impl BufferView {
         if let Some(txn) = &txn {
             self.cursor_through(txn);
             self.transform_annotations(txn);
+            self.remap_decorations(&decor, std::slice::from_ref(txn));
+            self.mark_synced();
         }
         txn
     }
 
     pub fn delete(&mut self, start: usize, end: usize) {
         let cursor_before = self.cursor.offset;
+        let decor = self.decor_byte_offsets();
         let txn = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            if buf.read_only {
+                return;
+            }
             buf.delete_with_cursor(start, end, cursor_before)
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
             self.transform_annotations(&txn);
+            self.remap_decorations(&decor, std::slice::from_ref(&txn));
+            self.mark_synced();
         }
+    }
+
+    /// Delete several disjoint ranges in one transaction (multi-cursor).
+    pub fn delete_many(&mut self, ranges: &[(usize, usize)]) -> Option<EditTransaction> {
+        let cursor_before = self.cursor.offset;
+        let decor = self.decor_byte_offsets();
+        let txn = {
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            if buf.read_only {
+                return None;
+            }
+            buf.delete_many(ranges, cursor_before)
+        };
+        if let Some(txn) = &txn {
+            self.cursor_through(txn);
+            self.transform_annotations(txn);
+            self.remap_decorations(&decor, std::slice::from_ref(txn));
+            self.mark_synced();
+        }
+        txn
     }
 
     pub fn replace(&mut self, start: usize, end: usize, text: &str) {
         let cursor_before = self.cursor.offset;
+        let decor = self.decor_byte_offsets();
         let txn = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            if buf.read_only {
+                return;
+            }
             buf.replace_with_cursor(start, end, text, cursor_before)
         };
         if let Some(txn) = txn {
             self.cursor_through(&txn);
             self.transform_annotations(&txn);
+            self.remap_decorations(&decor, std::slice::from_ref(&txn));
+            self.mark_synced();
         }
     }
 
     pub fn undo(&mut self) -> bool {
+        let decor = self.decor_byte_offsets();
         let restored = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.undo_with_txns()
@@ -208,6 +311,8 @@ impl BufferView {
                 for txn in &txns {
                     self.transform_annotations(txn);
                 }
+                self.remap_decorations(&decor, &txns);
+                self.mark_synced();
                 self.set_cursor(offset);
                 true
             }
@@ -216,6 +321,7 @@ impl BufferView {
     }
 
     pub fn redo(&mut self) -> bool {
+        let decor = self.decor_byte_offsets();
         let restored = {
             let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.redo_with_txns()
@@ -225,6 +331,8 @@ impl BufferView {
                 for txn in &txns {
                     self.transform_annotations(txn);
                 }
+                self.remap_decorations(&decor, &txns);
+                self.mark_synced();
                 self.set_cursor(offset);
                 true
             }
@@ -293,50 +401,4 @@ impl BufferView {
         self.highlight_layers.clear();
     }
 
-    // ── Decorations ──
-
-    pub fn decor_set_inline(
-        &mut self,
-        layer: &str,
-        line: usize,
-        col: usize,
-        text: String,
-        face: String,
-    ) {
-        let v = self.decoration_layers.entry(layer.to_string()).or_default();
-        v.retain(|d| !matches!(d, Decoration::InlineText { line: l, col: c, .. } if *l == line && *c == col));
-        v.push(Decoration::InlineText {
-            line,
-            col,
-            text,
-            face,
-        });
-    }
-
-    pub fn decor_set_eol(&mut self, layer: &str, line: usize, text: String, face: String) {
-        let v = self.decoration_layers.entry(layer.to_string()).or_default();
-        v.retain(|d| !matches!(d, Decoration::EndOfLine { line: l, .. } if *l == line));
-        v.push(Decoration::EndOfLine { line, text, face });
-    }
-
-    pub fn decor_set_prefix(&mut self, layer: &str, line: usize, text: String, face: String) {
-        let v = self.decoration_layers.entry(layer.to_string()).or_default();
-        v.retain(|d| !matches!(d, Decoration::LinePrefix { line: l, .. } if *l == line));
-        v.push(Decoration::LinePrefix { line, text, face });
-    }
-
-    pub fn decor_clear_layer(&mut self, layer: &str) {
-        self.decoration_layers.remove(layer);
-    }
-
-    pub fn decor_clear(&mut self) {
-        self.decoration_layers.clear();
-    }
-
-    pub fn decor_count_layer(&self, layer: &str) -> usize {
-        self.decoration_layers
-            .get(layer)
-            .map(|v| v.len())
-            .unwrap_or(0)
-    }
 }

@@ -227,6 +227,7 @@ fn event_payloads_carry_the_walk_and_record() {
     let indexed = Event::ProjectIndexed {
         project_name: "demo".into(),
         generation: 3,
+        walk_id: 1,
         files: vec!["src/main.rs".into()],
         ignored_files: vec![],
         done: true,
@@ -238,6 +239,7 @@ fn event_payloads_carry_the_walk_and_record() {
             files,
             ignored_files: _,
             done,
+            ..
         } => {
             assert_eq!(project_name, "demo");
             assert_eq!(generation, 3);

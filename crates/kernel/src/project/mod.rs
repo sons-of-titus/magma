@@ -92,6 +92,13 @@ pub struct Project {
     pub last_fs_emit: Option<std::time::Instant>,
     /// Bumped whenever the file list is rebuilt — render caches key on it.
     pub files_epoch: u64,
+    /// Bumped whenever `spawn_file_index` starts a walk: identifies one
+    /// walk's batch stream so the foreground can accumulate delta batches
+    /// and drop batches interleaved from a superseded re-walk.
+    pub walk_epoch: u64,
+    /// The `walk_epoch` whose batches are currently being accumulated into
+    /// `files`.
+    pub applied_walk_id: u64,
     pub file_index_dirty: bool,
     /// True while a walk for this project generation is still in flight —
     /// the tree can show a loading hint before the first batch lands.

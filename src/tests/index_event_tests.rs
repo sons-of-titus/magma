@@ -36,6 +36,7 @@ fn index_events_round_trip_through_the_shared_channel_in_send_order() {
     bg.send_event(BackgroundEvent::Index(IndexEvent::ProjectIndexed {
         project_name: "demo".into(),
         generation: 1,
+        walk_id: 1,
         files: vec!["src/main.rs".into(), "src/lib.rs".into()],
         ignored_files: vec![],
         done: false,
@@ -98,6 +99,7 @@ fn project_indexed_dispatch_updates_the_registry_and_emits_the_bus_event() {
         BackgroundEvent::Index(IndexEvent::ProjectIndexed {
             project_name: "demo".into(),
             generation: 1,
+            walk_id: 1,
             files: vec!["src/main.rs".into()],
             ignored_files: vec![],
             done: true,
@@ -133,6 +135,7 @@ fn walk_batches_apply_incrementally_and_stale_generations_are_dropped() {
         BackgroundEvent::Index(IndexEvent::ProjectIndexed {
             project_name: "demo".into(),
             generation: 1,
+            walk_id: 1,
             files: vec!["ghost.rs".into()],
             ignored_files: vec![],
             done: true,
@@ -144,38 +147,113 @@ fn walk_batches_apply_incrementally_and_stale_generations_are_dropped() {
     );
     assert_eq!(ed.project_manager.project.files_epoch, 0);
 
-    // Current-generation batches replace (they carry the accumulated list)
-    // and the final batch clears the loading flag.
+    // Delta batches accumulate: the second batch adds to the first, it does
+    // not replace it, and the final batch clears the loading flag.
     process_background_event(
         &mut ed,
         BackgroundEvent::Index(IndexEvent::ProjectIndexed {
             project_name: "demo".into(),
             generation: 2,
+            walk_id: 1,
             files: vec!["a.rs".into(), "b.rs".into()],
             ignored_files: vec![],
             done: false,
         }),
     );
-    assert_eq!(
-        ed.project_manager.project.files,
-        vec!["a.rs".to_string(), "b.rs".to_string()]
-    );
-    assert!(ed.project_manager.project.indexing);
-    assert_eq!(ed.project_manager.project.files_epoch, 1);
-
     process_background_event(
         &mut ed,
         BackgroundEvent::Index(IndexEvent::ProjectIndexed {
             project_name: "demo".into(),
             generation: 2,
-            files: vec!["a.rs".into(), "b.rs".into(), "c.rs".into()],
+            walk_id: 1,
+            files: vec!["c.rs".into()],
             ignored_files: vec!["vendored".into()],
             done: true,
         }),
     );
-    assert_eq!(ed.project_manager.project.files.len(), 3);
+    assert_eq!(
+        ed.project_manager.project.files,
+        vec!["a.rs".to_string(), "b.rs".to_string(), "c.rs".to_string()]
+    );
+    assert_eq!(
+        ed.project_manager.project.files_hash.len(),
+        3,
+        "the membership mirror sees every accumulated file"
+    );
     assert!(!ed.project_manager.project.indexing);
     assert_eq!(ed.project_manager.project.files_epoch, 2);
+
+    // A batch interleaving from an older walk (lower walk id) is dropped —
+    // its files must not join the newer walk's list.
+    process_background_event(
+        &mut ed,
+        BackgroundEvent::Index(IndexEvent::ProjectIndexed {
+            project_name: "demo".into(),
+            generation: 2,
+            walk_id: 0,
+            files: vec!["late-ghost.rs".into()],
+            ignored_files: vec![],
+            done: false,
+        }),
+    );
+    assert!(
+        !ed.project_manager.project.files.contains(&"late-ghost.rs".to_string()),
+        "a superseded re-walk's late batch never joins the accumulated list"
+    );
+}
+
+/// Regression: a project larger than one walk batch (512 files) must end up
+/// fully present in the project state, the membership mirror, and the
+/// persisted index.  The old replace-per-batch handler truncated everything
+/// to the final partial batch and `retain_paths` then destroyed the
+/// persisted store for every other file.
+#[test]
+fn projects_larger_than_one_batch_are_not_truncated() {
+    let (mut ed, _bg, _rx) = crate::tests::helpers::editor_with_background();
+    activate_demo(&mut ed, 1);
+
+    let total = 1_200usize;
+    for batch_start in (0..total).step_by(512) {
+        let batch_end = (batch_start + 512).min(total);
+        let files: Vec<String> = (batch_start..batch_end)
+            .map(|i| format!("src/file_{i}.rs"))
+            .collect();
+        process_background_event(
+            &mut ed,
+            BackgroundEvent::Index(IndexEvent::ProjectIndexed {
+                project_name: "demo".into(),
+                generation: 1,
+                walk_id: 1,
+                files,
+                ignored_files: vec![],
+                done: batch_end == total,
+            }),
+        );
+    }
+
+    let proj = &ed.project_manager.project;
+    assert_eq!(proj.files.len(), total, "every walked file survives batching");
+    assert_eq!(proj.files_hash.len(), total);
+    assert_eq!(proj.files[0], "src/file_0.rs");
+    assert_eq!(proj.files[total - 1], format!("src/file_{}.rs", total - 1));
+    assert!(!proj.indexing);
+}
+
+/// The walk itself must deliver every file across batch boundaries, not
+/// just the files of the final partial batch.
+#[test]
+fn walk_delivers_all_files_across_batch_boundaries() {
+    let root = std::env::temp_dir().join("magma_walk_batch_boundary");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    for i in 0..1_200 {
+        std::fs::write(root.join(format!("f_{i}.rs")), "fn x() {}\n").unwrap();
+    }
+
+    let files = crate::kernel::project::walk_files_for_test(&root);
+
+    assert_eq!(files.len(), 1_200, "no file may be lost at a batch boundary");
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

@@ -2,8 +2,10 @@
 //!
 //! The walk runs on the blocking pool and delivers its result in batches so
 //! the project tree fills in incrementally instead of appearing in one huge
-//! rebuild when the whole project has been read.  Each batch carries the
-//! accumulated list so far, so the foreground applies it statelessly.
+//! rebuild when the whole project has been read.  Each batch carries only
+//! the files first seen in that batch; the foreground accumulates them
+//! against the walk's `walk_id`, so batch cost stays O(batch) for a
+//! 100k-file project instead of O(files so far).
 
 use std::collections::HashSet;
 
@@ -61,11 +63,12 @@ pub fn index_change_marks_dirty(
     }
 }
 
-/// Sends the walk's accumulated state as `index::Event::ProjectIndexed`
-/// batches, ordered by the event channel.
+/// Sends the walk's file batches as `index::Event::ProjectIndexed` events,
+/// ordered by the event channel.
 struct Batcher {
     project_name: String,
     generation: u64,
+    walk_id: u64,
     sender: tokio::sync::mpsc::UnboundedSender<BackgroundEvent>,
     files: Vec<String>,
     ignored: HashSet<String>,
@@ -85,12 +88,12 @@ impl Batcher {
         let event = BackgroundEvent::Index(crate::index::Event::ProjectIndexed {
             project_name: self.project_name.clone(),
             generation: self.generation,
-            files: self.files.clone(),
+            walk_id: self.walk_id,
+            files: std::mem::take(&mut self.files),
             ignored_files: self.ignored.iter().cloned().collect(),
             done,
         });
         let _ = self.sender.send(event);
-        self.files.clear();
     }
 }
 
@@ -170,6 +173,8 @@ pub fn spawn_file_index(ed: &mut Editor) -> bool {
     };
     let name = ed.project_manager.project.name.clone().unwrap_or_default();
     let generation = ed.project_manager.project.generation;
+    ed.project_manager.project.walk_epoch += 1;
+    let walk_id = ed.project_manager.project.walk_epoch;
     let sender = bg.sender.clone();
     ed.project_manager.project.file_index_dirty = false;
     ed.project_manager.project.indexing = true;
@@ -178,6 +183,7 @@ pub fn spawn_file_index(ed: &mut Editor) -> bool {
         let mut batch = Batcher {
             project_name: name,
             generation,
+            walk_id,
             sender,
             files: Vec::new(),
             ignored: HashSet::new(),
@@ -196,12 +202,14 @@ pub fn spawn_file_index(ed: &mut Editor) -> bool {
     true
 }
 
-/// Test entry point: the index walk over `root`.
+/// Test entry point: the index walk over `root`, accumulated from the
+/// batch events exactly the way the foreground handler applies them.
 pub fn walk_files_for_test(root: &std::path::Path) -> Vec<String> {
-    let (sender, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let (sender, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut batch = Batcher {
         project_name: String::new(),
         generation: 0,
+        walk_id: 0,
         sender,
         files: Vec::new(),
         ignored: HashSet::new(),
@@ -209,5 +217,17 @@ pub fn walk_files_for_test(root: &std::path::Path) -> Vec<String> {
     };
     let mut stack = super::gitignore::IgnoreStack::default();
     walk_inner(root, root, &mut stack, &mut batch, 0);
-    std::mem::take(&mut batch.files)
+    batch.flush(true);
+    drop(batch);
+    let mut files = Vec::new();
+    while let Ok(event) = rx.try_recv() {
+        if let BackgroundEvent::Index(crate::index::Event::ProjectIndexed {
+            files: batch_files,
+            ..
+        }) = event
+        {
+            files.extend(batch_files);
+        }
+    }
+    files
 }

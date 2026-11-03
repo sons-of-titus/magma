@@ -9,13 +9,16 @@ use crate::IndexRecord;
 /// An event produced by a project walk or a per-file extraction worker.
 #[derive(Debug, Clone)]
 pub enum Event {
-    /// A walk batch for one project: the accumulated file list so far, in
-    /// walk order.  Batches from a single walk arrive in order and each
-    /// carries the full list to that point, so the foreground replaces its
-    /// state statelessly; `done` marks the final batch.
+    /// A walk batch for one project: the files first discovered in this
+    /// batch, in walk order, plus the ignored set accumulated so far.
+    /// Batches from a single walk arrive in order and the foreground
+    /// accumulates them against `walk_id`; a batch whose `walk_id` is older
+    /// than the newest one applied belongs to a superseded re-walk and must
+    /// be dropped.  `done` marks the final batch.
     ProjectIndexed {
         project_name: String,
         generation: u64,
+        walk_id: u64,
         files: Vec<String>,
         ignored_files: Vec<String>,
         done: bool,

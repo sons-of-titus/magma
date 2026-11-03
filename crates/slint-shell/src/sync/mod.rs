@@ -79,6 +79,10 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     if !state.editor.ui_requests.is_empty() {
         let requests = std::mem::take(&mut state.editor.ui_requests);
         for request in requests {
+            if request == "database" {
+                state.db_open = true;
+                continue;
+            }
             if !picker::handle_request(weak, state, &request) {
                 logging::warn!("unhandled ui_request: {request}");
             }

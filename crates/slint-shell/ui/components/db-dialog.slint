@@ -1,0 +1,257 @@
+import { Theme } from "../theme.slint";
+import { Field, Picker, Check } from "controls.slint";
+import { ToolbarIcon as IconButton } from "button.slint";
+
+// Data Source dialog: JetBrains-style connection form.  URL mode swaps the
+// field grid for a single connection-string field.  `editing` >= 1 means
+// the dialog edits that data source instead of creating one.
+
+export component DbConnectionDialog inherits Rectangle {
+    in property <string> title: "Add Data Source";
+    in property <[string]> kinds;
+    in-out property <int> kind-index: 0;
+    in property <bool> embedded: true;      // SQLite-like: file path only
+    in-out property <string> name;
+    in-out property <string> host;
+    in-out property <string> port;
+    in-out property <string> database;
+    in-out property <string> user;
+    in-out property <string> password;
+    in-out property <bool> save-password: false;
+    in-out property <int> ssl-index: 1;     // 0 disabled · 1 prefer · 2 require
+    in property <[string]> ssl-choices;
+    in-out property <bool> trust-cert: false;
+    in-out property <bool> url-mode: false;
+    in-out property <string> url;
+    in property <string> note;
+    in property <bool> note-error: false;
+    in property <bool> testing: false;
+
+    callback cancel();
+    callback save();
+    callback test();
+    callback kind-changed(string);
+    callback ssl-changed(string);
+    callback url-toggled();
+
+    background: #00000066;
+
+    TouchArea { }   // dim backdrop swallows clicks
+
+    Rectangle {
+        width: 380px;
+        height: dlg.preferred-height + 48px;
+        border-radius: 8px;
+        background: Theme.surface-panel;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        dlg := VerticalLayout {
+            padding: 14px;
+            spacing: 8px;
+
+            Text {
+                text: root.title;
+                color: Theme.text-primary;
+                font-size: Theme.font-ui;
+                font-weight: 700;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Type"; color: Theme.text-faint; font-size: 9px; }
+                    Picker {
+                        choices: root.kinds;
+                        current-value: root.kinds[root.kind-index];
+                        changed(v) => { root.kind-changed(v); }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Name"; color: Theme.text-faint; font-size: 9px; }
+                    Field { placeholder: "My database"; text <=> root.name; }
+                }
+            }
+
+            if !root.url-mode : VerticalLayout {
+                spacing: 8px;
+
+                if !root.embedded : HorizontalLayout {
+                    spacing: 8px;
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: "Host"; color: Theme.text-faint; font-size: 9px; }
+                        Field { placeholder: "localhost"; text <=> root.host; }
+                    }
+                    VerticalLayout {
+                        width: 76px;
+                        spacing: 2px;
+                        Text { text: "Port"; color: Theme.text-faint; font-size: 9px; }
+                        Field { placeholder: "5432"; text <=> root.port; }
+                    }
+                }
+
+                if root.embedded : VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Database file"; color: Theme.text-faint; font-size: 9px; }
+                    Field { placeholder: "/path/to/database.sqlite"; text <=> root.host; }
+                }
+
+                if !root.embedded : HorizontalLayout {
+                    spacing: 8px;
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: "Database"; color: Theme.text-faint; font-size: 9px; }
+                        Field { placeholder: "postgres"; text <=> root.database; }
+                    }
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: "User"; color: Theme.text-faint; font-size: 9px; }
+                        Field { placeholder: "postgres"; text <=> root.user; }
+                    }
+                }
+
+                if !root.embedded : VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Password"; color: Theme.text-faint; font-size: 9px; }
+                    Field {
+                        placeholder: "••••••••";
+                        text <=> root.password;
+                        password: true;
+                    }
+                }
+
+                if !root.embedded : HorizontalLayout {
+                    Check {
+                        label: "Save password";
+                        description: "Stored in the OS keychain, never in config files";
+                        checked <=> root.save-password;
+                    }
+                }
+
+                if !root.embedded : HorizontalLayout {
+                    spacing: 8px;
+                    VerticalLayout {
+                        width: 130px;
+                        spacing: 2px;
+                        Text { text: "SSL"; color: Theme.text-faint; font-size: 9px; }
+                        Picker {
+                            choices: root.ssl-choices;
+                            current-value: root.ssl-choices[root.ssl-index];
+                            changed(v) => { root.ssl-changed(v); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: end;
+                        Check {
+                            label: "Trust server certificate";
+                            checked <=> root.trust-cert;
+                        }
+                    }
+                }
+            }
+
+            if root.url-mode : VerticalLayout {
+                spacing: 2px;
+                Text { text: "Connection URL"; color: Theme.text-faint; font-size: 9px; }
+                Field {
+                    placeholder: "postgres://user@host:5432/db";
+                    text <=> root.url;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: "Use URL";
+                    color: Theme.accent;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    url-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.url-toggled(); }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.note != "" : Text {
+                    text: root.note;
+                    color: root.note-error ? Theme.danger : Theme.success;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 2;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                Rectangle { horizontal-stretch: 1; }
+
+                test-btn := Rectangle {
+                    height: 24px;
+                    width: test-label.preferred-width + 20px;
+                    border-radius: Theme.radius;
+                    background: test-touch.has-hover ? Theme.fill : Theme.fill-muted;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    test-label := Text {
+                        text: root.testing ? "Testing…" : "Test Connection";
+                        color: Theme.text-primary;
+                        font-size: 10px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    test-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        enabled: !root.testing;
+                        clicked => { root.test(); }
+                    }
+                }
+
+                Rectangle {
+                    height: 24px;
+                    width: 54px;
+                    border-radius: Theme.radius;
+                    background: cancel-touch.has-hover ? Theme.fill : Theme.fill-muted;
+                    Text {
+                        text: "Cancel";
+                        color: Theme.text-primary;
+                        font-size: 10px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    cancel-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.cancel(); }
+                    }
+                }
+
+                Rectangle {
+                    height: 24px;
+                    width: 54px;
+                    border-radius: Theme.radius;
+                    background: root.name == "" ? Theme.fill-muted
+                        : save-touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
+                    Text {
+                        text: "Save";
+                        color: root.name == "" ? Theme.text-faint : white;
+                        font-size: 10px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    save-touch := TouchArea {
+                        mouse-cursor: root.name == "" ? default : pointer;
+                        enabled: root.name != "";
+                        clicked => { root.save(); }
+                    }
+                }
+            }
+        }
+    }
+}

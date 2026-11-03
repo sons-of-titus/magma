@@ -1,54 +1,75 @@
 import { Theme } from "../theme.slint";
 import { ListView, ScrollView } from "std-widgets.slint";
-import { ToolWindowHeader, Field, Picker } from "controls.slint";
+import { ToolWindowHeader, Field, Picker, Check } from "controls.slint";
 import { ToolbarIcon as IconButton } from "button.slint";
 import { EmptyState } from "tool-window.slint";
 
-// Schema explorer row: tables/views with their columns and indexes,
-// flattened by the projection for a plain ListView.
+// ── Models ───────────────────────────────────────────────────────────────────
+
+// Explorer row, flattened from the kernel's per-source tree cache.  `key`
+// is the node path the kernel addresses nodes by.
 export struct DbTreeRow {
+    key: string,
     depth: int,
-    kind: string,      // table | view | column | pk | index
+    kind: string,       // source | database | schema | folder | table | view | column | pk | fk | index | sequence | function
     label: string,
     detail: string,
+    status: string,     // loaded | loading | error
     expanded: bool,
-    idx: int,          // table ordinal for toggle/open; -1 for leaves
+    has-children: bool,
 }
 
-// Results grid model.  Cell `kind` styles NULL/blob/number distinctly so
-// SQL NULL never reads as an empty string.
-export struct DbColumn {
-    name: string,
+export struct DbTabInfo {
+    id: int,
+    title: string,
+    busy: bool,
+    pending: bool,
+    active: bool,
 }
+
+export struct DbGridColumn {
+    name: string,
+    type: string,
+    width: length,
+    sort: string,       // "" | asc | desc
+}
+
+// One cell: `kind` styles NULL/bool/number/blob; `edited` marks a pending
+// change; `new` marks the staged insert row.
 export struct DbCell {
     text: string,
-    kind: string,      // null | number | text | blob
-}
-export struct DbRow {
-    cells: [DbCell],
+    kind: string,
+    edited: bool,
 }
 
-export component FormButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
+export struct DbGridRow {
+    cells: [DbCell],
+    status: string,     // "" | deleted | inserted
+    number: string,
+}
+
+// ── Small pieces ─────────────────────────────────────────────────────────────
+
+export component ToolButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> tooltip;
     in property <bool> enabled: true;
+    in property <bool> active: false;
+    in property <color> tint: Theme.text-muted;
     callback clicked();
 
     height: 22px;
-    width: lbl.preferred-width + 20px;
+    width: 24px;
     border-radius: Theme.radius;
-    background: !root.enabled ? Theme.fill-muted
-        : root.primary
-            ? (touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
-            : (touch.has-hover ? Theme.fill : Theme.fill-muted);
-    border-width: root.primary ? 0 : 1px;
-    border-color: Theme.border;
+    background: !root.enabled ? transparent
+        : root.active ? Theme.fill
+        : touch.has-hover ? Theme.fill-muted : transparent;
 
-    lbl := Text {
-        text: root.label;
-        color: !root.enabled ? Theme.text-faint : root.primary ? white : Theme.text-primary;
-        font-size: 10px;
-        font-weight: 600;
+    Text {
+        text: root.glyph;
+        color: !root.enabled ? Theme.text-faint : root.tint;
+        font-family: "Symbols Nerd Font";
+        font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -60,38 +81,126 @@ export component FormButton inherits Rectangle {
     }
 }
 
+component GridHeaderCell inherits Rectangle {
+    in property <string> name;
+    in property <string> type;
+    in property <string> sort;
+    in property <bool> last;
+    callback clicked();
+    callback resized(length);
+
+    background: Theme.chrome;
+
+    HorizontalLayout {
+        padding-left: 7px;
+        padding-right: 10px;
+        spacing: 4px;
+        alignment: start;
+
+        Text {
+            text: root.name;
+            color: Theme.text-secondary;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: Theme.font-mono;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.type != "" : Text {
+            text: root.type;
+            color: Theme.text-faint;
+            font-size: 9px;
+            font-family: Theme.font-mono;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            text: root.sort == "asc" ? "▲" : root.sort == "desc" ? "▼" : "";
+            color: Theme.accent;
+            font-size: 8px;
+            vertical-alignment: center;
+            width: 8px;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    handle := Rectangle {
+        x: parent.width - 4px;
+        width: 7px;
+        TouchArea {
+            mouse-cursor: ew-resize;
+            moved => { root.resized(self.mouse-x - self.pressed-x); }
+        }
+    }
+
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        height: parent.height;
+        background: Theme.border;
+    }
+}
+
+// ── Panel ────────────────────────────────────────────────────────────────────
+
 export component DatabasePanel inherits Rectangle {
     // ── Bound to shell state ─────────────────────────────────────────────
     in property <[string]> sources;
     in property <string> active-source;
     in property <bool> connected: false;
-    in property <string> connected-label: "";
+    in property <string> connection-label;
     in property <bool> busy: false;
     in property <[DbTreeRow]> tree;
-    in property <[DbColumn]> columns;
-    in property <[DbRow]> rows;
-    in property <string> status: "";
+    in-out property <string> tree-filter;
+    in property <bool> tree-filter-active: false;
+    in property <[DbTabInfo]> tabs;
+    in property <string> grid-title;
+    in property <[DbGridColumn]> columns;
+    in property <[DbGridRow]> rows;
+    in property <string> status;
     in property <bool> status-error: false;
     in property <bool> truncated: false;
-    in property <string> row-count: "";
-    in property <string> elapsed: "";
+    in property <string> row-count;
+    in property <string> elapsed;
+    in property <string> page-info;
+    in property <bool> can-edit: false;
+    in property <int> pending-count: 0;
+    in property <bool> has-tab: false;
+    in property <bool> querying: false;
+    in-out property <string> grid-filter;
 
     // ── Callbacks ────────────────────────────────────────────────────────
     callback source-changed(string);
-    callback connect-toggle();
-    callback refresh();
-    callback form-opened();
-    callback open-console();
-    callback toggle-table(int);
-    callback table-opened(int);
-    callback run();
-    callback cancel-query();
+    callback toolbar(string);
+    callback tree-clicked(string);
+    callback tree-opened(string);
+    callback tree-context(string, length, length);
+    callback tab-selected(int);
+    callback tab-closed(int);
+    callback sort-clicked(int);
+    callback filter-accepted();
+    callback grid-select(int, int);
+    callback grid-edit-committed(int, int, string);
+    callback grid-action(string);
+    callback col-resized(int, length);
+    callback tree-filter-edited();
 
     background: Theme.surface-panel;
 
-    // Uniform grid column width, shared by the pinned header and the
-    // scrolling body so their horizontal positions can be bound together.
-    property <length> grid-width: Math.max(root.columns.length * 120px, root.width * 0.55);
+    property <length> grid-width: root.columns.length == 0 ? 0px
+        : root.columns[root.columns.length - 1].width * root.columns.length;
+    property <int> editing-row: -1;
+    property <int> editing-col: -1;
+
+    function stop-editing() {
+        editing-row = -1;
+        editing-col = -1;
+    }
 
     VerticalLayout {
         // ── Header ───────────────────────────────────────────────────────
@@ -99,7 +208,7 @@ export component DatabasePanel inherits Rectangle {
             title: "Database";
             glyph: "\u{E64D}";
             status-text: root.busy ? "working…"
-                : root.connected ? root.connected-label
+                : root.connected ? root.connection-label
                 : "not connected";
             status-tint: root.busy ? Theme.warning
                 : root.connected ? Theme.success
@@ -107,55 +216,6 @@ export component DatabasePanel inherits Rectangle {
         }
 
         // ── Connection bar ───────────────────────────────────────────────
-        Rectangle {
-            height: 32px;
-            background: Theme.chrome;
-
-            Rectangle {
-                y: parent.height - 1px;
-                height: 1px;
-                background: Theme.border;
-            }
-
-            HorizontalLayout {
-                padding-left: 6px;
-                padding-right: 6px;
-                spacing: 4px;
-                alignment: start;
-
-                Picker {
-                    choices: root.sources;
-                    current-value: root.active-source;
-                    min-w: 90px;
-                    horizontal-stretch: 1;
-                    placeholder: "no sources";
-                    changed(v) => { root.source-changed(v); }
-                }
-
-                IconButton {
-                    y: 3px;
-                    glyph: root.connected ? "\u{F0375}" : "\u{F0134}";
-                    symbol: true;
-                    tint: root.connected ? Theme.warning : Theme.success;
-                    clicked => { root.connect-toggle(); }
-                }
-                IconButton {
-                    y: 3px;
-                    glyph: "\u{F0450}";
-                    symbol: true;
-                    enabled: root.connected;
-                    tint: root.connected ? Theme.text-muted : Theme.text-faint;
-                    clicked => { root.refresh(); }
-                }
-                IconButton {
-                    y: 3px;
-                    glyph: "+";
-                    clicked => { root.form-opened(); }
-                }
-            }
-        }
-
-        // ── Action row: the console lives in an editor buffer; these aim it
         Rectangle {
             height: 30px;
             background: Theme.chrome;
@@ -169,36 +229,96 @@ export component DatabasePanel inherits Rectangle {
             HorizontalLayout {
                 padding-left: 6px;
                 padding-right: 6px;
-                spacing: 6px;
+                spacing: 3px;
                 alignment: start;
 
-                FormButton {
-                    label: "Console";
-                    clicked => { root.open-console(); }
-                }
-                FormButton {
-                    label: root.busy ? "Running…" : "Run";
-                    primary: !root.busy;
-                    enabled: root.connected && !root.busy;
-                    clicked => { root.run(); }
-                }
-                if root.busy : FormButton {
-                    label: "Stop";
-                    clicked => { root.cancel-query(); }
+                Picker {
+                    y: 2px;
+                    choices: root.sources;
+                    current-value: root.active-source;
+                    min-w: 90px;
+                    horizontal-stretch: 1;
+                    placeholder: "no sources";
+                    changed(v) => { root.source-changed(v); }
                 }
 
-                Rectangle { horizontal-stretch: 1; }
-
-                Text {
-                    text: "SQL runs from the *sql* buffer — Cmd+Enter or Run";
-                    color: Theme.text-faint;
-                    font-size: 9px;
-                    vertical-alignment: center;
+                ToolButton {
+                    glyph: "\u{F0134}";           // plus
+                    tooltip: "Add data source";
+                    tint: Theme.success;
+                    clicked => { root.toolbar("add"); }
+                }
+                ToolButton {
+                    glyph: root.connected ? "\u{F0836}" : "\u{F03EA}";  // link / plug
+                    tooltip: root.connected ? "Disconnect" : "Connect";
+                    enabled: root.active-source != "";
+                    tint: root.connected ? Theme.warning : Theme.success;
+                    clicked => { root.toolbar("connect"); }
+                }
+                ToolButton {
+                    glyph: "\u{F0450}";           // refresh
+                    tooltip: "Synchronize";
+                    enabled: root.connected;
+                    clicked => { root.toolbar("refresh"); }
+                }
+                ToolButton {
+                    glyph: "\u{F0134}";           // console (overridden below)
+                    tooltip: "New query console";
+                    enabled: root.active-source != "";
+                    clicked => { root.toolbar("console"); }
+                }
+                ToolButton {
+                    glyph: root.querying ? "\u{F04D3}" : "\u{F05B0}";  // stop / play
+                    tooltip: root.querying ? "Cancel running query" : "Run focused console";
+                    enabled: root.connected;
+                    tint: root.querying ? Theme.danger : Theme.text-muted;
+                    clicked => { root.toolbar("run"); }
+                }
+                ToolButton {
+                    glyph: "\u{F0156}";           // fold
+                    tooltip: "Collapse all";
+                    enabled: root.connected;
+                    clicked => { root.toolbar("collapse"); }
+                }
+                ToolButton {
+                    glyph: "\u{F013B}";           // filter
+                    tooltip: "Filter objects";
+                    active: root.tree-filter-active;
+                    clicked => { root.toolbar("filter"); }
+                }
+                ToolButton {
+                    glyph: "\u{F0493}";           // gear
+                    tooltip: "Data source properties";
+                    enabled: root.active-source != "";
+                    clicked => { root.toolbar("properties"); }
                 }
             }
         }
 
-        // ── Body: schema explorer | results ──────────────────────────────
+        // ── Object filter field ──────────────────────────────────────────
+        if root.tree-filter-active : Rectangle {
+            height: 28px;
+            background: Theme.chrome;
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border;
+            }
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                padding-top: 2px;
+                padding-bottom: 2px;
+                Field {
+                    placeholder: "search database objects…";
+                    font-size: Theme.font-small;
+                    text <=> root.tree-filter;
+                    edited => { root.tree-filter-edited(); }
+                }
+            }
+        }
+
+        // ── Body: explorer | results ─────────────────────────────────────
         Rectangle {
             horizontal-stretch: 1;
             vertical-stretch: 1;
@@ -206,30 +326,27 @@ export component DatabasePanel inherits Rectangle {
             HorizontalLayout {
                 spacing: 0px;
 
-                // ── Schema explorer ──────────────────────────────────────
+                // ── Explorer ─────────────────────────────────────────────
                 Rectangle {
-                    width: root.width * 0.4;
+                    width: root.width * 0.38;
                     clip: true;
 
-                    if !root.connected : EmptyState {
+                    if root.sources.length == 0 : EmptyState {
                         glyph: "\u{E64D}";
-                        title: "No connection";
-                        detail: "Pick a source and connect to browse its schema.";
+                        title: "No data sources";
+                        detail: "Add one to browse its tables and run SQL.";
+                        action-label: "Add Data Source";
+                        action => { root.toolbar("add"); }
                     }
-                    if root.connected && root.tree.length == 0 && root.busy : Text {
-                        text: "Loading schema…";
-                        color: Theme.text-faint;
-                        font-size: Theme.font-small;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                    if root.connected && root.tree.length == 0 && !root.busy : EmptyState {
-                        glyph: "\u{F1632}";
-                        title: "Empty database";
-                        detail: "No tables or views yet.";
+                    if root.sources.length > 0 && !root.connected : EmptyState {
+                        glyph: "\u{F03EA}";
+                        title: "Not connected";
+                        detail: "Connect to explore the catalog.";
+                        action-label: "Connect";
+                        action => { root.toolbar("connect"); }
                     }
 
-                    ListView {
+                    if root.connected : ListView {
                         for row in root.tree : Rectangle {
                             height: 20px;
                             background: row-touch.has-hover ? Theme.fill-muted : transparent;
@@ -242,20 +359,31 @@ export component DatabasePanel inherits Rectangle {
 
                                 Text {
                                     width: 10px;
-                                    text: row.kind == "table" || row.kind == "view"
-                                        ? (row.expanded ? "▾" : "▸")
-                                        : "";
+                                    text: !row.has-children ? ""
+                                        : row.expanded ? "▾" : "▸";
                                     color: Theme.text-faint;
                                     font-size: 9px;
                                     vertical-alignment: center;
                                 }
 
                                 Text {
-                                    text: row.kind == "pk" ? "\u{F0306}"
-                                        : row.kind == "index" ? "\u{F030B}"
+                                    text: row.kind == "source" ? "\u{F0A06}"
+                                        : row.kind == "database" ? "\u{F02D6}"
+                                        : row.kind == "schema" ? "\u{F0AC1}"
+                                        : row.kind == "folder" ? "\u{F024B}"
+                                        : row.kind == "table" ? "\u{F0481}"
                                         : row.kind == "view" ? "\u{F0208}"
+                                        : row.kind == "column" ? "\u{F0231}"
+                                        : row.kind == "pk" ? "\u{F0306}"
+                                        : row.kind == "fk" ? "\u{F020A}"
+                                        : row.kind == "index" ? "\u{F030B}"
+                                        : row.kind == "sequence" ? "\u{F0554}"
+                                        : row.kind == "function" ? "\u{F0A2F}"
                                         : "";
-                                    color: row.kind == "pk" ? Theme.warning : Theme.text-faint;
+                                    color: row.status == "error" ? Theme.danger
+                                        : row.kind == "pk" ? Theme.warning
+                                        : row.kind == "table" || row.kind == "view" || row.kind == "source" ? Theme.accent
+                                        : Theme.text-faint;
                                     font-family: "Symbols Nerd Font";
                                     font-size: 10px;
                                     vertical-alignment: center;
@@ -263,15 +391,13 @@ export component DatabasePanel inherits Rectangle {
 
                                 Text {
                                     text: row.label;
-                                    color: row.kind == "table" || row.kind == "view"
-                                        ? Theme.text-primary
+                                    color: row.status == "error" ? Theme.danger
+                                        : row.kind == "table" || row.kind == "view" || row.kind == "source" ? Theme.text-primary
                                         : Theme.text-secondary;
-                                    font-size: row.kind == "table" || row.kind == "view"
-                                        ? Theme.font-small
-                                        : 10px;
-                                    font-weight: row.kind == "table" || row.kind == "view"
-                                        ? 600 : 400;
-                                    font-family: row.depth > 0 ? Theme.font-mono : Theme.font-mono;
+                                    font-size: row.kind == "source" || row.kind == "table" || row.kind == "view"
+                                        ? Theme.font-small : 10px;
+                                    font-weight: row.kind == "source" ? 600 : 400;
+                                    font-family: Theme.font-mono;
                                     vertical-alignment: center;
                                     overflow: elide;
                                     horizontal-stretch: 1;
@@ -285,28 +411,29 @@ export component DatabasePanel inherits Rectangle {
                                     vertical-alignment: center;
                                     overflow: elide;
                                 }
+
+                                if row.status == "loading" : Text {
+                                    text: "…";
+                                    color: Theme.warning;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                }
                             }
 
                             row-touch := TouchArea {
                                 mouse-cursor: pointer;
-                                clicked => {
-                                    if row.idx >= 0 && (row.kind == "table" || row.kind == "view") {
-                                        root.toggle-table(row.idx);
-                                    }
-                                }
-                                double-clicked => {
-                                    if row.idx >= 0 {
-                                        root.table-opened(row.idx);
-                                    }
-                                }
+                                clicked => { root.tree-clicked(row.key); }
+                                double-clicked => { root.tree-opened(row.key); }
                             }
 
-                            Rectangle {
-                                y: parent.height - 1px;
-                                height: 1px;
-                                background: row.kind == "table" || row.kind == "view"
-                                    ? Theme.border
-                                    : transparent;
+                            alt-touch := TouchArea {
+                                pointer-event(pe) => {
+                                    if pe.kind == PointerEventKind.down && pe.button == PointerEventButton.right {
+                                        root.tree-context(row.key,
+                                            alt-touch.absolute-position.x + alt-touch.mouse-x,
+                                            alt-touch.absolute-position.y + alt-touch.mouse-y);
+                                    }
+                                }
                             }
                         }
                     }
@@ -315,14 +442,152 @@ export component DatabasePanel inherits Rectangle {
                 // ── Splitter ─────────────────────────────────────────────
                 Rectangle { width: 1px; background: Theme.border; }
 
-                // ── Console + results ────────────────────────────────────
+                // ── Results: tabs + grid ─────────────────────────────────
                 Rectangle {
                     horizontal-stretch: 1;
 
                     VerticalLayout {
                         spacing: 0px;
 
-                        // Results
+                        // Tab strip
+                        if root.tabs.length > 0 : Rectangle {
+                            height: 24px;
+                            background: Theme.chrome;
+
+                            Rectangle {
+                                y: parent.height - 1px;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 4px;
+                                spacing: 2px;
+                                alignment: start;
+
+                                for info in root.tabs : Rectangle {
+                                    width: tab-label.preferred-width + 30px;
+                                    height: parent.height - 2px;
+                                    y: 2px;
+                                    border-radius: Theme.radius;
+                                    background: info.active ? Theme.surface-panel : (info-tab.has-hover ? Theme.fill-muted : transparent);
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 4px;
+                                        spacing: 4px;
+
+                                        tab-label := Text {
+                                            text: info.title;
+                                            color: info.active ? Theme.text-primary : Theme.text-secondary;
+                                            font-size: 10px;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+                                        if info.pending : Rectangle {
+                                            width: 6px; height: 6px;
+                                            y: (parent.height - 6px) / 2;
+                                            border-radius: 3px;
+                                            background: Theme.warning;
+                                        }
+                                        if info.busy : Text {
+                                            text: "…";
+                                            color: Theme.warning;
+                                            font-size: 9px;
+                                            vertical-alignment: center;
+                                        }
+                                        Rectangle {
+                                            width: 14px;
+                                            Text {
+                                                text: "×";
+                                                color: close-touch.has-hover ? Theme.text-primary : Theme.text-faint;
+                                                font-size: 11px;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                            close-touch := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => { root.tab-closed(info.id); }
+                                            }
+                                        }
+                                    }
+
+                                    info-tab := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.tab-selected(info.id); }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Grid toolbar (table tabs)
+                        if root.has-tab && root.can-edit : Rectangle {
+                            height: 26px;
+                            background: Theme.chrome;
+
+                            Rectangle {
+                                y: parent.height - 1px;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 4px;
+                                alignment: start;
+
+                                ToolButton {
+                                    glyph: "\u{F0415}";
+                                    tooltip: "Insert row (staged)";
+                                    clicked => { root.grid-action("insert"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{F0377}";
+                                    tooltip: "Delete selected row (staged)";
+                                    clicked => { root.grid-action("delete"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{F0191}";
+                                    tooltip: "Apply pending changes";
+                                    tint: root.pending-count > 0 ? Theme.success : Theme.text-faint;
+                                    clicked => { root.grid-action("apply"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{F044D}";
+                                    tooltip: "Revert pending changes";
+                                    clicked => { root.grid-action("revert"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{F03EE}";
+                                    tooltip: "Copy selected cell";
+                                    clicked => { root.grid-action("copy-cell"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{F0450}";
+                                    tooltip: "Reload page";
+                                    clicked => { root.grid-action("refresh"); }
+                                }
+
+                                Rectangle { horizontal-stretch: 1; }
+
+                                if root.pending-count > 0 : Text {
+                                    text: root.pending-count + " pending";
+                                    color: Theme.warning;
+                                    font-size: 9px;
+                                    vertical-alignment: center;
+                                }
+                                Field {
+                                    width: 140px;
+                                    placeholder: "WHERE filter…";
+                                    font-size: 10px;
+                                    text <=> root.grid-filter;
+                                    accepted => { root.filter-accepted(); }
+                                }
+                            }
+                        }
+
+                        // Grid
                         Rectangle {
                             horizontal-stretch: 1;
                             vertical-stretch: 1;
@@ -330,16 +595,26 @@ export component DatabasePanel inherits Rectangle {
 
                             if root.columns.length == 0 : EmptyState {
                                 glyph: "\u{F04EB}";
-                                title: root.connected ? "Run a query to see results" : "Not connected";
+                                title: root.connected ? "Nothing open" : "Not connected";
                                 detail: root.connected
-                                    ? "Type SQL in the *sql* buffer, then Run — results land in this grid; NULLs stay distinct."
+                                    ? "Double-click a table to browse its data, or run SQL from a console."
                                     : "Connect to a data source first.";
                                 action-label: root.connected ? "Open Console" : "";
-                                action => { root.open-console(); }
+                                action => { root.toolbar("console"); }
                             }
 
-                            if root.columns.length > 0 : VerticalLayout {
-                                // Header row, horizontally bound to the body.
+                            if root.columns.length > 0 && root.rows.length == 0 && root.busy : Text {
+                                text: "Loading…";
+                                color: Theme.text-faint;
+                                font-size: Theme.font-small;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            if root.columns.length > 0 && (root.rows.length > 0 || !root.busy) : VerticalLayout {
+                                spacing: 0px;
+
+                                // Header, horizontally bound to the body.
                                 Rectangle {
                                     height: 22px;
                                     background: Theme.chrome;
@@ -347,29 +622,16 @@ export component DatabasePanel inherits Rectangle {
                                     header-scroll := ScrollView {
                                         content-width: root.grid-width;
                                         content-x <=> body-scroll.content-x;
+
                                         HorizontalLayout {
-                                            padding-left: 4px;
-                                            spacing: 0px;
                                             alignment: start;
-                                            for col in root.columns : Rectangle {
-                                                width: 120px;
-                                                Text {
-                                                    x: 6px;
-                                                    text: col.name;
-                                                    color: Theme.text-secondary;
-                                                    font-size: 10px;
-                                                    font-weight: 700;
-                                                    font-family: Theme.font-mono;
-                                                    vertical-alignment: center;
-                                                    overflow: elide;
-                                                    width: parent.width - 10px;
-                                                }
-                                                Rectangle {
-                                                    x: parent.width - 1px;
-                                                    width: 1px;
-                                                    height: parent.height;
-                                                    background: Theme.border;
-                                                }
+                                            for col[col-idx] in root.columns : GridHeaderCell {
+                                                width: col.width;
+                                                name: col.name;
+                                                type: col.type;
+                                                sort: col.sort;
+                                                clicked => { root.sort-clicked(col-idx); }
+                                                resized(d) => { root.col-resized(col-idx, d); }
                                             }
                                         }
                                     }
@@ -381,8 +643,8 @@ export component DatabasePanel inherits Rectangle {
                                     }
                                 }
 
-                                // Body rows: the fetch is capped (200), so a
-                                // plain ScrollView keeps rows in one canvas.
+                                // Body rows: the fetch is capped (200),
+                                // so one ScrollView keeps rows in a canvas.
                                 body-scroll := ScrollView {
                                     horizontal-stretch: 1;
                                     vertical-stretch: 1;
@@ -390,88 +652,176 @@ export component DatabasePanel inherits Rectangle {
 
                                     VerticalLayout {
                                         alignment: start;
-                                        for row in root.rows : Rectangle {
+                                        for row[row-no] in root.rows : Rectangle {
                                             height: 20px;
                                             width: root.grid-width;
-                                            background: grid-touch.has-hover ? Theme.fill-muted : transparent;
+                                            background: row.status == "deleted" ? Theme.danger.transparentize(0.94)
+                                                : row.status == "inserted" ? Theme.success.transparentize(0.94)
+                                                : transparent;
+
+                                            Rectangle {
+                                                width: 30px;
+                                                height: parent.height;
+                                                background: Theme.chrome;
+                                                Text {
+                                                    text: row.number;
+                                                    color: Theme.text-faint;
+                                                    font-size: 9px;
+                                                    font-family: Theme.font-mono;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                                Rectangle {
+                                                    x: parent.width - 1px;
+                                                    width: 1px;
+                                                    height: parent.height;
+                                                    background: Theme.border;
+                                                }
+                                            }
 
                                             HorizontalLayout {
-                                                padding-left: 4px;
+                                                x: 30px;
+                                                width: parent.width - 30px;
                                                 spacing: 0px;
                                                 alignment: start;
-                                                for cell in row.cells : Rectangle {
-                                                    width: 120px;
+
+                                                for cell[col-idx] in row.cells : Rectangle {
+                                                    width: root.columns[col-idx].width;
+                                                    height: parent.height;
+                                                    background: root.editing-row == row-no && root.editing-col == col-idx
+                                                        ? Theme.accent.transparentize(0.85)
+                                                        : cell.edited ? Theme.warning.transparentize(0.9)
+                                                        : transparent;
+
                                                     Text {
                                                         x: 6px;
+                                                        width: parent.width - 10px;
                                                         text: cell.text;
                                                         color: cell.kind == "null" ? Theme.text-faint
                                                             : cell.kind == "blob" ? Theme.warning
                                                             : cell.kind == "number" ? Theme.accent
+                                                            : cell.kind == "bool" ? Theme.success
                                                             : Theme.text-primary;
                                                         font-italic: cell.kind == "null";
                                                         font-size: 11px;
                                                         font-family: Theme.font-mono;
                                                         vertical-alignment: center;
                                                         overflow: elide;
-                                                        width: parent.width - 10px;
                                                     }
-                                                    Rectangle {
-                                                        x: parent.width - 1px;
-                                                        width: 1px;
-                                                        height: parent.height;
-                                                        background: Theme.fill-muted;
+
+                                                    if row.status == "deleted" : Rectangle {
+                                                        width: parent.width;
+                                                        height: 1px;
+                                                        y: parent.height / 2;
+                                                        background: Theme.danger;
+                                                    }
+
+                                                    cell-touch := TouchArea {
+                                                        mouse-cursor: default;
+                                                        clicked => {
+                                                            root.grid-select(row-no, col-idx);
+                                                            root.stop-editing();
+                                                        }
+                                                        double-clicked => {
+                                                            if root.can-edit && row.status != "deleted" {
+                                                                root.grid-select(row-no, col-idx);
+                                                                root.editing-row = row-no;
+                                                                root.editing-col = col-idx;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if root.editing-row == row-no && root.editing-col == col-idx : Rectangle {
+                                                        x: 2px;
+                                                        width: parent.width - 4px;
+                                                        height: parent.height - 4px;
+                                                        y: 2px;
+                                                        background: Theme.surface;
+                                                        border-width: 1px;
+                                                        border-color: Theme.accent;
+
+                                                        init => { editor.focus(); }
+
+                                                        editor := TextInput {
+                                                            x: 4px;
+                                                            width: parent.width - 8px;
+                                                            text: cell.text == "NULL" ? "" : cell.text;
+                                                            color: Theme.text-primary;
+                                                            font-size: 11px;
+                                                            font-family: Theme.font-mono;
+                                                            single-line: true;
+                                                            accepted => {
+                                                                root.grid-edit-committed(row-no, col-idx, self.text);
+                                                                root.stop-editing();
+                                                            }
+                                                        }
                                                     }
                                                 }
-                                            }
-
-                                            grid-touch := TouchArea {
-                                                mouse-cursor: default;
                                             }
                                         }
                                     }
                                 }
-                            }
-                        }
 
-                        // Status line
-                        if root.status != "" : Rectangle {
-                            height: 22px;
-                            background: root.status-error
-                                ? Theme.danger.transparentize(0.92)
-                                : Theme.chrome;
+                                // Footer: pagination + status
+                                Rectangle {
+                                    height: 22px;
+                                    background: root.status-error
+                                        ? Theme.danger.transparentize(0.92)
+                                        : Theme.chrome;
 
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 8px;
-                                spacing: 8px;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        spacing: 8px;
 
-                                Text {
-                                    text: root.status;
-                                    color: root.status-error ? Theme.danger : Theme.text-secondary;
-                                    font-size: 10px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
-                                }
-                                if root.row-count != "" : Text {
-                                    text: root.row-count;
-                                    color: Theme.text-faint;
-                                    font-size: 10px;
-                                    font-family: Theme.font-mono;
-                                    vertical-alignment: center;
-                                }
-                                if root.elapsed != "" : Text {
-                                    text: root.elapsed;
-                                    color: Theme.text-faint;
-                                    font-size: 10px;
-                                    font-family: Theme.font-mono;
-                                    vertical-alignment: center;
-                                }
-                                if root.truncated : Text {
-                                    text: "truncated";
-                                    color: Theme.warning;
-                                    font-size: 10px;
-                                    vertical-alignment: center;
+                                        Text {
+                                            text: root.status;
+                                            color: root.status-error ? Theme.danger : Theme.text-secondary;
+                                            font-size: 10px;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                        }
+                                        if root.page-info != "" : Text {
+                                            text: root.page-info;
+                                            color: Theme.text-faint;
+                                            font-size: 10px;
+                                            font-family: Theme.font-mono;
+                                            vertical-alignment: center;
+                                        }
+                                        if root.row-count != "" : Text {
+                                            text: root.row-count;
+                                            color: Theme.text-faint;
+                                            font-size: 10px;
+                                            font-family: Theme.font-mono;
+                                            vertical-alignment: center;
+                                        }
+                                        if root.elapsed != "" : Text {
+                                            text: root.elapsed;
+                                            color: Theme.text-faint;
+                                            font-size: 10px;
+                                            font-family: Theme.font-mono;
+                                            vertical-alignment: center;
+                                        }
+                                        if root.truncated : Text {
+                                            text: "truncated";
+                                            color: Theme.warning;
+                                            font-size: 10px;
+                                            vertical-alignment: center;
+                                        }
+                                        ToolButton {
+                                            glyph: "◀";
+                                            tooltip: "Previous page";
+                                            enabled: root.page-info != "";
+                                            clicked => { root.grid-action("prev"); }
+                                        }
+                                        ToolButton {
+                                            glyph: "▶";
+                                            tooltip: "Next page";
+                                            enabled: root.page-info != "";
+                                            clicked => { root.grid-action("next"); }
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -3,17 +3,53 @@
 ; Registered automatically by plugin/define as python-mode's
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
+; Captures land in query order and the later span paints over the earlier
+; one, so the generic (identifier) fallback comes first.
+
+; ── Fallback ──────────────────────────────────────────────────────────────
 
 (identifier) @variable
 
-(function_definition name: (identifier) @function)
-(class_definition name: (identifier) @type)
-(call function: (identifier) @function)
+; ── Keywords ──────────────────────────────────────────────────────────────
 
-(string) @string
-(comment) @comment
+[
+  "and" "as" "assert" "async" "await"
+  "break" "class" "continue" "def" "del"
+  "elif" "else" "except" "finally" "for"
+  "from" "global" "if" "import" "in"
+  "is" "lambda" "nonlocal" "not" "or"
+  "pass" "raise" "return" "try" "while"
+  "with" "yield"
+] @keyword
+
+; ── Functions ─────────────────────────────────────────────────────────────
+
+(function_definition name: (identifier) @function)
+(call function: (identifier) @function)
+(call function: (attribute attribute: (identifier) @function))
+(decorator (identifier) @function)
+(decorator (attribute attribute: (identifier) @function))
+
+; ── Types ─────────────────────────────────────────────────────────────────
+
+(class_definition name: (identifier) @type)
+
+; ── Attributes / properties ───────────────────────────────────────────────
+
+(attribute attribute: (identifier) @property)
+
+; ── Constants ─────────────────────────────────────────────────────────────
+
 (integer) @constant
 (float) @constant
 "True" @constant
 "False" @constant
 "None" @constant
+
+; ── Strings ───────────────────────────────────────────────────────────────
+
+(string) @string
+
+; ── Comments ──────────────────────────────────────────────────────────────
+
+(comment) @comment

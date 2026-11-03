@@ -3,15 +3,45 @@
 ; Registered automatically by plugin/define as lua-mode's
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
+; Captures land in query order and the later span paints over the earlier
+; one, so the generic (identifier) fallback comes first.
+
+; ── Fallback ──────────────────────────────────────────────────────────────
 
 (identifier) @variable
 
-(function_declaration name: (identifier) @function)
-(function_call name: (identifier) @function)
+; ── Keywords ──────────────────────────────────────────────────────────────
 
-(string) @string
-(comment) @comment
+[
+  "and" "break" "do" "else" "elseif" "end"
+  "for" "function" "goto" "if" "in"
+  "local" "not" "or" "repeat" "return"
+  "then" "until" "while"
+] @keyword
+
+; ── Functions ─────────────────────────────────────────────────────────────
+
+(function_declaration name: (identifier) @function)
+(function_declaration name: (dot_index_expression) @function)
+(local_function_statement name: (identifier) @function)
+(function_call name: (identifier) @function)
+(method_index_expression method: (identifier) @function)
+
+; ── Properties ────────────────────────────────────────────────────────────
+
+(dot_index_expression field: (identifier) @property)
+
+; ── Constants ─────────────────────────────────────────────────────────────
+
 (number) @constant
 "true" @constant
 "false" @constant
 "nil" @constant
+
+; ── Strings ───────────────────────────────────────────────────────────────
+
+(string) @string
+
+; ── Comments ──────────────────────────────────────────────────────────────
+
+(comment) @comment

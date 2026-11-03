@@ -92,31 +92,29 @@
 (float_literal) @constant
 (char_literal) @constant
 
-; ── Strings, comments, attributes ─────────────────────────────────────────
-;
-; Comments follow neovim's rust query: the marker kinds are captured with the
-; comments, and a comment carrying a doc node is captured as documentation.
-; `comment.documentation` resolves through the comment prefix to the comment
-; face, so `///` draws exactly like `//`.
-
-(string_literal) @string
-(raw_string_literal) @string
-[
-  (line_comment)
-  (block_comment)
-  (outer_doc_comment_marker)
-  (inner_doc_comment_marker)
-] @comment
-(line_comment (doc_comment)) @comment.documentation
-(block_comment (doc_comment)) @comment.documentation
-(attribute_item) @keyword
-(inner_attribute_item) @keyword
-
 ; Common operator spellings.
 ["+" "-" "*" "/" "%" "=" "==" "!=" "<" ">" "<=" ">=" "&&" "||" "!"
  "&" "|" "^" "<<" ">>" "+=" "-=" "*=" "/=" "%="] @operator
 
 ["(" ")" "[" "]" "{" "}"] @punctuation
 ["," "." ":" "::" ";" "?" "->" "=>"] @punctuation
+
+; ── Strings, comments, attributes ─────────────────────────────────────────
+
+(string_literal) @string
+(raw_string_literal) @string
+(attribute_item) @keyword
+(inner_attribute_item) @keyword
+
+; Comments come after operators and punctuation so markers like `///`, `//!`,
+; `/**`, `/*!` and any punctuation inside comments stay comments instead of
+; being painted as operators or punctuation.
+[
+  (line_comment)
+  (block_comment)
+  (outer_doc_comment_marker)
+  (inner_doc_comment_marker)
+  (doc_comment)
+] @comment
 
 (ERROR) @error

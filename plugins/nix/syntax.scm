@@ -3,11 +3,41 @@
 ; Registered automatically by plugin/define as nix-mode's
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
+; Captures land in query order and the later span paints over the earlier
+; one, so the generic (identifier) fallback comes first.
+
+; ── Fallback ──────────────────────────────────────────────────────────────
 
 (identifier) @variable
-(string) @string
-(comment) @comment
-(integer) @constant
+
+; ── Keywords ──────────────────────────────────────────────────────────────
+
+[
+  "assert" "else" "if" "in" "inherit" "let"
+  "or" "rec" "then" "with"
+] @keyword
+
+; ── Functions ─────────────────────────────────────────────────────────────
+
+(apply function: (identifier) @function)
+
+; ── Attributes ────────────────────────────────────────────────────────────
+
+(attrpath (identifier) @property)
+
+; ── Constants ─────────────────────────────────────────────────────────────
+
+(integer_expression) @constant
+(float_expression) @constant
 "true" @constant
 "false" @constant
 "null" @constant
+
+; ── Strings ───────────────────────────────────────────────────────────────
+
+(string_expression) @string
+(indented_string_expression) @string
+
+; ── Comments ──────────────────────────────────────────────────────────────
+
+(comment) @comment

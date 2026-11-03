@@ -3,9 +3,36 @@
 ; Registered automatically by plugin/define as janet-mode's
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
+; Captures land in query order and the later span paints over the earlier
+; one, so the generic (symbol) fallback comes first.
 
-(symbol) @variable
-(keyword) @keyword
-(string) @string
+; ── Fallback ──────────────────────────────────────────────────────────────
+
+(sym_lit) @variable
+
+; ── Keywords ──────────────────────────────────────────────────────────────
+
+(kwd_lit) @keyword
+
+; ── Functions ─────────────────────────────────────────────────────────────
+
+; defn and def forms: the name symbol is the second child of the tuple.
+(par_tup_lit
+  value: (sym_lit) @keyword
+  value: (sym_lit) @function
+  (#match? @keyword "^(defn|defn-|defmacro|defmacro-)$"))
+
+; ── Constants ─────────────────────────────────────────────────────────────
+
+(num_lit) @constant
+(bool_lit) @constant
+"nil" @constant
+
+; ── Strings ───────────────────────────────────────────────────────────────
+
+(str_lit) @string
+(long_str_lit) @string
+
+; ── Comments ──────────────────────────────────────────────────────────────
+
 (comment) @comment
-(number) @constant

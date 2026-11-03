@@ -4,11 +4,36 @@
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
 
+; ── Selectors ─────────────────────────────────────────────────────────────
+
 (tag_name) @type
-(class_selector (class_name) @function)
-(id_selector (id_name) @function)
+(class_selector (class_name) @module)
+(id_selector (id_name) @module)
+(pseudo_class_selector (class_name) @keyword)
+(pseudo_element_selector (tag_name) @keyword)
+(attribute_selector (attribute_name) @property)
+(namespace_name) @module
+
+; ── Properties / values ───────────────────────────────────────────────────
+
 (property_name) @property
-(string_value) @string
+(feature_name) @property
+(plain_value) @variable
+(color_value) @constant
 (integer_value) @constant
 (float_value) @constant
+(unit) @keyword
+
+; ── Strings ───────────────────────────────────────────────────────────────
+
+(string_value) @string
+
+; ── At-rules ──────────────────────────────────────────────────────────────
+
+(at_keyword) @keyword
+(import_statement "url" @function)
+(keyframes_name) @module
+
+; ── Comments ──────────────────────────────────────────────────────────────
+
 (comment) @comment

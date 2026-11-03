@@ -4,9 +4,17 @@
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
 
+; ── Structure ─────────────────────────────────────────────────────────────
+
 (pair key: (string) @property)
-(string) @string
+
+; ── Constants ─────────────────────────────────────────────────────────────
+
 (number) @constant
 "true" @constant
 "false" @constant
 "null" @constant
+
+; ── Strings ───────────────────────────────────────────────────────────────
+
+(string) @string

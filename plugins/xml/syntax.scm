@@ -4,5 +4,19 @@
 ; highlight query; capture names resolve to faces through the
 ; scope-face table.
 
-(name) @type
+; ── Tags ──────────────────────────────────────────────────────────────────
+
+(element_name) @type
+(attribute (attribute_name) @property)
+(attribute_value) @string
+(quoted_attribute_value) @string
+(prolog (Name) @keyword)
+
+; ── CDATA / entities ──────────────────────────────────────────────────────
+
+(CData) @string
+(EntityRef) @constant
+
+; ── Comments ──────────────────────────────────────────────────────────────
+
 (Comment) @comment

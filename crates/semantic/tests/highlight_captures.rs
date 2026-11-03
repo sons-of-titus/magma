@@ -64,6 +64,53 @@ fn words(text: &str) -> Vec<(usize, &str)> {
     out
 }
 
+/// Winning scope at a byte, replaying captures the way `apply_highlights`
+/// paints: within the layer, the last span covering a byte wins.
+fn winning_scope_at(caps: &[(usize, usize, String)], byte: usize) -> Option<(usize, usize, String)> {
+    caps.iter()
+        .filter(|(start, end, _)| *start <= byte && byte < *end)
+        .last()
+        .cloned()
+}
+
+#[test]
+fn every_comment_flavor_resolves_to_a_comment_scope() {
+    let Some((query, lang)) = load_rust_query() else {
+        eprintln!("rust grammar not built — run `cargo xtask grammars` to cover this test");
+        return;
+    };
+    // Every flavor the grammar distinguishes — a doc comment is a
+    // line_comment/block_comment node carrying marker + doc children, so
+    // all of them must land on a comment scope, exactly like `//`.
+    let text = "\
+// plain line
+//// four slashes
+/// outer doc
+//! inner doc
+/** outer block doc */
+/*! inner block doc */
+/* plain block */
+";
+    let caps = ts_registry::run_query(&lang, text, &query).expect("query runs");
+
+    let mut offset = 0;
+    for line in text.lines() {
+        let winning = winning_scope_at(&caps, offset);
+        let (start, end, scope) = winning.unwrap_or_else(|| {
+            panic!("no highlight span covers {line:?} at byte {offset}");
+        });
+        assert!(
+            scope.starts_with("comment"),
+            "{line:?} must resolve to a comment scope, got {scope:?}"
+        );
+        assert!(
+            start <= offset && end >= offset + line.len(),
+            "{line:?} must be covered whole, got span {start}..{end}"
+        );
+        offset += line.len() + 1;
+    }
+}
+
 const SOURCE: &str = "\
 use std::time::Instant;
 

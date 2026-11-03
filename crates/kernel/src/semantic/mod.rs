@@ -8,8 +8,10 @@
 //!
 //! The editor-coupled remainder stays here:
 //!
-//!   edit_apply.rs  — applying an LSP `WorkspaceEdit` to `Editor` buffers
-//!   ts_schedule.rs — scheduling incremental parses onto the background pool
+//!   edit_apply.rs    — applying an LSP `WorkspaceEdit` to `Editor` buffers
+//!   fallback_scan.rs — the native fallback's byte scans over buffer text
+//!   fallback_syntax.rs — fallback ownership of the "syntax" layer
+//!   ts_schedule.rs   — scheduling incremental parses onto the background pool
 //!
 //! The re-exports below keep every existing `kernel::semantic::<module>::…`
 //! path resolving.
@@ -28,6 +30,7 @@ pub use semantic::{
 pub use semantic::{Event, LspRegistry};
 
 pub mod edit_apply;
+pub mod fallback_scan;
 pub mod fallback_syntax;
 pub mod ts_schedule;
 

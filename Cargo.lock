@@ -5840,7 +5840,6 @@ dependencies = [
  "cc",
  "libloading",
  "logging",
- "ropey",
  "serde_json",
  "streaming-iterator",
  "text",

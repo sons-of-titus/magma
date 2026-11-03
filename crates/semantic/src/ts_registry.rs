@@ -6,11 +6,19 @@
 //! a layering violation.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use streaming_iterator::StreamingIterator;
 
 pub static TS_LANGUAGES: Mutex<Option<HashMap<String, tree_sitter::Language>>> = Mutex::new(None);
+
+/// Compiled queries, keyed by (language, query source).  Compiling a
+/// highlight query is not free and the highlight path runs one per landed
+/// tree — the source is stable per mode, so the cache stays tiny.  Dropped
+/// whenever a grammar is (re)registered, since a query is bound to the
+/// language it was compiled against.
+static COMPILED_QUERIES: LazyLock<Mutex<HashMap<(String, String), Arc<tree_sitter::Query>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn with_language_map<F, R>(f: F) -> R
 where
@@ -23,6 +31,10 @@ where
 
 /// Register a named language grammar.
 pub fn register_language(name: &str, language: tree_sitter::Language) {
+    COMPILED_QUERIES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
     with_language_map(|m| {
         m.insert(name.to_string(), language);
     });
@@ -89,23 +101,49 @@ pub fn run_query(
     text: &str,
     query_src: &str,
 ) -> Option<Vec<(usize, usize, String)>> {
-    with_language_map(|map| {
-        let language = map.get(lang_name)?;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(language).ok()?;
-        let text_bytes = text.as_bytes();
-        let tree = parser.parse(text_bytes, None)?;
-        query_tree(language, &tree, text_bytes, query_src)
-    })
+    let language = with_language_map(|map| map.get(lang_name).cloned())?;
+    let query = compiled_query(&language, lang_name, query_src)?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&language).ok()?;
+    let tree = parser.parse(text.as_bytes(), None)?;
+    Some(query_tree(&query, &tree, text.as_bytes()))
+}
+
+/// Run `query_src` against an already-parsed tree of `text` — the
+/// highlight path's cheap case: a tree that already describes the current
+/// text needs no reparse before it can be queried.
+pub fn query_parsed(
+    lang_name: &str,
+    tree: &tree_sitter::Tree,
+    text: &str,
+    query_src: &str,
+) -> Option<Vec<(usize, usize, String)>> {
+    let language = with_language_map(|map| map.get(lang_name).cloned())?;
+    let query = compiled_query(&language, lang_name, query_src)?;
+    Some(query_tree(&query, tree, text.as_bytes()))
+}
+
+/// The compiled form of `query_src`, from the cache when possible.
+fn compiled_query(
+    language: &tree_sitter::Language,
+    lang_name: &str,
+    query_src: &str,
+) -> Option<Arc<tree_sitter::Query>> {
+    let key = (lang_name.to_string(), query_src.to_string());
+    let mut cache = COMPILED_QUERIES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(query) = cache.get(&key) {
+        return Some(query.clone());
+    }
+    let query = Arc::new(tree_sitter::Query::new(language, query_src).ok()?);
+    cache.insert(key, query.clone());
+    Some(query)
 }
 
 fn query_tree(
-    language: &tree_sitter::Language,
+    query: &tree_sitter::Query,
     tree: &tree_sitter::Tree,
     text_bytes: &[u8],
-    query_src: &str,
-) -> Option<Vec<(usize, usize, String)>> {
-    let query = tree_sitter::Query::new(language, query_src).ok()?;
+) -> Vec<(usize, usize, String)> {
     let root = tree.root_node();
     let mut cursor = tree_sitter::QueryCursor::new();
     let capture_names: Vec<String> = query
@@ -113,7 +151,7 @@ fn query_tree(
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let mut query_caps = cursor.captures(&query, root, text_bytes);
+    let mut query_caps = cursor.captures(query, root, text_bytes);
     let mut result = Vec::new();
     while let Some((m, _)) = query_caps.next() {
         for cap in m.captures() {
@@ -131,7 +169,7 @@ fn query_tree(
             result.push((start, end, scope));
         }
     }
-    Some(result)
+    result
 }
 
 /// Incremental parse state cached per buffer.
@@ -146,7 +184,7 @@ pub fn parse_tree(lang_name: &str, text: &str) -> Option<tree_sitter::Tree> {
 }
 
 /// Parse a rope without materializing it as a `String`: the parser's read
-/// callback walks the rope chunk-by-chunk.  `old` enables tree-sitter's
+/// callback reads straight off the rope.  `old` enables tree-sitter's
 /// incremental reparse — the tree must already have the pending edits
 /// applied via `Tree::edit`.
 pub fn parse_rope(
@@ -158,26 +196,9 @@ pub fn parse_rope(
         let language = map.get(lang_name)?;
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(language).ok()?;
-        let mut chunks = rope.chunks();
-        let mut cur: &str = "";
-        let mut cur_pos: usize = 0;
         parser.parse_with_options(
             &mut |offset: usize, _: tree_sitter::Point| -> &[u8] {
-                while offset >= cur_pos + cur.len() {
-                    match chunks.next() {
-                        Some(c) => {
-                            cur_pos += cur.len();
-                            cur = c;
-                        }
-                        None => break,
-                    }
-                }
-                let rel = offset.saturating_sub(cur_pos).min(cur.len());
-                let mut b = rel;
-                while b > 0 && !cur.is_char_boundary(b) {
-                    b -= 1;
-                }
-                &cur.as_bytes()[b..]
+                rope.read_from(offset).as_bytes()
             },
             old,
             None,
@@ -197,8 +218,8 @@ pub struct TsTreeState {
 }
 
 /// Incrementally reparse: apply `edits` to `old_tree`, then reparse only
-/// the changed regions against the rope (chunked — no whole-document copy)
-/// and run the query on the updated tree (docs/core-redesign.md §7.2).
+/// the changed regions against the rope (no whole-document copy) and run
+/// the query on the updated tree (docs/core-redesign.md §7.2).
 /// `query_text` must be the buffer's current full text (queries with
 /// predicates need contiguous bytes).
 #[allow(clippy::type_complexity)]
@@ -210,49 +231,29 @@ pub fn highlight_incremental(
     edits: &[tree_sitter::InputEdit],
     old: Option<TsTreeState>,
 ) -> Option<(Vec<(usize, usize, String)>, TsTreeState)> {
-    with_language_map(|map| {
-        let language = map.get(lang_name)?.clone();
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&language).ok()?;
+    let language = with_language_map(|map| map.get(lang_name).cloned())?;
+    let query = compiled_query(&language, lang_name, query_src)?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&language).ok()?;
 
-        let old_tree = old.map(|mut state| {
-            for e in edits {
-                state.tree.edit(e);
-            }
-            state.tree
-        });
+    let old_tree = old.map(|mut state| {
+        for e in edits {
+            state.tree.edit(e);
+        }
+        state.tree
+    });
 
-        let mut chunks: ropey::iter::Chunks<'_> = rope.chunks();
-        let mut cur: &str = "";
-        let mut cur_pos: usize = 0;
-        let tree = parser
-            .parse_with_options(
-                &mut |offset: usize, _: tree_sitter::Point| -> &[u8] {
-                    while offset >= cur_pos + cur.len() {
-                        match chunks.next() {
-                            Some(c) => {
-                                cur_pos += cur.len();
-                                cur = c;
-                            }
-                            None => break,
-                        }
-                    }
-                    let rel = offset.saturating_sub(cur_pos).min(cur.len());
-                    let mut b = rel;
-                    while b > 0 && !cur.is_char_boundary(b) {
-                        b -= 1;
-                    }
-                    &cur.as_bytes()[b..]
-                },
-                old_tree.as_ref(),
-                None,
-            )
-            .or(old_tree)?;
+    let tree = parser.parse_with_options(
+        &mut |offset: usize, _: tree_sitter::Point| -> &[u8] {
+            rope.read_from(offset).as_bytes()
+        },
+        old_tree.as_ref(),
+        None,
+    )?;
 
-        let ranges = query_tree(&language, &tree, query_text.as_bytes(), query_src)?;
-        // Caller stamps the buffer revision and txn_seq the tree was parsed at.
-        Some((ranges, TsTreeState { tree, revision: 0, txn_seq: 0 }))
-    })
+    let ranges = query_tree(&query, &tree, query_text.as_bytes());
+    // Caller stamps the buffer revision and txn_seq the tree was parsed at.
+    Some((ranges, TsTreeState { tree, revision: 0, txn_seq: 0 }))
 }
 
 /// Load a tree-sitter grammar from a shared library.  `lang_name` is the

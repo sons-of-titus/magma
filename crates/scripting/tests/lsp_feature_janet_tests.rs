@@ -267,6 +267,23 @@ fn buffer_uri_encodes_reserved_bytes() {
 // ── Dead-code dimming (hint-diagnostics fallback) ────────────────────────
 
 #[test]
+fn dead_code_scope_resolves_to_the_unused_face() {
+    // The diagnostics fallback writes the "unused" scope; presentation has
+    // to claim it or the range falls through to the generic highlight box
+    // instead of greying out.
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor_with_buffer("aaa\nbbb\nccc\n");
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+
+    // `eval_result` prints the Janet description, so the string is quoted.
+    assert_eq!(
+        scripting::eval_result(r#"(face/resolve-scope "unused")"#).unwrap(),
+        "\"unused-face\""
+    );
+}
+
+#[test]
 fn dead_code_refresh_dims_unused_hint_words() {
     let _lock = helpers::acquire_janet_lock();
     let mut ed = helpers::make_editor_with_buffer("aaa\nbbb\nccc\n");

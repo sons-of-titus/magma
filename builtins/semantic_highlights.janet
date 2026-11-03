@@ -41,7 +41,11 @@
 # these win on the cells they cover: dead code greys out, deprecations
 # strike through.
 
+# Both the semantic-token modifier and the diagnostics fallback below
+# reach the same face: the modifier's scope, and the "unused" scope the
+# fallback writes for servers that report dead code only as diagnostics.
 (face/scope-face "unreferenced" "unused-face")
+(face/scope-face "unused" "unused-face")
 (face/scope-face "deprecated" "deprecated-face")
 
 # ── Diagnostics fallback ─────────────────────────────────────────────────────

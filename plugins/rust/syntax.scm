@@ -2,9 +2,14 @@
 ;
 ; Registered automatically by plugin/define as rust-mode's highlight query;
 ; capture names resolve to faces through the scope-face table.
-; The generic (identifier) capture is last: where a specific pattern and
-; the fallback both match (macro names, call targets), the later span
-; paints over the earlier one.
+; Captures land in query order and the later span paints over the earlier
+; one, so the generic (identifier) fallback comes first: every specific
+; pattern below overrides it on the tokens it names (call targets, macro
+; names, function definitions).
+
+; ── Fallback ──────────────────────────────────────────────────────────────
+
+(identifier) @variable
 
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
@@ -21,8 +26,28 @@
 
 (field_declaration name: (field_identifier) @property)
 (field_expression field: (field_identifier) @property)
+(field_initializer field: (field_identifier) @property)
 (shorthand_field_identifier) @variable
+(shorthand_field_initializer (identifier) @property)
 (self) @variable
+
+; ── Paths ─────────────────────────────────────────────────────────────────
+;
+; A path reads as a path: every segment before the name it heads is a module
+; (`std::time::Instant`, `crate::render::frame`).  Case predicates would
+; separate uppercase type segments from lowercase ones, but the runtime does
+; not apply query predicates, so the split cannot be made here.
+
+(scoped_identifier path: (identifier) @module)
+(scoped_identifier (scoped_identifier name: (identifier) @module))
+(scoped_type_identifier path: (identifier) @type)
+(scoped_type_identifier (scoped_identifier name: (identifier) @type))
+(use_declaration argument: (identifier) @module)
+(use_declaration argument: (scoped_identifier name: (identifier) @module))
+(scoped_use_list path: (identifier) @module)
+(scoped_use_list path: (scoped_identifier name: (identifier) @module))
+(use_list (identifier) @module)
+(use_list (self) @module)
 
 ; ── Functions and macros ──────────────────────────────────────────────────
 
@@ -30,8 +55,16 @@
 (function_signature_item name: (identifier) @function)
 (call_expression function: (identifier) @function)
 (call_expression
+  function: (scoped_identifier name: (identifier) @function))
+(call_expression
+  function: (field_expression field: (field_identifier) @function))
+(generic_function function: (identifier) @function)
+(generic_function
+  function: (scoped_identifier name: (identifier) @function))
+(generic_function
   function: (field_expression field: (field_identifier) @function))
 (macro_invocation macro: (identifier) @function)
+(macro_invocation macro: (scoped_identifier name: (identifier) @function))
 (macro_definition name: (identifier) @function)
 
 ; ── Types ─────────────────────────────────────────────────────────────────
@@ -51,6 +84,7 @@
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (const_item name: (identifier) @constant)
+(enum_variant name: (identifier) @constant)
 (lifetime) @constant
 (escape_sequence) @constant
 (boolean_literal) @constant
@@ -73,8 +107,5 @@
 
 ["(" ")" "[" "]" "{" "}"] @punctuation
 ["," "." ":" "::" ";" "?" "->" "=>"] @punctuation
-
-; Generic fallback: plain identifiers.
-(identifier) @variable
 
 (ERROR) @error

@@ -155,20 +155,19 @@ fn default_bootstrap_respects_an_existing_choice() {
 fn nerd_font_default_covers_icon_glyphs_when_present() {
     use ab_glyph::{Font as _, FontRef, ScaleFont as _};
 
-    let Some(path) = crate::kernel::state::font::default_font_candidates()
+    let Some((path, bytes)) = crate::kernel::state::font::default_font_candidates()
         .into_iter()
-        .find(|p| {
+        .filter(|p| {
             p.file_name()
                 .map(|n| n.to_string_lossy().contains("Nerd"))
                 .unwrap_or(false)
-                && p.exists()
         })
+        .find_map(|p| std::fs::read(&p).ok().map(|b| (p, b)))
     else {
         eprintln!("no Nerd Font installed; skipping icon-coverage check");
         return;
     };
 
-    let bytes = std::fs::read(&path).unwrap();
     let font = FontRef::try_from_slice(&bytes)
         .unwrap_or_else(|e| panic!("Nerd Font {path:?} must parse: {e}"));
     let scaled = font.as_scaled(ab_glyph::PxScale::from(15.0));
@@ -189,19 +188,18 @@ fn nerd_font_default_covers_icon_glyphs_when_present() {
 
 #[test]
 fn nerd_font_default_rasterizes_into_the_atlas_when_present() {
-    let Some(path) = crate::kernel::state::font::default_font_candidates()
+    let Some(bytes) = crate::kernel::state::font::default_font_candidates()
         .into_iter()
-        .find(|p| {
+        .filter(|p| {
             p.file_name()
                 .map(|n| n.to_string_lossy().contains("Nerd"))
                 .unwrap_or(false)
-                && p.exists()
         })
+        .find_map(|p| std::fs::read(&p).ok())
     else {
         eprintln!("no Nerd Font installed; skipping rasterization check");
         return;
     };
-    let bytes = std::fs::read(&path).unwrap();
     let mut atlas = crate::kernel::render::gpu_atlas::GpuGlyphAtlas::new();
     atlas.rasterize(&bytes, 15.0);
     assert!(atlas.needs_rebuild());

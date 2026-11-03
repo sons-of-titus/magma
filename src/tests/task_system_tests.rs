@@ -272,23 +272,22 @@ fn stderr_heavy_task_with_no_stdout_completes() {
 }
 
 #[test]
+#[cfg(unix)]
 fn cancelling_a_task_kills_its_grandchildren() {
-    // The task runs `sh -c` which backgrounds a long-lived child with a
-    // unique marker; before process groups, killing the task orphaned
-    // that child.  pgrep proves the marker process is gone after cancel.
+    // The task runs `sh -c` which backgrounds a long-lived child;
+    // before process groups, killing the task orphaned that child.
     use crate::kernel::runtime::process_background_event;
     use std::time::{Duration, Instant};
 
     let dir = std::env::temp_dir().join("magma_proctree");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    let pid_file = dir.join("grandchild.pid");
     let marker_script = dir.join("marker_8841.sh");
-    std::fs::write(&marker_script, "sleep 30\n").unwrap();
+    std::fs::write(&marker_script, format!("echo $$ > '{}'\nexec sleep 30\n", pid_file.display())).unwrap();
     let marker = marker_script.to_string_lossy().into_owned();
     let (mut ed, bg, mut rx) = crate::tests::helpers::editor_with_background();
     let cmd = format!("sh '{marker}' & sleep 30");
-    #[allow(clippy::redundant_clone)]
-    let marker_for_checks = marker.clone();
     let task = crate::kernel::task::Task {
         id: 0, name: "proctree".to_string(), command: cmd, args: vec![],
         cwd: None, environment: Default::default(), dependencies: vec![],
@@ -297,19 +296,18 @@ fn cancelling_a_task_kills_its_grandchildren() {
     ed.task_scheduler.tasks.insert(0, task);
     ed.task_scheduler.launch(0, &bg).unwrap();
 
-    // The grandchild must be alive before the cancel for the test to mean
-    // anything; retry until pgrep sees it (or fail loudly).
     let deadline = Instant::now() + Duration::from_secs(5);
-    let mut spawned = false;
+    let mut grandchild_pid: Option<i32> = None;
     while Instant::now() < deadline {
-        let out = std::process::Command::new("pgrep").arg("-f").arg(&marker_for_checks).output().unwrap();
-        if out.status.success() {
-            spawned = true;
-            break;
+        if let Some(pid) = std::fs::read_to_string(&pid_file).ok().and_then(|s| s.trim().parse::<i32>().ok()) {
+            if unsafe { libc::kill(pid, 0) == 0 } {
+                grandchild_pid = Some(pid);
+                break;
+            }
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(50));
     }
-    assert!(spawned, "grandchild never spawned — test fixture broken");
+    let pid = grandchild_pid.expect("grandchild never spawned — test fixture broken");
 
     ed.task_scheduler.cancel(0);
 
@@ -319,12 +317,11 @@ fn cancelling_a_task_kills_its_grandchildren() {
         while let Ok(ev) = rx.try_recv() {
             process_background_event(&mut ed, ev);
         }
-        let out = std::process::Command::new("pgrep").arg("-f").arg(&marker_for_checks).output().unwrap();
-        if !out.status.success() {
+        if unsafe { libc::kill(pid, 0) != 0 } {
             gone = true;
             break;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(50));
     }
     assert!(gone, "grandchild survived the task cancel — process group kill failed");
     let _ = std::fs::remove_dir_all(&dir);

@@ -196,7 +196,7 @@ fn expand_walks_schema_folders_and_tables() {
 #[test]
 fn open_table_loads_detail_and_page() {
     let mut ed = editor();
-    let (id, path) = connected_sqlite(&mut ed, "open");
+    let (_id, path) = connected_sqlite(&mut ed, "open");
 
     execute_command(
         &mut ed,

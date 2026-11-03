@@ -107,6 +107,16 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             s.last_px = x;
             s.last_py = y;
             s.hovering = true;
+            let (cell_x, cell_y) = cell_xy(&s, x, y);
+            let ev = MouseEvent {
+                kind: MouseEventKind::Move,
+                x: cell_x,
+                y: cell_y,
+                button: MouseButton::Left,
+                modifiers: String::new(),
+            };
+            let dummy_surface = kernel::render::surface::Surface::new(1, 1);
+            kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
         });
     }
     {

@@ -29,6 +29,7 @@ pub fn dispatch_mouse(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
     match event.kind {
         MouseEventKind::Click => dispatch_click(ed, surface, event),
         MouseEventKind::Drag => dispatch_drag(ed, surface, event),
+        MouseEventKind::Move => dispatch_move(ed, surface, event),
         MouseEventKind::Scroll(delta) => dispatch_scroll(ed, event.x, event.y, delta),
         MouseEventKind::ScrollX(delta) => dispatch_scroll_x(ed, event.x, event.y, delta),
         MouseEventKind::Release => dispatch_release(ed),
@@ -564,6 +565,63 @@ fn dispatch_scroll(ed: &mut Editor, x: u16, y: u16, delta: i32) {
 /// Horizontal wheel/trackpad pan of the pane under the pointer.  Sign mirrors
 /// the vertical wheel: positive `delta` reveals earlier columns.  Pinned until
 /// the cursor moves, like the vertical scroll.
+fn dispatch_move(ed: &mut Editor, _surface: &Surface, event: &MouseEvent) {
+    if ed.mouse_state.pressed {
+        return;
+    }
+    // Track pointer position for potential hover features; the gutter can
+    // dim its breakpoint affordance while the pointer rests over it.
+    ed.mouse_state.last_x = event.x;
+    ed.mouse_state.last_y = event.y;
+
+    // Update hover target over the breakpoint column.
+    ed.mouse_state.breakpoint_hover = breakpoints_column_hover(ed, event.x, event.y);
+    ed.frame_dirty = true;
+}
+
+fn breakpoints_column_hover(ed: &Editor, x: u16, y: u16) -> Option<(String, usize)> {
+    let (pane, _pane_idx) = hit_test_pane(ed, x, y)?;
+    let buf_id = pane.buffer_id?;
+    let header_rows: u16 = gutter_header_rows(ed, buf_id);
+    let row_offset = pane.y + header_rows;
+    if y < row_offset {
+        return None;
+    }
+    let total_lines = ed
+        .buffers
+        .get(buf_id)
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).line_count())
+        .unwrap_or(1);
+
+    // Determine if the cursor falls inside the `:breakpoints` provider column.
+    let prefix_cols = {
+        let pm = crate::render::decorations::prefix_margin_width(ed, buf_id);
+        if pm > 0 { pm + 1 } else { 0 }
+    };
+    let mut col_x = pane.x + prefix_cols as u16;
+    for provider in &ed.gutter.providers {
+        let col_w = GutterRegistry::provider_width(provider.as_ref(), total_lines) as u16;
+        if provider.name() == ":breakpoints" {
+            if x >= col_x && x < col_x + col_w {
+                let vis_row = (y - row_offset) as usize;
+                let visible_lines = (pane.height as usize).saturating_sub(header_rows as usize);
+                let scroll_top = crate::render::frame::pane_scroll_top(ed, &pane, buf_id, visible_lines);
+                if let Some(abs_line) = visible_row_to_abs_line(ed, buf_id, scroll_top, vis_row, visible_lines) {
+                    let path = ed
+                        .buffers
+                        .get(buf_id)
+                        .and_then(|a| a.lock().unwrap_or_else(|e| e.into_inner()).path.clone())?;
+                    return Some((path, abs_line));
+                }
+                break;
+            }
+            break;
+        }
+        col_x += col_w;
+    }
+    None
+}
+
 fn dispatch_scroll_x(ed: &mut Editor, x: u16, y: u16, delta: i32) {
     let (pane_id, buf_id) = match hit_test_pane(ed, x, y) {
         Some((pane, _)) => (pane.id, pane.buffer_id),

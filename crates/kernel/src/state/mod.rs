@@ -70,6 +70,21 @@ pub struct MouseState {
     /// running count (1 = single, 2 = double, 3+ = line select).
     pub last_click: Option<(std::time::Instant, u16, u16)>,
     pub click_count: u32,
+    /// When set, the pointer is resting over the breakpoint gutter column for
+    /// this buffer path and 0-based line, with no breakpoint present there.
+    pub breakpoint_hover: Option<(String, usize)>,
+}
+
+impl MouseState {
+    /// True when the pointer is resting over the breakpoint gutter column on
+    /// `path` at `line` (0-based).  The UI dims the empty slot to afford
+    /// adding a breakpoint there.
+    pub fn hover_over_breakpoint(&self, path: &str, line: usize) -> bool {
+        self.breakpoint_hover
+            .as_ref()
+            .map(|(p, l)| p == path && *l == line)
+            .unwrap_or(false)
+    }
 }
 
 impl Default for MouseState {
@@ -85,6 +100,7 @@ impl Default for MouseState {
             press_offset: None,
             last_click: None,
             click_count: 0,
+            breakpoint_hover: None,
         }
     }
 }

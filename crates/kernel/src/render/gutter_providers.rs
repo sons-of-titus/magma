@@ -153,7 +153,9 @@ impl GutterProvider for Diagnostics {
 
 /// Renders the breakpoint indicator for lines that have a DAP breakpoint:
 /// `●` enabled and adapter-verified, `○` enabled but unverified, dimmed `○`
-/// disabled.  Reads live from `ctx.editor.debug.breakpoints`.
+/// disabled.  When the pointer hovers over an empty slot in the breakpoint
+/// column, that slot renders a dimmed hollow circle to afford clicking to
+/// add one.  Reads live from `ctx.editor.debug.breakpoints`.
 pub struct Breakpoints;
 
 impl GutterProvider for Breakpoints {
@@ -165,34 +167,58 @@ impl GutterProvider for Breakpoints {
     }
 
     fn render(&self, line: usize, ctx: &GutterCtx) -> Option<GutterCell> {
-        let path = ctx.buf_path?;
-        let bps = ctx.editor.debug.breakpoints_for(path);
-        // line in GutterCtx is 0-based; DAP breakpoints store 1-based lines.
-        let bp = bps.iter().find(|bp| bp.line == line + 1)?;
         let dim = ctx.editor.theme_color("line-num");
         let red = ctx.editor.theme_color("diag-error");
-        // Enabled breakpoints read red — verified solid, pending hollow;
-        // disabled stay a dim hollow outline.
-        let (text, fg) = if !bp.enabled {
-            ("○ ", dim)
-        } else if bp.verified {
-            ("● ", red)
-        } else {
-            ("○ ", red)
-        };
-        let style = ctx
-            .editor
-            .resolve_face_style("gutter-breakpoint")
-            .unwrap_or_else(|| Style {
-                fg,
-                bg: ctx.editor.theme_color("line-num-bg"),
-                bold: bp.enabled,
-                ..Default::default()
-            });
-        Some(GutterCell {
-            text: text.to_string(),
-            style,
-        })
+        let bg = ctx.editor.theme_color("line-num-bg");
+
+        if let Some(path) = ctx.buf_path {
+            let bps = ctx.editor.debug.breakpoints_for(path);
+            // line in GutterCtx is 0-based; DAP breakpoints store 1-based lines.
+            if let Some(bp) = bps.iter().find(|bp| bp.line == line + 1) {
+                // Enabled breakpoints read red — verified solid, pending hollow;
+                // disabled stay a dim hollow outline.
+                let (text, fg) = if !bp.enabled {
+                    ("○ ", dim)
+                } else if bp.verified {
+                    ("● ", red)
+                } else {
+                    ("○ ", red)
+                };
+                let style = ctx
+                    .editor
+                    .resolve_face_style("gutter-breakpoint")
+                    .unwrap_or_else(|| Style {
+                        fg,
+                        bg,
+                        bold: bp.enabled,
+                        ..Default::default()
+                    });
+                return Some(GutterCell {
+                    text: text.to_string(),
+                    style,
+                });
+            }
+
+            // No breakpoint on this line: if the pointer is hovering over the
+            // breakpoint column on this line, show a dim affordance.
+            if ctx.editor.mouse_state.hover_over_breakpoint(path, line) {
+                let style = ctx
+                    .editor
+                    .resolve_face_style("gutter-breakpoint-hover")
+                    .unwrap_or_else(|| Style {
+                        fg: dim,
+                        bg,
+                        dim: true,
+                        ..Default::default()
+                    });
+                return Some(GutterCell {
+                    text: "○ ".to_string(),
+                    style,
+                });
+            }
+        }
+
+        None
     }
 }
 

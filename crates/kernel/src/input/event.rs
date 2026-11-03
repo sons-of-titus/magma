@@ -20,6 +20,8 @@ pub enum MouseEventKind {
     Click,
     /// Mouse moved while a button is held (drag).
     Drag,
+    /// Pointer moved (hover/move) without a button held.
+    Move,
     /// Scroll wheel moved.  Positive delta = scroll down.
     Scroll(i32),
     /// Horizontal scroll.  Positive delta = reveal content to the right

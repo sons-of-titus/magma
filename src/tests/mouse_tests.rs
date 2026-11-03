@@ -28,6 +28,34 @@ fn mouse_event_drag_variant() {
     assert!(s.contains("Drag"));
 }
 
+#[test]
+fn mouse_move_updates_breakpoint_hover() {
+    let mut ed = make_editor();
+    ed.options.insert("mouse-support".to_string(), "true".to_string());
+    let buf_id = ed.create_buffer_from_str("test.rs", "line0\nline1\nline2\n");
+    if let Some(buf) = ed.buffers.get(buf_id) {
+        buf.lock().unwrap().path = Some("/fake/test.rs".to_string());
+    }
+    ed.view_tree.resize(80, 24);
+    ed.view_tree.panes_mut()[0].buffer_id = Some(buf_id);
+
+    ed.gutter.providers = vec![
+        Box::new(crate::kernel::render::gutter_providers::Breakpoints),
+        Box::new(crate::kernel::render::gutter_providers::LineNumbers),
+    ];
+
+    let surface = crate::kernel::render::surface::Surface::new(80, 24);
+    let ev = MouseEvent {
+        kind: MouseEventKind::Move,
+        x: 0,
+        y: 0,
+        button: MouseButton::Left,
+        modifiers: String::new(),
+    };
+    mouse::dispatch_mouse(&mut ed, &surface, &ev);
+    assert!(ed.mouse_state.hover_over_breakpoint("/fake/test.rs", 0));
+}
+
 // ── Hit testing never lands on a pane that shows nothing ─────────────────────
 
 /// Regression: with no startup `*scratch*`, the initial pane can be empty.  If
@@ -171,6 +199,7 @@ fn click_at(ed: &mut Editor, _buf_id: usize, pane: &crate::kernel::render::view_
         last_click: None,
         click_count: 0,
         press_offset: None,
+        breakpoint_hover: None,
     };
 }
 

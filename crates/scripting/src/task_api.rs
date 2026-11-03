@@ -15,6 +15,7 @@ use std::sync::{LazyLock, Mutex};
 
 use super::conv;
 use super::with_editor;
+use kernel::extension::Capability;
 use evil_janet::*;
 use kernel::event::keys;
 use kernel::event::payload::*;
@@ -49,6 +50,9 @@ pub fn reset_task_complete_callbacks() {
 
 /// (task/define name command &opt deps) → task-id
 unsafe extern "C-unwind" fn c_task_define(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::ProcessExecution) {
+        conv::signal_err("task/define requires the ProcessExecution capability");
+    }
     with_editor(|ed| unsafe {
         if argc < 2 {
             conv::signal_err("task/define requires name and command");
@@ -83,6 +87,9 @@ unsafe extern "C-unwind" fn c_task_define(argc: i32, argv: *mut Janet) -> Janet 
 
 /// (task/run name-or-id) → task-id
 unsafe extern "C-unwind" fn c_task_run(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::ProcessExecution) {
+        conv::signal_err("task/run requires the ProcessExecution capability");
+    }
     with_editor(|ed| unsafe {
         if argc < 1 {
             conv::signal_err("task/run requires a task name or id");

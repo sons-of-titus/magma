@@ -290,3 +290,42 @@ fn core_registered_task_callback_stays_trusted() {
         "core-registered task callbacks keep full trust"
     );
 }
+
+// ── ProcessExecution gates every shell-executing surface ─────────────────────
+// task/define, task/run, and scheduler/submit all execute shell commands;
+// an extension without the capability must be refused at the API boundary.
+
+jt!(
+    task_define_requires_process_execution,
+    r#"(do
+         (extension/declare "unproc" "1.0" "u.janet" @[:editor-access])
+         (def [ok err] (protect (task/define "build" "cargo build")))
+         (and (not ok) (not (nil? (string/find "ProcessExecution" err)))))"#,
+    "true"
+);
+
+jt!(
+    task_run_requires_process_execution,
+    r#"(do
+         (extension/declare "unproc-run" "1.0" "u.janet" @[:editor-access])
+         (def [ok err] (protect (task/run "some-task")))
+         (and (not ok) (not (nil? (string/find "ProcessExecution" err)))))"#,
+    "true"
+);
+
+jt!(
+    scheduler_submit_requires_process_execution,
+    r#"(do
+         (extension/declare "unproc-sched" "1.0" "u.janet" @[:editor-access])
+         (def [ok err] (protect (scheduler/submit "grep" "rg x")))
+         (and (not ok) (not (nil? (string/find "ProcessExecution" err)))))"#,
+    "true"
+);
+
+jt!(
+    task_define_allowed_with_process_execution,
+    r#"(do
+         (extension/declare "proc" "1.0" "p.janet" @[:process-execution])
+         (number? (task/define "noop-task" "true")))"#,
+    "true"
+);

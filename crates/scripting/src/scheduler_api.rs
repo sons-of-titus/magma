@@ -9,6 +9,7 @@
 
 use super::conv;
 use super::with_editor;
+use kernel::extension::Capability;
 use evil_janet::*;
 
 /// (scheduler/submit name cmd) → work-id
@@ -17,6 +18,9 @@ use evil_janet::*;
 /// the blocking thread pool; completion arrives as `scheduler-work-completed`
 /// and failure as `scheduler-work-failed`.  Returns a stable work-id.
 unsafe extern "C-unwind" fn c_scheduler_submit(argc: i32, argv: *mut Janet) -> Janet {
+    if !super::extension_api::check_capability(&Capability::ProcessExecution) {
+        conv::signal_err("scheduler/submit requires the ProcessExecution capability");
+    }
     with_editor(|ed| unsafe {
         if argc < 2 {
             conv::signal_err("scheduler/submit requires name and cmd");

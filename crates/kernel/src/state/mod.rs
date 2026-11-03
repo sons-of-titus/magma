@@ -250,6 +250,8 @@ pub struct Editor {
     /// Plugin-registered toolchains / project-type detectors.
     pub toolchains: crate::toolchains::ToolchainRegistry,
     pub agent: AgentManager,
+    /// Per-provider connection state for the agent (auth, model catalogs).
+    pub agent_connections: crate::agent::connections::AgentConnections,
     pub db: crate::db::DbState,
     pub runtime: Option<Box<dyn ScriptRuntime>>,
 }
@@ -370,6 +372,7 @@ impl Editor {
             template_jobs: crate::templates::TemplateJobs::default(),
             toolchains: crate::toolchains::ToolchainRegistry::default(),
             agent: AgentManager::new(),
+            agent_connections: crate::agent::connections::AgentConnections::default(),
             db: Default::default(),
         }
     }

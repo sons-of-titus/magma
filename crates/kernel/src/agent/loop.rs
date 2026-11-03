@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use agent::registry::ChatTurn;
 use serde_json::{Value, json};
 
 use crate::command::args::ArgValue;
@@ -17,20 +18,27 @@ use crate::state::Editor;
 use crate::state::MessageKind;
 
 use super::TranscriptEntry;
+use super::connections;
 use super::context::EditorContextProvider;
-use super::llm::{self, LlmConfig, ToolCall};
+use super::llm::{self, ToolCall};
 use super::types::{AgentContext, ContextProvider, PlanStep, Planner};
 
 /// Maximum model round-trips per session.
 pub use super::MAX_TURNS;
 
-/// Create a session and kick off its first turn.  With an API key this is
-/// the real LLM loop; without one the deterministic BuiltinPlanner runs
-/// (same events, no network).  Safe to call from the UI and from Janet.
+/// Create a session and kick off its first turn.  With a connected provider
+/// this is the real LLM loop; without one the deterministic BuiltinPlanner
+/// runs (same events, no network).  Safe to call from the UI and from Janet.
 pub fn start_session(ed: &mut Editor, prompt: &str) -> Result<u64, String> {
-    let session_id = ed.agent.create_session(prompt);
+    let resolved = connections::resolve_chat(ed).ok();
+    let session_id = match &resolved {
+        Some(chat) => ed
+            .agent
+            .create_session_with(prompt, chat.provider.meta().id, &chat.model.id),
+        None => ed.agent.create_session(prompt),
+    };
     let ctx = EditorContextProvider.gather(ed);
-    if LlmConfig::is_configured(&ed.options) {
+    if resolved.is_some() {
         begin_session(ed, session_id, prompt, &ctx);
         start_turn(ed, session_id)?;
     } else {
@@ -56,9 +64,7 @@ pub fn begin_session(ed: &mut Editor, session_id: u64, prompt: &str, ctx: &Agent
 /// Fire one model call on the background pool.  The reply (or error)
 /// arrives as `AgentLlmReply` on the foreground.
 pub fn start_turn(ed: &mut Editor, session_id: u64) -> Result<(), String> {
-    let Some(cfg) = LlmConfig::from_options(&ed.options) else {
-        return Err("agent: no API key configured".to_string());
-    };
+    let chat = connections::resolve_chat(ed)?;
     let Some(bg) = ed.background.clone() else {
         return Err("agent: no background runtime available".to_string());
     };
@@ -66,9 +72,32 @@ pub fn start_turn(ed: &mut Editor, session_id: u64) -> Result<(), String> {
         .agent
         .messages_of(session_id)
         .ok_or_else(|| "agent: session vanished".to_string())?;
+    let tools = llm::tools_schema();
+    let model = chat.model.id;
+    let reasoning = chat.reasoning.clone();
+    let provider = chat.provider;
+    let credential = chat.credential;
     let sender = bg.sender.clone();
     bg.spawn_blocking(move || {
-        let (content, calls, error) = match llm::chat(&cfg, &messages) {
+        let turn = ChatTurn {
+            model: &model,
+            messages: &messages,
+            reasoning: reasoning.as_ref(),
+            tools: &tools,
+        };
+        let outcome = provider
+            .chat_request(&turn, &credential)
+            .and_then(|req| {
+                agent::http::post_json(
+                    &req.url,
+                    &req.headers,
+                    &req.body,
+                    agent::http::CHAT_TIMEOUT,
+                )
+                .map(|(_, raw)| raw)
+            })
+            .and_then(|raw| provider.parse_reply(&raw));
+        let (content, calls, error) = match outcome {
             Ok((text, calls)) => (text, calls, None),
             Err(e) => (String::new(), Vec::new(), Some(e)),
         };

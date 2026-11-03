@@ -73,6 +73,27 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 },
             );
         }
+        BackgroundEvent::AgentAuthInstruction {
+            provider,
+            instruction,
+        } => {
+            crate::agent::connections::note_instruction(ed, &provider, instruction);
+        }
+        BackgroundEvent::AgentAuthResult {
+            provider,
+            ok,
+            credential,
+            error,
+        } => {
+            crate::agent::connections::note_auth_result(ed, &provider, ok, credential, error);
+        }
+        BackgroundEvent::AgentModels {
+            provider,
+            models,
+            error,
+        } => {
+            crate::agent::connections::note_models(ed, &provider, models, error);
+        }
         _ => {}
     }
 }

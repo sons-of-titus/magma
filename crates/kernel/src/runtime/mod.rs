@@ -197,6 +197,25 @@ pub enum BackgroundEvent {
         session_id: u64,
         error: String,
     },
+    /// An auth flow produced a step the UI should show (device code, key
+    /// form…).  Routed to the agent connection state.
+    AgentAuthInstruction {
+        provider: String,
+        instruction: agent::AuthInstruction,
+    },
+    /// An auth flow finished; the credential is redacted in Debug output.
+    AgentAuthResult {
+        provider: String,
+        ok: bool,
+        credential: Option<agent::Credential>,
+        error: Option<String>,
+    },
+    /// A provider's model catalog finished loading (or failed).
+    AgentModels {
+        provider: String,
+        models: Vec<agent::ModelInfo>,
+        error: Option<String>,
+    },
     /// Database tool work finished (connect, metadata, query).
     Db(crate::db::DbEvent),
     // ── Phase 9 Concurrency Model ─────────────────────────────────────────────

@@ -148,9 +148,10 @@ pub fn most_recent_existing_project(projects: &[String]) -> Option<String> {
 // ── Settings ─────────────────────────────────────────────────────────
 
 const SETTINGS_FILE: &str = "settings.json";
-/// Options under this prefix carry secrets: they are stored in the OS
+/// Options under these prefixes carry secrets: they are stored in the OS
 /// keychain, never in the settings file.
 const SECRET_PREFIX: &str = "agent.api-key.";
+const OAUTH_PREFIX: &str = "agent.oauth.";
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 struct PersistedSettings {
@@ -159,6 +160,9 @@ struct PersistedSettings {
     /// Non-secret manifest: which providers hold a keychain entry.
     #[serde(default)]
     keychain_keys: Vec<String>,
+    /// Providers holding a stored OAuth token (device flows).
+    #[serde(default)]
+    keychain_oauth: Vec<String>,
 }
 
 /// The user config directory (~/.config/magma), creating it if needed.
@@ -199,6 +203,15 @@ pub fn load_settings_from(dir: &std::path::Path, ed: &mut super::Editor) {
             ed.options.insert(account, secret);
         }
     }
+    for provider in settings.keychain_oauth {
+        let account = format!("{OAUTH_PREFIX}{provider}");
+        if let Some(secret) = super::secrets::load_key(&account) {
+            ed.options.insert(account, secret);
+        }
+    }
+    // Restored credentials become connections; the model catalogs refresh
+    // lazily once the Agent panel is visible.
+    ed.agent_connections.sync_from_options(&ed.options);
 }
 
 /// Write current options to the settings file and sync API keys with the OS
@@ -211,10 +224,17 @@ pub fn save_settings_to(dir: &std::path::Path, ed: &super::Editor) {
     let _ = std::fs::create_dir_all(dir);
     let mut file_options = std::collections::HashMap::new();
     let mut keychain_keys: Vec<String> = Vec::new();
+    let mut keychain_oauth: Vec<String> = Vec::new();
     for (name, value) in &ed.options {
         if let Some(provider) = name.strip_prefix(SECRET_PREFIX) {
             if !value.is_empty() && super::secrets::save_key(name, value) {
                 keychain_keys.push(provider.to_string());
+            }
+            continue;
+        }
+        if let Some(provider) = name.strip_prefix(OAUTH_PREFIX) {
+            if !value.is_empty() && super::secrets::save_key(name, value) {
+                keychain_oauth.push(provider.to_string());
             }
             continue;
         }
@@ -228,11 +248,18 @@ pub fn save_settings_to(dir: &std::path::Path, ed: &super::Editor) {
                 super::secrets::delete_key(&format!("{SECRET_PREFIX}{provider}"));
             }
         }
+        for provider in old.keychain_oauth {
+            if !keychain_oauth.contains(&provider) {
+                super::secrets::delete_key(&format!("{OAUTH_PREFIX}{provider}"));
+            }
+        }
     }
     keychain_keys.sort();
+    keychain_oauth.sort();
     let settings = PersistedSettings {
         options: file_options,
         keychain_keys,
+        keychain_oauth,
     };
     if let Ok(content) = serde_json::to_string_pretty(&settings) {
         write_private(&dir.join(SETTINGS_FILE), &content);

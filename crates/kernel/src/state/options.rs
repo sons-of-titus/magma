@@ -141,10 +141,12 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
     OptionSpec {
         name: "agent.provider",
         label: "Agent provider",
-        kind: OptionKind::Enum,
-        choices: &["openai", "deepseek", "kimi", "zai"],
-        default: "openai",
-        description: "LLM provider for the built-in agent",
+        kind: OptionKind::Str,
+        // Provider ids come from the agent provider registry, not this
+        // list; the value is written by the Agent panel's connection UI.
+        choices: &[],
+        default: "",
+        description: "Connected AI provider used for new agent sessions (managed in the Agent panel)",
         category: OptionCategory::Behavior,
     },
     OptionSpec {

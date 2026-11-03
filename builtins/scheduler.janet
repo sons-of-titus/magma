@@ -1,4 +1,4 @@
-# Magma Work Scheduler — Phase 9 Concurrency Model
+# Magma Work Scheduler
 #
 # Event handlers for work progress / completion / failure, and colon-mode
 # verbs for inspecting and cancelling background work.

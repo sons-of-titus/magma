@@ -10,5 +10,5 @@
 (command/define "font-increase" font/increase-size)
 (command/define "font-decrease" font/decrease-size)
 
-(keymap/set "global" "ctrl-=" "font-increase")
-(keymap/set "global" "ctrl--" "font-decrease")
+(keymap/set "ctrl-=" "font-increase")
+(keymap/set "ctrl--" "font-decrease")

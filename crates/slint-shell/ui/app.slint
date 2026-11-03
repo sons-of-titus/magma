@@ -10,7 +10,8 @@ import { Breadcrumb } from "components/breadcrumb.slint";
 import { ProjectTree, TreeItem } from "components/project-tree.slint";
 import { CommitPanel, ChangeRow } from "components/commit-panel.slint";
 import { DebuggerPanel } from "components/debugger-panel.slint";
-import { DatabasePanel, DbTreeRow, DbColumn, DbRow, FormButton as DialogButton } from "components/database-panel.slint";
+import { DatabasePanel, DbTreeRow, DbTabInfo, DbGridColumn, DbCell, DbGridRow } from "components/database-panel.slint";
+import { DbConnectionDialog } from "components/db-dialog.slint";
 import { Field } from "components/controls.slint";
 import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
 import { StatusBar } from "components/status-bar.slint";
@@ -18,7 +19,10 @@ import { ProgressStrip, ProgressTask } from "components/progress-strip.slint";
 import { EditorView } from "components/editor-view.slint";
 import { FindBar } from "components/find-bar.slint";
 import { BottomBar, BottomDock, FindRow, GitHistoryRow, OutputLine, ProblemRow } from "components/bottom-dock.slint";
-import { AgentDock, AgentEntry, AgentSessionChip } from "components/agent-dock.slint";
+import { AgentDock } from "components/agent-dock.slint";
+import { AgentEntry, AgentSessionChip } from "components/agent-conversation.slint";
+import { ProviderCard, AuthPanelView } from "components/agent-onboarding.slint";
+import { PickerChoice } from "components/agent-composer.slint";
 import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint";
 import { PickerView, PickerRow } from "views/picker-view.slint";
 import { QuitView } from "views/quit-view.slint";
@@ -72,18 +76,45 @@ export component AppWindow inherits Window {
     in property <bool> db-connected: false;
     in property <string> db-connected-label;
     in property <bool> db-busy: false;
-    in property <bool> db-form-open: false;
-    in-out property <string> db-form-name;
-    in-out property <string> db-form-path;
-    in property <string> db-form-note;
+    in property <bool> db-querying: false;
     in property <[DbTreeRow]> db-tree;
-    in property <[DbColumn]> db-columns;
-    in property <[DbRow]> db-rows;
+    in-out property <string> db-tree-filter;
+    in property <bool> db-tree-filter-active: false;
+    in-out property <string> db-filter-text;
+    in property <[DbTabInfo]> db-tabs;
+    in property <string> db-grid-title;
+    in property <[DbGridColumn]> db-columns;
+    in property <[DbGridRow]> db-rows;
     in property <string> db-status;
     in property <bool> db-status-error: false;
     in property <bool> db-truncated: false;
     in property <string> db-row-count;
     in property <string> db-elapsed;
+    in property <string> db-page-info;
+    in property <bool> db-can-edit: false;
+    in property <int> db-pending-count: 0;
+    in property <bool> db-has-tab: false;
+    // Connection dialog
+    in property <bool> db-dialog-visible: false;
+    in property <string> db-dialog-title: "Add Data Source";
+    in property <[string]> db-dialog-kinds;
+    in property <[string]> db-dialog-ssl-choices;
+    in-out property <int> db-dialog-kind-index: 0;
+    in property <bool> db-dialog-embedded: true;
+    in-out property <string> db-dialog-name;
+    in-out property <string> db-dialog-host;
+    in-out property <string> db-dialog-port;
+    in-out property <string> db-dialog-database;
+    in-out property <string> db-dialog-user;
+    in-out property <string> db-dialog-password;
+    in-out property <bool> db-dialog-save-password: false;
+    in-out property <int> db-dialog-ssl-index: 1;
+    in-out property <bool> db-dialog-trust-cert: false;
+    in-out property <bool> db-dialog-url-mode: false;
+    in-out property <string> db-dialog-url;
+    in property <string> db-dialog-note;
+    in property <bool> db-dialog-note-error: false;
+    in property <bool> db-dialog-testing: false;
     in property <length> sidebar-width: 300px;
     in property <[TreeItem]> tree;
     in property <string> tree-title: "Project";
@@ -146,8 +177,6 @@ export component AppWindow inherits Window {
     in property <bool> agent-open;
     in property <[AgentEntry]> agent-entries;
     in property <[AgentSessionChip]> agent-sessions;
-    in property <bool> agent-configured: false;
-    in property <[string]> agent-providers;
     in property <int> agent-turns-left: 0;
     in property <length> agent-dock-width: 380px;
     in-out property <string> agent-prompt;
@@ -156,9 +185,19 @@ export component AppWindow inherits Window {
     in property <string> agent-phase-detail: "";
     in property <string> agent-approval-summary: "";
     in property <[string]> agent-files;
-    in property <[string]> agent-models;
-    in-out property <string> agent-provider: "openai";
-    in-out property <string> agent-model: "gpt-4o-mini";
+    in property <bool> agent-connected: false;
+    in property <[ProviderCard]> agent-provider-cards;
+    in property <bool> agent-auth-active: false;
+    in property <AuthPanelView> agent-auth;
+    in property <PickerChoice> agent-provider-choice;
+    in property <[PickerChoice]> agent-provider-choices;
+    in property <PickerChoice> agent-model-choice;
+    in property <[PickerChoice]> agent-model-choices;
+    in property <bool> agent-reasoning-supported: false;
+    in property <string> agent-reasoning-label: "";
+    in property <[PickerChoice]> agent-reasoning-choices;
+    in property <[string]> agent-attachments;
+    in property <string> agent-send-blocked-reason: "";
 
     // ── Status ───────────────────────────────────────────────────────────
     in property <string> status-file;
@@ -219,6 +258,7 @@ export component AppWindow inherits Window {
     in property <bool> context-menu-visible: false;
     in property <length> context-menu-x: 0px;
     in property <length> context-menu-y: 0px;
+    in property <length> context-menu-h: 80px;
 
     // ── New Project wizard ───────────────────────────────────────────────
     in property <bool> new-project-visible: false;
@@ -253,9 +293,6 @@ export component AppWindow inherits Window {
     in-out property <string> settings-editor-font-name: "";
     in-out property <int> settings-editor-font-size: 15;
     in-out property <bool> settings-ligatures: false;
-    in-out property <string> settings-agent-provider: "openai";
-    in-out property <string> settings-agent-token: "";
-    in-out property <string> settings-agent-model: "";
     in property <[PluginRow]> settings-plugin-rows;
 
     // ── App-wide font ────────────────────────────────────────────────────
@@ -264,7 +301,6 @@ export component AppWindow inherits Window {
     in property <[string]> available-fonts;
 
     callback apply-font-settings();
-    callback apply-agent-settings();
     callback set-option(string, string);
     callback reset-option(string);
     callback add-option(string, string);
@@ -286,18 +322,27 @@ export component AppWindow inherits Window {
     callback rail-selected(int);
     callback db-toggle();
     callback db-resized(length);
-    callback db-open-console();
     callback db-source-changed(string);
-    callback db-connect-toggle();
-    callback db-refresh-schema();
-    callback db-form-opened();
-    callback db-form-cancelled();
-    callback db-source-created(string, string);
-    callback db-test-connection(string, string);
-    callback db-toggle-table(int);
-    callback db-table-opened(int);
-    callback db-run-query();
-    callback db-cancel-query();
+    callback db-toolbar(string);
+    callback db-tree-clicked(string);
+    callback db-tree-opened(string);
+    callback db-tree-context(string, length, length);
+    callback db-tree-filter-edited();
+    callback db-tab-selected(int);
+    callback db-tab-closed(int);
+    callback db-sort-clicked(int);
+    callback db-filter-accepted();
+    callback db-grid-select(int, int);
+    callback db-grid-edit-committed(int, int, string);
+    callback db-grid-action(string);
+    callback db-col-resized(int, length);
+    callback db-dialog-opened(int);
+    callback db-dialog-cancelled();
+    callback db-dialog-saved();
+    callback db-dialog-tested();
+    callback db-dialog-kind-changed(string);
+    callback db-dialog-ssl-changed(string);
+    callback db-dialog-url-toggled();
     callback sidebar-refresh();
     callback sidebar-collapse();
     callback sidebar-resized(length);
@@ -355,8 +400,19 @@ export component AppWindow inherits Window {
     callback agent-approve();
     callback agent-decline();
     callback agent-open-file(string);
-    callback agent-provider-changed(string);
-    callback agent-open-settings();
+    callback agent-connect-provider(string);
+    callback agent-disconnect-provider(string);
+    callback agent-submit-key(string);
+    callback agent-open-url(string);
+    callback agent-copy-code();
+    callback agent-onboarding-back();
+    callback agent-provider-selected(string);
+    callback agent-model-changed(string);
+    callback agent-reasoning-changed(string);
+    callback agent-attach-active-buffer();
+    callback agent-attach-file();
+    callback agent-attach-remove(int);
+    callback agent-manage-providers();
     callback agent-resized(length);
     callback menu-opened(string, length);
     callback command(string);
@@ -636,13 +692,21 @@ export component AppWindow inherits Window {
                 entries: root.agent-entries;
                 sessions: root.agent-sessions;
                 running: root.agent-running;
-                configured: root.agent-configured;
-                providers: root.agent-providers;
-                models: root.agent-models;
-                provider <=> root.agent-provider;
-                model <=> root.agent-model;
+                connected: root.agent-connected;
+                provider-cards: root.agent-provider-cards;
+                auth-active: root.agent-auth-active;
+                auth: root.agent-auth;
                 turns-left: root.agent-turns-left;
                 prompt <=> root.agent-prompt;
+                attachments: root.agent-attachments;
+                provider: root.agent-provider-choice;
+                provider-choices: root.agent-provider-choices;
+                model: root.agent-model-choice;
+                model-choices: root.agent-model-choices;
+                reasoning-supported: root.agent-reasoning-supported;
+                reasoning-label: root.agent-reasoning-label;
+                reasoning-choices: root.agent-reasoning-choices;
+                send-blocked-reason: root.agent-send-blocked-reason;
                 entry-count: root.agent-entries.length;
                 phase: root.agent-phase;
                 phase-detail: root.agent-phase-detail;
@@ -655,8 +719,19 @@ export component AppWindow inherits Window {
                 open-file(p) => { root.agent-open-file(p); }
                 select-session(id) => { root.agent-select-session(id); }
                 toggle-expanded(idx) => { root.agent-toggle-expanded(idx); }
-                provider-changed(v) => { root.agent-provider-changed(v); }
-                open-settings => { root.agent-open-settings(); }
+                connect-provider(id) => { root.agent-connect-provider(id); }
+                disconnect-provider(id) => { root.agent-disconnect-provider(id); }
+                submit-key(k) => { root.agent-submit-key(k); }
+                open-url(u) => { root.agent-open-url(u); }
+                copy-code => { root.agent-copy-code(); }
+                onboarding-back => { root.agent-onboarding-back(); }
+                provider-selected(id) => { root.agent-provider-selected(id); }
+                model-changed(id) => { root.agent-model-changed(id); }
+                reasoning-changed(v) => { root.agent-reasoning-changed(v); }
+                attach-active-buffer => { root.agent-attach-active-buffer(); }
+                attach-file => { root.agent-attach-file(); }
+                attach-remove(i) => { root.agent-attach-remove(i); }
+                manage-providers => { root.agent-manage-providers(); }
             }
 
             // Vertical handle between the Agent dock and the Database tool.
@@ -671,14 +746,19 @@ export component AppWindow inherits Window {
             }
 
             if root.db-open && root.agent-open : DatabasePanel {
-                height: root.db-height;
                 width: root.agent-dock-width;
                 sources: root.db-sources;
                 active-source: root.db-active-source;
                 connected: root.db-connected;
-                connected-label: root.db-connected-label;
+                connection-label: root.db-connected-label;
                 busy: root.db-busy;
+                querying: root.db-querying;
                 tree: root.db-tree;
+                tree-filter <=> root.db-tree-filter;
+                tree-filter-active: root.db-tree-filter-active;
+                grid-filter <=> root.db-filter-text;
+                tabs: root.db-tabs;
+                grid-title: root.db-grid-title;
                 columns: root.db-columns;
                 rows: root.db-rows;
                 status: root.db-status;
@@ -686,15 +766,24 @@ export component AppWindow inherits Window {
                 truncated: root.db-truncated;
                 row-count: root.db-row-count;
                 elapsed: root.db-elapsed;
+                page-info: root.db-page-info;
+                can-edit: root.db-can-edit;
+                pending-count: root.db-pending-count;
+                has-tab: root.db-has-tab;
                 source-changed(v) => { root.db-source-changed(v); }
-                connect-toggle => { root.db-connect-toggle(); }
-                refresh => { root.db-refresh-schema(); }
-                form-opened => { root.db-form-opened(); }
-                open-console => { root.db-open-console(); }
-                toggle-table(i) => { root.db-toggle-table(i); }
-                table-opened(i) => { root.db-table-opened(i); }
-                run => { root.db-run-query(); }
-                cancel-query => { root.db-cancel-query(); }
+                toolbar(a) => { root.db-toolbar(a); }
+                tree-clicked(k) => { root.db-tree-clicked(k); }
+                tree-opened(k) => { root.db-tree-opened(k); }
+                tree-context(k, x, y) => { root.db-tree-context(k, x, y); }
+                tree-filter-edited => { root.db-tree-filter-edited(); }
+                tab-selected(i) => { root.db-tab-selected(i); }
+                tab-closed(i) => { root.db-tab-closed(i); }
+                sort-clicked(c) => { root.db-sort-clicked(c); }
+                filter-accepted => { root.db-filter-accepted(); }
+                grid-select(r, c) => { root.db-grid-select(r, c); }
+                grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
+                grid-action(a) => { root.db-grid-action(a); }
+                col-resized(c, d) => { root.db-col-resized(c, d); }
             }
             if root.db-open && !root.agent-open : DatabasePanel {
                 vertical-stretch: 1;
@@ -702,9 +791,15 @@ export component AppWindow inherits Window {
                 sources: root.db-sources;
                 active-source: root.db-active-source;
                 connected: root.db-connected;
-                connected-label: root.db-connected-label;
+                connection-label: root.db-connected-label;
                 busy: root.db-busy;
+                querying: root.db-querying;
                 tree: root.db-tree;
+                tree-filter <=> root.db-tree-filter;
+                tree-filter-active: root.db-tree-filter-active;
+                grid-filter <=> root.db-filter-text;
+                tabs: root.db-tabs;
+                grid-title: root.db-grid-title;
                 columns: root.db-columns;
                 rows: root.db-rows;
                 status: root.db-status;
@@ -712,15 +807,24 @@ export component AppWindow inherits Window {
                 truncated: root.db-truncated;
                 row-count: root.db-row-count;
                 elapsed: root.db-elapsed;
+                page-info: root.db-page-info;
+                can-edit: root.db-can-edit;
+                pending-count: root.db-pending-count;
+                has-tab: root.db-has-tab;
                 source-changed(v) => { root.db-source-changed(v); }
-                connect-toggle => { root.db-connect-toggle(); }
-                refresh => { root.db-refresh-schema(); }
-                form-opened => { root.db-form-opened(); }
-                open-console => { root.db-open-console(); }
-                toggle-table(i) => { root.db-toggle-table(i); }
-                table-opened(i) => { root.db-table-opened(i); }
-                run => { root.db-run-query(); }
-                cancel-query => { root.db-cancel-query(); }
+                toolbar(a) => { root.db-toolbar(a); }
+                tree-clicked(k) => { root.db-tree-clicked(k); }
+                tree-opened(k) => { root.db-tree-opened(k); }
+                tree-context(k, x, y) => { root.db-tree-context(k, x, y); }
+                tree-filter-edited => { root.db-tree-filter-edited(); }
+                tab-selected(i) => { root.db-tab-selected(i); }
+                tab-closed(i) => { root.db-tab-closed(i); }
+                sort-clicked(c) => { root.db-sort-clicked(c); }
+                filter-accepted => { root.db-filter-accepted(); }
+                grid-select(r, c) => { root.db-grid-select(r, c); }
+                grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
+                grid-action(a) => { root.db-grid-action(a); }
+                col-resized(c, d) => { root.db-col-resized(c, d); }
             }
 
             RightRail {
@@ -827,7 +931,7 @@ export component AppWindow inherits Window {
 
     if root.context-menu-visible : MenuPopup {
         x: Math.min(root.context-menu-x, parent.width - 212px).max(4px);
-        y: Math.min(root.context-menu-y, parent.height - 80px).max(4px);
+        y: Math.min(root.context-menu-y, parent.height - root.context-menu-h - 8px).max(4px);
         items: root.context-items;
         activated(cmd) => {
             root.context-dismissed();
@@ -846,12 +950,7 @@ export component AppWindow inherits Window {
         settings-editor-font-name <=> root.settings-editor-font-name;
         settings-editor-font-size <=> root.settings-editor-font-size;
         settings-ligatures <=> root.settings-ligatures;
-        settings-agent-provider <=> root.settings-agent-provider;
-        settings-agent-token <=> root.settings-agent-token;
-        settings-agent-model <=> root.settings-agent-model;
         available-fonts: root.available-fonts;
-        agent-models: root.agent-models;
-        agent-configured: root.agent-configured;
         set-option(name, v) => { root.set-option(name, v); }
         reset-option(name) => { root.reset-option(name); }
         add-option(name, v) => { root.add-option(name, v); }
@@ -859,85 +958,37 @@ export component AppWindow inherits Window {
         search-changed() => { root.settings-search-changed(); }
         select-category(c) => { root.settings-select-category(c); }
         apply-font-settings => { root.apply-font-settings(); }
-        apply-agent-settings => { root.apply-agent-settings(); }
         close => { root.settings-visible = false; }
         command(cmd) => { root.command(cmd); }
     }
 
     // ── Database connection dialog ───────────────────────────────────────
-    if root.db-form-open : Rectangle {
-        background: #00000066;
-
-        // Backdrop click dismisses, like the other dialogs.
-        TouchArea { clicked => { root.db-form-cancelled(); } }
-
-        Rectangle {
-            width: 400px;
-            height: dlg.preferred-height;
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            background: Theme.chrome;
-            border-radius: Theme.radius-pill;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-blur: 18px;
-            drop-shadow-color: #00000077;
-            drop-shadow-offset-y: 6px;
-
-            dlg := VerticalLayout {
-                padding: 14px;
-                spacing: 8px;
-
-                HorizontalLayout {
-                    spacing: 6px;
-                    Text {
-                        text: "New Database Connection";
-                        color: Theme.text-primary;
-                        font-size: 13px;
-                        font-weight: 700;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: root.db-form-note;
-                        color: Theme.text-faint;
-                        font-size: 10px;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        width: 160px;
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: 3px;
-                    Text { text: "Name"; color: Theme.text-faint; font-size: 10px; font-weight: 600; }
-                    Field {
-                        placeholder: "e.g. app-db";
-                        text <=> root.db-form-name;
-                        accepted => { root.db-source-created(root.db-form-name, root.db-form-path); }
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: 3px;
-                    Text { text: "SQLite database file"; color: Theme.text-faint; font-size: 10px; font-weight: 600; }
-                    Field {
-                        placeholder: "/path/to/database.sqlite";
-                        text <=> root.db-form-path;
-                        accepted => { root.db-source-created(root.db-form-name, root.db-form-path); }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    DialogButton { label: "Test"; clicked => { root.db-test-connection(root.db-form-name, root.db-form-path); } }
-                    DialogButton { label: "Add and Connect"; primary: true;
-                        clicked => { root.db-source-created(root.db-form-name, root.db-form-path); } }
-                    DialogButton { label: "Cancel"; clicked => { root.db-form-cancelled(); } }
-                }
-            }
-        }
+    if root.db-dialog-visible : DbConnectionDialog {
+        title: root.db-dialog-title;
+        kinds: root.db-dialog-kinds;
+        ssl-choices: root.db-dialog-ssl-choices;
+        kind-index <=> root.db-dialog-kind-index;
+        embedded: root.db-dialog-embedded;
+        name <=> root.db-dialog-name;
+        host <=> root.db-dialog-host;
+        port <=> root.db-dialog-port;
+        database <=> root.db-dialog-database;
+        user <=> root.db-dialog-user;
+        password <=> root.db-dialog-password;
+        save-password <=> root.db-dialog-save-password;
+        ssl-index <=> root.db-dialog-ssl-index;
+        trust-cert <=> root.db-dialog-trust-cert;
+        url-mode <=> root.db-dialog-url-mode;
+        url <=> root.db-dialog-url;
+        note: root.db-dialog-note;
+        note-error: root.db-dialog-note-error;
+        testing: root.db-dialog-testing;
+        cancel => { root.db-dialog-cancelled(); }
+        save => { root.db-dialog-saved(); }
+        test => { root.db-dialog-tested(); }
+        kind-changed(v) => { root.db-dialog-kind-changed(v); }
+        ssl-changed(v) => { root.db-dialog-ssl-changed(v); }
+        url-toggled => { root.db-dialog-url-toggled(); }
     }
 
     // ── Picker overlay (Go to File/Symbol, buffers, palette, prompts) ────

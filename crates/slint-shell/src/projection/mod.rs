@@ -4,6 +4,7 @@
 //! the shell's `refresh` a straight assignment pass.
 
 mod agent;
+mod agent_panel;
 mod db;
 mod debug_view;
 mod menus;
@@ -13,9 +14,15 @@ pub use agent::{
     active_session_id, agent_approval_summary, agent_entries, agent_files, agent_phase,
     agent_phase_detail, agent_running, agent_session_chips, agent_turns_left,
 };
+pub use agent_panel::{
+    active_model_choice, active_provider_choice, attachment_labels, auth_panel, model_choices,
+    provider_cards, provider_choices, reasoning_choices, reasoning_label, reasoning_supported,
+    send_blocked_reason,
+};
 pub use db::{
-    db_active_source_name, db_columns, db_connected_label, db_elapsed, db_row_count, db_rows,
-    db_sources, db_status, db_tree,
+    db_active_source_name, db_busy, db_can_edit, db_columns, db_connected_label, db_elapsed,
+    db_grid_title, db_has_tab, db_page_info, db_pending_count, db_querying, db_row_count, db_rows,
+    db_sources, db_status, db_tabs, db_tree, db_truncated,
 };
 pub use debug_view::snapshot as debug_snapshot;
 pub use menus::{menu_items, menu_title};

@@ -18,6 +18,33 @@ use crate::context;
 
 use crate::new_project;
 
+/// One context attachment staged in the agent composer.
+pub(crate) struct AgentAttachment {
+    pub(crate) label: String,
+    pub(crate) body: String,
+}
+
+/// The data-source dialog's working form.  `editing` targets an existing
+/// source for updates; `None` creates one.
+pub(crate) struct DbDialog {
+    pub(crate) editing: Option<u64>,
+    pub(crate) kind_index: usize,
+    pub(crate) name: String,
+    pub(crate) host: String,
+    pub(crate) port: String,
+    pub(crate) database: String,
+    pub(crate) user: String,
+    pub(crate) password: String,
+    pub(crate) save_password: bool,
+    pub(crate) ssl_index: usize,
+    pub(crate) trust_cert: bool,
+    pub(crate) url_mode: bool,
+    pub(crate) url: String,
+    pub(crate) testing: bool,
+    /// The probe this dialog is waiting on; stale results drop.
+    pub(crate) test_token: u64,
+}
+
 pub(crate) struct AppState {
     pub(crate) editor: Editor,
     pub(crate) bg_receiver: tokio::sync::mpsc::UnboundedReceiver<BackgroundEvent>,
@@ -63,9 +90,13 @@ pub(crate) struct AppState {
     /// The Database tool window on the right, beneath the Agent dock.
     pub(crate) db_open: bool,
     pub(crate) db_height: f32,
-    pub(crate) db_form_open: bool,
-    pub(crate) db_form_note: String,
-    pub(crate) db_expanded: HashSet<usize>,
+    /// Per-tab grid column widths, the drag handle edits the active tab's.
+    pub(crate) db_col_widths: HashMap<u64, Vec<f32>>,
+    /// Explorer object-name filter (live, projection-side).
+    pub(crate) db_tree_filter: String,
+    pub(crate) db_tree_filter_active: bool,
+    /// The open data-source dialog (None while closed).
+    pub(crate) db_dialog: Option<DbDialog>,
     pub(crate) debug_expanded: HashSet<i64>,
     /// The scope reference those expansions belong to; a new stop resets.
     pub(crate) debug_scope_seen: Option<i64>,
@@ -92,6 +123,10 @@ pub(crate) struct AppState {
     /// Transcript entries the user folded open, keyed by (session, index).
     pub(crate) agent_expanded: HashSet<(u64, usize)>,
     pub(crate) agent_dock_width: f32,
+    /// Context attachments staged in the composer (label + body).
+    pub(crate) agent_attachments: Vec<AgentAttachment>,
+    /// The provider-management overlay is open over a live conversation.
+    pub(crate) agent_manage_open: bool,
     pub(crate) last_px: f32,
     pub(crate) last_py: f32,
     pub(crate) hovering: bool,

@@ -135,23 +135,30 @@ fn run_incremental_query(
             Some(changes) => {
                 let spans: Vec<&(usize, usize, usize)> =
                     changes.iter().flat_map(|(_, _, s)| s.iter()).collect();
-                // A single edit's row/col points are computable against
-                // the current text: bytes before its start are untouched
-                // by the edit itself.  A multi-edit feed would need each
-                // edit's points in the interleaved text state between
-                // its neighbors, which is gone — feeding tree-sitter
-                // positions that disagree with its byte offsets corrupts
-                // the tree, so those discard the cache and reparse whole.
-                if spans.len() == 1 {
-                    let &(start, old_end, new_end) = spans[0];
-                    edits.push(tree_sitter::InputEdit {
-                        start_byte: start,
-                        old_end_byte: old_end,
-                        new_end_byte: new_end,
-                        start_position: point_of(&buf, start),
-                        old_end_position: point_of(&buf, old_end.min(buf.len())),
-                        new_end_position: point_of(&buf, new_end.min(buf.len())),
-                    });
+                if spans.is_empty() {
+                    // The tree already describes this text (the caller
+                    // queries it directly below).
+                } else if let [&(start, old_end, new_end)] = spans[..] {
+                    // Only a pure insertion is feedable: its points read
+                    // straight off the current text.  A deletion or
+                    // replacement needs the displaced text's points, which
+                    // cannot be read from the buffer — feeding tree-sitter
+                    // positions that disagree with its byte offsets corrupts
+                    // the tree, so those discard the cache and reparse whole
+                    // (as does a multi-edit feed, whose intermediate text
+                    // states are gone).
+                    if old_end == start {
+                        edits.push(tree_sitter::InputEdit {
+                            start_byte: start,
+                            old_end_byte: old_end,
+                            new_end_byte: new_end,
+                            start_position: point_of(&buf, start),
+                            old_end_position: point_of(&buf, start),
+                            new_end_position: point_of(&buf, new_end.min(buf.len())),
+                        });
+                    } else {
+                        cached = None;
+                    }
                 } else {
                     cached = None;
                 }
@@ -164,6 +171,24 @@ fn run_incremental_query(
     }
     let query_text = buf.slice(0, buf.len());
     let current_seq = buf.txn_seq();
+
+    // A cached tree at the current revision already describes this text:
+    // querying it directly is the cheap path every landed parse takes.
+    if cached.is_some() && edits.is_empty() {
+        let state = cached.take().expect("checked above");
+        let result = ts_registry::query_parsed(&lang_name, &state.tree, &query_text, query_str)?;
+        drop(buf);
+        ed.ts_trees.insert(
+            buf_id,
+            ts_registry::TsTreeState {
+                tree: state.tree,
+                revision: current_rev,
+                txn_seq: current_seq,
+            },
+        );
+        return Some(result);
+    }
+
     let (result, mut state) = ts_registry::highlight_incremental(
         &lang_name,
         buf.rope_handle(),

@@ -1273,10 +1273,13 @@ ignored — the mode simply gets no tree-sitter highlighting.
 
 ### `(ts/highlight buf-id query-src)` → array
 
-Incrementally reparse the buffer from its cached tree — applying the edits
-since the tree's revision — and run `query-src`, returning capture triples
-`[start-byte end-byte scope]`.  Falls back to a full parse when no usable
-tree is cached.
+Run `query-src` against the buffer's cached tree and return capture triples
+`[start-byte end-byte scope]`.  A tree already at the buffer's revision is
+queried as it is; pending edits are applied incrementally when they can be
+described exactly (a pure insertion), and anything else — no cached tree,
+a deletion or multi-edit feed, a tree past the change-retention window —
+reparses whole.  Returns nil when there is no usable tree or the query does
+not compile against the buffer's grammar.
 
 ### `(ts/query-tree buf-id query-src)` → `[[start end capture] …]` or nil
 

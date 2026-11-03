@@ -182,6 +182,146 @@ fn typing_new_code_gets_highlighted_through_the_parse_lane() {
     );
 }
 
+// ── Comments ─────────────────────────────────────────────────────────────
+
+/// The face a scope resolves to, the way the renderer resolves it: the
+/// longest matching scope-face prefix wins, then a face of the same name.
+fn face_for_scope(ed: &kernel::state::Editor, scope: &str) -> Option<String> {
+    ed.scope_faces
+        .iter()
+        .find(|(prefix, _)| scope.starts_with(prefix.as_str()))
+        .map(|(_, face)| face.clone())
+        .or_else(|| ed.faces.contains_key(scope).then(|| scope.to_string()))
+}
+
+/// Every comment flavor the grammar distinguishes must color as a comment.
+/// A doc comment is a `line_comment`/`block_comment` node carrying marker +
+/// doc children — the query's documentation capture has to resolve to the
+/// same face as `//`, not to the generic fallback the renderer uses for
+/// scopes it cannot resolve.
+#[test]
+fn doc_comments_color_like_plain_comments_through_the_lane() {
+    let body = "\
+// plain comment
+/// Outer doc comment
+//! Inner doc comment
+//// four slashes stay a plain comment
+/** Block doc comment */
+/*! Inner block doc comment */
+/* plain block comment */
+fn main() {}
+";
+    let path = rs_file("comments", body);
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+
+    assert_eq!(scripting::eval(&enable_rust_plugin()), "ok");
+    open_file_cmd(&mut ed, &path);
+    ed.events.drain_and_dispatch();
+
+    let key = helpers::focused_key(&ed);
+    let layer = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("syntax")
+        .cloned()
+        .unwrap_or_default();
+    assert!(!layer.is_empty(), "the open path must highlight the file");
+
+    let mut offset = 0;
+    let mut checked = 0;
+    for line in body.lines() {
+        if line.starts_with("//") || line.starts_with("/*") {
+            let scope = layer
+                .iter()
+                .find(|(start, end, _)| *start <= offset && offset + line.len() <= *end)
+                .map(|(_, _, scope)| scope.clone())
+                .unwrap_or_else(|| panic!("{line:?} must carry a highlight span, got {layer:?}"));
+            let face = face_for_scope(&ed, &scope)
+                .unwrap_or_else(|| panic!("{line:?}: scope {scope:?} resolves to no face"));
+            assert_eq!(
+                face, "comment-face",
+                "{line:?} must color as a comment, got scope {scope:?}"
+            );
+            checked += 1;
+        }
+        offset += line.len() + 1;
+    }
+    assert_eq!(checked, 7, "every comment flavor must be checked");
+}
+
+/// Deleting a line break leaves the cached tree one edit behind the buffer.
+/// That edit's old end point cannot be read off the post-edit text, so the
+/// highlight path must reparse whole — the layer it paints has to be
+/// exactly what a from-scratch parse produces.
+#[test]
+fn deleting_a_newline_keeps_the_layer_equal_to_a_full_parse() {
+    let body = "\
+//! Module docs.
+use std::fmt;
+
+/// Joins the two lines below when the break at the end
+/// of this line is deleted.
+fn main() {
+    let value = format!(\"{}\", 1);
+    println!(\"{value}\");
+}
+";
+    let path = rs_file("newline_edit", body);
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+
+    assert_eq!(scripting::eval(&enable_rust_plugin()), "ok");
+    open_file_cmd(&mut ed, &path);
+    ed.events.drain_and_dispatch();
+
+    let key = helpers::focused_key(&ed);
+    let syntax_layer = |ed: &kernel::state::Editor| -> Vec<(usize, usize, String)> {
+        ed.views
+            .get(&key)
+            .unwrap()
+            .highlight_layers
+            .get("syntax")
+            .cloned()
+            .unwrap_or_default()
+    };
+    assert!(!syntax_layer(&ed).is_empty(), "open must highlight the file");
+
+    // Delete the line break inside the doc comment — the tree in the cache
+    // is now one edit behind the text.
+    let break_at = body.find("of this line").unwrap();
+    let newline = body[..break_at].rfind('\n').unwrap();
+    {
+        let arc = ed.buffers.get(key).unwrap();
+        let mut buf = arc.lock().unwrap();
+        buf.delete(newline, newline + 1);
+    }
+    assert_eq!(
+        scripting::eval(&format!(r#"(do (ts/highlight-buffer {key}) "ok")"#)),
+        "ok"
+    );
+    let after_edit = syntax_layer(&ed);
+
+    // The same text highlighted with no cached tree: the from-scratch path.
+    ed.ts_trees.remove(&key);
+    assert_eq!(
+        scripting::eval(&format!(r#"(do (ts/highlight-buffer {key}) "ok")"#)),
+        "ok"
+    );
+    let from_scratch = syntax_layer(&ed);
+
+    assert_eq!(
+        after_edit, from_scratch,
+        "highlighting from a one-edit-stale tree must match a full parse"
+    );
+}
+
 // ── LSP completions ──────────────────────────────────────────────────────
 
 const FAKE_RA: &str = r#"#!/usr/bin/env python3

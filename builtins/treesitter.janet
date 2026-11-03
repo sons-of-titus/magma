@@ -131,23 +131,30 @@
       # owned here, so an unusable tree means an explicitly empty layer.
       (buffer/set-highlights-layer buf-id "syntax" @[])
       (break))))
-  (when result
-    (def ranges @[])
-    (def text (buffer/slice buf-id 0 (buffer/len buf-id)))
-    # The grammar parses None/Some/Ok as plain identifiers and query
-    # predicates are not applied by the runtime — promote them to the
-    # constant scope so they read as literals, not variables.
-    (each r result
-      (var [s e scope] r)
-      (when (and (= scope "variable")
-                 (< s (length text))
-                 (<= e (length text))
-                 (or (= (string/slice text s e) "None")
-                     (= (string/slice text s e) "Some")
-                     (= (string/slice text s e) "Ok")))
-        (set scope "constant"))
-      (array/push ranges [s e scope]))
-    (buffer/set-highlights-layer buf-id "syntax" ranges)))
+  (unless result
+    # `ts/highlight` returns nil (not an error) when there is no usable
+    # tree — no grammar, no language, or a query that does not compile
+    # against it.  The fallback highlighter stands down for this mode, so
+    # ranges left from the last successful run would only drift through
+    # edit transforms: clear them, same as the error path.
+    (buffer/set-highlights-layer buf-id "syntax" @[])
+    (break))
+  (def ranges @[])
+  (def text (buffer/slice buf-id 0 (buffer/len buf-id)))
+  # The grammar parses None/Some/Ok as plain identifiers and query
+  # predicates are not applied by the runtime — promote them to the
+  # constant scope so they read as literals, not variables.
+  (each r result
+    (var [s e scope] r)
+    (when (and (= scope "variable")
+               (< s (length text))
+               (<= e (length text))
+               (or (= (string/slice text s e) "None")
+                   (= (string/slice text s e) "Some")
+                   (= (string/slice text s e) "Ok")))
+      (set scope "constant"))
+    (array/push ranges [s e scope]))
+  (buffer/set-highlights-layer buf-id "syntax" ranges))
 
 # ── Scope → face mapping ─────────────────────────────────────────────────────
 #

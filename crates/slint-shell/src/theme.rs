@@ -167,7 +167,7 @@ pub fn apply_editor(ed: &mut Editor, p: &Palette) {
     ed.faces
         .insert("string-face".into(), face(s.string, false, false, false));
     ed.faces
-        .insert("comment-face".into(), face(s.comment, false, true, true));
+        .insert("comment-face".into(), face(s.comment, false, true, false));
     ed.faces
         .insert("type-face".into(), face(s.type_, false, false, false));
     ed.faces.insert(

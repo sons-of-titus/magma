@@ -358,10 +358,13 @@ fn syntax_highlight_uses_language_path_for_generated_buffers() {
 }
 
 #[test]
-fn default_comment_face_is_dim() {
+fn default_comment_face_is_not_dimmed() {
+    // Comments grey out through the muted colour the palette already
+    // carries; the renderer's dim halves that colour again and drops the
+    // text below legibility.
     janet_test!(ed, {
         let face = ed.faces.get("comment-face").unwrap();
-        assert!(face.dim, "comment-face should be dim by default");
+        assert!(!face.dim, "comment-face must not be dimmed by default");
     });
 }
 

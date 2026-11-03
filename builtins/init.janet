@@ -55,7 +55,7 @@
 
 (face/define "comment-face"
   {:fg (catppuccin-mocha :overlay0) :bg (catppuccin-mocha :base)
-   :bold false :italic false :underline false :strikethrough false :dim true})
+   :bold false :italic false :underline false :strikethrough false :dim false})
 
 (face/define "type-face"
   {:fg (catppuccin-mocha :blue) :bg (catppuccin-mocha :base)
@@ -94,10 +94,10 @@
 # the grey but strikes through.
 (face/define "unused-face"
   {:fg (catppuccin-mocha :overlay0) :bg (catppuccin-mocha :base)
-   :bold false :italic false :underline false :strikethrough false :dim true})
+   :bold false :italic false :underline false :strikethrough false :dim false})
 
 (face/define "deprecated-face"
   {:fg (catppuccin-mocha :overlay0) :bg (catppuccin-mocha :base)
-   :bold false :italic false :underline false :strikethrough true :dim true})
+   :bold false :italic false :underline false :strikethrough true :dim false})
 
 (print "Magma ready")

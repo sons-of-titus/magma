@@ -17,8 +17,8 @@ pub struct FoldIcons {
 impl Default for FoldIcons {
     fn default() -> Self {
         FoldIcons {
-            open: "v".to_string(),
-            closed: ">".to_string(),
+            open: "▾".to_string(),
+            closed: "▸".to_string(),
             face: "fold-face".to_string(),
         }
     }

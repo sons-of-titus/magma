@@ -809,7 +809,7 @@ Return all registered providers in render order.
 
 ### `(gutter/set-fold-icons open closed face)` → nil
 
-Set the icons drawn by the `:folding` provider. `open` and `closed` are single-character strings; `face` is the face name for styling.
+Set the icons drawn by the `:folding` provider. `open` and `closed` are single-character strings; `face` is the face name for styling. Defaults are the fold chevrons `▾` (open) and `▸` (collapsed).
 
 ### `(gutter/set-line-number-format fn-name)` → nil
 

@@ -113,8 +113,8 @@ fn total_width_sums_all_providers() {
 #[test]
 fn fold_icons_have_defaults() {
     let ed = helpers::make_editor();
-    assert_eq!(ed.gutter.fold_icons.open, "v");
-    assert_eq!(ed.gutter.fold_icons.closed, ">");
+    assert_eq!(ed.gutter.fold_icons.open, "▾");
+    assert_eq!(ed.gutter.fold_icons.closed, "▸");
     assert_eq!(ed.gutter.fold_icons.face, "fold-face");
 }
 
@@ -122,12 +122,12 @@ fn fold_icons_have_defaults() {
 fn fold_icons_can_be_changed() {
     let mut ed = helpers::make_editor();
     ed.gutter.fold_icons = FoldIcons {
-        open: "v".to_string(),
-        closed: ">".to_string(),
+        open: "+".to_string(),
+        closed: "-".to_string(),
         face: "my-face".to_string(),
     };
-    assert_eq!(ed.gutter.fold_icons.open, "v");
-    assert_eq!(ed.gutter.fold_icons.closed, ">");
+    assert_eq!(ed.gutter.fold_icons.open, "+");
+    assert_eq!(ed.gutter.fold_icons.closed, "-");
 }
 
 // ── sign_cache ────────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ fn janet_provider_width_is_one() {
 // ── folding cell rendering ────────────────────────────────────────────────────
 
 #[test]
-fn folding_provider_uses_the_debug_pointer_glyph_when_folded() {
+fn folding_provider_renders_the_fold_chevrons() {
     let ed = helpers::make_editor();
     let diag = std::collections::HashMap::new();
     let base = GutterCtx {
@@ -217,10 +217,9 @@ fn folding_provider_uses_the_debug_pointer_glyph_when_folded() {
     };
     // A plain line leaves the column blank.
     assert_eq!(Folding.render(3, &base).unwrap().text, " ");
-    // A foldable range shows the open mark.
+    // A foldable range points down, a collapsed one points right.
     let foldable = GutterCtx { is_foldable: true, ..base };
-    assert_eq!(Folding.render(3, &foldable).unwrap().text, "v");
-    // A collapsed range shows the same pointer the debug step uses.
+    assert_eq!(Folding.render(3, &foldable).unwrap().text, "▾");
     let folded = GutterCtx { is_fold_start: true, ..base };
-    assert_eq!(Folding.render(3, &folded).unwrap().text, ">");
+    assert_eq!(Folding.render(3, &folded).unwrap().text, "▸");
 }

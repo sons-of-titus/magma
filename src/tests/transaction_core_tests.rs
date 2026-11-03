@@ -373,3 +373,92 @@ fn position_of_handles_multibyte_and_lines() {
     drop(buf);
     assert_eq!(helpers::buf_text(&ed), "héllo\nwörld\nx");
 }
+
+// ── Editor-level positions ride the transaction stream ─────────────────────
+
+#[test]
+fn insert_many_snaps_mid_char_offsets_instead_of_dropping() {
+    let (mut ed, key) = editor_with("héllo");
+    let view = ed.views.get_mut(&key).unwrap();
+    // Offset 2 is inside the two-byte 'é'; offset 6 is the end boundary.
+    let txn = view.insert_many(&[(2, "X"), (6, "Y")]);
+    assert!(
+        txn.is_some(),
+        "a mid-char offset must snap to a boundary, not drop the transaction"
+    );
+    let buf = ed.buffers.get(key).unwrap().lock().unwrap();
+    // snap_offset floors: the insert lands before the 'é', like the single
+    // insert path, instead of the whole transaction being dropped.
+    assert_eq!(buf.slice(0, buf.len()), "hXélloY");
+}
+
+fn register_prefix_inserter(ed: &mut Editor) {
+    ed.commands.register_fn(
+        "test-insert-prefix",
+        "test-only: insert XX at offset 0",
+        vec![],
+        |ed, _args| {
+            let view = ed.focused_view_mut().unwrap();
+            view.insert(0, "XX");
+            Ok(())
+        },
+    );
+}
+
+#[test]
+fn extra_cursors_transform_through_command_edits() {
+    let (mut ed, _key) = editor_with("one\ntwo\nthree\n");
+    ed.multi_cursor.active = true;
+    ed.multi_cursor
+        .extra_cursors
+        .push(crate::kernel::state::cursor::ExtraCursor {
+            pos: 4,
+            anchor: None,
+        });
+    register_prefix_inserter(&mut ed);
+
+    command::execute_command(&mut ed, "test-insert-prefix", &std::collections::HashMap::new())
+        .unwrap();
+    assert_eq!(
+        ed.multi_cursor.extra_cursors[0].pos,
+        6,
+        "an extra cursor after the edit shifts by the inserted length"
+    );
+}
+
+#[test]
+fn extra_cursors_transform_through_undo() {
+    let (mut ed, _key) = editor_with("one\ntwo\n");
+    ed.multi_cursor
+        .extra_cursors
+        .push(crate::kernel::state::cursor::ExtraCursor {
+            pos: 4,
+            anchor: None,
+        });
+    register_prefix_inserter(&mut ed);
+    command::execute_command(&mut ed, "test-insert-prefix", &std::collections::HashMap::new())
+        .unwrap();
+    assert_eq!(ed.multi_cursor.extra_cursors[0].pos, 6);
+
+    command::execute_command(&mut ed, "undo", &std::collections::HashMap::new()).unwrap();
+    assert_eq!(
+        ed.multi_cursor.extra_cursors[0].pos,
+        4,
+        "undo commits an inverse transaction, and extras ride it"
+    );
+}
+
+#[test]
+fn selection_anchor_transforms_through_command_edits() {
+    let (mut ed, _key) = editor_with("hello world");
+    ed.selection = Some(crate::kernel::state::mode::Selection::char(6));
+    register_prefix_inserter(&mut ed);
+
+    command::execute_command(&mut ed, "test-insert-prefix", &std::collections::HashMap::new())
+        .unwrap();
+    assert_eq!(
+        ed.selection.as_ref().unwrap().anchor,
+        8,
+        "the selection anchor stays on the same character"
+    );
+}

@@ -281,15 +281,16 @@ impl Buffer {
     ) -> Option<EditTransaction> {
         let len = self.doc.len();
         let mut cursor_after = cursor_before;
-        let builder = edits
-            .iter()
-            .fold(TransactionBuilder::new(), |b, &(off, text)| {
-                let off = off.min(len);
-                if off <= cursor_before {
-                    cursor_after += text.len();
-                }
-                b.insert(off, text)
-            });
+        let mut builder = TransactionBuilder::new();
+        for &(off, text) in edits {
+            // Snap like every other mutation path: a mid-char offset must
+            // not silently drop the whole transaction to a validation error.
+            let off = self.doc.snap_offset(off.min(len));
+            if off <= cursor_before {
+                cursor_after += text.len();
+            }
+            builder = builder.insert(off, text);
+        }
         self.commit(builder, cursor_before, cursor_after)
     }
 

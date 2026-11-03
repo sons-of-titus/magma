@@ -290,8 +290,10 @@ fn is_word_input(key: &str) -> bool {
 /// insertion so the next keystroke cannot insert into stale offsets.
 fn apply_to_all_cursors(ed: &mut crate::state::Editor, slab: usize, key: &str) {
     let mut cursors: Vec<(usize, Option<usize>)> = Vec::new();
+    let primary_old;
     if let Some(view) = ed.view_of_buffer(slab) {
-        cursors.push((view.cursor_offset(), None));
+        primary_old = view.cursor_offset();
+        cursors.push((primary_old, None));
     } else {
         return;
     }
@@ -305,23 +307,15 @@ fn apply_to_all_cursors(ed: &mut crate::state::Editor, slab: usize, key: &str) {
     let Some(view) = ed.view_of_buffer_mut(slab) else {
         return;
     };
-    if view.insert_many(&edits).is_none() {
+    let Some(txn) = view.insert_many(&edits) else {
         return;
-    }
-    // The i-th sorted cursor has i earlier insertions before it; its own
-    // insertion (right-sticky anchor) puts it one key-length past those.
-    let klen = key.len();
-    let primary_new = cursors
-        .first()
-        .map(|&(p, _)| p + klen)
-        .unwrap_or_else(|| view.cursor_offset());
-    view.set_cursor(primary_new);
-    for (i, &(_, slot)) in cursors.iter().enumerate() {
-        if let Some(ix) = slot
-            && let Some(ec) = ed.multi_cursor.extra_cursors.get_mut(ix)
-        {
-            ec.pos = cursors[i].0 + (i + 1) * klen;
-        }
+    };
+    // Every cursor rides the same right-sticky anchor transform the
+    // primary cursor uses, so each lands just after its own insertion
+    // regardless of sort order or boundary snaps.
+    view.set_cursor(txn.transform_anchor(crate::text_engine::anchor::Anchor::after(primary_old)).offset);
+    for ec in ed.multi_cursor.extra_cursors.iter_mut() {
+        ec.pos = txn.transform_anchor(crate::text_engine::anchor::Anchor::after(ec.pos)).offset;
     }
 }
 

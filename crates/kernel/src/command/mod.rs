@@ -169,9 +169,13 @@ pub fn execute_command(
         .view_tree
         .focused_window()
         .and_then(|wid| editor.view_tree.buffer(wid));
-    let rev_before = focused_before
+    let (rev_before, seq_before) = focused_before
         .and_then(|id| editor.buffers.get(id))
-        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).revision());
+        .map(|a| {
+            let buf = a.lock().unwrap_or_else(|e| e.into_inner());
+            (Some(buf.revision()), Some(buf.txn_seq()))
+        })
+        .unwrap_or((None, None));
 
     let result = handler(editor, &resolved_args);
 
@@ -191,10 +195,45 @@ pub fn execute_command(
                 .unwrap_or(0);
             editor.editing.change_list.push(pos);
             editor.editing.change_list_idx = editor.editing.change_list.len();
+            transform_editor_positions(editor, focused_before, seq_before.unwrap_or(0));
         }
     }
 
     result
+}
+
+/// Extra cursors and the selection anchor are editor-level byte offsets;
+/// without this they go stale across every command that edits the focused
+/// buffer (undo included — the inverse transaction is a commit like any
+/// other).  Cursors ride right-sticky anchors, the selection anchor stays
+/// before inserted text like a mark.  Typing does not pass through here:
+/// the multi-cursor input path transforms its own cursors.
+fn transform_editor_positions(
+    editor: &mut Editor,
+    focused: Option<usize>,
+    seq_before: u64,
+) {
+    let Some(id) = focused else { return };
+    let Some(arc) = editor.buffers.get(id) else { return };
+    let txns = arc
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .txns_since(seq_before);
+    if txns.is_empty() {
+        return;
+    }
+    for ec in &mut editor.multi_cursor.extra_cursors {
+        for txn in &txns {
+            ec.pos = txn.transform_anchor(crate::text_engine::anchor::Anchor::after(ec.pos)).offset;
+        }
+    }
+    if let Some(sel) = &mut editor.selection {
+        for txn in &txns {
+            sel.anchor = txn
+                .transform_anchor(crate::text_engine::anchor::Anchor::before(sel.anchor))
+                .offset;
+        }
+    }
 }
 
 /// Execute `"name rest of line"` from a single input string — the command

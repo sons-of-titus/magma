@@ -88,6 +88,7 @@ export component Field inherits Rectangle {
     in property <string> placeholder: "";
     in property <bool> enabled: true;
     in property <length> font-size: Theme.font-ui;
+    in property <bool> password: false;
     in-out property <string> text;
     callback accepted();
     callback edited();
@@ -105,6 +106,7 @@ export component Field inherits Rectangle {
         color: Theme.text-primary;
         font-size: root.font-size;
         enabled: root.enabled;
+        input-type: root.password ? InputType.password : InputType.text;
         single-line: true;
         accepted => { root.accepted(); }
         edited => { root.edited(); }

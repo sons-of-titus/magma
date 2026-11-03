@@ -13,7 +13,7 @@ use kernel::render::tabs;
 use slint::ComponentHandle;
 
 use super::picker::{self, PickerKind};
-use crate::context::{self, ContextTarget};
+use crate::context::ContextTarget;
 use crate::{AppState, AppWindow, sync::refresh};
 
 pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
@@ -66,16 +66,35 @@ pub(super) fn raise_editor_menu(
     show(weak, s, x, y);
 }
 
+/// Raise the shared overlay menu at a screen position (the database
+/// explorer's right-click uses this).
+pub(crate) fn raise(
+    weak: &slint::Weak<AppWindow>,
+    s: &mut AppState,
+    x: f32,
+    y: f32,
+) {
+    show(weak, s, x, y);
+}
+
 fn show(weak: &slint::Weak<AppWindow>, s: &mut AppState, x: f32, y: f32) {
+    let has_selection = s.editor.selection.is_some();
     let items = s
         .context_menu
         .as_ref()
-        .map(context::items_for)
+        .map(|target| crate::context::items_for(target, has_selection))
         .unwrap_or_default();
+    // 26px per row + 9px per separator + 8px padding, matching MenuPopup.
+    let menu_h = items
+        .iter()
+        .map(|i| if i.separator { 9.0 } else { 26.0 })
+        .sum::<f32>()
+        + 8.0;
     if let Some(a) = weak.upgrade() {
         a.set_context_items(slint::ModelRc::new(slint::VecModel::from(items)));
         a.set_context_menu_x(x);
         a.set_context_menu_y(y);
+        a.set_context_menu_h(menu_h);
         a.set_context_menu_visible(true);
     }
     s.editor.frame_dirty = true;
@@ -136,6 +155,44 @@ fn run_command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
             #[cfg(not(target_os = "macos"))]
             let result: Result<(), String> = Err("Reveal in Finder is macOS-only".into());
             match result {
+                Ok(()) => s.message.clear(),
+                Err(e) => s.message = e,
+            }
+        }
+        "context:db-refresh-node" | "context:db-open-table" | "context:db-console"
+        | "context:db-disconnect" | "context:db-properties" | "context:db-copy-name"
+        | "context:db-copy-qualified" => {
+            let key = match target {
+                Some(ContextTarget::DbNode(key)) => key,
+                _ => return,
+            };
+            let cmd = match cmd {
+                "context:db-refresh-node" => "db-refresh-node",
+                "context:db-open-table" => "db-open-table",
+                "context:db-console" => "db-console",
+                "context:db-disconnect" => "db-disconnect",
+                "context:db-properties" => "db-properties",
+                "context:db-copy-name" | "context:db-copy-qualified" => {
+                    let name = key.rsplit('/').next().unwrap_or("");
+                    copy_absolute(s, &name);
+                    return;
+                }
+                _ => unreachable!(),
+            };
+            let mut args = HashMap::new();
+            match cmd {
+                "db-console" | "db-disconnect" | "db-properties" => {
+                    // Source-scoped: the node's first path segment names
+                    // nothing; the active source is the target.
+                }
+                _ => {
+                    args.insert(
+                        "path".to_string(),
+                        kernel::command::args::ArgValue::String(key.clone()),
+                    );
+                }
+            }
+            match execute_command(&mut s.editor, cmd, &args) {
                 Ok(()) => s.message.clear(),
                 Err(e) => s.message = e,
             }

@@ -22,6 +22,15 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 return;
             };
             let mut s = state.borrow_mut();
+            // An open context menu dismisses on the first key: Escape
+            // consumes it, everything else closes it and flows on.
+            if s.context_menu.is_some() {
+                s.context_menu = None;
+                if key == "esc" {
+                    refresh(&weak, &mut s);
+                    return;
+                }
+            }
             // The New Project wizard is modal while it has no text field
             // focused: Escape closes, Return creates, arrows move the
             // template selection, everything else stays out of the buffer.

@@ -6,7 +6,7 @@
 //! editor input, docks, the agent tool window, and dialogs/settings.
 
 mod agent;
-mod context_menu;
+pub(crate) mod context_menu;
 mod db;
 mod debug;
 mod dock;

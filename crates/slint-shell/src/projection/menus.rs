@@ -71,6 +71,7 @@ pub fn menu_items(title: &'static str) -> Vec<MenuItem> {
             label: (*label).into(),
             command: (*command).into(),
             separator: label.is_empty(),
+            shortcut: String::new().into(),
         })
         .collect()
 }

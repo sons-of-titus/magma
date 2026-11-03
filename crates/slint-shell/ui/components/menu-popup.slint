@@ -9,12 +9,29 @@ component MenuRow inherits Rectangle {
     border-radius: Theme.radius;
     background: touch.has-hover ? Theme.fill-muted : transparent;
 
-    Text {
-        x: 9px;
-        text: root.item.label;
-        color: Theme.text-secondary;
-        font-size: Theme.font-ui;
-        vertical-alignment: center;
+    HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 9px;
+        spacing: 12px;
+
+        Text {
+            text: root.item.label;
+            color: Theme.text-secondary;
+            font-size: Theme.font-ui;
+            vertical-alignment: center;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            if root.item.shortcut != "" : Text {
+                x: parent.width - self.preferred-width;
+                text: root.item.shortcut;
+                color: Theme.text-faint;
+                font-size: Theme.font-ui;
+                vertical-alignment: center;
+            }
+        }
     }
 
     touch := TouchArea {
@@ -27,7 +44,7 @@ export component MenuPopup inherits Rectangle {
     in property <[MenuItem]> items;
     callback activated(string);
 
-    width: 200px;
+    width: Math.max(200px, content.preferred-width + 22px);
     height: content.preferred-height + 8px;
     background: Theme.surface-panel;
     border-width: 1px;

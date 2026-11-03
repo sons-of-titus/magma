@@ -3,51 +3,9 @@
 pub mod event;
 pub mod mouse;
 
-/// Forward a key to the shell process of the focused terminal session.
-///
-/// This completely bypasses the editor keymap so that keys like ctrl-c,
-/// ctrl-s, backspace, and return reach the shell instead of triggering
-/// editor commands.
-fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) {
-    if key == "esc" {
-        let _ = crate::command::execute_command(
-            ed,
-            "exit-terminal-mode",
-            &std::collections::HashMap::new(),
-        );
-        return;
-    }
-
-    if let Some(rest) = key.strip_prefix("meta-") {
-        let s = format!("\x1b{rest}");
-        let _ = crate::terminal::send_input(ed, buf_id, &s);
-        return;
-    }
-
-    if let Some(rest) = key.strip_prefix("ctrl-") {
-        let byte: u8 = match rest.chars().next().unwrap_or('\0') {
-            c @ 'a'..='z' => c as u8 - b'a' + 1,
-            c @ 'A'..='Z' => c as u8 - b'A' + 1,
-            '[' => 0x1b,
-            '\\' => 0x1c,
-            ']' => 0x1d,
-            '^' => 0x1e,
-            '_' => 0x1f,
-            ' ' => 0x00,
-            _ => 0,
-        };
-        if byte > 0 || rest.starts_with(' ') {
-            let ctrl_bytes = [byte];
-            let _ = crate::terminal::send_input(
-                ed,
-                buf_id,
-                std::str::from_utf8(&ctrl_bytes).unwrap_or(""),
-            );
-        }
-        return;
-    }
-
-    let seq: &str = match key {
+/// Escape sequence for an unmodified named key, or `None` for text keys.
+fn named_seq(name: &str) -> Option<&'static str> {
+    let seq: &str = match name {
         "return" => "\r",
         "tab" => "\t",
         "backspace" => "\x7f",
@@ -72,8 +30,137 @@ fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) 
         "f10" => "\x1b[21~",
         "f11" => "\x1b[23~",
         "f12" => "\x1b[24~",
-        "unknown" => return,
-        k => k,
+        _ => return None,
+    };
+    Some(seq)
+}
+
+/// xterm CSI modifier parameter for a named key: 1=shift, 2=alt, 4=ctrl.
+fn modified_named_seq(name: &str, shift: bool, alt: bool, ctrl: bool) -> Option<String> {
+    let (first, final_byte) = match name {
+        "up" => ("1", 'A'),
+        "down" => ("1", 'B'),
+        "right" => ("1", 'C'),
+        "left" => ("1", 'D'),
+        "home" => ("1", 'H'),
+        "end" => ("1", 'F'),
+        "insert" => ("2", '~'),
+        "delete" => ("3", '~'),
+        "page-up" => ("5", '~'),
+        "page-down" => ("6", '~'),
+        "f1" => ("1", 'P'),
+        "f2" => ("1", 'Q'),
+        "f3" => ("1", 'R'),
+        "f4" => ("1", 'S'),
+        "f5" => ("15", '~'),
+        "f6" => ("17", '~'),
+        "f7" => ("18", '~'),
+        "f8" => ("19", '~'),
+        "f9" => ("20", '~'),
+        "f10" => ("21", '~'),
+        "f11" => ("23", '~'),
+        "f12" => ("24", '~'),
+        _ => return None,
+    };
+    let m = 1 + (shift as i32) + (2 * alt as i32) + (4 * ctrl as i32);
+    Some(format!("\x1b[{first};{m}{final_byte}"))
+}
+
+/// Split leading modifier prefixes; the remainder is the base key, which
+/// may itself contain dashes ("ctrl-shift-page-up" → ctrl+shift + "page-up").
+fn split_modifiers(key: &str) -> (bool, bool, bool, &str) {
+    let mut ctrl = false;
+    let mut alt = false;
+    let mut shift = false;
+    let mut rest = key;
+    loop {
+        if let Some(r) = rest.strip_prefix("ctrl-") {
+            ctrl = true;
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("meta-") {
+            alt = true;
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("shift-") {
+            shift = true;
+            rest = r;
+        } else {
+            break;
+        }
+    }
+    (ctrl, alt, shift, rest)
+}
+
+/// Forward a key to the shell process of the focused terminal session.
+///
+/// This completely bypasses the editor keymap so that keys like ctrl-c,
+/// ctrl-s, backspace, and return reach the shell instead of triggering
+/// editor commands.
+fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) {
+    if key == "esc" {
+        let _ = crate::command::execute_command(
+            ed,
+            "exit-terminal-mode",
+            &std::collections::HashMap::new(),
+        );
+        return;
+    }
+
+    let (ctrl, alt, shift, base) = split_modifiers(key);
+
+    if ctrl || alt || shift {
+        if let Some(seq) = modified_named_seq(base, shift, alt, ctrl) {
+            let _ = crate::terminal::send_input(ed, buf_id, &seq);
+            return;
+        }
+        // Text keys keep their unmodified byte under shift/ctrl (xterm
+        // default); alt adds an ESC prefix.
+        let body: String = match base {
+            "return" => "\r".into(),
+            "tab" => "\t".into(),
+            "space" if ctrl => "\0".into(),
+            "space" => " ".into(),
+            "backspace" if ctrl => "\x08".into(),
+            "backspace" => "\x7f".into(),
+            "esc" => "\x1b".into(),
+            other if alt => {
+                let _ = crate::terminal::send_input(ed, buf_id, &format!("\x1b{other}"));
+                return;
+            }
+            other if ctrl => {
+                let byte: u8 = match other.chars().next().unwrap_or('\0') {
+                    c @ 'a'..='z' => c as u8 - b'a' + 1,
+                    c @ 'A'..='Z' => c as u8 - b'A' + 1,
+                    '[' => 0x1b,
+                    '\\' => 0x1c,
+                    ']' => 0x1d,
+                    '^' => 0x1e,
+                    '_' => 0x1f,
+                    _ => 0,
+                };
+                if byte > 0 {
+                    let ctrl_bytes = [byte];
+                    let _ = crate::terminal::send_input(
+                        ed,
+                        buf_id,
+                        std::str::from_utf8(&ctrl_bytes).unwrap_or(""),
+                    );
+                }
+                return;
+            }
+            other => other.to_string(),
+        };
+        let _ = if alt {
+            crate::terminal::send_input(ed, buf_id, &format!("\x1b{body}"))
+        } else {
+            crate::terminal::send_input(ed, buf_id, &body)
+        };
+        return;
+    }
+
+    let seq: &str = match named_seq(base) {
+        Some(s) => s,
+        None if base == "unknown" => return,
+        None => base,
     };
     let _ = crate::terminal::send_input(ed, buf_id, seq);
 }
@@ -322,6 +409,28 @@ fn apply_to_all_cursors(ed: &mut crate::state::Editor, slab: usize, key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modifier_split_peels_prefixes_but_keeps_dashed_bases() {
+        assert_eq!(split_modifiers("page-up"), (false, false, false, "page-up"));
+        assert_eq!(split_modifiers("ctrl-up"), (true, false, false, "up"));
+        assert_eq!(split_modifiers("meta-f8"), (false, true, false, "f8"));
+        assert_eq!(
+            split_modifiers("ctrl-shift-page-up"),
+            (true, false, true, "page-up")
+        );
+        assert_eq!(split_modifiers("shift-return"), (false, false, true, "return"));
+        assert_eq!(split_modifiers("meta-k"), (false, true, false, "k"));
+    }
+
+    #[test]
+    fn modified_named_keys_send_xterm_csi_sequences() {
+        assert_eq!(modified_named_seq("up", false, false, true).as_deref(), Some("\x1b[1;5A"));
+        assert_eq!(modified_named_seq("left", false, true, false).as_deref(), Some("\x1b[1;3D"));
+        assert_eq!(modified_named_seq("page-up", true, false, true).as_deref(), Some("\x1b[5;6~"));
+        assert_eq!(modified_named_seq("f8", false, true, false).as_deref(), Some("\x1b[19;3~"));
+        assert_eq!(modified_named_seq("return", false, false, true), None);
+    }
 
     #[test]
     fn letters_insertable() {

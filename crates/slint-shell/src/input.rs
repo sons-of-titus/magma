@@ -42,10 +42,13 @@ pub fn translate_key(text: &str, ctrl: bool, shift: bool, alt: bool, meta: bool)
     };
 
     if let Some(name) = named {
-        if (ctrl || alt) && matches!(name, "left" | "right") {
+        // Chords on named keys follow the same grammar as letters:
+        // ctrl-return, ctrl-shift-page-up, meta-f8.  Bare shift keeps the
+        // shift- prefix so selection bindings resolve.
+        if ctrl || alt {
             return Some(format!("{}-{name}", modifier_prefix(ctrl, shift)));
         }
-        if shift && !ctrl && !alt {
+        if shift {
             return Some(format!("shift-{name}"));
         }
         return Some(name.to_string());
@@ -157,6 +160,40 @@ mod tests {
         assert_eq!(
             translate_key(&named(Key::LeftArrow), false, true, false, false).as_deref(),
             Some("shift-left")
+        );
+    }
+
+    #[test]
+    fn ctrl_and_alt_chords_on_named_keys_carry_the_prefix() {
+        // alt+return is lsp-code-actions; ctrl+arrows and ctrl+page keys
+        // must not collapse into the bare key.
+        assert_eq!(
+            translate_key(&named(Key::Return), false, false, true, false).as_deref(),
+            Some("meta-return")
+        );
+        assert_eq!(
+            translate_key(&named(Key::Return), true, false, false, false).as_deref(),
+            Some("ctrl-return")
+        );
+        assert_eq!(
+            translate_key(&named(Key::UpArrow), true, false, false, false).as_deref(),
+            Some("ctrl-up")
+        );
+        assert_eq!(
+            translate_key(&named(Key::PageUp), true, true, false, false).as_deref(),
+            Some("ctrl-shift-page-up")
+        );
+        assert_eq!(
+            translate_key(&named(Key::F8), false, false, true, false).as_deref(),
+            Some("meta-f8")
+        );
+        assert_eq!(
+            translate_key(&named(Key::Tab), false, true, false, false).as_deref(),
+            Some("shift-tab")
+        );
+        assert_eq!(
+            translate_key(&named(Key::Escape), false, false, false, false).as_deref(),
+            Some("esc")
         );
     }
 

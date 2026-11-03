@@ -2,7 +2,18 @@
 name = "db"
 version = "0.1.0"
 edition = "2024"
-description = "Database tool domain model: data sources, metadata discovery, bounded queries"
+description = "Database tool domain model: drivers, metadata introspection, bounded queries, table editing"
 
 [dependencies]
 rusqlite = { version = "0.41", features = ["bundled"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
+tokio-postgres = "0.7"
+tokio-postgres-rustls = "0.13"
+mysql_async = { version = "0.36", default-features = false, features = ["minimal-rust", "rustls-tls"] }
+tiberius = { version = "0.12", default-features = false, features = ["rustls", "chrono", "rust_decimal"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+futures = "0.3"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["alloc"] }
+rust_decimal = { version = "1", default-features = false }

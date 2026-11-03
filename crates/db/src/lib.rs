@@ -1,56 +1,151 @@
-//! Database tool domain model: data sources, metadata discovery, and
-//! bounded query execution.  Engines implement [`DbConnection`]; the UI
-//! speaks only in [`DataSource`], [`TableMeta`], and [`QueryOutcome`], so
-//! new engines slot in without touching the panel.
+//! Database tool domain model: data sources, normalized metadata, lazy
+//! introspection, bounded query execution, and transactional table edits.
+//! Engines implement [`DbEngine`]; the kernel and UI speak only in the
+//! types here, so a new driver slots in without touching either.
 
+mod edit;
+mod engine;
+mod mssql;
+mod mysql;
+mod postgres;
+mod query;
 mod sqlite;
+mod sqlscript;
 
-pub use sqlite::SqliteConnection;
+pub use edit::{EditOp, EditResult, PendingEdits, TableRef, generate_ops, insert_template};
+pub use engine::{Child, Connection, DbEngine, FolderKind, NodeRef};
+pub use query::page_query;
+pub use sqlscript::{split_statements, statement_at};
 
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
+
+/// How a connection treats TLS.  `Prefer` falls back to plaintext when the
+/// handshake fails; only `Require` (optionally with `trust_cert`) upgrades.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SslMode {
+    Disabled,
+    #[default]
+    Prefer,
+    Require,
+}
+
+impl SslMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SslMode::Disabled => "disabled",
+            SslMode::Prefer => "prefer",
+            SslMode::Require => "require",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "disabled" => Some(SslMode::Disabled),
+            "prefer" => Some(SslMode::Prefer),
+            "require" => Some(SslMode::Require),
+            _ => None,
+        }
+    }
+}
 
 /// Supported database engines.  Each maps to one connection factory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriverKind {
     Sqlite,
+    Postgres,
+    MySql,
+    MariaDb,
+    SqlServer,
 }
 
 impl DriverKind {
     pub fn as_str(&self) -> &'static str {
         match self {
             DriverKind::Sqlite => "sqlite",
+            DriverKind::Postgres => "postgres",
+            DriverKind::MySql => "mysql",
+            DriverKind::MariaDb => "mariadb",
+            DriverKind::SqlServer => "sqlserver",
         }
     }
 
     pub fn label(&self) -> &'static str {
         match self {
             DriverKind::Sqlite => "SQLite",
+            DriverKind::Postgres => "PostgreSQL",
+            DriverKind::MySql => "MySQL",
+            DriverKind::MariaDb => "MariaDB",
+            DriverKind::SqlServer => "SQL Server",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "sqlite" => Some(DriverKind::Sqlite),
+            "postgres" | "postgresql" => Some(DriverKind::Postgres),
+            "mysql" => Some(DriverKind::MySql),
+            "mariadb" => Some(DriverKind::MariaDb),
+            "sqlserver" | "mssql" => Some(DriverKind::SqlServer),
             _ => None,
         }
     }
+
+    pub fn default_port(&self) -> u16 {
+        match self {
+            DriverKind::Sqlite => 0,
+            DriverKind::Postgres => 5432,
+            DriverKind::MySql | DriverKind::MariaDb => 3306,
+            DriverKind::SqlServer => 1433,
+        }
+    }
+
+    /// Networked engines keep one connection per data source and expose its
+    /// whole catalog tree; SQLite is file-local.
+    pub fn is_embedded(&self) -> bool {
+        matches!(self, DriverKind::Sqlite)
+    }
 }
 
-/// A configured data source.  SQLite sources are file paths — no secrets —
-/// and future networked engines hang their credentials off the source id in
-/// platform credential storage, never in ordinary workspace configuration.
+/// A configured data source: non-secret connection facts only.  Passwords
+/// live in the OS keychain keyed by the source id, never here and never in
+/// persisted configuration.
 #[derive(Debug, Clone)]
 pub struct DataSource {
     pub id: u64,
     pub name: String,
     pub kind: DriverKind,
-    pub path: String,
+    /// Host or, for SQLite, the database file path.
+    pub host: String,
+    pub port: u16,
+    /// Service name; for SQLite the file path lives in `host`.
+    pub database: String,
+    pub user: String,
+    pub ssl_mode: SslMode,
+    /// Accept a server certificate that does not validate (self-signed).
+    pub trust_cert: bool,
+    /// The password is persisted in the keychain, not session-only.
+    pub save_password: bool,
+    /// Full connection URL; when set it drives the connection instead of
+    /// the individual fields.
+    pub url: Option<String>,
+}
+
+impl DataSource {
+    /// The host label the explorer shows for the connection node.
+    pub fn endpoint_label(&self) -> String {
+        if self.kind.is_embedded() {
+            self.host.clone()
+        } else {
+            format!("{}@{}:{}", self.user, self.host, self.port)
+        }
+    }
 }
 
 /// One cell value, preserving the SQL NULL / empty-text distinction.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbValue {
     Null,
+    Bool(bool),
     Integer(i64),
     Real(f64),
     Text(String),
@@ -58,12 +153,13 @@ pub enum DbValue {
 }
 
 impl DbValue {
-    /// Display form for the results grid.  Blobs and long texts truncate —
-    /// the full bytes stay reachable through queries, not the grid.
+    /// Display form for the results grid.  Long texts truncate — the full
+    /// value stays reachable through the value viewer and queries.
     pub fn render(&self) -> String {
         const LIMIT: usize = 256;
         match self {
             DbValue::Null => "NULL".to_string(),
+            DbValue::Bool(b) => b.to_string(),
             DbValue::Integer(i) => i.to_string(),
             DbValue::Real(f) => f.to_string(),
             DbValue::Text(t) => {
@@ -78,14 +174,49 @@ impl DbValue {
         }
     }
 
-    /// Grid styling hint: null | number | text | blob.
+    /// Full lossless text for the value viewer.
+    pub fn full_text(&self) -> String {
+        match self {
+            DbValue::Text(t) => t.clone(),
+            other => other.render(),
+        }
+    }
+
+    /// Grid styling hint: null | bool | number | text | blob.
     pub fn kind(&self) -> &'static str {
         match self {
             DbValue::Null => "null",
+            DbValue::Bool(_) => "bool",
             DbValue::Integer(_) | DbValue::Real(_) => "number",
             DbValue::Text(_) => "text",
             DbValue::Blob(_) => "blob",
         }
+    }
+
+    pub fn is_null(&self) -> bool {
+        matches!(self, DbValue::Null)
+    }
+
+    /// Human-parseable value from grid text: typed NULL, bool, number,
+    /// otherwise text.  Cell editing feeds this.
+    pub fn parse(text: &str) -> DbValue {
+        let t = text.trim();
+        if t.eq_ignore_ascii_case("null") {
+            return DbValue::Null;
+        }
+        if t.eq_ignore_ascii_case("true") {
+            return DbValue::Bool(true);
+        }
+        if t.eq_ignore_ascii_case("false") {
+            return DbValue::Bool(false);
+        }
+        if let Ok(i) = t.parse::<i64>() {
+            return DbValue::Integer(i);
+        }
+        if let Ok(f) = t.parse::<f64>() {
+            return DbValue::Real(f);
+        }
+        DbValue::Text(text.to_string())
     }
 }
 
@@ -93,9 +224,21 @@ impl DbValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnMeta {
     pub name: String,
-    pub declared_type: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub default: Option<String>,
     pub primary_key: bool,
-    pub not_null: bool,
+    pub auto_increment: bool,
+}
+
+/// A foreign-key mapping on a table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForeignKeyMeta {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    pub ref_columns: Vec<String>,
 }
 
 /// An index on a table.
@@ -106,20 +249,67 @@ pub struct IndexMeta {
     pub columns: Vec<String>,
 }
 
-/// A table or view in the connected database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableKind {
+    Table,
+    View,
+    MaterializedView,
+}
+
+/// A table or view with its full detail (columns, keys, indexes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableMeta {
+    pub database: String,
+    pub schema: String,
     pub name: String,
-    pub is_view: bool,
+    pub kind: TableKind,
     pub columns: Vec<ColumnMeta>,
+    pub primary_key: Vec<String>,
+    pub foreign_keys: Vec<ForeignKeyMeta>,
     pub indexes: Vec<IndexMeta>,
+}
+
+impl TableMeta {
+    /// Column index of each primary-key part.  Tables without a
+    /// discoverable key cannot support safe editing.
+    pub fn pk_columns(&self) -> Option<Vec<usize>> {
+        if self.primary_key.is_empty() {
+            return None;
+        }
+        let mut idx = Vec::with_capacity(self.primary_key.len());
+        for pk in &self.primary_key {
+            idx.push(self.columns.iter().position(|c| &c.name == pk)?);
+        }
+        Some(idx)
+    }
+
+    pub fn is_view(&self) -> bool {
+        !matches!(self.kind, TableKind::Table)
+    }
+}
+
+/// A sequence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequenceMeta {
+    pub schema: String,
+    pub name: String,
+}
+
+/// A function or procedure, shown with its argument signature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionMeta {
+    pub schema: String,
+    pub name: String,
+    pub signature: String,
+    pub is_procedure: bool,
 }
 
 /// Result of executing one statement.  Rows are bounded by the fetch limit;
 /// `truncated` says whether more existed.
 #[derive(Debug, Clone, Default)]
 pub struct QueryOutcome {
-    pub columns: Vec<String>,
+    pub statement: String,
+    pub columns: Vec<ColumnOut>,
     pub rows: Vec<Vec<DbValue>>,
     pub truncated: bool,
     pub rows_affected: i64,
@@ -127,79 +317,108 @@ pub struct QueryOutcome {
     pub elapsed_ms: u64,
 }
 
-/// A live connection to one data source.  Engines are internally
-/// synchronized so the kernel can hold them across threads; the interrupt
-/// path stays lock-free relative to a running statement — cancelling must
-/// never wait behind the query it is cancelling.
-pub struct DbConnection {
-    engine: Mutex<Box<dyn DbEngine>>,
-    interruptor: Box<dyn Fn() + Send + Sync>,
+/// One output column of a result set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnOut {
+    pub name: String,
+    pub type_name: String,
 }
 
-pub trait DbEngine: Send {
-    /// List tables and views with their columns and indexes.
-    fn tables(&mut self) -> Result<Vec<TableMeta>, String>;
-    /// Execute one statement (or the first statement of a script), fetching
-    /// at most `max_rows` for SELECT-shaped results.
-    fn execute(&mut self, sql: &str, max_rows: usize) -> Result<QueryOutcome, String>;
-    /// Human-facing dialect name for status display.
-    fn label(&self) -> &'static str;
+/// The quoting and null-safe-comparison conventions of one dialect.  Edit
+/// generation uses it; the UI never hardcodes engine syntax.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    Ansi,
+    Postgres,
+    MySql,
+    SqlServer,
+    Sqlite,
 }
 
-impl DbConnection {
-    pub fn new(engine: Box<dyn DbEngine>, interruptor: Box<dyn Fn() + Send + Sync>) -> Self {
-        DbConnection {
-            engine: Mutex::new(engine),
-            interruptor,
+impl Dialect {
+    /// Quote an identifier.
+    pub fn quote_ident(&self, name: &str) -> String {
+        match self {
+            Dialect::MySql => format!("`{}`", name.replace('`', "``")),
+            Dialect::SqlServer => format!("[{}]", name.replace(']', "]]")),
+            _ => format!("\"{}\"", name.replace('"', "\"\"")),
         }
     }
 
-    pub fn tables(&self) -> Result<Vec<TableMeta>, String> {
-        self.engine
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .tables()
+    /// Render a value as a SQL literal for edit statements.
+    pub fn literal(&self, v: &DbValue) -> String {
+        match v {
+            DbValue::Null => "NULL".to_string(),
+            DbValue::Bool(b) => match self {
+                Dialect::Sqlite => format!("{}", *b as i32),
+                _ => b.to_string(),
+            },
+            DbValue::Integer(i) => i.to_string(),
+            DbValue::Real(f) => {
+                if f.is_finite() {
+                    format!("{f}")
+                } else {
+                    "NULL".to_string()
+                }
+            }
+            DbValue::Text(t) => format!("'{}'", t.replace('\'', "''")),
+            DbValue::Blob(b) => {
+                let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+                match self {
+                    Dialect::SqlServer => format!("0x{hex}"),
+                    _ => format!("X'{hex}'"),
+                }
+            }
+        }
     }
 
-    pub fn execute(&self, sql: &str, max_rows: usize) -> Result<QueryOutcome, String> {
-        self.engine
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .execute(sql, max_rows)
-    }
-
-    pub fn interrupt(&self) {
-        (self.interruptor)();
-    }
-
-    pub fn label(&self) -> &'static str {
-        self.engine
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .label()
+    /// Null-safe equality for optimistic-concurrency predicates.
+    pub fn null_safe_eq(&self, col: &str, lit: &str) -> String {
+        let q = self.quote_ident(col);
+        if lit == "NULL" {
+            return format!("{q} IS NULL");
+        }
+        match self {
+            Dialect::MySql => format!("{q} <=> {lit}"),
+            Dialect::Postgres => format!("{q} IS NOT DISTINCT FROM {lit}"),
+            _ => format!("{q} = {lit}"),
+        }
     }
 }
 
-/// Open a connection for `source`.  The one place that maps a data source
-/// kind to its engine.
-pub fn connect(source: &DataSource) -> Result<DbConnection, String> {
+/// One shared tokio runtime for all networked drivers — connect, query, and
+/// cancel requests all block on it from the background pool's threads.
+static RUNTIME: LazyLock<Mutex<Option<tokio::runtime::Runtime>>> =
+    LazyLock::new(|| Mutex::new(Some(tokio::runtime::Runtime::new().expect("db tokio runtime"))));
+
+pub(crate) fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+    let guard = RUNTIME.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .as_ref()
+        .expect("db runtime")
+        .block_on(fut)
+}
+
+/// Open a connection for `source`, asking the keychain-aware caller for the
+/// password when the driver needs one.  The one place that maps a data
+/// source kind to its engine.
+pub fn connect(source: &DataSource, password: Option<&str>) -> Result<Connection, String> {
     match source.kind {
-        DriverKind::Sqlite => SqliteConnection::open(&source.path),
+        DriverKind::Sqlite => sqlite::SqliteConnection::open(&source.host),
+        DriverKind::Postgres => postgres::PostgresConnection::open(source, password),
+        DriverKind::MySql | DriverKind::MariaDb => mysql::MySqlConnection::open(source, password),
+        DriverKind::SqlServer => mssql::SqlServerConnection::open(source, password),
     }
 }
 
-/// Cheap validity probe used by the connection form's Test button.
-pub fn test_connection(source: &DataSource) -> Result<(), String> {
-    connect(source).map(|_| ())
+/// Cheap validity probe used by the connection form's Test button; returns
+/// the server label on success.
+pub fn test_connection(source: &DataSource, password: Option<&str>) -> Result<String, String> {
+    let conn = connect(source, password)?;
+    Ok(conn.server_label())
 }
 
-/// Quote an identifier for the dialect.  SQLite and friends double-quote;
-/// engines with backtick conventions override in their metadata helpers.
+/// Quote an identifier with the SQLite/ANSI convention.
 pub fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
-}
-
-/// A ready-made SELECT for the table browser.
-pub fn select_all(table: &str, limit: usize) -> String {
-    format!("SELECT * FROM {} LIMIT {limit}", quote_ident(table))
 }

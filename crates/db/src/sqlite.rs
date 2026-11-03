@@ -1,103 +1,195 @@
 //! SQLite engine: metadata through `sqlite_master` and PRAGMAs, bounded
-//! query execution, and interruptible long statements.
+//! script execution, transactional table edits, and interruptible long
+//! statements.  The tree is uniform with the networked drivers: connection
+//! → database → schema → folders → objects.
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use rusqlite::Connection;
 
-use crate::{ColumnMeta, DbConnection, DbEngine, DbValue, IndexMeta, QueryOutcome, TableMeta};
+use crate::{
+    Child, ColumnMeta, Connection as DbConnection, Dialect, DbEngine, DbValue, EditResult,
+    FolderKind, ForeignKeyMeta, IndexMeta, NodeRef, PendingEdits, QueryOutcome, TableKind,
+    TableMeta, split_statements,
+};
 
-/// The engine half: statements run against one connection behind the
-/// shared engine lock; the interrupt handle sits outside that lock.
+const MAX_ROWS_EDIT_GUARD: &str = "no rows changed — the row was modified concurrently";
+
 struct SqliteEngine {
     conn: Connection,
 }
 
 impl DbEngine for SqliteEngine {
-    fn tables(&mut self) -> Result<Vec<TableMeta>, String> {
+    fn introspect(&mut self, node: &NodeRef) -> Result<Vec<Child>, String> {
         let conn = &self.conn;
-        let mut stmt = conn
-            .prepare(
-                "SELECT name, type FROM sqlite_master \
-                 WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' \
-                 ORDER BY type, name",
-            )
-            .map_err(|e| e.to_string())?;
-        let names: Vec<(String, String)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|e| e.to_string())?
-            .collect::<Result<_, _>>()
-            .map_err(|e| e.to_string())?;
-
-        let mut tables = Vec::new();
-        for (name, kind) in names {
-            let columns = table_columns(&conn, &name)?;
-            let indexes = if kind == "table" {
-                table_indexes(&conn, &name)
-            } else {
-                Vec::new()
-            };
-            tables.push(TableMeta {
-                is_view: kind == "view",
-                name,
-                columns,
-                indexes,
-            });
+        match node {
+            NodeRef::Root => Ok(vec![Child::Database {
+                name: "main".to_string(),
+                label: "main".to_string(),
+            }]),
+            NodeRef::Database(_) => {
+                let mut stmt = conn
+                    .prepare("PRAGMA database_list")
+                    .map_err(|e| e.to_string())?;
+                let schemas: Vec<String> = stmt
+                    .query_map([], |row| row.get::<_, String>(1))
+                    .map_err(|e| e.to_string())?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                Ok(schemas.into_iter().map(|name| Child::Schema { name }).collect())
+            }
+            NodeRef::Schema { .. } => Ok(vec![
+                Child::Folder { kind: FolderKind::Tables },
+                Child::Folder { kind: FolderKind::Views },
+            ]),
+            NodeRef::Folder { kind, .. } => {
+                let wanted = match kind {
+                    FolderKind::Tables => "table",
+                    FolderKind::Views => "view",
+                    _ => return Ok(Vec::new()),
+                };
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT name FROM sqlite_master \
+                         WHERE type = ?1 AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let names: Vec<String> = stmt
+                    .query_map([wanted], |row| row.get(0))
+                    .map_err(|e| e.to_string())?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                Ok(names
+                    .into_iter()
+                    .map(|name| Child::Table {
+                        name,
+                        kind: if *kind == FolderKind::Tables {
+                            TableKind::Table
+                        } else {
+                            TableKind::View
+                        },
+                    })
+                    .collect())
+            }
+            NodeRef::Table { .. } => {
+                let detail = self.table_detail(node)?;
+                let mut children: Vec<Child> = detail
+                    .columns
+                    .iter()
+                    .map(|c| Child::Column { meta: c.clone() })
+                    .collect();
+                for meta in detail.foreign_keys {
+                    children.push(Child::ForeignKey { meta });
+                }
+                for meta in detail.indexes {
+                    children.push(Child::Index { meta });
+                }
+                Ok(children)
+            }
         }
-        Ok(tables)
     }
 
-    fn execute(&mut self, sql: &str, max_rows: usize) -> Result<QueryOutcome, String> {
+    fn table_detail(&mut self, node: &NodeRef) -> Result<TableMeta, String> {
+        let NodeRef::Table { database, schema, name, is_view } = node else {
+            return Err("not a table node".to_string());
+        };
         let conn = &self.conn;
-        let started = Instant::now();
-        let mut outcome = QueryOutcome::default();
+        let columns = table_columns(conn, name)?;
+        let primary_key: Vec<String> = columns
+            .iter()
+            .filter(|c| c.primary_key)
+            .map(|c| c.name.clone())
+            .collect();
+        let foreign_keys = table_foreign_keys(conn, name);
+        let indexes = if *is_view { Vec::new() } else { table_indexes(conn, name) };
+        Ok(TableMeta {
+            database: database.clone(),
+            schema: schema.clone(),
+            name: name.clone(),
+            kind: if *is_view { TableKind::View } else { TableKind::Table },
+            columns,
+            primary_key,
+            foreign_keys,
+            indexes,
+        })
+    }
 
-        // Queries prepare and fetch; everything else (writes, DDL,
-        // multi-statement scripts) runs through execute_batch, which needs
-        // no prepare.  rusqlite's prepare refuses multi-statement text, so
-        // the split is by leading keyword, and a WITH that turns out to be
-        // a write falls through to script mode.
-        if matches!(
-            leading_keyword(sql).as_str(),
-            "select" | "values" | "explain" | "pragma" | "with"
-        ) {
-            let mut prepared = conn.prepare(sql).map_err(|e| classify(&e))?;
-            let column_count = prepared.column_count();
-            if prepared.readonly() && column_count > 0 {
+    fn execute_script(&mut self, sql: &str, max_rows: usize) -> Result<Vec<QueryOutcome>, String> {
+        let conn = &self.conn;
+        let mut outcomes = Vec::new();
+        for stmt in split_statements(sql) {
+            let started = Instant::now();
+            if is_select_shaped(&stmt.text) {
+                let mut prepared = conn.prepare(&stmt.text).map_err(|e| classify(&e))?;
+                let column_count = prepared.column_count();
                 let column_names: Vec<String> = (0..column_count)
                     .map(|i| prepared.column_name(i).unwrap_or("").to_string())
                     .collect();
-                let mut rows_out = Vec::new();
-                let mut rows = prepared.query([]).map_err(|e| classify(&e))?;
-                while let Some(row) = rows.next().map_err(|e| classify(&e))? {
-                    if rows_out.len() >= max_rows {
-                        outcome.truncated = true;
-                        break;
+                if prepared.readonly() && column_count > 0 {
+                    let mut outcome = QueryOutcome {
+                        statement: stmt.text.clone(),
+                        is_query: true,
+                        ..Default::default()
+                    };
+                    let mut rows = prepared.query([]).map_err(|e| classify(&e))?;
+                    while let Some(row) = rows.next().map_err(|e| classify(&e))? {
+                        if outcome.rows.len() >= max_rows {
+                            outcome.truncated = true;
+                            break;
+                        }
+                        let mut cells = Vec::with_capacity(column_count);
+                        for i in 0..column_count {
+                            cells.push(read_value(row, i)?);
+                        }
+                        outcome.rows.push(cells);
                     }
-                    let mut cells = Vec::with_capacity(column_count);
-                    for i in 0..column_count {
-                        cells.push(read_value(row, i)?);
-                    }
-                    rows_out.push(cells);
+                    outcome.columns = column_names
+                        .into_iter()
+                        .map(|name| crate::ColumnOut { name, type_name: String::new() })
+                        .collect();
+                    outcome.elapsed_ms = started.elapsed().as_millis() as u64;
+                    outcomes.push(outcome);
+                    continue;
                 }
-                outcome.columns = column_names;
-                outcome.rows = rows_out;
-                outcome.is_query = true;
-                outcome.elapsed_ms = started.elapsed().as_millis() as u64;
-                return Ok(outcome);
             }
+            conn.execute_batch(&stmt.text).map_err(|e| classify(&e))?;
+            outcomes.push(QueryOutcome {
+                statement: stmt.text.clone(),
+                rows_affected: conn.changes() as i64,
+                is_query: false,
+                elapsed_ms: started.elapsed().as_millis() as u64,
+                ..Default::default()
+            });
         }
-
-        conn.execute_batch(sql).map_err(|e| classify(&e))?;
-        outcome.rows_affected = conn.changes() as i64;
-        outcome.is_query = false;
-        outcome.elapsed_ms = started.elapsed().as_millis() as u64;
-        Ok(outcome)
+        Ok(outcomes)
     }
 
-    fn label(&self) -> &'static str {
-        "SQLite"
+    fn apply_edits(&mut self, table: &TableMeta, edits: &PendingEdits) -> Result<EditResult, String> {
+        let statements = edits.statements(table, Dialect::Sqlite)?;
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut result = EditResult::default();
+        for (i, sql) in statements.iter().enumerate() {
+            let changed = tx.execute(sql, []).map_err(|e| e.to_string())?;
+            if changed == 0 && !matches!(edits.ops[i], crate::EditOp::InsertRow { .. }) {
+                return Err(MAX_ROWS_EDIT_GUARD.to_string());
+            }
+            result.rows_affected += changed as i64;
+            result.statements_run += 1;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(result)
+    }
+
+    fn server_version(&self) -> String {
+        format!("SQLite {}", rusqlite::version())
+    }
+
+    fn dialect(&self) -> Dialect {
+        Dialect::Sqlite
     }
 }
 
@@ -114,20 +206,23 @@ impl SqliteConnection {
         let _ = conn.pragma_update(None, "foreign_keys", "ON");
         let interrupt = Arc::new(conn.get_interrupt_handle());
         let engine = SqliteEngine { conn };
+        let label = format!("SQLite {}", rusqlite::version());
         Ok(DbConnection::new(
             Box::new(engine),
             Box::new(move || interrupt.interrupt()),
+            label,
         ))
     }
 }
 
-/// The first bare keyword of a statement, lowercased; comments and
-/// whitespace are skipped.
-fn leading_keyword(sql: &str) -> String {
+fn is_select_shaped(sql: &str) -> bool {
     let mut rest = sql.trim_start();
     loop {
         if let Some(after) = rest.strip_prefix("--") {
             rest = after.split_once('\n').map(|(_, tail)| tail).unwrap_or("");
+            rest = rest.trim_start();
+        } else if let Some(after) = rest.strip_prefix("/*") {
+            rest = after.split_once("*/").map(|(_, tail)| tail).unwrap_or("");
             rest = rest.trim_start();
         } else {
             break;
@@ -137,32 +232,23 @@ fn leading_keyword(sql: &str) -> String {
         .chars()
         .take_while(|c| c.is_ascii_alphabetic())
         .collect();
-    word.to_ascii_lowercase()
+    let word = word.to_ascii_lowercase();
+    matches!(
+        word.as_str(),
+        "select" | "values" | "explain" | "pragma" | "with" | "table"
+    )
 }
 
 fn classify(e: &rusqlite::Error) -> String {
-    match e {
-        rusqlite::Error::SqliteFailure(ffi, msg)
-            if ffi.code == rusqlite::ErrorCode::OperationInterrupted =>
-        {
-            "query interrupted".to_string()
-        }
-        _ => {
-            let text = e.to_string();
-            match msg_of(e) {
-                Some(m) => m,
-                None => text,
-            }
-        }
+    if let rusqlite::Error::SqliteFailure(ffi, _) = e
+        && ffi.code == rusqlite::ErrorCode::OperationInterrupted
+    {
+        return "query interrupted".to_string();
     }
-}
-
-fn msg_of(e: &rusqlite::Error) -> Option<String> {
-    if let rusqlite::Error::SqliteFailure(_, msg) = e {
-        msg.clone()
-    } else {
-        None
+    if let rusqlite::Error::SqliteFailure(_, Some(msg)) = e {
+        return msg.clone();
     }
+    e.to_string()
 }
 
 fn read_value(row: &rusqlite::Row<'_>, i: usize) -> Result<DbValue, String> {
@@ -179,16 +265,20 @@ fn read_value(row: &rusqlite::Row<'_>, i: usize) -> Result<DbValue, String> {
 }
 
 fn table_columns(conn: &Connection, table: &str) -> Result<Vec<ColumnMeta>, String> {
+    let d = Dialect::Sqlite;
     let mut stmt = conn
-        .prepare(&format!("PRAGMA table_info({})", crate::quote_ident(table)))
+        .prepare(&format!("PRAGMA table_info({})", d.quote_ident(table)))
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
+            let pk_pos: i64 = row.get(5)?;
             Ok(ColumnMeta {
-                name: row.get::<_, String>(1)?,
-                declared_type: row.get::<_, String>(2).unwrap_or_default(),
-                not_null: row.get::<_, i64>(3)? != 0,
-                primary_key: row.get::<_, i64>(5)? != 0,
+                name: row.get(1)?,
+                data_type: row.get::<_, String>(2).unwrap_or_default(),
+                nullable: row.get::<_, i64>(3)? == 0,
+                default: row.get::<_, Option<String>>(4)?,
+                primary_key: pk_pos > 0,
+                auto_increment: false,
             })
         })
         .map_err(|e| e.to_string())?
@@ -197,9 +287,50 @@ fn table_columns(conn: &Connection, table: &str) -> Result<Vec<ColumnMeta>, Stri
     Ok(rows)
 }
 
+fn table_foreign_keys(conn: &Connection, table: &str) -> Vec<ForeignKeyMeta> {
+    let d = Dialect::Sqlite;
+    let Ok(mut stmt) = conn.prepare(&format!(
+        "PRAGMA foreign_key_list({})",
+        d.quote_ident(table)
+    )) else {
+        return Vec::new();
+    };
+    struct RawFk {
+        id: i64,
+        table: String,
+        from: String,
+        to: Option<String>,
+    }
+    let raw: Vec<RawFk> = stmt
+        .query_map([], |row| {
+            Ok(RawFk {
+                id: row.get(0)?,
+                table: row.get(2)?,
+                from: row.get(3)?,
+                to: row.get(4)?,
+            })
+        })
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.ok())
+        .collect();
+    raw.into_iter()
+        .map(|fk| ForeignKeyMeta {
+            name: format!("fk_{}", fk.id),
+            columns: vec![fk.from],
+            ref_schema: "main".to_string(),
+            ref_table: fk.table,
+            ref_columns: vec![fk.to.unwrap_or_default()],
+        })
+        .collect()
+}
+
 fn table_indexes(conn: &Connection, table: &str) -> Vec<IndexMeta> {
-    let Ok(mut stmt) = conn.prepare(&format!("PRAGMA index_list({})", crate::quote_ident(table)))
-    else {
+    let d = Dialect::Sqlite;
+    let Ok(mut stmt) = conn.prepare(&format!(
+        "PRAGMA index_list({})",
+        d.quote_ident(table)
+    )) else {
         return Vec::new();
     };
     let Ok(rows) = stmt.query_map([], |row| {
@@ -216,17 +347,16 @@ fn table_indexes(conn: &Connection, table: &str) -> Vec<IndexMeta> {
         .into_iter()
         .map(|(name, unique)| {
             let columns = conn
-                .prepare(&format!("PRAGMA index_info({})", crate::quote_ident(&name)))
+                .prepare(&format!(
+                    "PRAGMA index_info({})",
+                    d.quote_ident(&name)
+                ))
                 .and_then(|mut s| {
                     s.query_map([], |row| row.get::<_, String>(2))
                         .map(|it| it.filter_map(|c| c.ok()).collect::<Vec<String>>())
                 })
                 .unwrap_or_default();
-            IndexMeta {
-                name,
-                unique,
-                columns,
-            }
+            IndexMeta { name, unique, columns }
         })
         .collect()
 }
@@ -241,13 +371,20 @@ mod tests {
             id: 1,
             name: "test".into(),
             kind: DriverKind::Sqlite,
-            path: path.into(),
+            host: path.into(),
+            port: 0,
+            database: String::new(),
+            user: String::new(),
+            ssl_mode: Default::default(),
+            trust_cert: false,
+            save_password: false,
+            url: None,
         }
     }
 
     fn demo_connection() -> DbConnection {
         let conn = SqliteConnection::open(":memory:").unwrap();
-        conn.execute(
+        conn.execute_script(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, score REAL); \
              INSERT INTO users VALUES (1, 'ada', 9.5), (2, 'grace', NULL), (3, '', 1.0);",
             10,
@@ -265,8 +402,14 @@ mod tests {
     #[test]
     fn query_returns_bounded_rows_with_kinds() {
         let conn = demo_connection();
-        let out = conn.execute("SELECT * FROM users ORDER BY id", 2).unwrap();
-        assert_eq!(out.columns, vec!["id", "name", "score"]);
+        let outs = conn
+            .execute_script("SELECT * FROM users ORDER BY id", 2)
+            .unwrap();
+        let out = &outs[0];
+        assert_eq!(
+            out.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["id", "name", "score"]
+        );
         assert_eq!(out.rows.len(), 2);
         assert!(out.truncated, "2 of 3 rows means the fetch was capped");
         assert_eq!(out.rows[0][1], DbValue::Text("ada".into()));
@@ -277,9 +420,9 @@ mod tests {
     #[test]
     fn null_and_empty_text_stay_distinct() {
         let conn = demo_connection();
-        let out = conn
-            .execute("SELECT name, score FROM users ORDER BY id", 10)
-            .unwrap();
+        let out = &conn
+            .execute_script("SELECT name, score FROM users ORDER BY id", 10)
+            .unwrap()[0];
         assert_eq!(out.rows[1][1], DbValue::Null);
         assert_eq!(out.rows[2][0], DbValue::Text(String::new()));
         assert_eq!(out.rows[1][1].render(), "NULL");
@@ -289,47 +432,96 @@ mod tests {
     #[test]
     fn writes_report_affected_rows_without_result_rows() {
         let conn = demo_connection();
-        let out = conn
-            .execute("UPDATE users SET score = 0 WHERE score IS NULL", 10)
-            .unwrap();
+        let out = &conn
+            .execute_script("UPDATE users SET score = 0 WHERE score IS NULL", 10)
+            .unwrap()[0];
         assert!(!out.is_query);
         assert_eq!(out.rows_affected, 1);
         assert!(out.rows.is_empty());
     }
 
     #[test]
-    fn errors_surface_the_database_message() {
+    fn script_runs_every_statement_and_stops_at_error() {
         let conn = demo_connection();
-        let err = conn.execute("SELECT * FROM missing_table", 10).unwrap_err();
+        let outs = conn
+            .execute_script(
+                "CREATE TABLE t (a); INSERT INTO t VALUES (1); INSERT INTO t VALUES (2); SELECT count(a) FROM t",
+                10,
+            )
+            .unwrap();
+        assert_eq!(outs.len(), 4);
+        assert_eq!(outs[3].rows[0][0], DbValue::Integer(2));
+        let err = conn
+            .execute_script("SELECT * FROM missing_table", 10)
+            .unwrap_err();
         assert!(err.contains("missing_table"), "got: {err}");
     }
 
     #[test]
-    fn tables_list_columns_and_indexes() {
+    fn tree_walks_database_schema_folders_tables() {
         let conn = demo_connection();
-        conn.execute("CREATE INDEX idx_users_name ON users(name)", 10)
+        let dbs = conn.introspect(&NodeRef::Root).unwrap();
+        assert_eq!(dbs.len(), 1);
+        let Child::Database { name, .. } = &dbs[0] else { panic!() };
+        let schemas = conn.introspect(&NodeRef::Database(name.clone())).unwrap();
+        assert!(schemas.iter().any(|c| matches!(c, Child::Schema { name } if name == "main")));
+        let folders = conn
+            .introspect(&NodeRef::Schema { database: name.clone(), schema: "main".into() })
             .unwrap();
-        let tables = conn.tables().unwrap();
-        let users = tables.iter().find(|t| t.name == "users").unwrap();
-        assert!(!users.is_view);
-        assert_eq!(users.columns.len(), 3);
-        assert!(users.columns[0].primary_key);
-        assert!(users.columns[1].not_null);
-        assert_eq!(users.indexes.len(), 1);
-        assert_eq!(users.indexes[0].columns, vec!["name"]);
+        assert_eq!(folders.len(), 2);
+        let tables = conn
+            .introspect(&NodeRef::Folder {
+                database: name.clone(),
+                schema: "main".into(),
+                kind: FolderKind::Tables,
+            })
+            .unwrap();
+        assert_eq!(tables.len(), 1);
+    }
+
+    #[test]
+    fn table_node_expands_columns_indexes_and_foreign_keys() {
+        let conn = demo_connection();
+        conn.execute_script("CREATE INDEX idx_users_name ON users(name)", 10)
+            .unwrap();
+        let children = conn
+            .introspect(&NodeRef::Table {
+                database: "main".into(),
+                schema: "main".into(),
+                name: "users".into(),
+                is_view: false,
+            })
+            .unwrap();
+        assert!(children.iter().any(|c| matches!(c, Child::Column { meta } if meta.primary_key)));
+        assert!(children
+            .iter()
+            .any(|c| matches!(c, Child::Index { meta } if meta.columns == vec!["name"])));
+
+        let detail = conn
+            .table_detail(&NodeRef::Table {
+                database: "main".into(),
+                schema: "main".into(),
+                name: "users".into(),
+                is_view: false,
+            })
+            .unwrap();
+        assert_eq!(detail.primary_key, vec!["id"]);
+        assert!(detail.pk_columns().is_some());
     }
 
     #[test]
     fn views_are_listed_as_views() {
         let conn = demo_connection();
-        conn.execute(
-            "CREATE VIEW adults AS SELECT * FROM users WHERE score > 0",
-            10,
-        )
-        .unwrap();
-        let tables = conn.tables().unwrap();
-        let view = tables.iter().find(|t| t.name == "adults").unwrap();
-        assert!(view.is_view);
+        conn.execute_script("CREATE VIEW adults AS SELECT * FROM users WHERE score > 0", 10)
+            .unwrap();
+        let views = conn
+            .introspect(&NodeRef::Folder {
+                database: "main".into(),
+                schema: "main".into(),
+                kind: FolderKind::Views,
+            })
+            .unwrap();
+        assert_eq!(views.len(), 1);
     }
 
     #[test]
@@ -343,9 +535,9 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("probe.sqlite");
-        assert!(crate::test_connection(&source(&path.to_string_lossy())).is_ok());
+        assert!(crate::test_connection(&source(&path.to_string_lossy()), None).is_ok());
         assert!(
-            crate::test_connection(&source(&dir.join("no/dir/here/x.sqlite").to_string_lossy()))
+            crate::test_connection(&source(&dir.join("no/dir/here/x.sqlite").to_string_lossy()), None)
                 .is_err()
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -356,8 +548,7 @@ mod tests {
         let conn = std::sync::Arc::new(SqliteConnection::open(":memory:").unwrap());
         let query_conn = std::sync::Arc::clone(&conn);
         let handle = std::thread::spawn(move || {
-            // A count over an unbounded recursion would run for hours.
-            query_conn.execute(
+            query_conn.execute_script(
                 "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) \
                  SELECT count(x) FROM c",
                 10,
@@ -370,23 +561,83 @@ mod tests {
     }
 
     #[test]
-    fn select_all_quotes_identifiers() {
-        let conn = SqliteConnection::open(":memory:").unwrap();
-        conn.execute("CREATE TABLE \"odd name\" (a INTEGER)", 10)
+    fn apply_edits_updates_inserts_and_deletes_in_one_transaction() {
+        let conn = demo_connection();
+        let detail = conn
+            .table_detail(&NodeRef::Table {
+                database: "main".into(),
+                schema: "main".into(),
+                name: "users".into(),
+                is_view: false,
+            })
             .unwrap();
-        let out = conn
-            .execute(&crate::select_all("odd name", 10), 10)
+        let page = conn
+            .execute_script("SELECT id, name, score FROM users ORDER BY id", 10)
+            .unwrap()[0]
+            .rows
+            .clone();
+        let edits = PendingEdits {
+            ops: vec![
+                crate::EditOp::UpdateCell {
+                    row: 1,
+                    col: 1,
+                    value: DbValue::Text("turing".into()),
+                    original_row: page[1].clone(),
+                },
+                crate::EditOp::DeleteRow {
+                    row: 2,
+                    original_row: page[2].clone(),
+                },
+                crate::EditOp::InsertRow {
+                    values: vec![DbValue::Null, DbValue::Text("knuth".into()), DbValue::Real(3.5)],
+                },
+            ],
+        };
+        let result = conn.apply_edits(&detail, &edits).unwrap();
+        assert_eq!(result.statements_run, 3);
+        let check = &conn
+            .execute_script("SELECT name FROM users ORDER BY id", 10)
+            .unwrap()[0];
+        assert_eq!(check.rows.len(), 3);
+        assert_eq!(check.rows[1][0], DbValue::Text("turing".into()));
+        assert_eq!(check.rows[2][0], DbValue::Text("knuth".into()));
+    }
+
+    #[test]
+    fn apply_edits_detects_concurrent_modification() {
+        let conn = demo_connection();
+        let detail = conn
+            .table_detail(&NodeRef::Table {
+                database: "main".into(),
+                schema: "main".into(),
+                name: "users".into(),
+                is_view: false,
+            })
             .unwrap();
-        assert_eq!(out.columns, vec!["a"]);
+        // Original row claims a name that no longer matches the database.
+        let edits = PendingEdits {
+            ops: vec![crate::EditOp::UpdateCell {
+                row: 0,
+                col: 1,
+                value: DbValue::Text("x".into()),
+                original_row: vec![DbValue::Integer(1), DbValue::Text("stale".into()), DbValue::Null],
+            }],
+        };
+        let err = conn.apply_edits(&detail, &edits).unwrap_err();
+        assert!(err.contains("concurrently"), "got: {err}");
     }
 
     #[test]
     fn connect_dispatches_by_kind() {
-        let mut src = source(":memory:");
-        assert!(crate::connect(&src).is_ok());
-        src.kind = DriverKind::Sqlite;
+        let src = source(":memory:");
+        assert!(crate::connect(&src, None).is_ok());
         assert_eq!(src.kind.label(), "SQLite");
         assert_eq!(DriverKind::parse("sqlite"), Some(DriverKind::Sqlite));
         assert_eq!(DriverKind::parse("oracle"), None);
+    }
+
+    #[test]
+    fn endpoint_label_matches_engine_family() {
+        assert_eq!(source("/tmp/x.sqlite").endpoint_label(), "/tmp/x.sqlite");
     }
 }

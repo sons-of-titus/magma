@@ -10,7 +10,9 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use super::protocol;
-use super::{Core, Event, EventSink, LspHandle, Pending, ServerState};
+use std::time::Duration;
+
+use super::{Core, Event, EventSink, LspHandle, Pending, REQUEST_TIMEOUT, ServerState};
 use crate::lsp_proto;
 
 #[derive(Clone, Default)]
@@ -36,17 +38,25 @@ type Signal = std::sync::mpsc::Receiver<Result<(), String>>;
 type Outbound = tokio::sync::mpsc::UnboundedReceiver<Value>;
 
 fn core() -> (Arc<Core>, Signal, Outbound) {
+    let (core, init_rx, outbound_rx, _sink) = core_with_sink();
+    (core, init_rx, outbound_rx)
+}
+
+fn core_with_sink() -> (Arc<Core>, Signal, Outbound, Collect) {
     let (outbound, outbound_rx) = tokio::sync::mpsc::unbounded_channel();
     let (init_tx, init_rx) = std::sync::mpsc::channel();
+    let sink = Collect::new();
     let core = Arc::new(Core {
         outbound,
         pending: Mutex::new(HashMap::new()),
         state: Mutex::new(ServerState::Initializing),
         next_id: AtomicU64::new(1),
         legend: Mutex::new(super::SemanticLegend::default()),
+        sync_kind: Mutex::new(None),
         init_signal: Mutex::new(init_tx),
+        sink: Arc::new(sink.clone()),
     });
-    (core, init_rx, outbound_rx)
+    (core, init_rx, outbound_rx, sink)
 }
 
 fn add_pending(core: &Core, id: u64, method: &str) {
@@ -380,4 +390,48 @@ fn spawn_failure_reports_the_missing_binary() {
     let err =
         LspHandle::start("magma-no-such-lsp-binary-9f1c", &[], "rust", None, sink).unwrap_err();
     assert!(err.contains("Failed to spawn"), "unexpected error: {err}");
+}
+
+#[test]
+fn timed_out_requests_cancel_and_report_instead_of_vanishing() {
+    let (core, _init_rx, mut outbound, sink) = core_with_sink();
+    // A request that has been waiting far past the deadline.
+    core.pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            42,
+            Pending {
+                method: "textDocument/hover".to_string(),
+                buf_key: Some(7),
+                revision: 3,
+                sent_at: Instant::now() - REQUEST_TIMEOUT - Duration::from_secs(1),
+            },
+        );
+
+    let handle = handle(core.clone());
+    handle.request_workspace("workspace/symbol", json!({}));
+
+    assert!(
+        !core
+            .pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&42),
+        "the stale entry is dropped"
+    );
+    let cancel = outbound
+        .try_recv()
+        .expect("a $/cancelRequest goes to the server for the stale id");
+    assert_eq!(cancel["method"], "$/cancelRequest");
+    assert_eq!(cancel["params"]["id"], 42);
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            Event::RequestTimedOut { method, buf_key, revision }
+                if method == "textDocument/hover" && *buf_key == Some(7) && *revision == 3
+        )),
+        "the timeout is reported, not silently discarded: {events:?}"
+    );
 }

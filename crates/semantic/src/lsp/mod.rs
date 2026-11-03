@@ -58,11 +58,17 @@ pub enum ServerState {
 struct Core {
     outbound: tokio::sync::mpsc::UnboundedSender<Value>,
     pending: Mutex<HashMap<u64, Pending>>,
+    /// Shared with the reader thread so the timeout sweep (which runs on
+    /// whichever thread sends requests) can still report.
+    sink: Arc<dyn EventSink + Send + Sync>,
     state: Mutex<ServerState>,
     next_id: AtomicU64,
     /// The server's semantic-token legend, captured from the initialize
     /// result and applied to every later semanticTokens response.
     legend: Mutex<semantic_tokens::SemanticLegend>,
+    /// The negotiated `textDocumentSync.change` kind (0 none, 1 full,
+    /// 2 incremental), from the initialize result.  `None` until known.
+    sync_kind: Mutex<Option<u8>>,
     /// Signaled by the reader when the `initialize` response arrives.
     init_signal: Mutex<std::sync::mpsc::Sender<Result<(), String>>>,
 }
@@ -107,8 +113,9 @@ impl LspHandle {
         sink: S,
     ) -> Result<LspHandle, String>
     where
-        S: EventSink + Send + 'static,
+        S: EventSink + Send + Sync + 'static,
     {
+        let sink = Arc::new(sink);
         let mut child = std::process::Command::new(command)
             .args(args)
             .stdin(std::process::Stdio::piped())
@@ -135,7 +142,9 @@ impl LspHandle {
             state: Mutex::new(ServerState::Initializing),
             next_id: AtomicU64::new(1),
             legend: Mutex::new(semantic_tokens::SemanticLegend::default()),
+            sync_kind: Mutex::new(None),
             init_signal: Mutex::new(init_tx),
+            sink: sink.clone(),
         });
 
         // Writer thread: one owned stdin, pulls prebuilt messages.
@@ -184,6 +193,12 @@ impl LspHandle {
 
     pub fn state(&self) -> ServerState {
         self.core.state()
+    }
+
+    /// The negotiated `textDocumentSync.change` kind: 1 full, 2
+    /// incremental.  `None` before the initialize result names one.
+    pub fn sync_kind(&self) -> Option<u8> {
+        *self.core.sync_kind.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn request_internal(&self, method: &str, params: Value, ctx: Option<(usize, u64)>) -> u64 {
@@ -297,14 +312,23 @@ impl LspHandle {
             let now = Instant::now();
             pending.retain(|id, p| {
                 if now.duration_since(p.sent_at) > REQUEST_TIMEOUT {
-                    stale.push((*id, p.method.clone()));
+                    stale.push((*id, p.clone()));
                     false
                 } else {
                     true
                 }
             });
         }
-        let _ = stale;
+        for (id, p) in stale {
+            // The server should stop computing; a late answer is dropped
+            // with the pending entry anyway.
+            self.notify("$/cancelRequest", json!({ "id": id }));
+            self.core.sink.send(Event::RequestTimedOut {
+                method: p.method,
+                buf_key: p.buf_key,
+                revision: p.revision,
+            });
+        }
     }
 
     /// Ordered shutdown: `shutdown` request, `exit` notification, kill.

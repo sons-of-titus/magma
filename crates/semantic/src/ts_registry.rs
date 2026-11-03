@@ -145,11 +145,55 @@ pub fn parse_tree(lang_name: &str, text: &str) -> Option<tree_sitter::Tree> {
     })
 }
 
+/// Parse a rope without materializing it as a `String`: the parser's read
+/// callback walks the rope chunk-by-chunk.  `old` enables tree-sitter's
+/// incremental reparse — the tree must already have the pending edits
+/// applied via `Tree::edit`.
+pub fn parse_rope(
+    lang_name: &str,
+    rope: &text::rope::Rope,
+    old: Option<&tree_sitter::Tree>,
+) -> Option<tree_sitter::Tree> {
+    with_language_map(|map| {
+        let language = map.get(lang_name)?;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(language).ok()?;
+        let mut chunks = rope.chunks();
+        let mut cur: &str = "";
+        let mut cur_pos: usize = 0;
+        parser.parse_with_options(
+            &mut |offset: usize, _: tree_sitter::Point| -> &[u8] {
+                while offset >= cur_pos + cur.len() {
+                    match chunks.next() {
+                        Some(c) => {
+                            cur_pos += cur.len();
+                            cur = c;
+                        }
+                        None => break,
+                    }
+                }
+                let rel = offset.saturating_sub(cur_pos).min(cur.len());
+                let mut b = rel;
+                while b > 0 && !cur.is_char_boundary(b) {
+                    b -= 1;
+                }
+                &cur.as_bytes()[b..]
+            },
+            old,
+            None,
+        )
+    })
+}
+
 #[derive(Clone)]
 pub struct TsTreeState {
     pub tree: tree_sitter::Tree,
     /// Document revision the tree was parsed at.
     pub revision: u64,
+    /// Buffer transaction sequence the tree was parsed at — the incremental
+    /// base for `txns_since`.  Zero when unknown (the query-side cache
+    /// stamps it when it can).
+    pub txn_seq: u64,
 }
 
 /// Incrementally reparse: apply `edits` to `old_tree`, then reparse only
@@ -206,8 +250,8 @@ pub fn highlight_incremental(
             .or(old_tree)?;
 
         let ranges = query_tree(&language, &tree, query_text.as_bytes(), query_src)?;
-        // Caller stamps the buffer revision the tree was parsed at.
-        Some((ranges, TsTreeState { tree, revision: 0 }))
+        // Caller stamps the buffer revision and txn_seq the tree was parsed at.
+        Some((ranges, TsTreeState { tree, revision: 0, txn_seq: 0 }))
     })
 }
 

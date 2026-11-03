@@ -224,13 +224,16 @@ fn lang_for(state: &FallbackState, buf: &Buffer) -> Option<String> {
     state.extensions.get(&ext).cloned()
 }
 
+// Via the line index (O(log n)), never a prefix copy: these run per
+// transaction, and a prefix scan made a keystroke at the end of a large
+// file cost O(edit-offset) on the foreground thread.
 fn line_start_of(buf: &Buffer, offset: usize) -> usize {
-    let line = buf.slice(0, offset).matches('\n').count();
+    let (line, _) = buf.line_col_bytes(offset);
     buf.line_start_offset(line).unwrap_or(0)
 }
 
 fn line_end_of(buf: &Buffer, offset: usize) -> usize {
-    let line = buf.slice(0, offset).matches('\n').count();
+    let (line, _) = buf.line_col_bytes(offset);
     match buf.line_span(line) {
         Some(span) => span.end,
         None => buf.len(),

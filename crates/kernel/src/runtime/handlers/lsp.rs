@@ -187,6 +187,16 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 },
             );
         }
+        Event::RequestTimedOut {
+            method,
+            buf_key: _,
+            revision: _,
+        } => {
+            ed.show_message(
+                crate::state::MessageKind::Info,
+                format!("language server: {method} timed out"),
+            );
+        }
         Event::ServerExited { language } => {
             ed.lsp.exited(&language);
             ed.show_message(

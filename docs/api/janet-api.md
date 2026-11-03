@@ -930,6 +930,11 @@ Requests the document's semantic tokens.  The decoded result lands in the
 "semantic" highlight layer; scopes without a registered scope-face or face
 do not paint.
 
+### `(lsp/sync-kind language-id)` → kind or nil
+
+Returns the server's negotiated document-sync kind: 0 none, 1 full,
+2 incremental.  Nil before the server's initialize result names one.
+
 ### `(lsp/shutdown language-id)` → nil
 Performs an ordered shutdown of the server and forgets it.
 

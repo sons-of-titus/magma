@@ -128,6 +128,8 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                 if let Some(result) = result.as_ref() {
                     *core.legend.lock().unwrap_or_else(|e| e.into_inner()) =
                         semantic_token_legend(result);
+                    *core.sync_kind.lock().unwrap_or_else(|e| e.into_inner()) =
+                        text_sync_kind(result);
                 }
                 // The initialize response completes the awaited handshake.
                 if let Ok(tx) = core.init_signal.lock() {
@@ -226,6 +228,22 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                 sink.send(event);
             }
         }
+    }
+}
+
+/// `textDocumentSync` arrives as a bare kind number or an object with a
+/// `change` field; both are legal, and both must reach the didChange path.
+fn text_sync_kind(result: &Value) -> Option<u8> {
+    let sync = result.get("textDocumentSync")?;
+    let raw = match sync {
+        Value::Number(n) => n.as_f64(),
+        Value::Object(o) => o.get("change").and_then(|c| c.as_f64()),
+        _ => None,
+    }?;
+    if (0.0..=2.0).contains(&raw) {
+        Some(raw as u8)
+    } else {
+        None
     }
 }
 

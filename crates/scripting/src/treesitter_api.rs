@@ -163,6 +163,7 @@ fn run_incremental_query(
         }
     }
     let query_text = buf.slice(0, buf.len());
+    let current_seq = buf.txn_seq();
     let (result, mut state) = ts_registry::highlight_incremental(
         &lang_name,
         buf.rope_handle(),
@@ -173,6 +174,7 @@ fn run_incremental_query(
     )?;
     drop(buf);
     state.revision = current_rev;
+    state.txn_seq = current_seq;
     ed.ts_trees.insert(buf_id, state);
     Some(result)
 }

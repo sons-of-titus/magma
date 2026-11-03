@@ -365,6 +365,22 @@ unsafe extern "C-unwind" fn c_lsp_shutdown(argc: i32, argv: *mut Janet) -> Janet
     })
 }
 
+/// (lsp/sync-kind language-id) → 0 none, 1 full, 2 incremental, or nil
+/// before the initialize result names one.  The didChange path uses this to
+/// honor the server's negotiated sync kind instead of assuming incremental.
+unsafe extern "C-unwind" fn c_lsp_sync_kind(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let language = match conv::get_str(argc, argv, 0) {
+            Some(l) => l.to_string(),
+            None => return conv::nil(),
+        };
+        with_editor(|ed| match ed.lsp.get(&language).and_then(|s| s.sync_kind()) {
+            Some(kind) => conv::integer(kind as i32),
+            None => conv::nil(),
+        })
+    }
+}
+
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register() -> Vec<JanetReg> {
@@ -386,6 +402,12 @@ pub fn register() -> Vec<JanetReg> {
             name: c"lsp/did-change".as_ptr() as *const _,
             cfun: Some(c_lsp_did_change as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Send textDocument/didChange (full text, real version) for a buffer"
+                .as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"lsp/sync-kind".as_ptr() as *const _,
+            cfun: Some(c_lsp_sync_kind as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Negotiated textDocumentSync kind for a language: 0 none, 1 full, 2 incremental, or nil"
                 .as_ptr() as *const _,
         },
         JanetReg {

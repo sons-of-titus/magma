@@ -15,6 +15,12 @@ pub trait EventSink {
     fn send(&self, event: Event);
 }
 
+impl<T: EventSink + ?Sized> EventSink for std::sync::Arc<T> {
+    fn send(&self, event: Event) {
+        (**self).send(event);
+    }
+}
+
 /// An event produced by a live language server or its startup thread.
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -94,6 +100,14 @@ pub enum Event {
     },
     /// A language server process exited (crash or termination).
     ServerExited { language: String },
+    /// A request aged past the deadline: the client dropped its pending
+    /// entry and sent `$/cancelRequest`.  A late answer is discarded with
+    /// the pending entry.
+    RequestTimedOut {
+        method: String,
+        buf_key: Option<usize>,
+        revision: u64,
+    },
     /// The awaited initialize handshake finished off-thread.
     Started {
         language: String,

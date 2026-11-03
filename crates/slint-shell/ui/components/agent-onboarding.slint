@@ -1,0 +1,504 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Field } from "controls.slint";
+
+// Provider onboarding: the first thing the Agent panel shows, and its
+// connection manager afterwards.  Everything renders from registry metadata
+// — provider entries, auth methods, and status arrive as data.
+
+export struct ProviderCard {
+    id: string,
+    name: string,
+    description: string,
+    glyph: string,
+    auth-label: string,
+    status: string,    // connected | connecting | failed | ""
+    account: string,
+}
+
+export struct AuthPanelView {
+    provider-id: string,
+    provider-name: string,
+    provider-glyph: string,
+    method-label: string,
+    // enter-key | device-code | waiting
+    instruction: string,
+    instructions: string,
+    key-url: string,
+    verification-url: string,
+    user-code: string,
+    message: string,
+    error: string,
+    busy: bool,
+}
+
+component CardRow inherits Rectangle {
+    in property <ProviderCard> card;
+    in property <bool> manage-mode: false;
+    callback connect(string);
+    callback disconnect(string);
+
+    height: 64px;
+    border-radius: Theme.radius + 2px;
+    border-width: 1px;
+    border-color: row-touch.has-hover ? Theme.selection : Theme.border;
+    background: row-touch.has-hover ? Theme.fill-muted : Theme.surface;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        alignment: center;
+
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: Theme.radius + 2px;
+            background: Theme.fill-muted;
+            border-width: 1px;
+            border-color: Theme.border;
+            Text {
+                text: root.card.glyph;
+                color: Theme.text-secondary;
+                font-family: "Symbols Nerd Font";
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 2px;
+            horizontal-stretch: 1;
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Text {
+                    text: root.card.name;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                if root.card.auth-label != "" : Text {
+                    text: root.card.auth-label;
+                    color: Theme.text-faint;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                if root.card.status == "connected" : HorizontalLayout {
+                    spacing: 4px;
+                    alignment: center;
+                    Rectangle {
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 4px;
+                        background: Theme.success;
+                        y: (parent.height - 7px) / 2;
+                    }
+                    if root.card.account != "" : Text {
+                        text: root.card.account;
+                        color: Theme.text-muted;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                if root.card.status == "connecting" : Text {
+                    text: "connecting…";
+                    color: Theme.accent;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+                if root.card.status == "failed" : Text {
+                    text: "failed";
+                    color: Theme.danger;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+            }
+
+            Text {
+                text: root.card.description;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                overflow: elide;
+                vertical-alignment: top;
+            }
+        }
+
+        if root.manage-mode && root.card.status != "" : Rectangle {
+            width: 84px;
+            height: 22px;
+            border-radius: Theme.radius;
+            background: disc-touch.has-hover ? Theme.danger.transparentize(0.85) : transparent;
+            border-width: 1px;
+            border-color: Theme.danger;
+            Text {
+                text: "Disconnect";
+                color: Theme.danger;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            disc-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.disconnect(root.card.id); }
+            }
+        }
+    }
+
+    row-touch := TouchArea {
+        enabled: root.card.status == "";
+        mouse-cursor: root.card.status == "" ? pointer : default;
+        clicked => { root.connect(root.card.id); }
+    }
+}
+
+component AuthPanel inherits Rectangle {
+    in property <AuthPanelView> auth;
+    in-out property <string> key-entry;
+    callback submit-key(string);
+    callback open-url(string);
+    callback copy-code();
+    callback back();
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        Rectangle {
+            width: 28px;
+            height: 28px;
+            y: 2px;
+            border-radius: Theme.radius;
+            background: back-touch.has-hover ? Theme.fill : transparent;
+            Text {
+                text: "←";
+                color: Theme.text-secondary;
+                font-size: 14px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            back-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.back(); }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 10px;
+            horizontal-stretch: 1;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Text {
+                    text: root.auth.provider-glyph;
+                    color: Theme.text-secondary;
+                    font-family: "Symbols Nerd Font";
+                    font-size: 15px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Connect to " + root.auth.provider-name;
+                    color: Theme.text-primary;
+                    font-size: 13px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+
+            Text {
+                text: root.auth.instructions;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+
+            // ── API-key entry ────────────────────────────────────────────
+            if root.auth.instruction == "enter-key" : VerticalLayout {
+                spacing: 8px;
+
+                if root.auth.key-url != "" : HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        height: 22px;
+                        width: url-text.preferred-width + 20px;
+                        border-radius: Theme.radius;
+                        background: url-touch.has-hover ? Theme.fill : Theme.fill-muted;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        url-text := Text {
+                            text: "Get a key ↗";
+                            color: Theme.accent;
+                            font-size: Theme.font-small;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        url-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open-url(root.auth.key-url); }
+                        }
+                    }
+                }
+
+                key-box := Rectangle {
+                    height: Theme.control-height + 6px;
+                    border-radius: Theme.radius;
+                    border-width: 1px;
+                    border-color: key-input.has-focus ? Theme.accent : Theme.border;
+                    background: Theme.surface;
+
+                    key-input := TextInput {
+                        x: 10px;
+                        width: parent.width - 20px;
+                        text <=> root.key-entry;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-ui;
+                        font-family: Theme.font-mono;
+                        input-type: InputType.password;
+                        vertical-alignment: center;
+                        accepted => { root.submit-key(root.key-entry); }
+                    }
+
+                    if root.key-entry == "" && !key-input.has-focus : Text {
+                        x: 10px;
+                        text: "Paste " + root.auth.method-label + " — stored in the system keychain, never on disk";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 96px;
+                        height: 26px;
+                        border-radius: Theme.radius;
+                        background: connect-touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
+                        Text {
+                            text: "Connect";
+                            color: white;
+                            font-size: Theme.font-small;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        connect-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.submit-key(root.key-entry); }
+                        }
+                    }
+
+                    if root.auth.busy : Text {
+                        text: "Validating with " + root.auth.provider-name + "…";
+                        color: Theme.accent;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // ── Device code ──────────────────────────────────────────────
+            if root.auth.instruction == "device-code" : VerticalLayout {
+                spacing: 10px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: code-text.preferred-width + 36px;
+                        height: 40px;
+                        border-radius: Theme.radius;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        code-text := Text {
+                            text: root.auth.user-code;
+                            color: Theme.text-primary;
+                            font-family: Theme.font-mono;
+                            font-size: 17px;
+                            font-weight: 600;
+                            letter-spacing: 2px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        width: 64px;
+                        height: 26px;
+                        y: (parent.height - 26px) / 2;
+                        border-radius: Theme.radius;
+                        background: copy-touch.has-hover ? Theme.fill : Theme.fill-muted;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        Text {
+                            text: "Copy";
+                            color: Theme.text-primary;
+                            font-size: Theme.font-small;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        copy-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.copy-code(); }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: open-text.preferred-width + 24px;
+                        height: 26px;
+                        border-radius: Theme.radius;
+                        background: open-touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
+                        open-text := Text {
+                            text: "Open browser";
+                            color: white;
+                            font-size: Theme.font-small;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        open-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.open-url(root.auth.verification-url); }
+                        }
+                    }
+
+                    if root.auth.busy : Text {
+                        text: "Waiting for authorization — finish in the browser";
+                        color: Theme.accent;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // ── Plain progress ───────────────────────────────────────────
+            if root.auth.instruction == "waiting" && root.auth.error == "" : Text {
+                text: root.auth.message;
+                color: Theme.accent;
+                font-size: Theme.font-small;
+            }
+
+            if root.auth.error != "" : Text {
+                text: root.auth.error;
+                color: Theme.danger;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+export component AgentOnboarding inherits Rectangle {
+    in property <[ProviderCard]> cards;
+    in property <bool> auth-active: false;
+    in property <AuthPanelView> auth;
+    /// True when opened over an existing conversation (manage mode).
+    in property <bool> manage-mode: false;
+    callback connect-provider(string);
+    callback disconnect-provider(string);
+    callback submit-key(string);
+    callback open-url(string);
+    callback copy-code();
+    callback back();
+
+    background: Theme.surface-panel;
+
+    VerticalLayout {
+        padding: 18px;
+        padding-top: 22px;
+        spacing: 14px;
+
+        if !root.auth-active : VerticalLayout {
+            spacing: 5px;
+            Text {
+                text: root.manage-mode ? "Manage providers" : "Connect an AI provider";
+                color: Theme.text-primary;
+                font-size: 17px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.manage-mode
+                    ? "Add another provider, or disconnect ones you no longer use. Your conversations stay put."
+                    : "The agent works through a model provider. Connect one to start — you can add or switch providers at any time.";
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+
+        if root.auth-active : AuthPanel {
+            auth: root.auth;
+            submit-key(k) => { root.submit-key(k); }
+            open-url(u) => { root.open-url(u); }
+            copy-code => { root.copy-code(); }
+            back => { root.back(); }
+        }
+
+        if !root.auth-active : Rectangle {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+
+            ScrollView {
+                width: 100%;
+                height: 100%;
+
+                VerticalLayout {
+                    spacing: 8px;
+                    padding-bottom: 12px;
+
+                    for card in root.cards : CardRow {
+                        card: card;
+                        manage-mode: root.manage-mode;
+                        connect(id) => { root.connect-provider(id); }
+                        disconnect(id) => { root.disconnect-provider(id); }
+                    }
+                }
+            }
+        }
+
+        if root.manage-mode && !root.auth-active : HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Rectangle {
+                width: back-w.preferred-width + 28px;
+                height: 26px;
+                border-radius: Theme.radius;
+                background: done-touch.has-hover ? Theme.fill-strong : Theme.fill;
+                border-width: 1px;
+                border-color: Theme.border;
+                back-w := Text {
+                    text: "Back to conversation";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                done-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.back(); }
+                }
+            }
+        }
+    }
+}

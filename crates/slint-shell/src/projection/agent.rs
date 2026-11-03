@@ -1,10 +1,11 @@
-//! Agent tool-window projections: sessions, transcript entries, status.
+//! Agent tool-window projections: sessions, transcript entries, status,
+//! provider onboarding, and composer controls.
 
 use std::collections::HashSet;
 
-use kernel::agent::{AgentStatus, EntryKind};
+use kernel::agent::{AgentStatus, AuthInstruction, EntryKind};
 
-use crate::{AgentEntry, AgentSessionChip};
+use crate::{AgentEntry, AgentSessionChip, AuthPanelView, PickerChoice, ProviderCard};
 use kernel::state::Editor;
 
 // ── Agent tool window ────────────────────────────────────────────────────────

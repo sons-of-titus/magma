@@ -1,0 +1,774 @@
+import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { ToolWindowHeader } from "controls.slint";
+import { ToolbarIcon as IconButton } from "button.slint";
+import { AgentComposer, PickerChoice } from "agent-composer.slint";
+// One transcript row, projected from the kernel session.
+export struct AgentEntry {
+    kind: string,      // user | thought | action | output | result | error
+    text: string,      // prompt / prose / description / folded output
+    detail: string,    // action: the tool/command name
+    status: string,    // action: running | ok | error | declined | pending | planned
+    elapsed: string,   // action: step duration once finished, else ""
+    expanded: bool,
+    idx: int,          // transcript index for expansion callbacks; -1 otherwise
+}
+
+export struct AgentSessionChip {
+    id: int,
+    title: string,     // prompt prefix, for telling sessions apart
+    status: string,    // running | waiting-approval | completed | failed
+    selected: bool,
+}
+
+component StatusGlyph inherits Text {
+    in property <string> status;
+    width: 13px;
+    font-size: 11px;
+    font-family: "Symbols Nerd Font";
+    vertical-alignment: center;
+    horizontal-alignment: center;
+    text: root.status == "ok" ? "\u{EAB2}"            // cod-check
+        : root.status == "error" ? "\u{EA87}"         // cod-error
+        : root.status == "declined" ? "\u{EABD}"      // cod-circle_slash
+        : root.status == "running" ? "\u{EB19}"       // cod-loading
+        : root.status == "pending" ? "\u{F03E4}"      // md-pause
+        : root.status == "failed" ? "\u{EA87}"
+        : root.status == "waiting-approval" ? "\u{F03E4}"
+        : root.status == "completed" ? "\u{EAB2}"
+        : "\u{F0130}";                                // md-checkbox_blank_circle_outline
+    color: root.status == "ok" || root.status == "completed" ? Theme.success
+        : root.status == "error" || root.status == "failed" ? Theme.danger
+        : root.status == "declined" ? Theme.warning
+        : root.status == "running" ? Theme.accent
+        : root.status == "pending" || root.status == "waiting-approval" ? Theme.warning
+        : Theme.text-faint;
+}
+
+component EntryRow inherits Rectangle {
+    in property <AgentEntry> entry;
+    callback toggle(int);
+
+    VerticalLayout {
+        spacing: 4px;
+
+        // ── User prompt: quiet filled block with an accent spine ────────
+        if entry.kind == "user" : Rectangle {
+            height: user-text.preferred-height + 16px;
+            border-radius: Theme.radius;
+            background: Theme.fill-muted;
+
+            HorizontalLayout {
+                padding: 8px;
+                spacing: 8px;
+
+                Rectangle { width: 3px; border-radius: 2px; background: Theme.accent; }
+
+                user-text := Text {
+                    text: entry.text;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
+            }
+        }
+
+        // ── Agent prose ──────────────────────────────────────────────────
+        if entry.kind == "thought" : HorizontalLayout {
+            spacing: 8px;
+            Text {
+                width: 13px;
+                text: "✦";
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+                vertical-alignment: top;
+            }
+            Text {
+                text: entry.text;
+                color: Theme.text-secondary;
+                font-size: Theme.font-ui;
+                wrap: word-wrap;
+                vertical-alignment: top;
+            }
+        }
+
+        // ── Tool call card: status glyph, command, summary, folded output
+        if entry.kind == "action" : VerticalLayout {
+            spacing: 4px;
+
+            Rectangle {
+                height: 24px;
+                border-radius: Theme.radius;
+                background: action-touch.has-hover ? Theme.fill-muted : Theme.surface;
+                border-width: 1px;
+                border-color: entry.status == "pending" ? Theme.warning : Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        width: entry.expanded ? 12px : 10px;
+                        text: entry.expanded ? "▾"
+                            : (entry.text != "" ? "▸" : "");
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+
+                    StatusGlyph { status: entry.status; }
+
+                    Text {
+                        width: detail-text.preferred-width + 2px;
+                        text: entry.detail;
+                        color: Theme.text-primary;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    detail-text := Text {
+                        horizontal-stretch: 1;
+                        text: entry.text;
+                        color: Theme.text-muted;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    if entry.elapsed != "" : Text {
+                        text: entry.elapsed;
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        font-family: Theme.font-mono;
+                        vertical-alignment: center;
+                    }
+
+                    if entry.status == "running" : Text {
+                        text: "running";
+                        color: Theme.accent;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if entry.status == "pending" : Text {
+                        text: "needs approval";
+                        color: Theme.warning;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if entry.status == "declined" : Text {
+                        text: "declined";
+                        color: Theme.warning;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                    if entry.status == "planned" : Text {
+                        text: "planned";
+                        color: Theme.text-faint;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                action-touch := TouchArea {
+                    enabled: entry.text != "" && entry.status != "running" && entry.status != "pending";
+                    mouse-cursor: pointer;
+                    clicked => { root.toggle(entry.idx); }
+                }
+            }
+
+            // The tool's output, revealed on expand.
+            if entry.expanded && entry.text != "" : Rectangle {
+                height: out-text.preferred-height + 16px;
+                border-radius: Theme.radius;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                out-text := Text {
+                    x: 8px;
+                    y: 8px;
+                    width: parent.width - 16px;
+                    text: entry.text;
+                    color: Theme.text-muted;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
+            }
+        }
+
+        // ── Standalone output block (stray step output, older shape) ─────
+        if entry.kind == "output" : Rectangle {
+            height: solo-text.preferred-height + 12px;
+            border-radius: Theme.radius;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            solo-text := Text {
+                x: 8px;
+                y: 6px;
+                width: parent.width - 16px;
+                text: entry.text;
+                color: Theme.text-muted;
+                font-family: Theme.font-mono;
+                font-size: 11px;
+                wrap: word-wrap;
+                vertical-alignment: top;
+            }
+        }
+
+        // ── Final result ─────────────────────────────────────────────────
+        if entry.kind == "result" : Rectangle {
+            height: result-text.preferred-height + 16px;
+            border-radius: Theme.radius;
+            background: Theme.success.transparentize(0.92);
+
+            HorizontalLayout {
+                padding: 8px;
+                spacing: 8px;
+
+                Text {
+                    width: 13px;
+                    text: "\u{EAB2}";
+                    color: Theme.success;
+                    font-family: "Symbols Nerd Font";
+                    font-size: 11px;
+                    vertical-alignment: top;
+                }
+                result-text := Text {
+                    text: entry.text;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
+            }
+        }
+
+        // ── Error ────────────────────────────────────────────────────────
+        if entry.kind == "error" : Rectangle {
+            height: err-text.preferred-height + 12px;
+            border-radius: Theme.radius;
+            background: Theme.danger.transparentize(0.92);
+
+            HorizontalLayout {
+                padding: 6px;
+                padding-left: 8px;
+                spacing: 8px;
+
+                Text {
+                    width: 13px;
+                    text: "✕";
+                    color: Theme.danger;
+                    font-size: 11px;
+                    vertical-alignment: top;
+                }
+                err-text := Text {
+                    text: entry.text;
+                    color: Theme.danger;
+                    font-size: Theme.font-ui;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
+            }
+        }
+    }
+}
+
+component SessionChip inherits Rectangle {
+    in property <AgentSessionChip> chip;
+    callback selected(int);
+
+    height: 22px;
+    width: chip-label.preferred-width + 30px;
+    border-radius: Theme.radius-pill;
+    background: chip.selected ? Theme.fill : (chip-touch.has-hover ? Theme.fill-muted : transparent);
+    border-width: 1px;
+    border-color: chip.selected ? Theme.border : transparent;
+
+    HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 9px;
+        spacing: 6px;
+        alignment: center;
+
+        StatusGlyph {
+            status: chip.status;
+            width: 9px;
+            font-size: 9px;
+        }
+        chip-label := Text {
+            text: chip.title;
+            color: chip.selected ? Theme.text-primary : Theme.text-muted;
+            font-size: 10px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    chip-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.selected(chip.id); }
+    }
+}
+
+// Suggestion chip on the empty state: one click stages the prompt.
+component Suggestion inherits Rectangle {
+    in property <string> label;
+    callback picked(string);
+
+    height: 24px;
+    width: sug-text.preferred-width + 20px;
+    border-radius: Theme.radius-pill;
+    background: sug-touch.has-hover ? Theme.fill : Theme.fill-muted;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    sug-text := Text {
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    sug-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(root.label); }
+    }
+}
+
+// File chip in the context strip: click opens the file in the editor.
+component FileChip inherits Rectangle {
+    in property <string> path;
+    callback open(string);
+
+    height: 20px;
+    min-width: file-text.preferred-width + 20px;
+    max-width: 240px;
+    border-radius: Theme.radius;
+    background: file-touch.has-hover ? Theme.fill : Theme.fill-muted;
+
+    file-text := Text {
+        x: 8px;
+        text: root.path;
+        color: Theme.text-secondary;
+        font-family: Theme.font-mono;
+        font-size: 10px;
+        vertical-alignment: center;
+        overflow: elide;
+        width: parent.width - 12px;
+    }
+
+    file-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(root.path); }
+    }
+}
+
+export component AgentConversation inherits Rectangle {
+    // ── Transcript state ─────────────────────────────────────────────────
+    in property <[AgentEntry]> entries;
+    in property <[AgentSessionChip]> sessions;
+    in property <bool> running: false;
+    in property <int> entry-count: 0;
+    in property <string> phase: "ready";
+    in property <string> phase-detail: "";
+    in property <string> approval-summary: "";
+    in property <[string]> files;
+    in property <int> turns-left: 0;
+    in property <int> turns-total: 12;
+
+    // ── Composer state ───────────────────────────────────────────────────
+    in-out property <string> prompt;
+    in property <[string]> attachments;
+    in property <PickerChoice> provider;
+    in property <[PickerChoice]> provider-choices;
+    in property <PickerChoice> model;
+    in property <[PickerChoice]> model-choices;
+    in property <bool> reasoning-supported: false;
+    in property <string> reasoning-label: "";
+    in property <[PickerChoice]> reasoning-choices;
+    in property <string> send-blocked-reason: "";
+
+    // ── Callbacks ────────────────────────────────────────────────────────
+    callback submit();
+    callback stop();
+    callback approve();
+    callback decline();
+    callback select-session(int);
+    callback toggle-expanded(int);
+    callback open-file(string);
+    callback provider-selected(string);
+    callback model-changed(string);
+    callback reasoning-changed(string);
+    callback attach-active-buffer();
+    callback attach-file();
+    callback attach-remove(int);
+    callback manage-providers();
+
+    background: Theme.surface-panel;
+
+    // Auto-scroll: follow the tail while the user sits near the bottom.
+    property <bool> follow: true;
+
+    function reveal-latest() {
+        scroll.content-y = scroll.content-height - feed.preferred-height;
+    }
+
+    public function jump-to-latest() {
+        root.follow = true;
+        root.reveal-latest();
+    }
+
+    VerticalLayout {
+
+    // ── Header ───────────────────────────────────────────────────────
+    HorizontalLayout {
+        ToolWindowHeader {
+            horizontal-stretch: 1;
+            title: "Agent";
+            glyph: "\u{EC20}";
+            status-text: root.phase-detail != "" ? root.phase-detail : root.phase;
+            status-tint: root.phase == "working" ? Theme.accent
+                : root.phase == "waiting-approval" ? Theme.warning
+                : root.phase == "failed" ? Theme.danger
+                : root.phase == "completed" || root.phase == "stopped" ? Theme.success
+                : Theme.success;
+        }
+
+        IconButton {
+            y: (parent.height - self.height) / 2;
+            glyph: "\u{F0493}";
+            symbol: true;
+            clicked => { root.manage-providers(); }
+        }
+    }
+
+    // ── Session chips (only when there is history) ───────────────────
+    if root.sessions.length > 1 : Rectangle {
+        height: 30px;
+
+        Rectangle {
+            y: parent.height - 1px;
+            height: 1px;
+            background: Theme.border;
+        }
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 6px;
+            alignment: start;
+            for chip in root.sessions : SessionChip {
+                chip: chip;
+                selected(id) => { root.select-session(id); }
+            }
+        }
+    }
+
+    // ── Approval card: the parked action, first-class ────────────────
+    if root.approval-summary != "" : Rectangle {
+        background: Theme.warning.transparentize(0.93);
+
+        Rectangle {
+            y: parent.height - 1px;
+            height: 1px;
+            background: Theme.warning;
+        }
+        Rectangle {
+            y: 0;
+            height: 1px;
+            background: Theme.warning;
+        }
+
+        VerticalLayout {
+            padding: 10px;
+            spacing: 8px;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    width: 13px;
+                    text: "⏸";
+                    color: Theme.warning;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: "The agent wants to run a command";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-ui;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                height: summary-text.preferred-height + 14px;
+                border-radius: Theme.radius;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                summary-text := Text {
+                    x: 8px;
+                    y: 7px;
+                    width: parent.width - 16px;
+                    text: root.approval-summary;
+                    color: Theme.text-primary;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+
+                Rectangle {
+                    width: decline-text.preferred-width + 24px;
+                    height: 24px;
+                    border-radius: Theme.radius;
+                    background: decline-touch.has-hover ? Theme.danger.transparentize(0.85) : transparent;
+                    border-width: 1px;
+                    border-color: Theme.danger;
+                    decline-text := Text {
+                        text: "Decline";
+                        color: Theme.danger;
+                        font-size: Theme.font-small;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    decline-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.decline(); }
+                    }
+                }
+
+                Rectangle {
+                    width: approve-text.preferred-width + 24px;
+                    height: 24px;
+                    border-radius: Theme.radius;
+                    background: approve-touch.has-hover ? Theme.success.darker(0.15) : Theme.success;
+                    approve-text := Text {
+                        text: "Approve";
+                        color: white;
+                        font-size: Theme.font-small;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    approve-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.approve(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Transcript ───────────────────────────────────────────────────
+    Rectangle {
+        horizontal-stretch: 1;
+        vertical-stretch: 1;
+
+        scroll := ScrollView {
+            width: 100%;
+            height: 100%;
+
+            feed := VerticalLayout {
+                padding: 10px;
+                padding-bottom: 18px;
+                spacing: 8px;
+
+                if root.entry-count == 0 : VerticalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    padding-top: 32px;
+                    Text {
+                        text: "\u{EC20}";
+                        color: Theme.text-faint;
+                        font-family: "Symbols Nerd Font";
+                        font-size: 26px;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Ask the agent to work alongside you";
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-ui;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        width: root.width - 48px;
+                        x: 24px;
+                        text: "It can read the active buffer, inspect diagnostics, and run editor commands. Mutating commands pause for your approval.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                    }
+
+                    VerticalLayout {
+                        padding-top: 12px;
+                        spacing: 6px;
+                        alignment: start;
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Suggestion {
+                                label: "Explain the active buffer";
+                                picked(l) => { root.prompt = l; }
+                            }
+                            Suggestion {
+                                label: "Fix the diagnostics in this file";
+                                picked(l) => { root.prompt = l; }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Suggestion {
+                                label: "Run the build and summarize failures";
+                                picked(l) => { root.prompt = l; }
+                            }
+                        }
+                    }
+                }
+
+                for entry[i] in root.entries : EntryRow {
+                    entry: entry;
+                    toggle(idx) => { root.toggle-expanded(idx); }
+                }
+            }
+
+            changed content-y => {
+                root.follow = self.content-y >= Math.min(0px, scroll.content-height - feed.preferred-height) + 24px;
+            }
+        }
+
+        // Return-to-latest affordance while reading history mid-run.
+        if !root.follow && root.running : Rectangle {
+            x: (parent.width - 92px) / 2;
+            y: parent.height - 30px;
+            width: 92px;
+            height: 22px;
+            border-radius: Theme.radius-pill;
+            background: Theme.fill-strong;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 6px;
+            drop-shadow-color: #00000044;
+
+            Text {
+                text: "↓ latest";
+                color: Theme.text-primary;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.jump-to-latest(); }
+            }
+        }
+    }
+
+    // ── Context strip: files the agent touched ───────────────────────
+    if root.files.length > 0 : Rectangle {
+        background: Theme.chrome;
+
+        Rectangle {
+            y: 0;
+            height: 1px;
+            background: Theme.border;
+        }
+
+        VerticalLayout {
+            spacing: 4px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 6px;
+                Text {
+                    text: "Files opened";
+                    color: Theme.text-faint;
+                    font-size: 10px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.files.length;
+                    color: Theme.text-faint;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 6px;
+                alignment: start;
+                for path in root.files : FileChip {
+                    path: path;
+                    open(p) => { root.open-file(p); }
+                }
+            }
+        }
+    }
+
+    // ── Composer ─────────────────────────────────────────────────────
+    AgentComposer {
+        prompt <=> root.prompt;
+        attachments: root.attachments;
+        running: root.running;
+        send-enabled: root.running == false;
+        send-blocked-reason: root.send-blocked-reason;
+        provider: root.provider;
+        provider-choices: root.provider-choices;
+        model: root.model;
+        model-choices: root.model-choices;
+        reasoning-supported: root.reasoning-supported;
+        reasoning-label: root.reasoning-label;
+        reasoning-choices: root.reasoning-choices;
+        turns-left: root.turns-left;
+        turns-total: root.turns-total;
+
+        submit => {
+            root.follow = true;
+            root.submit();
+        }
+        stop => { root.stop(); }
+        provider-selected(id) => { root.provider-selected(id); }
+        model-changed(id) => { root.model-changed(id); }
+        reasoning-changed(v) => { root.reasoning-changed(v); }
+        attach-active-buffer => { root.attach-active-buffer(); }
+        attach-file => { root.attach-file(); }
+        attach-remove(i) => { root.attach-remove(i); }
+    }    }
+
+    changed entry-count => {
+        if root.follow {
+            root.reveal-latest();
+        }
+    }
+}

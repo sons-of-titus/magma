@@ -1,0 +1,460 @@
+import { Theme } from "../theme.slint";
+import { SectionLabel } from "controls.slint";
+import { ScrollView } from "std-widgets.slint";
+
+// The message composer: a full-size multiline editor with a structured
+// toolbar — provider switch, model picker, capability-gated reasoning
+// picker, context attachments, and the send/stop control.
+
+export struct PickerChoice {
+    id: string,
+    label: string,
+    hint: string,
+}
+
+// Two-line dropdown rows carrying ids separate from display text, so the
+// UI never has to reverse-map labels.
+component ChoiceButton inherits Rectangle {
+    in property <string> label;
+    in property <string> title;      // toolbar prefix, e.g. "Model"
+    in property <bool> enabled: true;
+    in property <length> min-w: 0px;
+    callback open();
+
+    height: 24px;
+    width: max(root.min-w, value-text.preferred-width + (root.title == "" ? 30px : 46px));
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.selection : Theme.border;
+    background: touch.pressed ? Theme.fill-muted : (touch.has-hover ? Theme.fill : Theme.surface);
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        spacing: 5px;
+        alignment: center;
+
+        if root.title != "" : Text {
+            text: root.title;
+            color: Theme.text-faint;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+
+        value-text := Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Rectangle { horizontal-stretch: 0; }
+
+        Text {
+            text: "▾";
+            color: Theme.text-muted;
+            font-size: 9px;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.open(); }
+    }
+}
+
+// A popup anchored above the toolbar (the composer sits at the dock's
+// bottom edge, so menus must grow upward).
+component UpPopup inherits PopupWindow {
+    in property <[PickerChoice]> choices;
+    in property <string> current-id;
+    in property <length> popup-height: min(root.choices.length * 30px + 10px, 250px);
+    in property <length> popup-width: 230px;
+    callback selected(string);
+    callback dismiss();
+
+    x: 0;
+    y: -root.popup-height - 6px;
+    width: root.popup-width;
+    height: root.popup-height;
+
+    Rectangle {
+        background: Theme.chrome;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000066;
+        drop-shadow-offset-y: -3px;
+
+        backdrop := TouchArea { clicked => { root.dismiss(); } }
+
+        ScrollView {
+            VerticalLayout {
+                padding: 4px;
+                spacing: 1px;
+
+                for choice in root.choices : Rectangle {
+                    height: 28px;
+                    border-radius: 2px;
+                    background: row-touch.has-hover ? Theme.fill
+                        : (choice.id == root.current-id ? Theme.selection : transparent);
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        alignment: center;
+
+                        VerticalLayout {
+                            spacing: 0px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: choice.label;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            if choice.hint != "" : Text {
+                                text: choice.hint;
+                                color: Theme.text-faint;
+                                font-size: 9px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        if choice.id == root.current-id : Text {
+                            text: "\u{EAB2}";
+                            color: Theme.accent;
+                            font-family: "Symbols Nerd Font";
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    row-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.selected(choice.id); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component AgentComposer inherits Rectangle {
+    // ── State ────────────────────────────────────────────────────────────
+    in-out property <string> prompt;
+    in property <[string]> attachments;
+    in property <bool> running: false;
+    in property <bool> send-enabled: true;
+    in property <string> send-blocked-reason: "";
+    in property <PickerChoice> provider;
+    in property <[PickerChoice]> provider-choices;
+    in property <PickerChoice> model;
+    in property <[PickerChoice]> model-choices;
+    in property <bool> reasoning-supported: false;
+    in property <string> reasoning-label: "";
+    in property <[PickerChoice]> reasoning-choices;
+    in property <int> turns-left: 0;
+    in property <int> turns-total: 12;
+
+    // ── Callbacks ────────────────────────────────────────────────────────
+    callback submit();
+    callback stop();
+    callback provider-selected(string);
+    callback model-changed(string);
+    callback reasoning-changed(string);
+    callback attach-active-buffer();
+    callback attach-file();
+    callback attach-remove(int);
+    callback manage-providers();
+
+    background: Theme.chrome;
+
+
+    VerticalLayout {
+        padding: 10px;
+        padding-top: 8px;
+        spacing: 6px;
+
+        // ── Context strip: attachments + add menu ────────────────────────
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            for att[a] in root.attachments : Rectangle {
+                height: 20px;
+                width: att-text.preferred-width + 26px;
+                border-radius: Theme.radius;
+                background: Theme.fill-muted;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 4px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    att-text := Text {
+                        text: att;
+                        color: Theme.text-secondary;
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        width: 12px;
+                        text: "✕";
+                        color: att-x.has-hover ? Theme.danger : Theme.text-faint;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        att-x := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.attach-remove(a); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: add-text.preferred-width + 20px;
+                height: 20px;
+                border-radius: Theme.radius;
+                background: add-touch.has-hover ? Theme.fill : transparent;
+                border-width: 1px;
+                border-color: add-touch.has-hover ? Theme.border : transparent;
+                add-text := Text {
+                    x: 10px;
+                    text: "+ Add context";
+                    color: Theme.text-muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+                add-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { attach-popup.show(); }
+                }
+
+                attach-popup := PopupWindow {
+                    x: 0;
+                    y: -78px;
+                    width: 190px;
+                    height: 72px;
+                    close-policy: close-on-click-outside;
+
+                    Rectangle {
+                        background: Theme.chrome;
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        drop-shadow-blur: 10px;
+                        drop-shadow-color: #00000066;
+                        drop-shadow-offset-y: -3px;
+
+                        VerticalLayout {
+                            padding: 4px;
+                            spacing: 1px;
+
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 2px;
+                                background: buf-touch.has-hover ? Theme.fill : transparent;
+                                Text {
+                                    x: 8px;
+                                    text: "Attach active buffer";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-small;
+                                    vertical-alignment: center;
+                                }
+                                buf-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        attach-popup.close();
+                                        root.attach-active-buffer();
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 2px;
+                                background: file-touch.has-hover ? Theme.fill : transparent;
+                                Text {
+                                    x: 8px;
+                                    text: "Attach file…";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-small;
+                                    vertical-alignment: center;
+                                }
+                                file-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        attach-popup.close();
+                                        root.attach-file();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+        }
+
+        // ── Multiline prompt ─────────────────────────────────────────────
+        Rectangle {
+            height: min(max(prompt-input.preferred-height + 18px, 100px), 260px);
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: prompt-input.has-focus ? Theme.accent : Theme.border;
+            background: Theme.surface;
+
+            prompt-input := TextInput {
+                x: 10px;
+                y: 9px;
+                width: parent.width - 20px;
+                text <=> root.prompt;
+                color: Theme.text-primary;
+                font-size: Theme.font-ui;
+                wrap: word-wrap;
+                single-line: false;
+
+                key-pressed(e) => {
+                    if e.text == "\n" && !e.modifiers.shift {
+                        root.submit();
+                        accept
+                    } else {
+                        reject
+                    }
+                }
+            }
+
+            if root.prompt == "" && !prompt-input.has-focus : Text {
+                x: 10px;
+                y: 9px;
+                width: parent.width - 20px;
+                text: root.send-blocked-reason != ""
+                    ? root.send-blocked-reason
+                    : "Describe a task — paste code, give multi-step instructions…";
+                color: Theme.text-faint;
+                font-size: Theme.font-ui;
+                wrap: word-wrap;
+            }
+        }
+
+        // ── Toolbar ──────────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            ChoiceButton {
+                title: "";
+                label: root.provider.label;
+                open => { provider-popup.show(); }
+
+                provider-popup := UpPopup {
+                    choices: root.provider-choices;
+                    current-id: root.provider.id;
+                    popup-width: 200px;
+                    selected(id) => {
+                        provider-popup.close();
+                        root.provider-selected(id);
+                    }
+                    dismiss => { provider-popup.close(); }
+                }
+            }
+
+            ChoiceButton {
+                title: "Model";
+                label: root.model.label;
+                enabled: root.model-choices.length > 0;
+                min-w: 110px;
+                open => { model-popup.show(); }
+
+                model-popup := UpPopup {
+                    choices: root.model-choices;
+                    current-id: root.model.id;
+                    popup-width: 250px;
+                    selected(id) => {
+                        model-popup.close();
+                        root.model-changed(id);
+                    }
+                    dismiss => { model-popup.close(); }
+                }
+            }
+
+            ChoiceButton {
+                title: "Reasoning";
+                label: root.reasoning-label;
+                visible: root.reasoning-supported;
+                open => { reasoning-popup.show(); }
+
+                reasoning-popup := UpPopup {
+                    choices: root.reasoning-choices;
+                    current-id: root.reasoning-label;
+                    popup-width: 190px;
+                    selected(id) => {
+                        reasoning-popup.close();
+                        root.reasoning-changed(id);
+                    }
+                    dismiss => { reasoning-popup.close(); }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Text {
+                text: root.turns-left + "/" + root.turns-total;
+                color: Theme.text-faint;
+                font-size: 10px;
+                font-family: Theme.font-mono;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: root.running ? 74px : 64px;
+                height: 26px;
+                border-radius: Theme.radius;
+                background: root.running
+                    ? (stop-touch.has-hover ? Theme.danger.darker(0.15) : Theme.danger)
+                    : (!root.send-enabled
+                        ? Theme.fill-muted
+                        : (send-touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent));
+
+                Text {
+                    text: root.running ? "■ Stop" : "Send";
+                    color: root.running ? white
+                        : (!root.send-enabled ? Theme.text-faint : white);
+                    font-size: Theme.font-small;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                stop-touch := TouchArea {
+                    visible: root.running;
+                    enabled: root.running;
+                    mouse-cursor: pointer;
+                    clicked => { root.stop(); }
+                }
+                send-touch := TouchArea {
+                    visible: !root.running;
+                    enabled: root.send-enabled && root.prompt != "";
+                    mouse-cursor: root.send-enabled && root.prompt != "" ? pointer : default;
+                    clicked => { root.submit(); }
+                }
+            }
+        }
+    }
+}

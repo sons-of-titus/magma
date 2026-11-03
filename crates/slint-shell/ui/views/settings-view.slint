@@ -142,17 +142,12 @@ export component SettingsView inherits Rectangle {
     in property <[SettingsRow]> rows;
     in property <[PluginRow]> plugin-rows;
     in property <[string]> available-fonts;
-    in property <[string]> agent-models;
-    in property <bool> agent-configured: false;
     in-out property <int> settings-category: 0;
     in-out property <string> settings-app-font-name: "";
     in-out property <int> settings-app-font-size: 12;
     in-out property <string> settings-editor-font-name: "";
     in-out property <int> settings-editor-font-size: 15;
     in-out property <bool> settings-ligatures: false;
-    in-out property <string> settings-agent-provider: "openai";
-    in-out property <string> settings-agent-token: "";
-    in-out property <string> settings-agent-model: "";
     in-out property <string> settings-search: "";
 
     callback set-option(string, string);
@@ -162,7 +157,6 @@ export component SettingsView inherits Rectangle {
     callback search-changed();
     callback select-category(int);
     callback apply-font-settings();
-    callback apply-agent-settings();
     callback close();
     callback command(string);
 
@@ -484,52 +478,12 @@ export component SettingsView inherits Rectangle {
                             reset(n) => { root.reset-option(n); }
                         }
 
-                        SectionLabel { text: "CONNECTION"; }
-                        HorizontalLayout {
-                            spacing: 12px;
-                            alignment: start;
-                            Text {
-                                width: 56px;
-                                text: "Model";
-                                color: Theme.text-secondary;
-                                font-size: Theme.font-ui;
-                                vertical-alignment: center;
-                            }
-                            Picker {
-                                choices: root.agent-models;
-                                current-value <=> root.settings-agent-model;
-                                min-w: 180px;
-                                horizontal-stretch: 1;
-                                changed => { root.apply-agent-settings(); }
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 12px;
-                            alignment: start;
-                            Text {
-                                width: 56px;
-                                text: "API key";
-                                color: Theme.text-secondary;
-                                font-size: Theme.font-ui;
-                                vertical-alignment: center;
-                            }
-                            Field {
-                                width: 240px;
-                                placeholder: root.agent-configured ? "key saved — paste to replace" : "paste API key";
-                                text <=> root.settings-agent-token;
-                                accepted => { root.apply-agent-settings(); }
-                            }
-                            Button {
-                                label: "Save";
-                                primary: true;
-                                clicked => { root.apply-agent-settings(); }
-                            }
-                        }
+                        SectionLabel { text: "PROVIDERS"; }
                         Text {
-                            text: root.agent-configured ? "✓ API key configured for " + root.settings-agent-provider
-                                                       : "No API key — the agent falls back to the built-in planner.";
-                            color: root.agent-configured ? Theme.success : Theme.text-muted;
+                            text: "Connect, switch, and disconnect AI providers in the Agent panel — open it from the right-hand tool rail. Credentials are stored in the system keychain.";
+                            color: Theme.text-muted;
                             font-size: Theme.font-small;
+                            wrap: word-wrap;
                         }
                     }
 

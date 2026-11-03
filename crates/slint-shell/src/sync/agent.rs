@@ -1,10 +1,12 @@
-//! Agent tool-window + dialog/settings sync for the refresh pass.
+//! Agent tool-window sync for the refresh pass: transcript, connections,
+//! onboarding state, and composer controls.
 
 use slint::{ModelRc, VecModel};
 
 use crate::{AppState, AppWindow, projection};
 
 pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
+    let attachment_labels = projection::attachment_labels(state);
     let ed = &mut state.editor;
     app.set_agent_open(state.agent_open);
     app.set_agent_entries(ModelRc::new(VecModel::from(projection::agent_entries(
@@ -29,45 +31,43 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             .map(Into::into)
             .collect::<Vec<slint::SharedString>>(),
     )));
-    app.set_agent_configured(kernel::agent::llm::LlmConfig::is_configured(&ed.options));
-    app.set_agent_providers(ModelRc::new(VecModel::from(
-        kernel::agent::llm::PROVIDER_NAMES
-            .iter()
-            .map(|p| slint::SharedString::from(*p))
-            .collect::<Vec<_>>(),
+
+    // Model catalogs for connected providers refresh lazily; the dock being
+    // open is the trigger (the fetch is guarded against duplication).
+    if state.agent_open {
+        kernel::agent::connections::ensure_catalogs(ed);
+    }
+
+    // ── Connections + onboarding ─────────────────────────────────────────
+    app.set_agent_connected(ed.agent_connections.any_connected());
+    app.set_agent_provider_cards(ModelRc::new(VecModel::from(
+        projection::provider_cards(ed),
     )));
-    // Sync a provider chosen in the dock back into the options (mid-chat
-    // switch keeps the running session's history).
-    let app_prov = app.get_agent_provider().to_string();
-    if !app_prov.trim().is_empty()
-        && ed.options.get("agent.provider").map(|s| s.as_str()) != Some(app_prov.as_str())
-    {
-        ed.options.insert("agent.provider".into(), app_prov.clone());
-    }
-    let prov = ed
-        .options
-        .get("agent.provider")
-        .cloned()
-        .unwrap_or_else(|| "openai".into());
-    app.set_agent_provider(prov.clone().into());
-    // Same for the model: LlmConfig is re-read on every turn.
-    let app_model = app.get_agent_model().to_string();
-    if !app_model.trim().is_empty()
-        && ed.options.get("agent.model").map(|s| s.as_str()) != Some(app_model.as_str())
-    {
-        ed.options.insert("agent.model".into(), app_model.clone());
-    }
-    let model_now = ed
-        .options
-        .get("agent.model")
-        .cloned()
-        .unwrap_or_else(|| "gpt-4o-mini".into());
-    app.set_agent_model(model_now.into());
-    let models: Vec<slint::SharedString> = kernel::agent::llm::models_for_provider(&prov)
-        .iter()
-        .map(|m| (*m).into())
-        .collect();
-    app.set_agent_models(ModelRc::new(VecModel::from(models)));
+    let (auth_active, auth) = projection::auth_panel(ed);
+    app.set_agent_auth_active(auth_active);
+    app.set_agent_auth(auth);
+
+    // ── Composer ─────────────────────────────────────────────────────────
+    app.set_agent_attachments(ModelRc::new(VecModel::from(
+        attachment_labels
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<slint::SharedString>>(),
+    )));
+    app.set_agent_provider_choice(projection::active_provider_choice(ed));
+    app.set_agent_provider_choices(ModelRc::new(VecModel::from(
+        projection::provider_choices(ed),
+    )));
+    app.set_agent_model_choice(projection::active_model_choice(ed));
+    app.set_agent_model_choices(ModelRc::new(VecModel::from(projection::model_choices(
+        ed,
+    ))));
+    app.set_agent_reasoning_supported(projection::reasoning_supported(ed));
+    app.set_agent_reasoning_label(projection::reasoning_label(ed).into());
+    app.set_agent_reasoning_choices(ModelRc::new(VecModel::from(
+        projection::reasoning_choices(ed),
+    )));
+    app.set_agent_send_blocked_reason(projection::send_blocked_reason(ed).into());
 
     // ── Dialog sync ────────────────────────────────────────────────────────
     // The unsaved-changes dialog projects the live dirty set: buffers that

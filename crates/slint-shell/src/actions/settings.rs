@@ -14,10 +14,9 @@ use crate::{AppState, AppWindow, sync::refresh};
 
 // Settings information architecture.  Categories beyond the option
 // registry's own are the Plugins page (registry options + per-plugin
-// toggles), the Agent page (provider, key, model), and Advanced (raw
-// custom options).
+// toggles), the Agent page (behavior options; provider connections live in
+// the Agent panel), and Advanced (raw custom options).
 pub(super) const CATEGORY_APPEARANCE: i32 = 0;
-pub(super) const CATEGORY_AGENT: i32 = 4;
 
 /// The highest valid settings category — keep in sync with the view's
 /// sidebar and page branches.
@@ -49,49 +48,6 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                     ligatures,
                 },
             );
-        });
-    }
-    {
-        let state = Rc::clone(&state);
-        let weak = app.as_weak();
-        app.on_apply_agent_settings(move || {
-            let Some(app) = weak.upgrade() else {
-                return;
-            };
-            let provider = app.get_settings_agent_provider().to_string();
-            let token = app.get_settings_agent_token().to_string();
-            let model = app.get_settings_agent_model().to_string();
-            let mut s = state.borrow_mut();
-            let mut changed = false;
-            if !provider.trim().is_empty() {
-                s.editor
-                    .options
-                    .insert("agent.provider".into(), provider.clone());
-                changed = true;
-            }
-            if !token.trim().is_empty() {
-                s.editor
-                    .options
-                    .insert(format!("agent.api-key.{}", provider), token);
-                changed = true;
-            }
-            if !model.trim().is_empty() {
-                s.editor.options.insert("agent.model".into(), model);
-                changed = true;
-            }
-            if changed {
-                persist::save_settings(&s.editor);
-            }
-            s.message =
-                if changed && kernel::agent::llm::LlmConfig::is_configured(&s.editor.options) {
-                    "agent settings saved".into()
-                } else if changed {
-                    "agent settings saved — still missing an API key".into()
-                } else {
-                    "nothing to save".into()
-                };
-            s.editor.frame_dirty = true;
-            refresh(&weak, &mut s);
         });
     }
     {
@@ -213,28 +169,6 @@ pub(super) fn open(weak: &slint::Weak<AppWindow>, s: &mut AppState, category: i3
     a.set_settings_editor_font_name(s.editor.font_config.family.clone().into());
     a.set_settings_editor_font_size(s.editor.font_config.size as i32);
     a.set_settings_ligatures(s.editor.font_config.ligatures);
-    let prov = s
-        .editor
-        .options
-        .get("agent.provider")
-        .cloned()
-        .unwrap_or_else(|| "openai".into());
-    a.set_settings_agent_provider(prov.clone().into());
-    let token = s
-        .editor
-        .options
-        .get(&format!("agent.api-key.{}", prov))
-        .cloned()
-        .or_else(|| s.editor.options.get("agent.api-key").cloned())
-        .unwrap_or_default();
-    a.set_settings_agent_token(token.into());
-    let model = s
-        .editor
-        .options
-        .get("agent.model")
-        .cloned()
-        .unwrap_or_default();
-    a.set_settings_agent_model(model.into());
     let fonts: Vec<slint::SharedString> = collect_available_fonts(&s.editor, &s.app_font_name)
         .into_iter()
         .map(Into::into)

@@ -8,7 +8,9 @@
 //! Falls back to a solid-white atlas if the font bytes fail to parse, which
 //! preserves the existing placeholder behaviour.
 
-use ab_glyph::{Font as _, FontRef, PxScale, ScaleFont as _};
+use ab_glyph::{
+    Font as _, FontRef, Glyph, GlyphId, OutlinedGlyph, PxScale, PxScaleFactor, ScaleFont as _,
+};
 
 use super::gpu_atlas::{ATLAS_CELL_H, ATLAS_CELL_W};
 
@@ -22,6 +24,43 @@ pub fn rasterize_font_atlas(
     cell_w: u32,
     cell_h: u32,
     cols: u32,
+) -> Vec<u8> {
+    rasterize_grid(font_bytes, font_size, chars, cell_w, cell_h, cols, None)
+}
+
+/// Rasterize `chars` again as an oblique face, in the same cell for cell
+/// layout.  [`oblique::SLOPE`] shears each outline before it is rasterized,
+/// so the coverage belongs to the slanted shape and no glyph can lean by a
+/// different amount than its neighbours.
+///
+/// [`oblique::SLOPE`]: super::oblique::SLOPE
+pub fn rasterize_oblique_atlas(
+    font_bytes: &[u8],
+    font_size: f32,
+    chars: &[char],
+    cell_w: u32,
+    cell_h: u32,
+    cols: u32,
+) -> Vec<u8> {
+    rasterize_grid(
+        font_bytes,
+        font_size,
+        chars,
+        cell_w,
+        cell_h,
+        cols,
+        Some(super::oblique::SLOPE),
+    )
+}
+
+fn rasterize_grid(
+    font_bytes: &[u8],
+    font_size: f32,
+    chars: &[char],
+    cell_w: u32,
+    cell_h: u32,
+    cols: u32,
+    oblique: Option<f32>,
 ) -> Vec<u8> {
     let rows = (chars.len() as u32).div_ceil(cols);
     let width = cols * cell_w;
@@ -39,6 +78,12 @@ pub fn rasterize_font_atlas(
     let scale = PxScale::from(font_size);
     let scaled = font.as_scaled(scale);
     let ascent = scaled.ascent();
+    let scale_factor = scaled.scale_factor();
+    // The shear pivots on the middle of the font's vertical metrics.  An
+    // oblique swings as far right above the pivot as it swings left below
+    // it, so a pivot there splits the overhang between the top of the cell
+    // and the bottom instead of spending it all on the top.
+    let pivot = (font.ascent_unscaled() + font.descent_unscaled()) / 2.0;
 
     for (i, &ch) in chars.iter().enumerate() {
         let col = (i as u32) % cols;
@@ -61,7 +106,7 @@ pub fn rasterize_font_atlas(
             scale,
             ab_glyph::point(cell_x as f32 + h_offset, cell_y as f32 + ascent),
         );
-        let Some(outlined) = font.outline_glyph(glyph) else {
+        let Some(outlined) = outline(&font, glyph_id, glyph, oblique, pivot, scale_factor) else {
             continue;
         };
 
@@ -95,6 +140,25 @@ pub fn rasterize_font_atlas(
         });
     }
     pixels
+}
+
+/// The glyph's outline at its scaled position, sheared when an oblique slant
+/// is asked for.  Shearing the raw outline rather than the rasterized cell
+/// keeps the coverage analytic: the rasterizer sees the slanted curves.
+fn outline(
+    font: &FontRef,
+    id: GlyphId,
+    glyph: Glyph,
+    oblique: Option<f32>,
+    pivot: f32,
+    scale_factor: PxScaleFactor,
+) -> Option<OutlinedGlyph> {
+    let Some(slope) = oblique else {
+        return font.outline_glyph(glyph);
+    };
+    let mut raw = font.outline(id)?;
+    super::oblique::shear(&mut raw, slope, pivot);
+    Some(OutlinedGlyph::new(glyph, raw, scale_factor))
 }
 
 /// Fill one atlas cell with solid white (used to guarantee a white pixel for

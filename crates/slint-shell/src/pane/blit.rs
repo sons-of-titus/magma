@@ -92,10 +92,7 @@ pub fn blit_rgba(
             let glyph = if cell.ch == ' ' || cell.ch.is_control() {
                 None
             } else {
-                atlas
-                    .glyphs
-                    .get(&cell.ch)
-                    .or_else(|| atlas.glyphs.get(&'\u{25A1}'))
+                atlas.uv_for(cell.ch, cell.style.italic)
             };
 
             let x0 = cx as u32 * cell_w;
@@ -111,7 +108,7 @@ pub fn blit_rgba(
                             o[3] = 255;
                         }
                     }
-                    Some(uv) if uv.w == cell_w && uv.h == cell_h && !cell.style.italic => {
+                    Some(uv) if uv.w == cell_w && uv.h == cell_h => {
                         // Atlas cell == screen cell: a direct texel row copy.
                         let src_row = (((uv.y + py) * aw + uv.x) * 4 + 3) as usize;
                         // SAFETY: out has cell_w*4 bytes and the atlas range is in bounds.
@@ -142,21 +139,12 @@ pub fn blit_rgba(
                         }
                     }
                     Some(uv) => {
-                        // Italic fakes the oblique by shearing the sample:
-                        // the top of the cell reads ink from further left,
-                        // which slants the glyph forward without a second
-                        // rasterization of the face.
+                        // A cell rasterized at a different size than the
+                        // screen's is box-filtered down to the screen grid.
+                        // Slant is not applied here: an italic cell is
+                        // already sheared in the atlas.
                         for (px, o) in out.chunks_exact_mut(4).enumerate() {
-                            let alpha = if cell.style.italic {
-                                let shift = ((cell_h - 1 - py) / 4).min(cell_w - 1);
-                                if (px as u32) < shift {
-                                    0
-                                } else {
-                                    glyph_alpha(atlas, uv, px as u32 - shift, py, cell_w, cell_h)
-                                }
-                            } else {
-                                glyph_alpha(atlas, uv, px as u32, py, cell_w, cell_h)
-                            };
+                            let alpha = glyph_alpha(atlas, &uv, px as u32, py, cell_w, cell_h);
                             o[0] = blend(fr, br, alpha);
                             o[1] = blend(fg, bg, alpha);
                             o[2] = blend(fb, bb, alpha);
@@ -514,11 +502,7 @@ pub fn blit_terminal_rgba(
                 if ch == ' ' || ch.is_control() {
                     continue;
                 }
-                let Some(uv) = atlas
-                    .glyphs
-                    .get(&ch)
-                    .or_else(|| atlas.glyphs.get(&'\u{25A1}'))
-                else {
+                let Some(uv) = atlas.uv_for(ch, style.italic) else {
                     continue;
                 };
                 let col = span.start as usize + ci;
@@ -571,7 +555,7 @@ pub fn blit_terminal_rgba(
                         unsafe {
                             let mut dst_ptr = out.as_mut_ptr();
                             for px in 0..cell_w {
-                                let alpha = glyph_alpha(atlas, uv, px, py, cell_w, cell_h);
+                                let alpha = glyph_alpha(atlas, &uv, px, py, cell_w, cell_h);
                                 if alpha != 0 {
                                     *dst_ptr = blend(fr, br, alpha);
                                     *dst_ptr.add(1) = blend(fg, bg, alpha);
@@ -760,6 +744,183 @@ mod tests {
     }
 
     #[test]
+    fn italic_cells_reach_the_pane_texel_for_texel() {
+        // Italic reads the atlas's oblique cell; the blit does not slide a
+        // rasterized upright cell sideways.
+        let (_, ch) = meas();
+        let atlas = atlas_with_font();
+        for glyph in ['m', 'W', 'l'] {
+            let (rgba, w) = cell_pixels(glyph, true);
+            let uv = atlas.uv_for(glyph, true).expect("oblique cell is baked");
+            let baked = (0..ch)
+                .flat_map(|py| (0..w).map(move |px| (px, py)))
+                .filter(|(px, py)| {
+                    atlas.atlas_pixels
+                        [(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4 + 3) as usize]
+                        > 0
+                })
+                .count();
+            let painted = (0..ch * w).filter(|i| rgba[(*i * 4) as usize] > 0).count();
+            assert_eq!(
+                painted, baked,
+                "{glyph:?}: every texel of the oblique cell must land in the pane"
+            );
+        }
+    }
+
+    #[test]
+    fn italic_leans_a_wide_glyph_as_far_as_a_stem() {
+        // The bug this pins: the shear was capped by each row's own blank
+        // margin, so a stem leaned fully while the rows carrying a letter's
+        // wide parts stayed put — letters tore apart at the seam between
+        // strokes, and a full-width glyph did not lean at all.
+        let lean = |glyph: char| {
+            let (roman, w) = cell_pixels(glyph, false);
+            let (italic, _) = cell_pixels(glyph, true);
+            (ink_centre(&italic, w, 3, 6) - ink_centre(&roman, w, 3, 6))
+                - (ink_centre(&italic, w, 9, 12) - ink_centre(&roman, w, 9, 12))
+        };
+        let stem = lean('l');
+        assert!(stem > 0.5, "italic must lean forward: {stem}");
+        for glyph in ['i', 'n', 'a', 'o', 'm', 'W', 'E'] {
+            let slanted = lean(glyph);
+            assert!(slanted > 0.5, "{glyph:?}: italic must lean forward");
+            assert!(
+                (slanted - stem).abs() < 0.45,
+                "{glyph:?} leans {slanted} where a stem leans {stem}: \
+                 a glyph's own ink must not set its slant"
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_italic_cells_use_the_oblique_block() {
+        use kernel::terminal::screen::{Span, Style as TermStyle, StyledLine};
+        let (cw, ch) = meas();
+        let atlas = atlas_with_font();
+        let palette = crate::theme::palette("intellij-dark").terminal;
+        let line = |italic: bool| {
+            vec![StyledLine {
+                text: "l".into(),
+                spans: vec![Span {
+                    start: 0,
+                    len: 1,
+                    style: TermStyle {
+                        italic,
+                        ..Default::default()
+                    },
+                }],
+            }]
+        };
+        let ink = |rgba: &[u8]| {
+            rgba.chunks_exact(4)
+                .filter(|px| px[..3] != [palette.bg.0, palette.bg.1, palette.bg.2])
+                .count()
+        };
+        let (roman, _, _) = blit_terminal_rgba(&line(false), &atlas, 1, 1, cw, ch, &palette, None);
+        let (italic, _, _) = blit_terminal_rgba(&line(true), &atlas, 1, 1, cw, ch, &palette, None);
+
+        let uv = atlas.uv_for('l', true).expect("oblique cell is baked");
+        let baked = (0..ch)
+            .flat_map(|py| (0..cw).map(move |px| (px, py)))
+            .filter(|(px, py)| {
+                atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4 + 3) as usize]
+                    > 0
+            })
+            .count();
+        assert_eq!(ink(&italic), baked, "the oblique cell's texels are the ink");
+        assert_ne!(italic, roman, "SGR italic must move the ink");
+    }
+
+    #[test]
+    #[ignore]
+    fn zz_probe_running_app_geometry() {
+        let bytes = std::env::home_dir()
+            .map(|h| h.join("Library/Fonts/MonacoNerdFontMono-Regular.ttf"))
+            .and_then(|p| std::fs::read(p).ok())
+            .or_else(|| std::fs::read("/Library/Fonts/Monaco.ttf").ok())
+            .or_else(|| std::fs::read("/System/Library/Fonts/Monaco.ttf").ok())
+            .unwrap_or_else(|| FONT.to_vec());
+        let size = 20.0_f32;
+        let ppx = 2.0_f32;
+        let (cw, ch) = crate::pane::measure_cell(&bytes, size);
+        println!("cell logical: {cw}x{ch}  device: {:?}", super::super::cell_size(cw, ch, ppx));
+        let mut atlas = GpuGlyphAtlas::new();
+        atlas.rasterize_for_grid(&bytes, size, ppx, cw, ch);
+        println!("atlas cell: {}x{}", atlas.cell_w, atlas.cell_h);
+        for glyph in ['!', 'E', 'l', 'a', 'M', ';'] {
+            for italic in [false, true] {
+                let mut surface = Surface::new(1, 1);
+                surface.set_cell(
+                    0,
+                    0,
+                    glyph,
+                    Some(Style {
+                        fg: (255, 255, 255),
+                        bg: (0, 0, 0),
+                        italic,
+                        dim: italic,
+                        ..Default::default()
+                    }),
+                );
+                let (rgba, w, h) = blit_rgba(&surface, &atlas, cw, ch, ppx);
+                println!("--- {glyph:?} italic={italic} (w={w} h={h}) ---");
+                for py in 0..h {
+                    let mut row = String::new();
+                    for px in 0..w {
+                        let o = ((py * w + px) * 4) as usize;
+                        if rgba[o] > 120 {
+                            row.push('#');
+                        } else if rgba[o] > 40 {
+                            row.push('+');
+                        } else {
+                            row.push(' ');
+                        }
+                    }
+                    println!("{row}");
+                }
+            }
+        }
+    }
+
+    /// Blit one cell holding `glyph`, returning its pixels and width.
+    fn cell_pixels(glyph: char, italic: bool) -> (Vec<u8>, u32) {
+        let (cw, ch) = meas();
+        let mut surface = Surface::new(1, 1);
+        surface.set_cell(
+            0,
+            0,
+            glyph,
+            Some(Style {
+                fg: (255, 255, 255),
+                bg: (0, 0, 0),
+                italic,
+                ..Default::default()
+            }),
+        );
+        let (rgba, w, _) = blit_rgba(&surface, &atlas_with_font(), cw, ch, 1.0);
+        (rgba, w)
+    }
+
+    /// Coverage-weighted horizontal centre of a cell's ink over rows
+    /// `[from, to)`, sub-pixel so two glyphs can be compared.
+    fn ink_centre(rgba: &[u8], w: u32, from: u32, to: u32) -> f32 {
+        let (mut sum, mut mass) = (0.0f32, 0.0f32);
+        for py in from..to {
+            for px in 0..w {
+                let a = rgba[((py * w + px) * 4) as usize] as f32 / 255.0;
+                sum += px as f32 * a;
+                mass += a;
+            }
+        }
+        sum / mass
+    }
+
+
+
+
+
+    #[test]
     fn underline_paints_the_bottom_row_in_fg() {
         let fg = (255u8, 255, 0);
         let mut surface = Surface::new(1, 1);
@@ -811,40 +972,6 @@ mod tests {
         );
         let bottom = ((h - 1) * w) as usize * 4;
         assert_eq!(&rgba[bottom..bottom + 3], &[0, 0, 0], "no underline was asked for");
-    }
-
-    #[test]
-    fn italic_shears_the_ink_forward() {
-        let first_ink_of_first_ink_row = |italic: bool| {
-            let mut surface = Surface::new(1, 1);
-            surface.set_cell(
-                0,
-                0,
-                'M',
-                Some(Style {
-                    bg: (0, 0, 0),
-                    fg: (255, 255, 255),
-                    italic,
-                    ..Style::default()
-                }),
-            );
-            let atlas = atlas_with_font();
-            let (cw, ch) = meas();
-            let (rgba, w, h) = blit_rgba(&surface, &atlas, cw, ch, 1.0);
-            for py in 0..h {
-                let row = &rgba[(py * w * 4) as usize..((py + 1) * w * 4) as usize];
-                if let Some(px) = (0..w as usize).find(|&px| row[px * 4..px * 4 + 3].iter().any(|&b| b > 0)) {
-                    return (py, px);
-                }
-            }
-            panic!("'M' must have ink");
-        };
-        let (row, upright_px) = first_ink_of_first_ink_row(false);
-        let (_, italic_px) = first_ink_of_first_ink_row(true);
-        assert!(
-            italic_px > upright_px,
-            "the italic glyph's ink at row {row} must start further right ({italic_px} vs {upright_px})"
-        );
     }
 
     #[test]

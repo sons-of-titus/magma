@@ -90,6 +90,140 @@ fn gutter_markers_are_baked_as_geometry_not_font_glyphs() {
     assert!(right <= cw / 2, "no box-fallback ink on the right half");
 }
 
+/// Coverage-weighted horizontal centre of a cell's ink over rows `[from, to)`.
+fn ink_centre(atlas: &GpuGlyphAtlas, ch: char, italic: bool, from: u32, to: u32) -> f32 {
+    let uv = atlas.uv_for(ch, italic).expect("glyph is baked");
+    let (mut sum, mut mass) = (0.0f32, 0.0f32);
+    for py in from..to {
+        for px in 0..uv.w {
+            let a = cell_alpha(atlas, &uv, px, py) as f32 / 255.0;
+            sum += px as f32 * a;
+            mass += a;
+        }
+    }
+    sum / mass
+}
+
+/// Total coverage of a cell: how much ink the glyph carries.
+fn ink_mass(atlas: &GpuGlyphAtlas, ch: char, italic: bool) -> f32 {
+    let uv = atlas.uv_for(ch, italic).expect("glyph is baked");
+    let mut mass = 0.0;
+    for py in 0..uv.h {
+        for px in 0..uv.w {
+            mass += cell_alpha(atlas, &uv, px, py) as f32 / 255.0;
+        }
+    }
+    mass
+}
+
+fn cell_alpha(atlas: &GpuGlyphAtlas, uv: &GlyphUv, px: u32, py: u32) -> u8 {
+    atlas.atlas_pixels[(((uv.y + py) * atlas.atlas_width + uv.x + px) * 4 + 3) as usize]
+}
+
+#[test]
+fn shear_slants_an_outline_about_its_pivot() {
+    use ab_glyph::{Outline, OutlineCurve, Point, Rect};
+    let mut outline = Outline {
+        bounds: Rect {
+            min: Point { x: 0.0, y: 10.0 },
+            max: Point { x: 4.0, y: -2.0 },
+        },
+        curves: vec![OutlineCurve::Line(
+            Point { x: 0.0, y: 5.0 },
+            Point { x: 0.0, y: 10.0 },
+        )],
+    };
+    crate::oblique::shear(&mut outline, 0.5, 5.0);
+
+    let OutlineCurve::Line(foot, tip) = &outline.curves[0] else {
+        panic!("a line stays a line");
+    };
+    assert_eq!((foot.x, foot.y), (0.0, 5.0), "the pivot itself holds still");
+    assert_eq!((tip.x, tip.y), (2.5, 10.0), "height moves ink sideways");
+    // The box has to cover the sheared corners — the top one right of the
+    // upright box, the bottom one left of it.
+    assert_eq!(outline.bounds.min.x, -3.5);
+    assert_eq!(outline.bounds.max.x, 6.5);
+    assert_eq!((outline.bounds.min.y, outline.bounds.max.y), (10.0, -2.0));
+}
+
+#[test]
+fn every_baked_character_has_an_oblique_cell_below_the_roman_block() {
+    let atlas = GpuGlyphAtlas::new();
+    assert_eq!(atlas.glyphs.len(), atlas.glyphs_italic.len());
+    let roman_bottom = atlas.glyphs.values().map(|uv| uv.y + uv.h).max().unwrap();
+    assert_eq!(roman_bottom, atlas.atlas_height / 2, "the blocks split the texture");
+    for (ch, slanted) in &atlas.glyphs_italic {
+        let upright = atlas.glyphs[ch];
+        assert_eq!(
+            (slanted.x, slanted.w, slanted.h),
+            (upright.x, upright.w, upright.h),
+            "{ch:?}: an oblique cell sits in the upright cell's own column"
+        );
+        assert!(
+            slanted.y >= roman_bottom,
+            "{ch:?}: the oblique cell overlaps the roman block"
+        );
+    }
+}
+
+#[test]
+fn every_glyph_leans_by_the_face_s_own_angle() {
+    // Rows 5..8 and 9..12 straddle the shear's pivot, so the distance
+    // between their ink centres is the glyph's lean and not an artefact of
+    // where its own ink happens to sit.  The bug this pins capped each row's
+    // slide by that row's blank margin, which left a full-width letter
+    // upright while a stem leaned: letters tore apart at the seam.
+    let font = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let mut atlas = GpuGlyphAtlas::new();
+    atlas.rasterize(font, 15.0);
+    let lean = |ch: char| {
+        ink_centre(&atlas, ch, true, 5, 8)
+            - ink_centre(&atlas, ch, false, 5, 8)
+            - (ink_centre(&atlas, ch, true, 9, 12) - ink_centre(&atlas, ch, false, 9, 12))
+    };
+    let stem = lean('l');
+    assert!(stem > 0.4, "the oblique must lean forward: {stem}");
+    for ch in ['i', 'n', 'a', 'o', 'm', 'W', 'E'] {
+        let slanted = lean(ch);
+        assert!(slanted > 0.4, "{ch:?}: the oblique must lean forward");
+        assert!(
+            (slanted - stem).abs() < 0.25,
+            "{ch:?} leans {slanted} where a stem leans {stem}: \
+             a glyph's own ink must not set its slant"
+        );
+    }
+}
+
+#[test]
+fn the_oblique_shear_moves_ink_without_eating_it() {
+    // A shear preserves area, so the slanted cell carries the coverage the
+    // upright one does.  A cell that lost a visible share would mean the
+    // glyph ran out of its own cell.
+    let font = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let mut atlas = GpuGlyphAtlas::new();
+    atlas.rasterize(font, 15.0);
+    for ch in ['l', 'i', 'n', 'a', 'o', 'e', 'r', 's', 'm', 'W', 'M', 'g'] {
+        let (upright, slanted) = (ink_mass(&atlas, ch, false), ink_mass(&atlas, ch, true));
+        assert!(
+            (slanted - upright).abs() <= upright * 0.05,
+            "{ch:?}: the oblique cell carries {slanted}, the upright one {upright}"
+        );
+    }
+}
+
+#[test]
+fn a_missing_glyph_falls_back_to_the_box_of_its_own_slant() {
+    let atlas = GpuGlyphAtlas::new();
+    assert_eq!(atlas.uv_for('A', true), atlas.glyphs_italic.get(&'A').copied());
+    assert_eq!(atlas.uv_for('A', false), atlas.glyphs.get(&'A').copied());
+    assert_eq!(
+        atlas.uv_for('漢', true),
+        atlas.glyphs_italic.get(&'\u{25A1}').copied(),
+        "a glyph the face does not draw must lean with the rest of the run"
+    );
+}
+
 #[test]
 fn rasterize_at_ppx_grows_cells_with_the_device_ratio() {
     let font = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");

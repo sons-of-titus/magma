@@ -139,6 +139,9 @@ pub struct RectInstance {
 pub struct GpuGlyphAtlas {
     /// Maps each character to its pixel-space UV cell.
     pub glyphs: HashMap<char, GlyphUv>,
+    /// The same characters as their synthetic oblique twins, in a second
+    /// block of the texture below `glyphs`.
+    pub glyphs_italic: HashMap<char, GlyphUv>,
     /// Total atlas texture width (pixels).
     pub atlas_width: u32,
     /// Total atlas texture height (pixels).
@@ -178,26 +181,28 @@ impl GpuGlyphAtlas {
         // the 331-char set the GPU path had grown to).
         let rows = total.div_ceil(ATLAS_COLS);
         let atlas_width = ATLAS_COLS * cell_w;
-        let atlas_height = rows * cell_h;
+        // Two blocks: the roman glyphs, then their oblique twins.
+        let atlas_height = rows * cell_h * 2;
 
+        let cell = |row: u32, col: u32, block: u32| GlyphUv {
+            x: col * cell_w,
+            y: (block * rows + row) * cell_h,
+            w: cell_w,
+            h: cell_h,
+        };
         let mut glyphs = HashMap::with_capacity(chars.len());
+        let mut glyphs_italic = HashMap::with_capacity(chars.len());
         for (i, ch) in chars.iter().enumerate() {
             let col = (i as u32) % ATLAS_COLS;
             let row = (i as u32) / ATLAS_COLS;
-            glyphs.insert(
-                *ch,
-                GlyphUv {
-                    x: col * cell_w,
-                    y: row * cell_h,
-                    w: cell_w,
-                    h: cell_h,
-                },
-            );
+            glyphs.insert(*ch, cell(row, col, 0));
+            glyphs_italic.insert(*ch, cell(row, col, 1));
         }
 
         let atlas_pixels = vec![255u8; (atlas_width * atlas_height * 4) as usize];
         GpuGlyphAtlas {
             glyphs,
+            glyphs_italic,
             atlas_width,
             atlas_height,
             cell_w,
@@ -212,7 +217,7 @@ impl GpuGlyphAtlas {
     /// Sets `dirty = true` so the GPU texture is re-uploaded next frame.
     pub fn rasterize(&mut self, font_bytes: &[u8], font_size: f32) {
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
-        self.atlas_pixels = crate::gpu_rasterizer::rasterize_font_atlas(
+        let roman = crate::gpu_rasterizer::rasterize_font_atlas(
             font_bytes,
             font_size,
             &chars,
@@ -220,7 +225,32 @@ impl GpuGlyphAtlas {
             self.cell_h,
             ATLAS_COLS,
         );
+        let oblique = crate::gpu_rasterizer::rasterize_oblique_atlas(
+            font_bytes,
+            font_size,
+            &chars,
+            self.cell_w,
+            self.cell_h,
+            ATLAS_COLS,
+        );
+        self.atlas_pixels = roman;
+        self.atlas_pixels.extend_from_slice(&oblique);
         self.dirty = true;
+    }
+
+    /// Pixel UV of `ch`, in the oblique block when `italic`.  Characters the
+    /// font does not draw fall back to the box glyph of the same block, so
+    /// missing glyphs stay upright rather than leaning as a box.
+    pub fn uv_for(&self, ch: char, italic: bool) -> Option<GlyphUv> {
+        let block = if italic {
+            &self.glyphs_italic
+        } else {
+            &self.glyphs
+        };
+        block
+            .get(&ch)
+            .or_else(|| block.get(&'\u{25A1}'))
+            .copied()
     }
 
     /// Rasterize at device resolution (F-35): `pixels_per_point` scales the
@@ -331,12 +361,9 @@ pub fn build_glyph_instances(
                 continue;
             }
 
-            // Try the exact char, then the box fallback, then FALLBACK_UV.
+            // Try the cell's own slant, then the box fallback, then FALLBACK_UV.
             let uv = atlas
-                .glyphs
-                .get(&cell.ch)
-                .or_else(|| atlas.glyphs.get(&'\u{25A1}'))
-                .copied()
+                .uv_for(cell.ch, cell.style.italic)
                 .unwrap_or(FALLBACK_UV);
             let [uv_x, uv_y, uv_w, uv_h] = atlas.normalize(&uv);
             out.push(GlyphInstance {

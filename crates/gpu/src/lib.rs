@@ -7,6 +7,7 @@ mod tests;
 
 pub mod gpu_atlas;
 pub mod gpu_rasterizer;
+pub mod oblique;
 pub mod shapes;
 
 pub use gpu_atlas::{

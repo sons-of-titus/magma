@@ -32,6 +32,7 @@ pub use clipboard;
 pub use net;
 pub mod completion;
 pub mod completion_lsp;
+pub mod completion_db;
 pub mod completion_words;
 pub mod inlay_hints;
 pub mod snippet;

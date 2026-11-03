@@ -9,6 +9,7 @@
 //! Buffer-word collection lives in `completion_words`; the LSP bridge in
 //! `completion_lsp`.
 
+use crate::completion_db::db_candidates;
 use crate::completion_lsp::request_lsp_completion;
 use crate::completion_words::{
     candidate_words, cursor_line_and_col, is_word_char, word_prefix_len,
@@ -43,13 +44,23 @@ pub fn trigger(editor: &mut Editor) {
         .map(|i| i + 1)
         .unwrap_or(0);
     let prefix = before[word_start..].to_string();
+
+    // Database-aware candidates lead for console buffers: tables, columns
+    // resolved through aliases, and SQL keywords.  A trailing dot means an
+    // empty prefix — the member lists still complete.
     if prefix.is_empty() {
+        let db_items = db_candidates(editor, before, &prefix);
+        if db_items.is_empty() {
+            return;
+        }
+        editor.completion.prefix = String::new();
+        editor.completion.items = db_items;
+        editor.completion.idx = 0;
+        editor.completion.visible = true;
         return;
     }
 
-    // Words from the buffer (cached / backgrounded), filtered by prefix
-    // range — never a full-set copy.
-    let mut items: Vec<CompletionItem> = Vec::new();
+    let mut items: Vec<CompletionItem> = db_candidates(editor, before, &prefix);
     if let Some(words) = candidate_words(editor, buf_id) {
         for w in words.range(prefix.clone()..) {
             if !w.starts_with(prefix.as_str()) {

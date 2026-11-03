@@ -586,3 +586,137 @@ fn merge_filters_on_filter_text_case_insensitively() {
     assert!(!labels.contains(&"zebra"), "unrelated items are filtered");
     dismiss(&mut ed);
 }
+
+#[test]
+fn sql_console_completion_suggests_alias_columns() {
+    let mut ed = make_editor();
+    // A connected SQLite source with one table.
+    let dir = std::env::temp_dir().join(format!(
+        "magma-compl-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("c.sqlite");
+    let conn = ::db::connect(
+        &::db::DataSource {
+            id: 0,
+            name: "c".into(),
+            kind: db::DriverKind::Sqlite,
+            host: path.to_string_lossy().to_string(),
+            port: 0,
+            database: String::new(),
+            user: String::new(),
+            ssl_mode: Default::default(),
+            trust_cert: false,
+            save_password: false,
+            url: None,
+        },
+        None,
+    )
+    .unwrap();
+    conn.execute_script(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT);",
+        10,
+    )
+    .unwrap();
+    execute_source_add_and_connect(&mut ed, &path);
+
+    // A *sql* console buffer with an aliased FROM.
+    let key = ed.create_buffer_from_str("*sql: c*", "SELECT u. FROM users u");
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    // Cursor right behind the dot after the alias.
+    ed.view_of_buffer_mut(key).unwrap().set_cursor("SELECT u.".len());
+    ed.db.consoles.insert(ed.db.active.unwrap(), key);
+
+    crate::kernel::completion::trigger(&mut ed);
+    let labels: Vec<String> = ed
+        .completion
+        .items
+        .iter()
+        .map(|i| i.label.clone())
+        .collect();
+    assert!(
+        labels.contains(&"id".to_string()) && labels.contains(&"email".to_string()),
+        "alias columns suggested: {labels:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn sql_console_completion_suggests_tables_after_from() {
+    let mut ed = make_editor();
+    let dir = std::env::temp_dir().join(format!(
+        "magma-compl2-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("c.sqlite");
+    let conn = ::db::connect(
+        &::db::DataSource {
+            id: 0,
+            name: "c".into(),
+            kind: db::DriverKind::Sqlite,
+            host: path.to_string_lossy().to_string(),
+            port: 0,
+            database: String::new(),
+            user: String::new(),
+            ssl_mode: Default::default(),
+            trust_cert: false,
+            save_password: false,
+            url: None,
+        },
+        None,
+    )
+    .unwrap();
+    conn.execute_script(
+        "CREATE TABLE orders (id INTEGER PRIMARY KEY); CREATE TABLE payments (id INTEGER);",
+        10,
+    )
+    .unwrap();
+    execute_source_add_and_connect(&mut ed, &path);
+
+    let key = ed.create_buffer_from_str("*sql: c*", "SELECT * FROM ord");
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    ed.view_of_buffer_mut(key).unwrap().set_cursor("SELECT * FROM ord".len());
+    ed.db.consoles.insert(ed.db.active.unwrap(), key);
+
+    crate::kernel::completion::trigger(&mut ed);
+    let labels: Vec<String> = ed
+        .completion
+        .items
+        .iter()
+        .map(|i| i.label.clone())
+        .collect();
+    assert!(
+        labels.contains(&"orders".to_string()),
+        "table suggested after FROM: {labels:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn execute_source_add_and_connect(ed: &mut Editor, path: &std::path::Path) {
+    use kernel::command::args::ArgValue;
+    use std::collections::HashMap;
+    let mut args = HashMap::new();
+    args.insert("name".to_string(), ArgValue::String("c".into()));
+    args.insert("kind".to_string(), ArgValue::String("sqlite".into()));
+    args.insert(
+        "host".to_string(),
+        ArgValue::Path(path.to_string_lossy().to_string()),
+    );
+    crate::kernel::command::execute_command(ed, "db-source-add", &args).unwrap();
+    let id = ed.db.active.unwrap();
+    let mut args = HashMap::new();
+    args.insert("source".to_string(), ArgValue::Integer(id as i64));
+    crate::kernel::command::execute_command(ed, "db-connect", &args).unwrap();
+}

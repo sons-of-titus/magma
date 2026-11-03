@@ -149,6 +149,21 @@ impl Rope {
         self.inner.chunks()
     }
 
+    /// Text from `offset` to the end of the leaf chunk that holds it —
+    /// the random-access read tree-sitter's parse callbacks require.  The
+    /// parser may request any offset, including earlier ones than the last
+    /// read (token re-lex, error recovery), so this must never assume
+    /// forward motion.  Past-the-end offsets read as empty (EOF).
+    pub fn read_from(&self, offset: usize) -> &str {
+        let len = self.inner.len_bytes();
+        if offset >= len {
+            return "";
+        }
+        let offset = self.floor_boundary(offset);
+        let (chunk, chunk_start, _, _) = self.inner.chunk_at_byte(offset);
+        &chunk[offset - chunk_start..]
+    }
+
     /// Forward chunk cursor starting at `byte_offset`: the remaining
     /// chunks plus the absolute byte offset of the first one.  Mid-char
     /// offsets snap down to the chunk's content start (char_indices walks
@@ -210,6 +225,43 @@ impl Rope {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_from_serves_any_offset_backwards_included() {
+        // Leaves split as text grows, so the rope is genuinely
+        // fragmented — the state an edited buffer reaches.
+        let mut r = Rope::new();
+        for i in 0..300 {
+            let piece = format!("word_{i:04} ");
+            let len = r.len();
+            r.insert(len, &piece);
+        }
+        let text = r.slice(0, r.len()).into_owned();
+        assert!(r.chunks().count() > 1, "fixture must be fragmented");
+
+        for offset in (0..text.len()).rev() {
+            let read = r.read_from(offset);
+            assert!(
+                text[offset..].starts_with(read),
+                "read_from({offset}) must serve the text at that offset, got {read:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn read_from_past_end_is_empty() {
+        let r = Rope::from_string("abc");
+        assert_eq!(r.read_from(3), "");
+        assert_eq!(r.read_from(99), "");
+        assert_eq!(Rope::new().read_from(0), "");
+    }
+
+    #[test]
+    fn read_from_snaps_mid_char_offsets() {
+        let r = Rope::from_string("aé b");
+        // é occupies bytes 1..3; the read starts at the char boundary.
+        assert_eq!(r.read_from(2), "é b");
+    }
 
     #[test]
     fn empty_rope() {

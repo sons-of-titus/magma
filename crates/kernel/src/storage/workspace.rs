@@ -36,18 +36,39 @@ pub struct WorkspaceState {
     pub registers: HashMap<String, String>,
     /// Plugin key-value state (`editor.plugin_state`).
     pub plugin_state: HashMap<String, String>,
-    /// Configured database data sources (paths only; no secrets for SQLite).
+    /// Configured database data sources (no secrets — passwords live in
+    /// the OS keychain keyed by the source id).
     #[serde(default)]
     pub data_sources: Vec<PersistedDataSource>,
 }
 
 /// One configured database data source, persisted across sessions.
+/// All connection fields default so snapshots predating a driver family
+/// still restore.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedDataSource {
     pub id: u64,
     pub name: String,
     pub kind: String,
-    pub path: String,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default)]
+    pub port: u16,
+    #[serde(default)]
+    pub database: String,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default)]
+    pub ssl_mode: String,
+    #[serde(default)]
+    pub trust_cert: bool,
+    #[serde(default)]
+    pub save_password: bool,
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Pre-redesign snapshots stored the SQLite file here.
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 // ── WorkspaceManager ─────────────────────────────────────────────────────────
@@ -101,7 +122,15 @@ impl WorkspaceManager {
                     id: src.id,
                     name: src.name.clone(),
                     kind: src.kind.as_str().to_string(),
-                    path: src.path.clone(),
+                    host: src.host.clone(),
+                    port: src.port,
+                    database: src.database.clone(),
+                    user: src.user.clone(),
+                    ssl_mode: src.ssl_mode.as_str().to_string(),
+                    trust_cert: src.trust_cert,
+                    save_password: src.save_password,
+                    url: src.url.clone(),
+                    path: None,
                 })
                 .collect(),
         }
@@ -144,11 +173,25 @@ impl WorkspaceManager {
             .iter()
             .filter_map(|src| {
                 let kind = db::DriverKind::parse(&src.kind)?;
+                // Snapshots predating the multi-driver design kept the
+                // SQLite file in `path`.
+                let host = if src.host.is_empty() {
+                    src.path.clone().unwrap_or_default()
+                } else {
+                    src.host.clone()
+                };
                 Some(db::DataSource {
                     id: src.id,
                     name: src.name.clone(),
                     kind,
-                    path: src.path.clone(),
+                    host,
+                    port: src.port,
+                    database: src.database.clone(),
+                    user: src.user.clone(),
+                    ssl_mode: db::SslMode::parse(&src.ssl_mode).unwrap_or_default(),
+                    trust_cert: src.trust_cert,
+                    save_password: src.save_password,
+                    url: src.url.clone(),
                 })
             })
             .collect();

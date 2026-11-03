@@ -5,7 +5,10 @@
 
 pub mod buffer;
 mod completion;
-mod db_cmds;
+mod db_console;
+mod db_grid;
+mod db_sources;
+mod db_tree;
 mod debug_cmds;
 mod diagnostics_cmds;
 mod editing;
@@ -53,7 +56,10 @@ pub fn register_builtin_commands(editor: &mut Editor) {
     vc_diff::register(editor);
     completion::register(editor);
     debug_cmds::register(editor);
-    db_cmds::register(editor);
+    db_sources::register(editor);
+    db_tree::register(editor);
+    db_grid::register(editor);
+    db_console::register(editor);
     misc::register(editor);
     gui_cmds::register(editor);
     project_cmds::register(editor);

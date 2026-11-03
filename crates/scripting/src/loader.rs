@@ -186,6 +186,10 @@ pub fn init_vm() {
         include_str!("../../../builtins/init.janet"),
     );
     load_builtin(
+        "builtins/database.janet",
+        include_str!("../../../builtins/database.janet"),
+    );
+    load_builtin(
         "builtins/magma_utils.janet",
         include_str!("../../../builtins/magma_utils.janet"),
     );

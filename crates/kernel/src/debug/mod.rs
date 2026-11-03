@@ -166,7 +166,14 @@ impl DebugManager {
             .collect::<Vec<_>>();
         let lines_json: String = bps
             .iter()
-            .map(|bp| format!(r#"{{"line":{}}}"#, bp.line))
+            .map(|bp| match &bp.condition {
+                Some(c) => format!(
+                    r#"{{"line":{},"condition":"{}"}}"#,
+                    bp.line,
+                    c.replace('\\', "\\\\").replace('"', "\\\"")
+                ),
+                None => format!(r#"{{"line":{}}}"#, bp.line),
+            })
             .collect::<Vec<_>>()
             .join(",");
         let file_escaped = file.replace('\\', "\\\\").replace('"', "\\\"");
@@ -215,6 +222,26 @@ pub fn send_set_breakpoints(ed: &mut crate::state::Editor, sid: SessionId, file:
     let args = ed.debug.set_breakpoints_args(file);
     ed.debug.pending_bp_files.push((sid, file.to_string()));
     crate::script_runtime::send_dap_command(ed, sid, "setBreakpoints", &args);
+}
+
+/// Set (or clear, with `None`) the hit condition on breakpoints at a
+/// location and resync the adapter.
+pub fn set_breakpoint_condition(
+    ed: &mut crate::state::Editor,
+    file: &str,
+    line: usize,
+    condition: Option<String>,
+) {
+    let mut changed = false;
+    for bp in ed.debug.breakpoints.get_mut(file).into_iter().flatten() {
+        if bp.line == line {
+            bp.condition = condition.clone();
+            changed = true;
+        }
+    }
+    if changed && let Some(sid) = ed.debug.active_session {
+        send_set_breakpoints(ed, sid, file);
+    }
 }
 
 /// Enable or disable breakpoints at a location and resync the adapter.

@@ -188,6 +188,26 @@ unsafe extern "C-unwind" fn c_debug_add_breakpoint(argc: i32, argv: *mut Janet) 
     })
 }
 
+/// (debug/set-breakpoint-condition file line condition) → nil
+/// An empty condition clears it.  Resyncs the active adapter session.
+unsafe extern "C-unwind" fn c_debug_set_breakpoint_condition(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| {
+        let file = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
+        let line = unsafe { conv::get_int(argc, argv, 1) }.unwrap_or(0) as usize;
+        let condition = unsafe { conv::get_str(argc, argv, 2) }.unwrap_or_default();
+        if file.is_empty() {
+            return conv::nil();
+        }
+        let condition = if condition.is_empty() {
+            None
+        } else {
+            Some(condition.to_string())
+        };
+        kernel::debug::set_breakpoint_condition(ed, &file, line, condition);
+        conv::nil()
+    })
+}
+
 /// (debug/remove-breakpoint file line) → nil
 unsafe extern "C-unwind" fn c_debug_remove_breakpoint(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
@@ -420,6 +440,11 @@ pub fn register() -> Vec<JanetReg> {
             name: c"debug/add-breakpoint".as_ptr() as *const _,
             cfun: Some(c_debug_add_breakpoint),
             documentation: c"(debug/add-breakpoint file line) → nil — add a breakpoint; updates gutter and notifies active session".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"debug/set-breakpoint-condition".as_ptr() as *const _,
+            cfun: Some(c_debug_set_breakpoint_condition as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Set or clear (empty string) the hit condition on breakpoints at a file/line".as_ptr() as *const _,
         },
         JanetReg {
             name: c"debug/remove-breakpoint".as_ptr() as *const _,

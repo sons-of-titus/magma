@@ -1458,6 +1458,11 @@ Add a breakpoint at line `line` (1-based) of the source file at absolute path `f
 
 Remove the breakpoint at `(file, line)`.  The `:breakpoints` provider updates automatically.  Notifies the active session.  Emits `debug-breakpoint-changed` with `:action "remove"`.
 
+### `(debug/set-breakpoint-condition file line condition)` → nil
+
+Set the DAP hit condition on the breakpoints at `(file, line)`; an empty
+string clears it.  Notifies the active session so the adapter re-evaluates.
+
 ### `(debug/evaluate expr &opt frame-id)` → nil
 
 Evaluate the expression `expr` in the context of frame `frame-id` (defaults to 0).  The result arrives asynchronously via the `debug-evaluate-result` event as `{:session-id :result}`.

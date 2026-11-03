@@ -571,3 +571,32 @@ fn set_breakpoints_response_marks_manager_breakpoints_verified() {
         "the adapter's verification lands on the manager breakpoint the gutter renders"
     );
 }
+
+// ── Breakpoint conditions reach the adapter ─────────────────────────────────
+
+#[test]
+fn conditional_breakpoints_serialize_the_condition() {
+    let mut mgr = DebugManager::new();
+    let id = mgr.add_breakpoint("a.rs".into(), 7);
+    if let Some(bp) = mgr.breakpoints.get_mut("a.rs").and_then(|b| b.first_mut()) {
+        bp.condition = Some(r#"i > 3 && name == "x""#.into());
+    }
+    let _ = id;
+    let json = mgr.set_breakpoints_args("a.rs");
+    assert!(
+        json.contains(r#"{"line":7,"condition":"i > 3 && name == \"x\""}"#),
+        "the condition must be a DAP SourceBreakpoint field with JSON escaping: {json}"
+    );
+}
+
+#[test]
+fn clearing_a_condition_omits_the_field() {
+    let mut mgr = DebugManager::new();
+    mgr.add_breakpoint("a.rs".into(), 9);
+    for bp in mgr.breakpoints.get_mut("a.rs").unwrap() {
+        bp.condition = None;
+    }
+    let json = mgr.set_breakpoints_args("a.rs");
+    assert!(json.contains(r#"{"line":9}"#));
+    assert!(!json.contains("condition"));
+}

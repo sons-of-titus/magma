@@ -79,9 +79,17 @@ fn gutter_markers_are_baked_as_geometry_not_font_glyphs() {
         "disc must be centred, not baseline-aligned"
     );
 
-    // The fold arrow spans more of the cell than the font's small variant.
-    let (top, bottom, _, _) = cell_ink_span(&atlas, '▾');
-    assert!(bottom - top + 1 >= ch / 2, "fold arrow must be legible");
+    // The fold chevron is a broad, shallow mark, so it has to carry its
+    // legibility across the cell rather than down the tall axis.
+    let (top, bottom, left, right) = cell_ink_span(&atlas, '▾');
+    assert!(
+        right - left + 1 >= cw / 2,
+        "fold chevron must be legible across the gutter cell"
+    );
+    assert!(
+        right - left > bottom - top,
+        "the open chevron is broader than it is deep"
+    );
 
     // The git sign is a left-anchored bar — the box fallback would ink the
     // right edge of the cell instead.

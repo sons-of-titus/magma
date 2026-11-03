@@ -100,31 +100,35 @@ pub fn bar_alpha(px: u32, py: u32, cell_w: u32, cell_h: u32) -> u8 {
     antialias(dx.max(dy))
 }
 
-/// Fold chevrons (`▾` open, `▸` folded): a thin V stroke, not a filled
-/// wedge — the font's own small codepoint variants read as pinpricks at
-/// body size, and a solid triangle shouts.  About half the cell, centred.
+/// Fold chevrons (`▾` open, `▸` folded): the broad, shallow stroke the
+/// VS Code and IntelliJ fold controls use — about twice as wide as it is
+/// deep, with round caps and a round join.  The font's own small codepoint
+/// variants read as pinpricks at body size, and a solid triangle shouts.
 pub fn chevron_alpha(px: u32, py: u32, cell_w: u32, cell_h: u32, down: bool) -> u8 {
     let cw = cell_w.max(1) as f32;
     let ch = cell_h.max(1) as f32;
+    let base = cw.min(ch);
     let cx = cw / 2.0;
     let cy = ch / 2.0;
-    let (half_w, half_h) = (cw * 0.28, ch * 0.21);
+    // The same shape rotated a quarter turn: the open mark is broad and
+    // shallow, the closed one tall and narrow.
+    let (half_breadth, half_depth) = (base * 0.32, base * 0.18);
     // A polyline in path order: the two strokes meet at the vertex, and
     // only the union of the segments carries ink.
     let pts: [(f32, f32); 3] = if down {
         [
-            (cx - half_w, cy - half_h),
-            (cx, cy + half_h),
-            (cx + half_w, cy - half_h),
+            (cx - half_breadth, cy - half_depth),
+            (cx, cy + half_depth),
+            (cx + half_breadth, cy - half_depth),
         ]
     } else {
         [
-            (cx - half_h, cy - half_w),
-            (cx + half_h, cy),
-            (cx - half_h, cy + half_w),
+            (cx - half_depth, cy - half_breadth),
+            (cx + half_depth, cy),
+            (cx - half_depth, cy + half_breadth),
         ]
     };
-    let half_stroke = (cw.min(ch) as f32 * 0.055).max(0.7);
+    let half_stroke = (base * 0.06).max(0.7);
     let x = px as f32 + 0.5;
     let y = py as f32 + 0.5;
     let mut dist = f32::INFINITY;
@@ -196,51 +200,72 @@ mod tests {
         assert_eq!(marker_alpha('a', CW / 2, CH / 2, CW, CH), 0);
     }
 
+    /// First/last inked column and row of one chevron, as `(left, right,
+    /// top, bottom)`.
+    fn chevron_ink(cell_w: u32, cell_h: u32, down: bool) -> (u32, u32, u32, u32) {
+        let alpha = |px: u32, py: u32| chevron_alpha(px, py, cell_w, cell_h, down);
+        let left = (0..cell_w)
+            .find(|&px| (0..cell_h).any(|py| alpha(px, py) > 0))
+            .expect("chevron has ink");
+        let right = (0..cell_w)
+            .rev()
+            .find(|&px| (0..cell_h).any(|py| alpha(px, py) > 0))
+            .unwrap();
+        let top = (0..cell_h)
+            .find(|&py| (0..cell_w).any(|px| alpha(px, py) > 0))
+            .unwrap();
+        let bottom = (0..cell_h)
+            .rev()
+            .find(|&py| (0..cell_w).any(|px| alpha(px, py) > 0))
+            .unwrap();
+        (left, right, top, bottom)
+    }
+
     #[test]
-    fn fold_chevrons_are_thin_v_strokes() {
+    fn fold_chevrons_read_as_broad_shallow_fold_controls() {
         for down in [false, true] {
-            // Hollow: the wedge is gone, the stroke never covers the cell
+            // Hollow: the wedge is gone, the stroke only feathers the cell
             // centre (the vertex sits off it).
-            assert_eq!(
-                chevron_alpha(CW / 2, CH / 2, CW, CH, down),
-                0,
-                "a filled wedge would paint the centre"
+            assert!(
+                chevron_alpha(CW / 2, CH / 2, CW, CH, down) < 64,
+                "a filled wedge would paint the centre solid"
             );
             // Never touches the cell edges.
             assert_eq!(chevron_alpha(0, 0, CW, CH, down), 0);
             assert_eq!(chevron_alpha(CW - 1, 0, CW, CH, down), 0);
             assert_eq!(chevron_alpha(0, CH - 1, CW, CH, down), 0);
             assert_eq!(chevron_alpha(CW - 1, CH - 1, CW, CH, down), 0);
-            // Small: ink spans the geometric extent of its orientation —
-            // the open chevron's height, the folded one's width is what
-            // the rotation maps onto the cell's tall axis — with a small
-            // tolerance for the stroke and its feather.
-            let mut ink_rows = 0;
-            for py in 0..CH {
-                if (0..CW).any(|px| chevron_alpha(px, py, CW, CH, down) > 0) {
-                    ink_rows += 1;
-                }
-            }
-            let span = if down {
-                2.0 * (CH as f32 * 0.21)
+
+            let (left, right, top, bottom) = chevron_ink(CW, CH, down);
+            let (w, h) = (right - left + 1, bottom - top + 1);
+            // The editor fold control is a broad, shallow mark — not the
+            // tall down arrow a V spanning the cell's whole height reads as.
+            if down {
+                assert!(
+                    w as f32 >= h as f32 * 1.3,
+                    "the open chevron must be broader than deep, got {w}x{h}"
+                );
             } else {
-                2.0 * (CW as f32 * 0.28)
-            };
-            // Plus the stroke and its one-pixel feather on each side.
-            let stroke = (CW.min(CH) as f32 * 0.055).max(0.7);
-            assert!(
-                ((span + stroke)..=(span + 2.0 * stroke + 2.0)).contains(&(ink_rows as f32)),
-                "the chevron must stay small, got {ink_rows}/{CH} rows (span {span})"
-            );
+                assert!(
+                    h as f32 >= w as f32 * 1.3,
+                    "the closed chevron is the same shape rotated, got {w}x{h}"
+                );
+            }
+            // Centred both ways.
+            let mid_x = (left + right) as f32 / 2.0;
+            let mid_y = (top + bottom) as f32 / 2.0;
+            assert!((mid_x - CW as f32 / 2.0).abs() <= 1.0, "x off centre: {mid_x}");
+            assert!((mid_y - CH as f32 / 2.0).abs() <= 1.0, "y off centre: {mid_y}");
         }
         // Orientation: the vertex sits below centre when open (▾) and right
         // of centre when folded (▸).
-        let down_vertex_y = (CH as f32 * (0.5 + 0.21)) as u32;
+        let depth = CW.min(CH) as f32 * 0.18;
+        let down_vertex_y = (CH as f32 / 2.0 + depth) as u32;
         assert!(
             (0..CW).any(|px| chevron_alpha(px, down_vertex_y, CW, CH, true) > 0),
             "the open chevron's vertex must carry ink"
         );
-        let right_vertex_x = (CW as f32 * (0.5 + 0.21)) as u32;
+        let right_vertex_x = (CW as f32 / 2.0 + depth) as u32;
         assert!(
             chevron_alpha(right_vertex_x, CH / 2, CW, CH, false) > 0,
             "the folded chevron must point right"

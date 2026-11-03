@@ -82,6 +82,9 @@ pub struct AgentSession {
     pub queued_calls: Vec<crate::llm::ToolCall>,
     /// File paths the agent opened through editor commands, in order.
     pub files: Vec<String>,
+    /// Provider + model serving this session, for the transcript header.
+    pub provider: String,
+    pub model: String,
 }
 
 /// Tracks all active and completed agent sessions.
@@ -98,6 +101,16 @@ impl AgentManager {
 
     /// Create a new session in `Running` state and return its ID.
     pub fn create_session(&mut self, prompt: impl Into<String>) -> u64 {
+        self.create_session_with(prompt, "", "")
+    }
+
+    /// Create a session tagged with the provider and model serving it.
+    pub fn create_session_with(
+        &mut self,
+        prompt: impl Into<String>,
+        provider: &str,
+        model: &str,
+    ) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
         self.sessions.insert(
@@ -115,6 +128,8 @@ impl AgentManager {
                 pending: None,
                 queued_calls: Vec::new(),
                 files: Vec::new(),
+                provider: provider.into(),
+                model: model.into(),
             },
         );
         id

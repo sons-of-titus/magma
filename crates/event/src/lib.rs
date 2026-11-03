@@ -18,7 +18,14 @@ pub type EventData = HashMap<String, String>;
 pub struct Event {
     pub name: String,
     pub data: EventData,
+    /// How many handler-emitted hops separate this event from a direct
+    /// `emit`.  Bounded by [`MAX_CASCADE`] so two handlers emitting each
+    /// other's events terminate instead of livelocking the drain loop.
+    cascade: u32,
 }
+
+/// A→B→A handler cycles die here; real handler chains are 2–4 hops deep.
+const MAX_CASCADE: u32 = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HookPhase {
@@ -48,11 +55,12 @@ pub struct EventBus {
     pending: VecDeque<Event>,
     next_sub_id: u64,
     next_hook_id: u64,
-    /// Event names currently being dispatched.  A handler that re-emits the
-    /// event it is handling would otherwise grow the queue forever — the
-    /// drain loop pops one and the handler pushes one back, endlessly, on
-    /// the UI thread.  Re-entrant emits of an in-flight name are dropped.
-    dispatching: Vec<String>,
+    /// Names (with their cascade depth) currently being dispatched.  A
+    /// handler that re-emits the event it is handling would otherwise grow
+    /// the queue forever — the drain loop pops one and the handler pushes
+    /// one back, endlessly, on the UI thread.  Re-entrant emits of an
+    /// in-flight name are dropped, and cascades are depth-capped.
+    dispatching: Vec<(String, u32)>,
 }
 
 impl Default for EventBus {
@@ -116,15 +124,30 @@ impl EventBus {
 
     /// Queue an event for later dispatch via `drain_and_dispatch`.
     /// An emit of an event name that is already being dispatched is
-    /// dropped: it can only be a handler's self-recursion.
+    /// dropped: it can only be a handler's self-recursion.  An emit that
+    /// would exceed [`MAX_CASCADE`] handler hops is also dropped: mutual
+    /// handler emission must terminate.
     pub fn emit(&mut self, event_name: &str, data: EventData) {
-        if self.dispatching.iter().any(|n| n == event_name) {
+        if self.dispatching.iter().any(|(n, _)| n == event_name) {
             debug!("event bus: dropped re-entrant emit of '{}'", event_name);
+            return;
+        }
+        let cascade = self
+            .dispatching
+            .last()
+            .map(|(_, c)| c + 1)
+            .unwrap_or(0);
+        if cascade > MAX_CASCADE {
+            debug!(
+                "event bus: dropped '{}': cascade exceeded {} handler hops",
+                event_name, MAX_CASCADE
+            );
             return;
         }
         self.pending.push_back(Event {
             name: event_name.to_string(),
             data,
+            cascade,
         });
     }
 
@@ -168,7 +191,7 @@ impl EventBus {
             event.name,
             self.hooks.len()
         );
-        self.dispatching.push(event.name.clone());
+        self.dispatching.push((event.name.clone(), event.cascade));
         let data = self
             .run_hooks(&event.name, HookPhase::Before, &event.data)
             .unwrap_or_else(|| event.data.clone());

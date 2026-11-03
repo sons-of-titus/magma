@@ -143,3 +143,36 @@ fn emit_during_dispatch_of_same_name_is_dropped() {
     b.drain_and_dispatch();
     assert_eq!(b.pending_len(), 0, "drain must leave nothing pending");
 }
+
+// ── Cascade bound: mutual handler emission must terminate ──────────────────
+// The drain loop is sequential, so an A→B→A handler cycle re-queues events
+// forever on the UI thread.  Rust-side handlers can't emit (no bus access);
+// the real re-entrancy path is the Janet surface reaching the editor, so
+// the cycle shape is tested white-box: emit's cascade bookkeeping.
+
+#[test]
+fn emits_during_dispatch_carry_a_growing_cascade() {
+    let mut b = bus();
+    b.emit("a", HashMap::new());
+    assert_eq!(b.pending.front().map(|e| e.name.as_str()), Some("a"));
+    let _ = b.pending.pop_front();
+    // dispatch_all pushes the in-flight entry before running handlers, so
+    // a handler emit sees its parent's cascade and is queued one hop past.
+    b.dispatching.push(("a".to_string(), 0));
+    b.emit("b", HashMap::new());
+    assert_eq!(
+        b.pending.back().map(|e| (e.name.as_str(), e.cascade)),
+        Some(("b", 1))
+    );
+}
+
+#[test]
+fn a_cascade_past_the_cap_is_dropped() {
+    let mut b = bus();
+    b.dispatching.push(("a".to_string(), 8));
+    b.emit("b", HashMap::new());
+    assert!(
+        b.pending.is_empty(),
+        "an emit beyond the cascade cap never joins the queue"
+    );
+}

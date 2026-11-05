@@ -163,6 +163,8 @@ struct PersistedSettings {
     /// Providers holding a stored OAuth token (device flows).
     #[serde(default)]
     keychain_oauth: Vec<String>,
+    #[serde(default)]
+    data_sources: Vec<crate::storage::workspace::PersistedDataSource>,
 }
 
 /// The user config directory (~/.config/magma), creating it if needed.
@@ -212,6 +214,38 @@ pub fn load_settings_from(dir: &std::path::Path, ed: &mut super::Editor) {
     // Restored credentials become connections; the model catalogs refresh
     // lazily once the Agent panel is visible.
     ed.agent_connections.sync_from_options(&ed.options);
+    if !settings.data_sources.is_empty() {
+        ed.db.sources = settings
+            .data_sources
+            .iter()
+            .filter_map(|src| {
+                let kind = db::DriverKind::parse(&src.kind)?;
+                let host = if src.host.is_empty() {
+                    src.path.clone().unwrap_or_default()
+                } else {
+                    src.host.clone()
+                };
+                Some(db::DataSource {
+                    id: src.id,
+                    name: src.name.clone(),
+                    kind,
+                    host,
+                    port: if src.port == 0 {
+                        kind.default_port()
+                    } else {
+                        src.port
+                    },
+                    database: src.database.clone(),
+                    user: src.user.clone(),
+                    ssl_mode: db::SslMode::parse(&src.ssl_mode).unwrap_or_default(),
+                    trust_cert: src.trust_cert,
+                    save_password: src.save_password,
+                    url: src.url.clone(),
+                })
+            })
+            .collect();
+        ed.db.next_id_after_restore();
+    }
 }
 
 /// Write current options to the settings file and sync API keys with the OS
@@ -256,10 +290,30 @@ pub fn save_settings_to(dir: &std::path::Path, ed: &super::Editor) {
     }
     keychain_keys.sort();
     keychain_oauth.sort();
+    let data_sources = ed
+        .db
+        .sources
+        .iter()
+        .map(|src| crate::storage::workspace::PersistedDataSource {
+            id: src.id,
+            name: src.name.clone(),
+            kind: src.kind.as_str().to_string(),
+            host: src.host.clone(),
+            port: src.port,
+            database: src.database.clone(),
+            user: src.user.clone(),
+            ssl_mode: src.ssl_mode.as_str().to_string(),
+            trust_cert: src.trust_cert,
+            save_password: src.save_password,
+            url: src.url.clone(),
+            path: None,
+        })
+        .collect();
     let settings = PersistedSettings {
         options: file_options,
         keychain_keys,
         keychain_oauth,
+        data_sources,
     };
     if let Ok(content) = serde_json::to_string_pretty(&settings) {
         write_private(&dir.join(SETTINGS_FILE), &content);
@@ -356,5 +410,35 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
         super::super::secrets::delete_key(TEST_ACCOUNT);
+    }
+
+    #[test]
+    fn settings_round_trip_persists_data_sources() {
+        let dir = std::env::temp_dir().join(format!("magma-db-settings-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut ed = editor_with_options(&[]);
+        ed.db.add_source(db::DataSource {
+            id: 0,
+            name: "local-pg".into(),
+            kind: db::DriverKind::Postgres,
+            host: "localhost".into(),
+            port: 0,
+            database: "app".into(),
+            user: "postgres".into(),
+            ssl_mode: db::SslMode::Prefer,
+            trust_cert: true,
+            save_password: true,
+            url: None,
+        });
+        save_settings_to(&dir, &ed);
+
+        let mut restored = editor_with_options(&[]);
+        load_settings_from(&dir, &mut restored);
+        assert_eq!(restored.db.sources.len(), 1);
+        assert_eq!(restored.db.sources[0].name, "local-pg");
+        assert_eq!(restored.db.sources[0].port, 5432);
+        assert!(restored.db.sources[0].trust_cert);
+        assert_eq!(restored.db.active, Some(restored.db.sources[0].id));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

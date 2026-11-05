@@ -214,11 +214,15 @@ pub fn on_transaction(ed: &mut Editor, key: usize, txn: &EditTransaction) {
 }
 
 fn lang_for(state: &FallbackState, buf: &Buffer) -> Option<String> {
-    let path = buf.language_path.as_deref().or(buf.path.as_deref())?;
-    // Extension after the last dot, matching the Janet resolver this
-    // replaces (directory dots included — existing configs never hit them).
-    let ext = path.rsplit_once('.')?.1.to_lowercase();
-    state.extensions.get(&ext).cloned()
+    if let Some(path) = buf.language_path.as_deref().or(buf.path.as_deref())
+        && let Some((_, ext)) = path.rsplit_once('.')
+        && let Some(lang) = state.extensions.get(&ext.to_lowercase())
+    {
+        return Some(lang.clone());
+    }
+    let mode = buf.major_mode.name();
+    let mode = mode.strip_suffix("-mode").unwrap_or(mode);
+    state.rules.contains_key(mode).then(|| mode.to_string())
 }
 
 // Via the line index (O(log n)), never a prefix copy: these run per

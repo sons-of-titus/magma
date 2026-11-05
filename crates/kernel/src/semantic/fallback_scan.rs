@@ -26,7 +26,7 @@ pub(crate) fn scan(text: &str, rules: &FallbackRules) -> Vec<Range> {
     if let Some(marker) = &rules.comment_marker {
         scan_comments(text, marker, &mut out);
     }
-    scan_strings(text, &mut out);
+    scan_strings(text, rules, &mut out);
     scan_numbers(text, &mut out);
 
     let mut shielded: Vec<(usize, usize)> = out
@@ -85,12 +85,14 @@ fn scan_comments(text: &str, marker: &str, out: &mut Vec<Range>) {
     }
 }
 
-fn scan_strings(text: &str, out: &mut Vec<Range>) {
+fn scan_strings(text: &str, rules: &FallbackRules, out: &mut Vec<Range>) {
     let bytes = text.as_bytes();
     let n = bytes.len();
+    let single_quotes = rules.comment_marker.as_deref() == Some("--");
     let mut i = 0;
     while i < n {
-        if bytes[i] == b'"' {
+        if bytes[i] == b'"' || (single_quotes && bytes[i] == b'\'') {
+            let quote = bytes[i];
             let start = i;
             let mut j = start + 1;
             let mut closed = false;
@@ -99,7 +101,11 @@ fn scan_strings(text: &str, out: &mut Vec<Range>) {
                     j += 2;
                     continue;
                 }
-                if bytes[j] == b'"' {
+                if bytes[j] == quote {
+                    if quote == b'\'' && j + 1 < n && bytes[j + 1] == b'\'' {
+                        j += 2;
+                        continue;
+                    }
                     j += 1;
                     closed = true;
                     break;

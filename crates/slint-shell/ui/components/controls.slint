@@ -98,13 +98,17 @@ export component Field inherits Rectangle {
     border-width: 1px;
     border-color: input.has-focus ? Theme.accent : Theme.border;
     background: Theme.surface;
+    clip: true;
 
     input := TextInput {
         x: 8px;
+        y: 0px;
         width: parent.width - 16px;
+        height: parent.height;
         text <=> root.text;
         color: Theme.text-primary;
         font-size: root.font-size;
+        vertical-alignment: center;
         enabled: root.enabled;
         input-type: root.password ? InputType.password : InputType.text;
         single-line: true;

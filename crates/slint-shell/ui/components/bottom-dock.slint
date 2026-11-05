@@ -314,27 +314,17 @@ export component TerminalView inherits Rectangle {
                 vertical-alignment: center;
             }
 
-            Rectangle {
-                height: 20px;
-                y: (parent.height - 20px) / 2;
-                border-radius: Theme.radius;
-                background: term-input.has-focus ? Theme.surface : transparent;
-                border-width: 1px;
-                border-color: term-input.has-focus ? Theme.accent : transparent;
+            term-input := TextInput {
                 horizontal-stretch: 1;
-
-                term-input := TextInput {
-                    x: 6px;
-                    width: parent.width - 12px;
-                    text <=> root.input;
-                    color: Theme.text-primary;
-                    font-size: Theme.font-ui;
-                    single-line: true;
-                    enabled: sessions.length > 0;
-                    accepted => {
-                        root.terminal-send(root.input);
-                        root.input = "";
-                    }
+                text <=> root.input;
+                color: Theme.text-primary;
+                font-size: Theme.font-ui;
+                vertical-alignment: center;
+                single-line: true;
+                enabled: sessions.length > 0;
+                accepted => {
+                    root.terminal-send(root.input);
+                    root.input = "";
                 }
             }
 

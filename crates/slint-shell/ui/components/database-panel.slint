@@ -40,6 +40,7 @@ export struct DbCell {
     text: string,
     kind: string,
     edited: bool,
+    fk: bool,
 }
 
 export struct DbGridRow {
@@ -209,9 +210,11 @@ export component DatabasePanel inherits Rectangle {
             glyph: "\u{E64D}";
             status-text: root.busy ? "working…"
                 : root.connected ? root.connection-label
+                : root.connection-label != "" ? "connection failed"
                 : "not connected";
             status-tint: root.busy ? Theme.warning
                 : root.connected ? Theme.success
+                : root.connection-label != "" ? Theme.danger
                 : Theme.text-faint;
         }
 
@@ -243,51 +246,51 @@ export component DatabasePanel inherits Rectangle {
                 }
 
                 ToolButton {
-                    glyph: "\u{F0134}";           // plus
+                    glyph: "\u{F0415}";
                     tooltip: "Add data source";
                     tint: Theme.success;
                     clicked => { root.toolbar("add"); }
                 }
                 ToolButton {
-                    glyph: root.connected ? "\u{F0836}" : "\u{F03EA}";  // link / plug
+                    glyph: root.connected ? "\u{F06A6}" : "\u{F06A5}";
                     tooltip: root.connected ? "Disconnect" : "Connect";
                     enabled: root.active-source != "";
                     tint: root.connected ? Theme.warning : Theme.success;
                     clicked => { root.toolbar("connect"); }
                 }
                 ToolButton {
-                    glyph: "\u{F0450}";           // refresh
+                    glyph: "\u{F0450}";
                     tooltip: "Synchronize";
                     enabled: root.connected;
                     clicked => { root.toolbar("refresh"); }
                 }
                 ToolButton {
-                    glyph: "\u{F0134}";           // console (overridden below)
+                    glyph: "\u{F018D}";
                     tooltip: "New query console";
                     enabled: root.active-source != "";
                     clicked => { root.toolbar("console"); }
                 }
                 ToolButton {
-                    glyph: root.querying ? "\u{F04D3}" : "\u{F05B0}";  // stop / play
+                    glyph: root.querying ? "\u{F04DB}" : "\u{F040A}";
                     tooltip: root.querying ? "Cancel running query" : "Run focused console";
                     enabled: root.connected;
                     tint: root.querying ? Theme.danger : Theme.text-muted;
                     clicked => { root.toolbar("run"); }
                 }
                 ToolButton {
-                    glyph: "\u{F0156}";           // fold
+                    glyph: "\u{F0AA6}";
                     tooltip: "Collapse all";
                     enabled: root.connected;
                     clicked => { root.toolbar("collapse"); }
                 }
                 ToolButton {
-                    glyph: "\u{F013B}";           // filter
+                    glyph: "\u{F0232}";
                     tooltip: "Filter objects";
                     active: root.tree-filter-active;
                     clicked => { root.toolbar("filter"); }
                 }
                 ToolButton {
-                    glyph: "\u{F0493}";           // gear
+                    glyph: "\u{F0493}";
                     tooltip: "Data source properties";
                     enabled: root.active-source != "";
                     clicked => { root.toolbar("properties"); }
@@ -339,10 +342,10 @@ export component DatabasePanel inherits Rectangle {
                         action => { root.toolbar("add"); }
                     }
                     if root.sources.length > 0 && !root.connected : EmptyState {
-                        glyph: "\u{F03EA}";
-                        title: "Not connected";
-                        detail: "Connect to explore the catalog.";
-                        action-label: "Connect";
+                        glyph: "\u{F06A5}";
+                        title: root.connection-label != "" ? "Connection failed" : "Not connected";
+                        detail: root.connection-label != "" ? root.connection-label : "Connect to explore the catalog.";
+                        action-label: root.connection-label != "" ? "Retry" : "Connect";
                         action => { root.toolbar("connect"); }
                     }
 
@@ -367,18 +370,18 @@ export component DatabasePanel inherits Rectangle {
                                 }
 
                                 Text {
-                                    text: row.kind == "source" ? "\u{F0A06}"
-                                        : row.kind == "database" ? "\u{F02D6}"
-                                        : row.kind == "schema" ? "\u{F0AC1}"
+                                    text: row.kind == "source" ? "\u{F048B}"
+                                        : row.kind == "database" ? "\u{F01BC}"
+                                        : row.kind == "schema" ? "\u{F0645}"
                                         : row.kind == "folder" ? "\u{F024B}"
-                                        : row.kind == "table" ? "\u{F0481}"
+                                        : row.kind == "table" ? "\u{F04EB}"
                                         : row.kind == "view" ? "\u{F0208}"
-                                        : row.kind == "column" ? "\u{F0231}"
+                                        : row.kind == "column" ? "\u{F0835}"
                                         : row.kind == "pk" ? "\u{F0306}"
-                                        : row.kind == "fk" ? "\u{F020A}"
-                                        : row.kind == "index" ? "\u{F030B}"
-                                        : row.kind == "sequence" ? "\u{F0554}"
-                                        : row.kind == "function" ? "\u{F0A2F}"
+                                        : row.kind == "fk" ? "\u{F0337}"
+                                        : row.kind == "index" ? "\u{F0241}"
+                                        : row.kind == "sequence" ? "\u{F03A0}"
+                                        : row.kind == "function" ? "\u{F0295}"
                                         : "";
                                     color: row.status == "error" ? Theme.danger
                                         : row.kind == "pk" ? Theme.warning
@@ -424,14 +427,11 @@ export component DatabasePanel inherits Rectangle {
                                 mouse-cursor: pointer;
                                 clicked => { root.tree-clicked(row.key); }
                                 double-clicked => { root.tree-opened(row.key); }
-                            }
-
-                            alt-touch := TouchArea {
                                 pointer-event(pe) => {
                                     if pe.kind == PointerEventKind.down && pe.button == PointerEventButton.right {
                                         root.tree-context(row.key,
-                                            alt-touch.absolute-position.x + alt-touch.mouse-x,
-                                            alt-touch.absolute-position.y + alt-touch.mouse-y);
+                                            self.absolute-position.x + self.mouse-x,
+                                            self.absolute-position.y + self.mouse-y);
                                     }
                                 }
                             }
@@ -521,7 +521,7 @@ export component DatabasePanel inherits Rectangle {
                         }
 
                         // Grid toolbar (table tabs)
-                        if root.has-tab && root.can-edit : Rectangle {
+                        if root.has-tab : Rectangle {
                             height: 26px;
                             background: Theme.chrome;
 
@@ -540,26 +540,30 @@ export component DatabasePanel inherits Rectangle {
                                 ToolButton {
                                     glyph: "\u{F0415}";
                                     tooltip: "Insert row (staged)";
+                                    enabled: root.can-edit;
                                     clicked => { root.grid-action("insert"); }
                                 }
                                 ToolButton {
-                                    glyph: "\u{F0377}";
+                                    glyph: "\u{F0374}";
                                     tooltip: "Delete selected row (staged)";
+                                    enabled: root.can-edit;
                                     clicked => { root.grid-action("delete"); }
                                 }
                                 ToolButton {
-                                    glyph: "\u{F0191}";
+                                    glyph: "\u{F012C}";
                                     tooltip: "Apply pending changes";
+                                    enabled: root.can-edit;
                                     tint: root.pending-count > 0 ? Theme.success : Theme.text-faint;
                                     clicked => { root.grid-action("apply"); }
                                 }
                                 ToolButton {
-                                    glyph: "\u{F044D}";
+                                    glyph: "\u{F054C}";
                                     tooltip: "Revert pending changes";
+                                    enabled: root.can-edit;
                                     clicked => { root.grid-action("revert"); }
                                 }
                                 ToolButton {
-                                    glyph: "\u{F03EE}";
+                                    glyph: "\u{F018F}";
                                     tooltip: "Copy selected cell";
                                     clicked => { root.grid-action("copy-cell"); }
                                 }
@@ -567,6 +571,16 @@ export component DatabasePanel inherits Rectangle {
                                     glyph: "\u{F0450}";
                                     tooltip: "Reload page";
                                     clicked => { root.grid-action("refresh"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{EA91}";
+                                    tooltip: "Toggle table structure / data";
+                                    clicked => { root.grid-action("structure"); }
+                                }
+                                ToolButton {
+                                    glyph: "\u{F03CC}";
+                                    tooltip: "Jump to referenced row / table";
+                                    clicked => { root.grid-action("follow-fk"); }
                                 }
 
                                 Rectangle { horizontal-stretch: 1; }
@@ -593,11 +607,25 @@ export component DatabasePanel inherits Rectangle {
                             vertical-stretch: 1;
                             clip: true;
 
-                            if root.columns.length == 0 : EmptyState {
+                            if root.columns.length == 0 && root.busy : Text {
+                                text: "Loading…";
+                                color: Theme.text-faint;
+                                font-size: Theme.font-small;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            if root.columns.length == 0 && !root.busy && root.status != "" : EmptyState {
+                                glyph: root.status-error ? "\u{F0028}" : "\u{F012C}";
+                                title: root.status-error ? "Error" : root.status;
+                                detail: root.status-error ? root.status : "";
+                            }
+
+                            if root.columns.length == 0 && !root.busy && root.status == "" : EmptyState {
                                 glyph: "\u{F04EB}";
                                 title: root.connected ? "Nothing open" : "Not connected";
                                 detail: root.connected
-                                    ? "Double-click a table to browse its data, or run SQL from a console."
+                                    ? "Click a table to browse its data, or run SQL from a console."
                                     : "Connect to a data source first.";
                                 action-label: root.connected ? "Open Console" : "";
                                 action => { root.toolbar("console"); }
@@ -695,10 +723,12 @@ export component DatabasePanel inherits Rectangle {
 
                                                     Text {
                                                         x: 6px;
-                                                        width: parent.width - 10px;
+                                                        width: parent.width - (cell.fk ? 22px : 10px);
                                                         text: cell.text;
                                                         color: cell.kind == "null" ? Theme.text-faint
                                                             : cell.kind == "blob" ? Theme.warning
+                                                            : cell.kind == "pk" ? Theme.warning
+                                                            : cell.kind == "fk" ? Theme.accent
                                                             : cell.kind == "number" ? Theme.accent
                                                             : cell.kind == "bool" ? Theme.success
                                                             : Theme.text-primary;
@@ -727,6 +757,33 @@ export component DatabasePanel inherits Rectangle {
                                                                 root.grid-select(row-no, col-idx);
                                                                 root.editing-row = row-no;
                                                                 root.editing-col = col-idx;
+                                                            } else if cell.fk {
+                                                                root.grid-select(row-no, col-idx);
+                                                                root.grid-action("follow-fk");
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if cell.fk : Rectangle {
+                                                        x: parent.width - 18px;
+                                                        y: 2px;
+                                                        width: 16px;
+                                                        height: parent.height - 4px;
+                                                        border-radius: 3px;
+                                                        background: fk-touch.has-hover ? Theme.fill : transparent;
+                                                        Text {
+                                                            text: "↗";
+                                                            color: Theme.accent;
+                                                            font-size: 11px;
+                                                            horizontal-alignment: center;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        fk-touch := TouchArea {
+                                                            mouse-cursor: pointer;
+                                                            clicked => {
+                                                                root.stop-editing();
+                                                                root.grid-select(row-no, col-idx);
+                                                                root.grid-action("follow-fk");
                                                             }
                                                         }
                                                     }

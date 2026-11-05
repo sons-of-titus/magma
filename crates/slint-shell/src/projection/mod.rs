@@ -6,6 +6,7 @@
 mod agent;
 mod agent_panel;
 mod db;
+mod db_structure;
 mod debug_view;
 mod menus;
 mod settings;

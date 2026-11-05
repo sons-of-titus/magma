@@ -132,23 +132,17 @@ fn identify(parent_key: &str, child: &db::Child) -> (String, String, String, Str
                 true,
             )
         }
-        db::Child::Table { name, kind } => {
-            let seg = match kind {
-                db::TableKind::Table => "tables",
-                _ => "views",
-            };
-            (
-                format!("{parent_key}/{seg}/{name}"),
-                match kind {
-                    db::TableKind::Table => "table",
-                    _ => "view",
-                }
-                .into(),
-                name.clone(),
-                String::new(),
-                true,
-            )
-        }
+        db::Child::Table { name, kind } => (
+            format!("{parent_key}/{name}"),
+            match kind {
+                db::TableKind::Table => "table",
+                _ => "view",
+            }
+            .into(),
+            name.clone(),
+            String::new(),
+            true,
+        ),
         db::Child::Column { meta } => (
             format!("{parent_key}/columns/{}", meta.name),
             if meta.primary_key { "pk" } else { "column" }.into(),
@@ -175,14 +169,14 @@ fn identify(parent_key: &str, child: &db::Child) -> (String, String, String, Str
             false,
         ),
         db::Child::Sequence { meta } => (
-            format!("{parent_key}/sequences/{}", meta.name),
+            format!("{parent_key}/{}", meta.name),
             "sequence".into(),
             meta.name.clone(),
             String::new(),
             false,
         ),
         db::Child::Function { meta } => (
-            format!("{parent_key}/functions/{}", meta.name),
+            format!("{parent_key}/{}", meta.name),
             "function".into(),
             meta.signature.clone(),
             String::new(),
@@ -287,12 +281,19 @@ pub fn db_tabs(ed: &Editor) -> Vec<DbTabInfo> {
     ed.db
         .tabs
         .iter()
-        .map(|tab| DbTabInfo {
-            id: tab.id as i32,
-            title: tab.title.clone().into(),
-            busy: tab.busy,
-            pending: !tab.pending.is_empty(),
-            active: ed.db.active_tab == Some(tab.id),
+        .map(|tab| {
+            let title = if tab.structure {
+                format!("{} [structure]", tab.title)
+            } else {
+                tab.title.clone()
+            };
+            DbTabInfo {
+                id: tab.id as i32,
+                title: title.into(),
+                busy: tab.busy,
+                pending: !tab.pending.is_empty(),
+                active: ed.db.active_tab == Some(tab.id),
+            }
         })
         .collect()
 }
@@ -306,6 +307,13 @@ pub fn db_columns(ed: &Editor, widths: &[f32]) -> Vec<DbGridColumn> {
     let Some(tab) = ed.db.active_tab() else {
         return Vec::new();
     };
+    if tab.structure {
+        return if tab.table_detail().is_some() {
+            super::db_structure::columns(widths)
+        } else {
+            Vec::new()
+        };
+    }
     let Some(result) = tab.result() else {
         return Vec::new();
     };
@@ -333,9 +341,16 @@ pub fn db_rows(ed: &Editor) -> Vec<DbGridRow> {
     let Some(tab) = ed.db.active_tab() else {
         return Vec::new();
     };
+    if tab.structure {
+        return tab
+            .table_detail()
+            .map(super::db_structure::rows)
+            .unwrap_or_default();
+    }
     let Some(result) = tab.result() else {
         return Vec::new();
     };
+    let detail = tab.table_detail();
     let first_page_row = tab.page * kernel::db::FETCH_LIMIT;
     let mut rows: Vec<DbGridRow> = result
         .rows
@@ -358,10 +373,15 @@ pub fn db_rows(ed: &Editor) -> Vec<DbGridRow> {
                                 .ops
                                 .iter()
                                 .any(|o| matches!(o, db::EditOp::UpdateCell { row: r, col: c, .. } if *r == row_no && *c == col));
+                            let fk = !v.is_null()
+                                && detail
+                                    .zip(result.columns.get(col))
+                                    .is_some_and(|(d, c)| d.fk_for_column(&c.name).is_some());
                             DbCell {
                                 text: v.render().into(),
                                 kind: v.kind().into(),
                                 edited,
+                                fk,
                             }
                         })
                         .collect::<Vec<_>>(),
@@ -387,6 +407,7 @@ pub fn db_rows(ed: &Editor) -> Vec<DbGridRow> {
                         text: if v.is_null() { "".into() } else { v.render().into() },
                         kind: "inserted".into(),
                         edited: false,
+                        fk: false,
                     })
                     .collect::<Vec<_>>(),
             )),
@@ -403,6 +424,11 @@ pub fn db_status(ed: &Editor) -> (String, bool) {
     };
     if let Some(e) = &tab.error {
         return (e.clone(), true);
+    }
+    if tab.structure
+        && let Some(detail) = tab.table_detail()
+    {
+        return super::db_structure::status(detail);
     }
     match tab.result() {
         Some(outcome) if outcome.is_query => {
@@ -456,7 +482,7 @@ pub fn db_page_info(ed: &Editor) -> String {
     let Some(tab) = ed.db.active_tab() else {
         return String::new();
     };
-    if !matches!(tab.kind, DataTabKind::Table { .. }) {
+    if tab.structure || !matches!(tab.kind, DataTabKind::Table { .. }) {
         return String::new();
     }
     let n = tab.result().map(|r| r.rows.len()).unwrap_or(0);
@@ -468,8 +494,14 @@ pub fn db_page_info(ed: &Editor) -> String {
 }
 
 pub fn db_can_edit(ed: &Editor) -> bool {
-    match ed.db.active_tab().map(|t| &t.kind) {
-        Some(DataTabKind::Table { detail, .. }) => detail
+    let Some(tab) = ed.db.active_tab() else {
+        return false;
+    };
+    if tab.structure {
+        return false;
+    }
+    match &tab.kind {
+        DataTabKind::Table { detail, .. } => detail
             .as_ref()
             .map(|d| !d.is_view() && d.pk_columns().is_some())
             .unwrap_or(false),
@@ -508,7 +540,10 @@ pub fn db_connected_label(ed: &Editor) -> String {
     };
     match ed.db.connections.get(&id) {
         Some(conn) => conn.server_label(),
-        None => String::new(),
+        None => match ed.db.tree(id).node("/").map(|n| &n.status) {
+            Some(NodeStatus::Failed(e)) => e.clone(),
+            _ => String::new(),
+        },
     }
 }
 
@@ -521,4 +556,67 @@ pub fn db_querying(ed: &Editor) -> bool {
         .active
         .map(|id| ed.db.tabs.iter().any(|t| t.source_id == id && t.busy))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identify_builds_parseable_table_and_child_keys() {
+        let (table_key, table_kind, _, _, expandable) = identify(
+            "/app/public/tables",
+            &db::Child::Table {
+                name: "users".into(),
+                kind: db::TableKind::Table,
+            },
+        );
+        assert_eq!(table_key, "/app/public/tables/users");
+        assert_eq!(table_kind, "table");
+        assert!(expandable);
+        assert_eq!(
+            db::NodeRef::parse(&table_key),
+            Some(db::NodeRef::Table {
+                database: "app".into(),
+                schema: "public".into(),
+                name: "users".into(),
+                is_view: false,
+            })
+        );
+
+        let (view_key, view_kind, _, _, _) = identify(
+            "/app/public/views",
+            &db::Child::Table {
+                name: "active_users".into(),
+                kind: db::TableKind::View,
+            },
+        );
+        assert_eq!(view_key, "/app/public/views/active_users");
+        assert_eq!(view_kind, "view");
+        assert_eq!(
+            db::NodeRef::parse(&view_key),
+            Some(db::NodeRef::Table {
+                database: "app".into(),
+                schema: "public".into(),
+                name: "active_users".into(),
+                is_view: true,
+            })
+        );
+
+        let (fk_key, fk_kind, _, _, fk_expandable) = identify(
+            &table_key,
+            &db::Child::ForeignKey {
+                meta: db::ForeignKeyMeta {
+                    name: "users_org_fk".into(),
+                    columns: vec!["org_id".into()],
+                    ref_schema: "public".into(),
+                    ref_table: "orgs".into(),
+                    ref_columns: vec!["id".into()],
+                },
+            },
+        );
+        assert_eq!(fk_key, "/app/public/tables/users/fks/users_org_fk");
+        assert_eq!(fk_kind, "fk");
+        assert!(!fk_expandable);
+    }
 }

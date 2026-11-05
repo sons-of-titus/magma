@@ -159,8 +159,15 @@ fn run_command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
                 Err(e) => s.message = e,
             }
         }
-        "context:db-refresh-node" | "context:db-open-table" | "context:db-console"
-        | "context:db-disconnect" | "context:db-properties" | "context:db-copy-name"
+        "context:db-refresh-node"
+        | "context:db-open-table"
+        | "context:db-open-structure"
+        | "context:db-select-top"
+        | "context:db-follow-fk"
+        | "context:db-console"
+        | "context:db-disconnect"
+        | "context:db-properties"
+        | "context:db-copy-name"
         | "context:db-copy-qualified" => {
             let key = match target {
                 Some(ContextTarget::DbNode(key)) => key,
@@ -169,22 +176,38 @@ fn run_command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
             let cmd = match cmd {
                 "context:db-refresh-node" => "db-refresh-node",
                 "context:db-open-table" => "db-open-table",
+                "context:db-open-structure" => "db-open-structure",
+                "context:db-select-top" => "db-select-top",
+                "context:db-follow-fk" => "db-follow-fk",
                 "context:db-console" => "db-console",
                 "context:db-disconnect" => "db-disconnect",
-                "context:db-properties" => "db-properties",
-                "context:db-copy-name" | "context:db-copy-qualified" => {
+                "context:db-properties" => {
+                    let id = s.editor.db.active;
+                    s.db_dialog = Some(super::db::open_dialog(&mut s.editor, id));
+                    return;
+                }
+                "context:db-copy-name" => {
                     let name = key.rsplit('/').next().unwrap_or("");
-                    copy_absolute(s, &name);
+                    copy_absolute(s, name);
+                    return;
+                }
+                "context:db-copy-qualified" => {
+                    let parts: Vec<&str> = key.split('/').filter(|p| !p.is_empty()).collect();
+                    let qualified = match (parts.get(1), parts.get(3)) {
+                        (Some(&schema), Some(&name)) if !schema.is_empty() && schema != "main" => {
+                            format!("{schema}.{name}")
+                        }
+                        (_, Some(&name)) => name.to_string(),
+                        _ => key.rsplit('/').next().unwrap_or("").to_string(),
+                    };
+                    copy_absolute(s, &qualified);
                     return;
                 }
                 _ => unreachable!(),
             };
             let mut args = HashMap::new();
             match cmd {
-                "db-console" | "db-disconnect" | "db-properties" => {
-                    // Source-scoped: the node's first path segment names
-                    // nothing; the active source is the target.
-                }
+                "db-console" | "db-disconnect" => {}
                 _ => {
                     args.insert(
                         "path".to_string(),

@@ -21,10 +21,7 @@ pub(crate) enum ContextTarget {
 fn db_items(key: &str) -> Vec<MenuItem> {
     let parts: Vec<&str> = key.split('/').filter(|p| !p.is_empty()).collect();
     match parts.len() {
-        0 => vec![
-            item("Refresh", "context:db-refresh-node"),
-        ],
-        1 => vec![
+        0 | 1 => vec![
             item("New Query Console", "context:db-console"),
             item("Refresh", "context:db-refresh-node"),
             separator(),
@@ -32,15 +29,19 @@ fn db_items(key: &str) -> Vec<MenuItem> {
             item("Properties…", "context:db-properties"),
         ],
         2 | 3 => vec![
+            item("New Query Console", "context:db-console"),
+            item("Copy Name", "context:db-copy-name"),
+            separator(),
             item("Refresh", "context:db-refresh-node"),
         ],
-        _ => {
+        4 => {
             let kind = parts.get(2).copied().unwrap_or("");
             let is_object = kind == "tables" || kind == "views";
             let mut items = Vec::new();
             if is_object {
                 items.push(item("Jump to Data", "context:db-open-table"));
-                items.push(item("Open in New Tab", "context:db-open-table"));
+                items.push(item("View Structure", "context:db-open-structure"));
+                items.push(item("Select Top 100 Rows", "context:db-select-top"));
                 items.push(separator());
             }
             items.push(item("Copy Name", "context:db-copy-name"));
@@ -49,6 +50,15 @@ fn db_items(key: &str) -> Vec<MenuItem> {
             }
             items.push(separator());
             items.push(item("Refresh", "context:db-refresh-node"));
+            items
+        }
+        _ => {
+            let mut items = Vec::new();
+            if parts.get(4) == Some(&"fks") {
+                items.push(item("Go to Referenced Table", "context:db-follow-fk"));
+                items.push(separator());
+            }
+            items.push(item("Copy Name", "context:db-copy-name"));
             items
         }
     }

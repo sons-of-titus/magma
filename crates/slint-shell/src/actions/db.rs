@@ -371,23 +371,35 @@ fn toolbar(weak: &slint::Weak<AppWindow>, s: &mut AppState, action: &str) {
 
 fn tree_clicked(weak: &slint::Weak<AppWindow>, s: &mut AppState, key: &str) {
     let _ = weak;
-    // Only addressable nodes expand; UI-only leaves (columns, indexes)
-    // ignore clicks.
-    if db::NodeRef::parse(key).is_some() {
-        run_s(s, "db-expand", &[("path", ArgValue::String(key.to_string()))]);
+    if let Some(node) = db::NodeRef::parse(key) {
+        let is_expanded = s
+            .editor
+            .db
+            .active
+            .and_then(|id| s.editor.db.tree(id).node(key))
+            .is_some_and(|n| n.expanded);
+        let cmd = if is_expanded { "db-collapse" } else { "db-expand" };
+        run_s(s, cmd, &[("path", ArgValue::String(key.to_string()))]);
+        if matches!(node, db::NodeRef::Table { .. }) {
+            run_s(s, "db-open-table", &[("path", ArgValue::String(key.to_string()))]);
+        }
+        return;
+    }
+    let parts: Vec<&str> = key.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() == 6 && parts.get(4) == Some(&"fks") {
+        run_s(s, "db-follow-fk", &[("path", ArgValue::String(key.to_string()))]);
     }
 }
 
 fn tree_opened(weak: &slint::Weak<AppWindow>, s: &mut AppState, key: &str) {
-    // Tables and views open their data editor; other nodes just expand.
-    let is_object = {
-        let parts: Vec<&str> = key.split('/').filter(|p| !p.is_empty()).collect();
-        matches!(parts.get(2), Some(&"tables") | Some(&"views")) && parts.len() == 4
-    };
+    let _ = weak;
+    let parts: Vec<&str> = key.split('/').filter(|p| !p.is_empty()).collect();
+    let is_object = matches!(parts.get(2), Some(&"tables") | Some(&"views")) && parts.len() == 4;
+    let is_fk = parts.len() == 6 && parts.get(4) == Some(&"fks");
     if is_object {
         run_s(s, "db-open-table", &[("path", ArgValue::String(key.to_string()))]);
-    } else {
-        tree_clicked(weak, s, key);
+    } else if is_fk {
+        run_s(s, "db-follow-fk", &[("path", ArgValue::String(key.to_string()))]);
     }
 }
 
@@ -413,6 +425,8 @@ fn grid_action(weak: &slint::Weak<AppWindow>, s: &mut AppState, action: &str) {
         "copy-cell" => run_s(s, "db-grid-copy", &[("scope", ArgValue::String("cell".into()))]),
         "copy-row" => run_s(s, "db-grid-copy", &[("scope", ArgValue::String("row".into()))]),
         "refresh" => run_s(s, "db-grid-refresh", &[]),
+        "structure" => run_s(s, "db-toggle-structure", &[]),
+        "follow-fk" => run_s(s, "db-follow-fk", &[]),
         "prev" => run_s(s, "db-grid-page", &[("delta", ArgValue::Integer(-1))]),
         "next" => run_s(s, "db-grid-page", &[("delta", ArgValue::Integer(1))]),
         _ => {}
@@ -422,7 +436,7 @@ fn grid_action(weak: &slint::Weak<AppWindow>, s: &mut AppState, action: &str) {
 
 // ── Connection dialog ────────────────────────────────────────────────────────
 
-fn open_dialog(ed: &mut kernel::state::Editor, editing: Option<u64>) -> DbDialog {
+pub(crate) fn open_dialog(ed: &mut kernel::state::Editor, editing: Option<u64>) -> DbDialog {
     let kind_index = editing
         .and_then(|id| ed.db.source(id))
         .map(|s| {
@@ -620,6 +634,7 @@ fn save_dialog(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
                     .unwrap_or(0)
             });
             s.editor.db.active = Some(id);
+            s.db_open = true;
             if !s.editor.db.is_connected(id) {
                 run(&mut s.editor, "db-connect", &[("source", ArgValue::Integer(id as i64))]);
             }

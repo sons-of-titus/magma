@@ -924,3 +924,42 @@ fn open_table_reuses_existing_tab_and_surfaces_table_detail_errors() {
     assert_eq!(tab.error.as_deref(), Some("metadata query failed"));
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+#[test]
+fn postgres_source_defaults_port_user_database_and_supports_url() {
+    let mut ed = editor();
+    execute_command(
+        &mut ed,
+        "db-source-add",
+        &args(&[
+            ("name", ArgValue::String("pg-default".into())),
+            ("kind", ArgValue::String("postgres".into())),
+            ("host", ArgValue::String("localhost".into())),
+        ]),
+    )
+    .unwrap();
+    let src = ed.db.active_source().unwrap();
+    assert_eq!(src.port, 5432);
+    assert_eq!(src.user, "postgres");
+    assert_eq!(src.database, "postgres");
+
+    execute_command(
+        &mut ed,
+        "db-source-add",
+        &args(&[
+            ("name", ArgValue::String("pg-url".into())),
+            ("kind", ArgValue::String("postgres".into())),
+            (
+                "url",
+                ArgValue::String("postgres://alice@localhost:5433/analytics".into()),
+            ),
+        ]),
+    )
+    .unwrap();
+    let url_src = ed.db.active_source().unwrap();
+    assert_eq!(url_src.name, "pg-url");
+    assert_eq!(
+        url_src.url.as_deref(),
+        Some("postgres://alice@localhost:5433/analytics")
+    );
+}

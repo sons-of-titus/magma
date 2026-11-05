@@ -52,9 +52,10 @@ pub(super) fn register(editor: &mut Editor) {
         "Register a data source (name, kind, host/port/database/user, …)",
         conn_specs(true),
         |editor, args| {
-            let mut source = source_from_args(editor, args, None)?;
+            let mut source = source_from_args(editor, args, None, true)?;
             let password = string_arg(args, "password").map(|s| s.to_string());
             let id = editor.db.add_source(source.clone());
+            editor.db.active = Some(id);
             source.id = id;
             store_password(editor, id, password, source.save_password);
             editor.show_message(
@@ -74,7 +75,7 @@ pub(super) fn register(editor: &mut Editor) {
         update_specs,
         |editor, args| {
             let id = source_id(editor, args)?;
-            let mut updated = source_from_args(editor, args, Some(id))?;
+            let mut updated = source_from_args(editor, args, Some(id), true)?;
             updated.id = id;
             // Changing the connection facts invalidates the live session.
             editor.db.connections.remove(&id);
@@ -136,6 +137,7 @@ pub(super) fn register(editor: &mut Editor) {
                 || secrets::load_key(&source_account(id)),
             );
             editor.db.tree_mut(id).mark_loading("/");
+            editor.db.loading.insert((id, "/".to_string()));
             connect_dispatch(editor, source, password);
             editor.frame_dirty = true;
             Ok(())
@@ -162,8 +164,10 @@ pub(super) fn register(editor: &mut Editor) {
         "Probe a connection without registering it; the result lands via DbEvent",
         conn_specs(false),
         |editor, args| {
-            let probe = source_from_args(editor, args, None)?;
-            let password = string_arg(args, "password").map(|s| s.to_string());
+            let probe = source_from_args(editor, args, None, false)?;
+            let password = string_arg(args, "password")
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
             let token = editor.db.take_next_test_token();
             match editor.background.as_ref() {
                 Some(bg) => {
@@ -219,6 +223,7 @@ pub(super) fn connect_dispatch(editor: &mut Editor, source: DataSource, password
         }
         None => {
             // No background pool: connect inline so tests can drive it.
+            editor.db.loading.remove(&(source.id, "/".to_string()));
             match db::connect(&source, password.as_deref()) {
                 Ok(conn) => {
                     let conn = Arc::new(conn);
@@ -357,6 +362,7 @@ fn source_from_args(
     editor: &mut Editor,
     args: &HashMap<String, ArgValue>,
     id: Option<u64>,
+    require_name: bool,
 ) -> Result<DataSource, String> {
     let name = string_arg(args, "name").map(|s| s.trim().to_string());
     let name = match (id, name) {
@@ -367,42 +373,84 @@ fn source_from_args(
             .map(|s| s.name.clone())
             .unwrap_or_default(),
         (None, Some(n)) if !n.is_empty() => n,
+        (None, _) if !require_name => "probe".to_string(),
         (None, _) => return Err("a data source name is required".to_string()),
     };
     let kind = string_arg(args, "kind")
+        .filter(|s| !s.is_empty())
         .and_then(DriverKind::parse)
         .or_else(|| id.and_then(|id| editor.db.source(id)).map(|s| s.kind))
         .unwrap_or(DriverKind::Sqlite);
+    let url = string_arg(args, "url")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            id.and_then(|id| editor.db.source(id))
+                .and_then(|s| s.url.clone())
+        });
     let host = string_arg(args, "host")
         .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .or_else(|| id.and_then(|id| editor.db.source(id)).map(|s| s.host.clone()))
         .unwrap_or_default();
-    if kind.is_embedded() && host.is_empty() {
+    if kind.is_embedded() && host.is_empty() && url.is_none() {
         return Err("SQLite needs a database file path".to_string());
     }
-    if !kind.is_embedded() && host.is_empty() {
+    if !kind.is_embedded() && host.is_empty() && url.is_none() {
         return Err("a host is required".to_string());
     }
     let port = args
         .get("port")
         .and_then(|a| a.as_integer())
-        .map(|p| p.max(0) as u16)
+        .filter(|&p| p > 0)
+        .map(|p| p as u16)
+        .or_else(|| {
+            id.and_then(|id| editor.db.source(id))
+                .map(|s| s.port)
+                .filter(|&p| p > 0)
+        })
         .unwrap_or_else(|| kind.default_port());
     let ssl_mode = string_arg(args, "ssl")
+        .filter(|s| !s.is_empty())
         .and_then(SslMode::parse)
+        .or_else(|| id.and_then(|id| editor.db.source(id)).map(|s| s.ssl_mode))
         .unwrap_or(SslMode::Prefer);
+    let user = string_arg(args, "user")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            id.and_then(|id| editor.db.source(id))
+                .map(|s| s.user.clone())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| match kind {
+            DriverKind::Postgres => "postgres".to_string(),
+            _ => String::new(),
+        });
+    let database = string_arg(args, "database")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            id.and_then(|id| editor.db.source(id))
+                .map(|s| s.database.clone())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| match kind {
+            DriverKind::Postgres => user.clone(),
+            _ => String::new(),
+        });
     Ok(DataSource {
         id: id.unwrap_or(0),
         name,
         kind,
         host,
         port,
-        database: string_arg(args, "database").unwrap_or_default().to_string(),
-        user: string_arg(args, "user").unwrap_or_default().to_string(),
+        database,
+        user,
         ssl_mode,
         trust_cert: bool_arg(args, "trust-cert"),
         save_password: bool_arg(args, "save-password"),
-        url: string_arg(args, "url").map(|s| s.to_string()).filter(|s| !s.is_empty()),
+        url,
     })
 }
 

@@ -16,6 +16,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             connection,
             error,
         } => {
+            ed.db.loading.remove(&(source_id, "/".to_string()));
             match (connection, error) {
                 (Some(conn), _) => {
                     ed.db.connections.insert(source_id, conn);

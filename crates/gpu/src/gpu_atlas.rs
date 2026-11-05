@@ -71,7 +71,7 @@ pub const ATLAS_CHARS: &str = concat!(
     // would fall back to the box glyph.  The gutter markers are painted as
     // geometry, not font outlines (see shapes), so they render the same
     // whatever font the editor uses.
-    "\u{2588}\u{258C}\u{258E}\u{258F}\u{2594}\u{25B8}\u{25BE}\u{25CF}\u{25CB}",
+    "\u{2588}\u{258C}\u{258E}\u{258F}\u{2594}\u{25B8}\u{25BE}\u{25CF}\u{25CB}\u{25B6}",
     // Typographic dash used throughout the editor's own docs and comments.
     "\u{2014}",
     // Greek and Cyrillic (F-35: the GPU path is not ASCII-only) — the

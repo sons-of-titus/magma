@@ -82,6 +82,30 @@ fn cached_row_layout(
     )
 }
 
+pub(crate) fn first_sql_code_offset(sql: &str, mut i: usize, end: usize) -> usize {
+    let bytes = sql.as_bytes();
+    let end = end.min(bytes.len());
+    while i < end {
+        if bytes[i].is_ascii_whitespace() {
+            i += 1;
+        } else if i + 1 < end && bytes[i] == b'-' && bytes[i + 1] == b'-' {
+            i += 2;
+            while i < end && bytes[i] != b'\n' {
+                i += 1;
+            }
+        } else if i + 1 < end && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < end && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(end);
+        } else {
+            break;
+        }
+    }
+    i
+}
+
 pub struct EditorView {
     pub buf_id: usize,
     pub pane_id: WindowId,
@@ -192,6 +216,17 @@ impl View for EditorView {
             diag_lines.entry(d.line).or_insert(d.severity.code());
         }
 
+        let sql_stmt_lines: std::collections::HashSet<usize> =
+            if editor.db.console_source(buf_id).is_some() {
+                let text = buf.slice(0, buf.len());
+                db::split_statements(&text)
+                    .into_iter()
+                    .map(|s| buf.position_of(first_sql_code_offset(&text, s.start, s.end)).line)
+                    .collect()
+            } else {
+                std::collections::HashSet::new()
+            };
+
         let buf_path_owned: Option<String> = buf.path.clone();
         let tab_w = int_option(editor, "tab-width", 4);
 
@@ -242,7 +277,22 @@ impl View for EditorView {
                         surface.set_cell(col_x + dx, surf_row, ' ', Some(gutter_bg));
                     }
                     // Render provider cell.
-                    if let Some(cell) = provider.render(abs_line, &gutter_ctx) {
+                    let cell = if provider.name() == ":breakpoints"
+                        && sql_stmt_lines.contains(&abs_line)
+                    {
+                        Some(crate::render::gutter::GutterCell {
+                            text: "▶ ".to_string(),
+                            style: Style {
+                                fg: editor.theme_color("diff-add"),
+                                bg: editor.theme_color("line-num-bg"),
+                                bold: true,
+                                ..Default::default()
+                            },
+                        })
+                    } else {
+                        provider.render(abs_line, &gutter_ctx)
+                    };
+                    if let Some(cell) = cell {
                         surface.set_text(col_x, surf_row, &cell.text, Some(cell.style));
                     }
                     col_x += col_w as u16;

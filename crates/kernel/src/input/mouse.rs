@@ -157,7 +157,18 @@ fn dispatch_gutter_click(
     // The breakpoint column's built-in behavior is native Rust — it must
     // not depend on init-registered Janet event handlers.  GUTTER_CLICKED
     // still fires for extension providers.
-    if col_name == ":breakpoints"
+    if ed.db.console_source(buf_id).is_some()
+        && let Some(start) = sql_statement_start_for_line(ed, buf_id, abs_line)
+    {
+        if let Some(view) = ed.view_of_buffer_mut(buf_id) {
+            view.set_cursor(start);
+        }
+        let _ = crate::command::execute_command(
+            ed,
+            "db-execute-current",
+            &std::collections::HashMap::new(),
+        );
+    } else if col_name == ":breakpoints"
         && let Some(path) = ed
             .buffers
             .get(buf_id)
@@ -175,6 +186,22 @@ fn dispatch_gutter_click(
         },
     );
     crate::script_runtime::dispatch_events(ed);
+}
+
+fn sql_statement_start_for_line(ed: &Editor, buf_id: usize, abs_line: usize) -> Option<usize> {
+    let arc = ed.buffers.get(buf_id)?;
+    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+    let text = buf.slice(0, buf.len());
+    for span in db::split_statements(&text) {
+        let code_start =
+            crate::render::editor_view::first_sql_code_offset(&text, span.start, span.end);
+        let start_line = buf.position_of(code_start).line;
+        let end_line = buf.position_of(span.end.saturating_sub(1).max(code_start)).line;
+        if abs_line >= start_line && abs_line <= end_line {
+            return Some(code_start);
+        }
+    }
+    None
 }
 
 /// Move cursor to the clicked text position and fire events.

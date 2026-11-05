@@ -5,7 +5,7 @@
 /// codepoints are missing from common mono faces (which renders the box
 /// fallback in their place) and the font's own symbol designs vary in size;
 /// baking geometry into the atlas cells removes the font from the equation.
-pub const MARKER_GLYPHS: &[char] = &['●', '○', '▎', '▸', '▾'];
+pub const MARKER_GLYPHS: &[char] = &['●', '○', '▎', '▸', '▾', '▶'];
 
 pub fn is_marker(ch: char) -> bool {
     MARKER_GLYPHS.contains(&ch)
@@ -51,8 +51,25 @@ fn marker_alpha(ch: char, px: u32, py: u32, cell_w: u32, cell_h: u32) -> u8 {
         '▎' => bar_alpha(px, py, cell_w, cell_h),
         '▸' => chevron_alpha(px, py, cell_w, cell_h, false),
         '▾' => chevron_alpha(px, py, cell_w, cell_h, true),
+        '▶' => play_alpha(px, py, cell_w, cell_h),
         _ => 0,
     }
+}
+
+pub fn play_alpha(px: u32, py: u32, cell_w: u32, cell_h: u32) -> u8 {
+    let cw = cell_w.max(1) as f32;
+    let ch = cell_h.max(1) as f32;
+    let cx = cw / 2.0;
+    let cy = ch / 2.0;
+    let r = cw.min(ch) * 0.36;
+    let x_left = cx - r * 0.75;
+    let x_right = cx + r * 0.95;
+    let x = px as f32 + 0.5;
+    let y = py as f32 + 0.5;
+    let dx = (x_left - x).max(x - x_right);
+    let t = ((x - x_left) / (x_right - x_left).max(0.01)).clamp(0.0, 1.0);
+    let dy = (y - cy).abs() - r * (1.0 - t);
+    antialias(dx.max(dy))
 }
 
 /// Anti-aliased coverage of a signed distance (inside ≤ 0): one pixel of

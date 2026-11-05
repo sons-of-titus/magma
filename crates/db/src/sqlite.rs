@@ -315,12 +315,20 @@ fn table_foreign_keys(conn: &Connection, table: &str) -> Vec<ForeignKeyMeta> {
         .filter_map(|r| r.ok())
         .collect();
     raw.into_iter()
-        .map(|fk| ForeignKeyMeta {
-            name: format!("fk_{}", fk.id),
-            columns: vec![fk.from],
-            ref_schema: "main".to_string(),
-            ref_table: fk.table,
-            ref_columns: vec![fk.to.unwrap_or_default()],
+        .map(|fk| {
+            let ref_col = fk.to.filter(|s| !s.is_empty()).unwrap_or_else(|| {
+                table_columns(conn, &fk.table)
+                    .ok()
+                    .and_then(|cols| cols.into_iter().find(|c| c.primary_key).map(|c| c.name))
+                    .unwrap_or_default()
+            });
+            ForeignKeyMeta {
+                name: format!("fk_{}", fk.id),
+                columns: vec![fk.from],
+                ref_schema: "main".to_string(),
+                ref_table: fk.table,
+                ref_columns: vec![ref_col],
+            }
         })
         .collect()
 }

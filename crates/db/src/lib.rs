@@ -3,16 +3,21 @@
 //! Engines implement [`DbEngine`]; the kernel and UI speak only in the
 //! types here, so a new driver slots in without touching either.
 
+mod catalog;
 mod edit;
 mod engine;
 mod mssql;
 mod mysql;
 mod postgres;
+mod postgres_catalog;
 mod query;
 mod sqlite;
 mod sqlscript;
 
-pub use edit::{EditOp, EditResult, PendingEdits, TableRef, generate_ops, insert_template};
+pub use catalog::{Catalog, CatalogColumn, CatalogTable};
+pub use edit::{
+    EditOp, EditResult, PendingEdits, TableRef, generate_ops, insert_template, quote_table,
+};
 pub use engine::{Child, Connection, DbEngine, FolderKind, NodeRef};
 pub use query::page_query;
 pub use sqlscript::{split_statements, statement_at};
@@ -285,6 +290,17 @@ impl TableMeta {
 
     pub fn is_view(&self) -> bool {
         !matches!(self.kind, TableKind::Table)
+    }
+
+    /// Foreign key covering `column`, together with the referenced column name.
+    pub fn fk_for_column(&self, column: &str) -> Option<(&ForeignKeyMeta, &str)> {
+        for fk in &self.foreign_keys {
+            if let Some(pos) = fk.columns.iter().position(|c| c == column) {
+                let ref_col = fk.ref_columns.get(pos).map(String::as_str).unwrap_or("");
+                return Some((fk, ref_col));
+            }
+        }
+        None
     }
 }
 

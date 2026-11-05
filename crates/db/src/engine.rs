@@ -117,6 +117,11 @@ pub trait DbEngine: Send {
     /// Server version string for the connection status line.
     fn server_version(&self) -> String;
     fn dialect(&self) -> Dialect;
+    /// Every table and view with its columns.  Engines with a cheap bulk
+    /// query override this; the default walks the lazy tree.
+    fn catalog(&mut self) -> Result<crate::Catalog, String> {
+        crate::catalog::walk(self)
+    }
 }
 
 impl Connection {
@@ -140,6 +145,13 @@ impl Connection {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .table_detail(node)
+    }
+
+    pub fn catalog(&self) -> Result<crate::Catalog, String> {
+        self.engine
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .catalog()
     }
 
     pub fn execute_script(&self, sql: &str, max_rows: usize) -> Result<Vec<QueryOutcome>, String> {

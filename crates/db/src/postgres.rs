@@ -141,6 +141,10 @@ impl DbEngine for PostgresEngine {
         block_on(self.table_detail_async(node))
     }
 
+    fn catalog(&mut self) -> Result<crate::Catalog, String> {
+        block_on(crate::postgres_catalog::load(&self.client))
+    }
+
     fn execute_script(&mut self, sql: &str, max_rows: usize) -> Result<Vec<QueryOutcome>, String> {
         block_on(self.execute_script_async(sql, max_rows))
     }
@@ -183,7 +187,7 @@ impl PostgresEngine {
                     .await
                     .map_err(err)?;
                 vec![Child::Database {
-                    name: row.get::<_, String>(0),
+                    name: row.try_get::<_, String>(0).map_err(err)?,
                     label: String::new(),
                 }]
             }
@@ -199,8 +203,8 @@ impl PostgresEngine {
                     .await
                     .map_err(err)?;
                 rows.into_iter()
-                    .map(|r| Child::Schema { name: r.get(0) })
-                    .collect()
+                    .map(|r| Ok(Child::Schema { name: r.try_get(0).map_err(err)? }))
+                    .collect::<Result<_, String>>()?
             }
             NodeRef::Schema { .. } => vec![
                 Child::Folder { kind: FolderKind::Tables },
@@ -218,7 +222,7 @@ impl PostgresEngine {
                 if *kind == FolderKind::Functions {
                     let rows = client
                         .query(
-                            "SELECT p.proname, pg_get_function_identity_arguments(p.oid), p.prokind \
+                            "SELECT p.proname, pg_get_function_identity_arguments(p.oid), p.prokind::text \
                              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
                              WHERE n.nspname = $1 ORDER BY p.proname",
                             &[schema],
@@ -227,19 +231,19 @@ impl PostgresEngine {
                         .map_err(err)?;
                     rows.into_iter()
                         .map(|r| {
-                            let name: String = r.get(0);
-                            let args: String = r.get(1);
-                            let prokind: String = r.get(2);
-                            Child::Function {
+                            let name: String = r.try_get(0).map_err(err)?;
+                            let args: String = r.try_get(1).map_err(err)?;
+                            let prokind: String = r.try_get(2).map_err(err)?;
+                            Ok(Child::Function {
                                 meta: FunctionMeta {
                                     schema: schema.clone(),
                                     signature: format!("{name}({args})"),
                                     is_procedure: prokind == "p",
                                     name,
                                 },
-                            }
+                            })
                         })
-                        .collect()
+                        .collect::<Result<_, String>>()?
                 } else if *kind == FolderKind::Sequences {
                     let rows = client
                         .query(
@@ -251,32 +255,34 @@ impl PostgresEngine {
                         .await
                         .map_err(err)?;
                     rows.into_iter()
-                        .map(|r| Child::Sequence {
-                            meta: crate::SequenceMeta {
-                                schema: schema.clone(),
-                                name: r.get(0),
-                            },
+                        .map(|r| {
+                            Ok(Child::Sequence {
+                                meta: crate::SequenceMeta {
+                                    schema: schema.clone(),
+                                    name: r.try_get(0).map_err(err)?,
+                                },
+                            })
                         })
-                        .collect()
+                        .collect::<Result<_, String>>()?
                 } else {
                     let sql = format!(
-                        "SELECT c.relname, c.relkind FROM pg_class c \
+                        "SELECT c.relname, c.relkind::text FROM pg_class c \
                          JOIN pg_namespace n ON n.oid = c.relnamespace \
                          WHERE n.nspname = $1 AND c.relkind IN ({relkinds}) ORDER BY c.relname"
                     );
                     let rows = client.query(&sql, &[schema]).await.map_err(err)?;
                     rows.into_iter()
                         .map(|r| {
-                            let name: String = r.get(0);
-                            let relkind: String = r.get(1);
+                            let name: String = r.try_get(0).map_err(err)?;
+                            let relkind: String = r.try_get(1).map_err(err)?;
                             let tkind = match relkind.as_str() {
                                 "v" => TableKind::View,
                                 "m" => TableKind::MaterializedView,
                                 _ => TableKind::Table,
                             };
-                            Child::Table { name, kind: tkind }
+                            Ok(Child::Table { name, kind: tkind })
                         })
-                        .collect()
+                        .collect::<Result<_, String>>()?
                 }
             }
             NodeRef::Table { .. } => {
@@ -303,7 +309,7 @@ impl PostgresEngine {
         let col_rows = client
             .query(
                 "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, \
-                        pg_get_expr(d.adbin, d.adrelid), a.attidentity <> '' \
+                        pg_get_expr(d.adbin, d.adrelid), a.attidentity::text <> '' \
                  FROM pg_attribute a \
                  LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
                  WHERE a.attrelid = $1::regclass AND a.attnum > 0 AND NOT a.attisdropped \
@@ -312,17 +318,19 @@ impl PostgresEngine {
             )
             .await
             .map_err(err)?;
-        let columns: Vec<ColumnMeta> = col_rows
+        let mut columns: Vec<ColumnMeta> = col_rows
             .into_iter()
-            .map(|r| ColumnMeta {
-                name: r.get(0),
-                data_type: r.get(1),
-                nullable: r.get(2),
-                default: r.get(3),
-                primary_key: false,
-                auto_increment: r.get(4),
+            .map(|r| {
+                Ok(ColumnMeta {
+                    name: r.try_get(0).map_err(err)?,
+                    data_type: r.try_get(1).map_err(err)?,
+                    nullable: r.try_get(2).map_err(err)?,
+                    default: r.try_get(3).map_err(err)?,
+                    primary_key: false,
+                    auto_increment: r.try_get(4).map_err(err)?,
+                })
             })
-            .collect();
+            .collect::<Result<_, String>>()?;
 
         let pk_rows = client
             .query(
@@ -336,7 +344,13 @@ impl PostgresEngine {
             .map_err(err)?;
         // ANY() loses key order; key order for multi-column pks is a known
         // limitation of this listing.
-        let primary_key: Vec<String> = pk_rows.into_iter().map(|r| r.get(0)).collect();
+        let primary_key: Vec<String> = pk_rows
+            .into_iter()
+            .map(|r| r.try_get(0).map_err(err))
+            .collect::<Result<_, String>>()?;
+        for col in &mut columns {
+            col.primary_key = primary_key.contains(&col.name);
+        }
 
         let fk_rows = client
             .query(
@@ -351,17 +365,18 @@ impl PostgresEngine {
             .map_err(err)?;
         let mut foreign_keys = Vec::with_capacity(fk_rows.len());
         for r in &fk_rows {
-            let cname: String = r.get(0);
-            let conkey: Vec<i16> = r.get(1);
-            let confkey: Vec<i16> = r.get(2);
-            let ref_schema: String = r.get(3);
-            let ref_table: String = r.get(4);
+            let cname: String = r.try_get(0).map_err(err)?;
+            let conkey: Vec<i16> = r.try_get(1).map_err(err)?;
+            let confkey: Vec<i16> = r.try_get(2).map_err(err)?;
+            let ref_schema: String = r.try_get(3).map_err(err)?;
+            let ref_table: String = r.try_get(4).map_err(err)?;
+            let ref_qualified = format!("{}.{}", quote(&ref_schema), quote(&ref_table));
             foreign_keys.push(ForeignKeyMeta {
                 name: cname,
                 columns: column_names(client, &qualified, &conkey).await?,
                 ref_schema,
                 ref_table,
-                ref_columns: column_names(client, &qualified, &confkey).await?,
+                ref_columns: column_names(client, &ref_qualified, &confkey).await?,
             });
         }
 
@@ -378,9 +393,9 @@ impl PostgresEngine {
             .map_err(err)?;
         let mut indexes = Vec::with_capacity(idx_rows.len());
         for r in &idx_rows {
-            let name: String = r.get(0);
-            let unique: bool = r.get(1);
-            let indkey: Vec<i16> = r.get(2);
+            let name: String = r.try_get(0).map_err(err)?;
+            let unique: bool = r.try_get(1).map_err(err)?;
+            let indkey: Vec<i16> = r.try_get(2).map_err(err)?;
             indexes.push(IndexMeta {
                 name,
                 unique,
@@ -472,7 +487,7 @@ fn quote(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
 }
 
-fn err(e: tokio_postgres::Error) -> String {
+pub(crate) fn err(e: tokio_postgres::Error) -> String {
     if let Some(db) = e.as_db_error() {
         return db.message().to_string();
     }
@@ -603,8 +618,11 @@ async fn column_names(
         )
         .await
         .map_err(err)?;
-    let mut named: Vec<(i16, String)> = rows.into_iter().map(|r| (r.get(0), r.get(1))).collect();
-    named.sort_by_key(|(n, _)| *n);
+    let mut named: Vec<(i16, String)> = rows
+        .into_iter()
+        .map(|r| Ok((r.try_get(0).map_err(err)?, r.try_get(1).map_err(err)?)))
+        .collect::<Result<_, String>>()?;
+    named.sort_by_key(|(n, _)| attnums.iter().position(|a| a == n).unwrap_or(usize::MAX));
     Ok(named.into_iter().map(|(_, name)| name).collect())
 }
 

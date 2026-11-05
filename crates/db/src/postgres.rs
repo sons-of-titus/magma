@@ -27,19 +27,18 @@ pub struct PostgresConnection;
 
 impl PostgresConnection {
     pub fn open(source: &DataSource, password: Option<&str>) -> Result<DbConnection, String> {
-        if source.host.trim().is_empty() {
-            return Err("PostgreSQL needs a host".to_string());
-        }
-        let database = if source.database.trim().is_empty() {
-            source.user.clone()
-        } else {
-            source.database.clone()
+        let (base_config, target) = build_pg_config(source, password)?;
+        let attempts: &[Option<bool>] = match (source.ssl_mode, source.trust_cert) {
+            (crate::SslMode::Disabled, _) => &[None],
+            (crate::SslMode::Prefer, true) => &[Some(true), None],
+            (crate::SslMode::Prefer, false) => &[Some(false), Some(true), None],
+            (crate::SslMode::Require, true) => &[Some(true)],
+            (crate::SslMode::Require, false) => &[Some(false), Some(true)],
         };
-        let mut tls_config = Some(tls::client_config(source.trust_cert));
         let mut last_err = String::new();
-        for attempt in 0..2 {
-            let result = block_on(connect_once(source, &database, password, tls_config.clone()));
-            match result {
+        for &trust in attempts {
+            let tls_cfg = trust.map(tls::client_config);
+            match block_on(connect_once(base_config.clone(), tls_cfg)) {
                 Ok((client, cancel)) => {
                     let version = block_on(query_version(&client));
                     let label = format!("PostgreSQL {version}");
@@ -55,63 +54,137 @@ impl PostgresConnection {
                         label,
                     ));
                 }
-                Err(e) => {
+                Err((e, is_db_err)) => {
                     last_err = e;
-                    // `Prefer` degrades to plaintext after one TLS failure.
-                    if attempt == 0 && source.ssl_mode == crate::SslMode::Prefer {
-                        tls_config = None;
-                        continue;
+                    if is_db_err {
+                        break;
                     }
-                    break;
                 }
             }
         }
-        Err(format!(
-            "cannot connect to {database} @ {}:{}: {last_err}",
-            source.host, source.port
-        ))
+        Err(format!("cannot connect to {target}: {last_err}"))
     }
 }
 
-async fn connect_once(
+pub(crate) fn build_pg_config(
     source: &DataSource,
-    database: &str,
     password: Option<&str>,
-    tls_config: Option<rustls::ClientConfig>,
-) -> Result<(Client, tokio_postgres::CancelToken), String> {
-    let mut config = tokio_postgres::Config::new();
-    config
-        .host(&source.host)
-        .port(source.port)
-        .user(&source.user)
-        .dbname(database);
-    if let Some(pw) = password {
+) -> Result<(tokio_postgres::Config, String), String> {
+    let raw_host = source.host.trim();
+    let url = source
+        .url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            (raw_host.starts_with("postgres://") || raw_host.starts_with("postgresql://"))
+                .then_some(raw_host)
+        });
+    let mut config = if let Some(raw_url) = url {
+        let mut cfg: tokio_postgres::Config = raw_url
+            .parse()
+            .map_err(|e| format!("invalid PostgreSQL URL: {e}"))?;
+        if cfg.get_hosts().is_empty() {
+            cfg.host("localhost");
+        }
+        if cfg.get_ports().is_empty() {
+            cfg.port(if source.port == 0 { 5432 } else { source.port });
+        }
+        if cfg.get_user().is_none_or(|u| u.is_empty()) {
+            let user = if source.user.trim().is_empty() {
+                "postgres"
+            } else {
+                source.user.trim()
+            };
+            cfg.user(user);
+        }
+        if cfg.get_dbname().is_none_or(|d| d.is_empty()) {
+            let db = if !source.database.trim().is_empty() {
+                source.database.trim().to_string()
+            } else {
+                cfg.get_user().unwrap_or("postgres").to_string()
+            };
+            cfg.dbname(&db);
+        }
+        cfg
+    } else {
+        if raw_host.is_empty() {
+            return Err("PostgreSQL needs a host".to_string());
+        }
+        let (host, port) = if !raw_host.starts_with('[')
+            && raw_host.matches(':').count() == 1
+            && let Some((h, p)) = raw_host.rsplit_once(':')
+            && let Ok(parsed_port) = p.trim().parse::<u16>()
+            && parsed_port > 0
+        {
+            (h.trim(), parsed_port)
+        } else {
+            (raw_host, if source.port == 0 { 5432 } else { source.port })
+        };
+        let user = if source.user.trim().is_empty() {
+            "postgres"
+        } else {
+            source.user.trim()
+        };
+        let database = if source.database.trim().is_empty() {
+            user
+        } else {
+            source.database.trim()
+        };
+        let mut cfg = tokio_postgres::Config::new();
+        cfg.host(host).port(port).user(user).dbname(database);
+        cfg
+    };
+    if let Some(pw) = password.filter(|p| !p.is_empty()) {
         config.password(pw);
     }
     config.connect_timeout(CONNECT_TIMEOUT);
-    match source.ssl_mode {
-        crate::SslMode::Disabled => config.ssl_mode(tokio_postgres::config::SslMode::Disable),
-        crate::SslMode::Prefer => config.ssl_mode(tokio_postgres::config::SslMode::Prefer),
-        crate::SslMode::Require => config.ssl_mode(tokio_postgres::config::SslMode::Require),
-    };
+    let target = format!(
+        "{} @ {}:{}",
+        config.get_dbname().unwrap_or("postgres"),
+        config
+            .get_hosts()
+            .first()
+            .map(|h| match h {
+                tokio_postgres::config::Host::Tcp(s) => s.as_str(),
+                #[cfg(unix)]
+                tokio_postgres::config::Host::Unix(_) => "unix",
+            })
+            .unwrap_or("localhost"),
+        config.get_ports().first().copied().unwrap_or(5432),
+    );
+    Ok((config, target))
+}
 
+async fn connect_once(
+    mut config: tokio_postgres::Config,
+    tls_config: Option<rustls::ClientConfig>,
+) -> Result<(Client, tokio_postgres::CancelToken), (String, bool)> {
     let client = match tls_config {
         Some(cfg) => {
+            config.ssl_mode(tokio_postgres::config::SslMode::Prefer);
             let tls = tokio_postgres_rustls::MakeRustlsConnect::new(cfg);
             let (client, conn) = tokio::time::timeout(CONNECT_TIMEOUT, config.connect(tls))
                 .await
-                .map_err(|_| "connection timed out".to_string())?
-                .map_err(|e| e.to_string())?;
+                .map_err(|_| ("connection timed out".to_string(), false))?
+                .map_err(|e| {
+                    let is_db = e.as_db_error().is_some();
+                    (err(e), is_db)
+                })?;
             tokio::spawn(async move {
                 let _ = conn.await;
             });
             client
         }
         None => {
+            config.ssl_mode(tokio_postgres::config::SslMode::Disable);
             let (client, conn) = tokio::time::timeout(CONNECT_TIMEOUT, config.connect(NoTls))
                 .await
-                .map_err(|_| "connection timed out".to_string())?
-                .map_err(|e| e.to_string())?;
+                .map_err(|_| ("connection timed out".to_string(), false))?
+                .map_err(|e| {
+                    let is_db = e.as_db_error().is_some();
+                    (err(e), is_db)
+                })?;
             tokio::spawn(async move {
                 let _ = conn.await;
             });
@@ -493,9 +566,22 @@ fn quote(s: &str) -> String {
 
 pub(crate) fn err(e: tokio_postgres::Error) -> String {
     if let Some(db) = e.as_db_error() {
-        return db.message().to_string();
+        return match db.detail() {
+            Some(detail) if !detail.is_empty() => format!("{}: {detail}", db.message()),
+            _ => db.message().to_string(),
+        };
     }
-    e.to_string()
+    let mut msg = e.to_string();
+    let mut curr: Option<&dyn std::error::Error> = std::error::Error::source(&e);
+    while let Some(cause) = curr {
+        let s = cause.to_string();
+        if !s.is_empty() && !msg.contains(&s) {
+            msg.push_str(": ");
+            msg.push_str(&s);
+        }
+        curr = cause.source();
+    }
+    msg
 }
 
 fn supports(t: Type) -> bool {
@@ -694,5 +780,55 @@ mod tls {
             }
             builder.with_root_certificates(roots).with_no_client_auth()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DataSource, DriverKind, SslMode};
+
+    fn blank_pg_source() -> DataSource {
+        DataSource {
+            id: 1,
+            name: "pg".into(),
+            kind: DriverKind::Postgres,
+            host: "localhost".into(),
+            port: 0,
+            database: String::new(),
+            user: String::new(),
+            ssl_mode: SslMode::Prefer,
+            trust_cert: false,
+            save_password: true,
+            url: None,
+        }
+    }
+
+    #[test]
+    fn build_pg_config_defaults_port_user_and_database() {
+        let src = blank_pg_source();
+        let (cfg, target) = build_pg_config(&src, Some("secret")).unwrap();
+        assert_eq!(cfg.get_ports(), &[5432]);
+        assert_eq!(cfg.get_user(), Some("postgres"));
+        assert_eq!(cfg.get_dbname(), Some("postgres"));
+        assert_eq!(target, "postgres @ localhost:5432");
+    }
+
+    #[test]
+    fn build_pg_config_supports_url_and_host_port_shorthand() {
+        let mut url_src = blank_pg_source();
+        url_src.host.clear();
+        url_src.url = Some("postgres://alice@db.example.com:5433/analytics".into());
+        let (cfg, target) = build_pg_config(&url_src, None).unwrap();
+        assert_eq!(cfg.get_ports(), &[5433]);
+        assert_eq!(cfg.get_user(), Some("alice"));
+        assert_eq!(cfg.get_dbname(), Some("analytics"));
+        assert_eq!(target, "analytics @ db.example.com:5433");
+
+        let mut host_port_src = blank_pg_source();
+        host_port_src.host = "127.0.0.1:15432".into();
+        let (cfg2, target2) = build_pg_config(&host_port_src, None).unwrap();
+        assert_eq!(cfg2.get_ports(), &[15432]);
+        assert_eq!(target2, "postgres @ 127.0.0.1:15432");
     }
 }

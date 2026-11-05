@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let dark = system_prefers_dark();
         editor.options.insert(
             "gui-theme".into(),
-            if dark { "intellij-dark".into() } else { "intellij-light".into() },
+            if dark { "magma-dark".into() } else { "magma-light".into() },
         );
     }
     if editor.buffers.is_empty() {

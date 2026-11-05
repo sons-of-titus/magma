@@ -168,11 +168,11 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 }
                 "toggle-theme" => {
                     let next = match s.theme_name.as_str() {
-                        "intellij-dark" => "intellij-light",
-                        "intellij-light" => "catppuccin-mocha",
+                        "magma-dark" => "magma-light",
+                        "magma-light" => "catppuccin-mocha",
                         "mocha" | "catppuccin-mocha" => "catppuccin-latte",
                         "latte" | "catppuccin-latte" => "monokai",
-                        _ => "intellij-dark",
+                        _ => "magma-dark",
                     };
                     s.editor.options.insert("gui-theme".into(), next.into());
                     kernel::state::persist::save_settings(&s.editor);

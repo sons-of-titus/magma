@@ -2,7 +2,7 @@ use crate::theme::{Palette, Syntax, TerminalPalette};
 
 pub fn palette(name: &str) -> Palette {
     match name {
-        "intellij-light" => Palette {
+        "magma-light" => Palette {
             chrome: (247, 248, 250),
             surface_panel: (240, 241, 244),
             surface: (255, 255, 255),
@@ -13,10 +13,10 @@ pub fn palette(name: &str) -> Palette {
             text_muted: (108, 112, 126),
             text_secondary: (56, 58, 66),
             text_primary: (30, 31, 34),
-            accent: (53, 116, 240),
+            accent: (214, 46, 1),
             danger: (219, 59, 75),
             success: (32, 138, 60),
-            accent_muted: (108, 112, 126),
+            accent_muted: (230, 120, 90),
             warning: (194, 125, 0),
             border: (209, 209, 209),
             tab_active: (252, 252, 253),
@@ -184,10 +184,10 @@ pub fn palette(name: &str) -> Palette {
             text_muted: (157, 160, 168),
             text_secondary: (206, 208, 214),
             text_primary: (223, 225, 229),
-            accent: (53, 116, 240),
+            accent: (234, 88, 50),
             danger: (247, 84, 100),
             success: (84, 145, 89),
-            accent_muted: (154, 167, 176),
+            accent_muted: (200, 120, 90),
             warning: (214, 174, 88),
             border: (57, 59, 64),
             tab_active: (44, 44, 47),

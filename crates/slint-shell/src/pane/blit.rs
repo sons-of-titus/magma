@@ -798,7 +798,7 @@ mod tests {
         use kernel::terminal::screen::{Span, Style as TermStyle, StyledLine};
         let (cw, ch) = meas();
         let atlas = atlas_with_font();
-        let palette = crate::theme::palette("intellij-dark").terminal;
+        let palette = crate::theme::palette("magma-dark").terminal;
         let line = |italic: bool| {
             vec![StyledLine {
                 text: "l".into(),
@@ -983,7 +983,7 @@ mod tests {
     #[test]
     fn terminal_background_comes_from_the_theme() {
         let atlas = GpuGlyphAtlas::new();
-        let palette = crate::theme::palette("intellij-dark").terminal;
+        let palette = crate::theme::palette("magma-dark").terminal;
         let lines = vec![kernel::terminal::screen::StyledLine::default()];
         let (rgba, _, _) = blit_terminal_rgba(&lines, &atlas, 1, 1, 8, 16, &palette, None);
         assert_eq!(&rgba[..3], &[palette.bg.0, palette.bg.1, palette.bg.2]);
@@ -992,7 +992,7 @@ mod tests {
     #[test]
     fn terminal_ansi_slots_come_from_the_theme() {
         let atlas = GpuGlyphAtlas::new();
-        let palette = crate::theme::palette("intellij-dark").terminal;
+        let palette = crate::theme::palette("magma-dark").terminal;
         let style = kernel::terminal::screen::Style {
             bg: kernel::terminal::Color::Indexed(1),
             ..Default::default()
@@ -1013,7 +1013,7 @@ mod tests {
     #[test]
     fn terminal_cursor_uses_the_theme_cursor_color() {
         let atlas = GpuGlyphAtlas::new();
-        let palette = crate::theme::palette("intellij-dark").terminal;
+        let palette = crate::theme::palette("magma-dark").terminal;
         let lines = vec![kernel::terminal::screen::StyledLine::default()];
         let (rgba, _, _) = blit_terminal_rgba(&lines, &atlas, 1, 1, 8, 16, &palette, Some((0, 0)));
         assert_eq!(

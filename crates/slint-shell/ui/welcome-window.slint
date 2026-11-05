@@ -7,6 +7,7 @@ import { WindowControls } from "components/window-chrome.slint";
 // ever resized and an open never flashes a partial-size app.
 export component WelcomeWindow inherits Window {
     title: "Magma";
+    icon: @image-url("../../../assets/logo.svg");
     // No native decorations: the strip below drags the window and hosts the
     // minimize and quit controls.  Not resizable — only the editor window is.
     no-frame: true;

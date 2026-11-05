@@ -369,7 +369,7 @@ fn sync_theme(app: &AppWindow, state: &mut AppState) {
         .options
         .get("gui-theme")
         .cloned()
-        .unwrap_or_else(|| "intellij-dark".into());
+        .unwrap_or_else(|| "magma-dark".into());
     if state.theme_name == name {
         return;
     }

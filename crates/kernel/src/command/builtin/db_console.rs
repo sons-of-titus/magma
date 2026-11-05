@@ -117,6 +117,14 @@ fn execute_text(
         .and_then(|k| editor.db.console_source(k))
         .or(editor.db.active);
     let source_id = source_id.ok_or_else(|| "no data source for this console".to_string())?;
+    dispatch_script(editor, source_id, sql)
+}
+
+pub(super) fn dispatch_script(
+    editor: &mut Editor,
+    source_id: u64,
+    sql: String,
+) -> Result<(), String> {
     let conn = editor
         .db
         .connections
@@ -143,6 +151,7 @@ fn execute_text(
         busy: true,
         job,
         error: None,
+        structure: false,
     });
     editor.db.active_tab = Some(tab_id);
 
@@ -184,7 +193,7 @@ fn tab_title(sql: &str, count: usize) -> String {
 /// The console buffer is an editor buffer named `*sql: <source>*` — it
 /// renders in the EditorView with the SQL major mode, participates in
 /// crash recovery, and persists with the workspace.
-fn open_console_buffer(editor: &mut Editor, source_id: u64) -> Result<usize, String> {
+pub(super) fn open_console_buffer(editor: &mut Editor, source_id: u64) -> Result<usize, String> {
     if let Some(&key) = editor.db.consoles.get(&source_id)
         && editor.buffers.contains(key)
     {
@@ -205,11 +214,13 @@ fn open_console_buffer(editor: &mut Editor, source_id: u64) -> Result<usize, Str
         return Ok(key);
     }
     let id = editor.allocate_buffer_id();
-    let buf = crate::text_engine::Buffer::from_string(
+    let mut buf = crate::text_engine::Buffer::from_string(
         crate::state::id::BufferId(id),
         &buf_name,
         "-- SQL console: put a statement here; Cmd+Enter runs the statement under the cursor.\n",
     );
+    buf.major_mode = crate::text_engine::MajorMode::from_name("sql");
+    buf.language_path = Some("console.sql".to_string());
     let arc = std::sync::Arc::new(std::sync::Mutex::new(buf));
     let entry = editor.buffers.vacant_entry();
     let key = entry.key();
@@ -217,10 +228,7 @@ fn open_console_buffer(editor: &mut Editor, source_id: u64) -> Result<usize, Str
     editor
         .views
         .insert(key, crate::text_engine::BufferView::new(arc));
-    if let Some(a) = editor.buffers.get(key) {
-        a.lock().unwrap_or_else(|e| e.into_inner()).major_mode =
-            crate::text_engine::MajorMode::from_name("sql");
-    }
     editor.db.consoles.insert(source_id, key);
+    crate::semantic::fallback_syntax::on_buffer_created(editor, key);
     Ok(key)
 }

@@ -89,31 +89,7 @@ pub(super) fn register(editor: &mut Editor) {
             let path = path_arg(args)?;
             let id = source_id(editor, args)?;
             let node = db::NodeRef::parse(&path).ok_or("bad table path")?;
-            let tab_id = editor.db.take_next_tab_id();
-            let job = editor.db.take_next_job();
-            editor.db.tabs.push(crate::db::DataTab {
-                id: tab_id,
-                source_id: id,
-                kind: crate::db::DataTabKind::Table {
-                    node: node.clone(),
-                    detail: None,
-                },
-                results: Vec::new(),
-                active_result: 0,
-                title: table_title(&node),
-                page: 0,
-                sort: None,
-                filter: String::new(),
-                pending: Default::default(),
-                selected: None,
-                busy: true,
-                job,
-                error: None,
-            });
-            editor.db.active_tab = Some(tab_id);
-            fetch_table_page(editor, tab_id);
-            editor.ui_requests.push("database".to_string());
-            editor.frame_dirty = true;
+            open_table_tab(editor, id, node, String::new(), false);
             Ok(())
         },
     );
@@ -255,6 +231,65 @@ pub(super) fn register(editor: &mut Editor) {
             Ok(())
         },
     );
+}
+
+pub(super) fn open_table_tab(
+    editor: &mut Editor,
+    source_id: u64,
+    node: db::NodeRef,
+    filter: String,
+    structure: bool,
+) -> u64 {
+    if let Some(existing) = editor.db.tabs.iter_mut().find(|t| {
+        t.source_id == source_id && t.table_node() == Some(&node) && t.filter == filter
+    }) {
+        let tab_id = existing.id;
+        existing.structure = structure;
+        let needs_fetch = !existing.busy && (existing.results.is_empty() || existing.error.is_some());
+        if needs_fetch {
+            existing.busy = true;
+            existing.error = None;
+        }
+        editor.db.active_tab = Some(tab_id);
+        if needs_fetch {
+            let job = editor.db.take_next_job();
+            if let Some(t) = editor.db.tab_mut(tab_id) {
+                t.job = job;
+            }
+            fetch_table_page(editor, tab_id);
+        }
+        editor.ui_requests.push("database".to_string());
+        editor.frame_dirty = true;
+        return tab_id;
+    }
+
+    let tab_id = editor.db.take_next_tab_id();
+    let job = editor.db.take_next_job();
+    editor.db.tabs.push(crate::db::DataTab {
+        id: tab_id,
+        source_id,
+        kind: crate::db::DataTabKind::Table {
+            node: node.clone(),
+            detail: None,
+        },
+        results: Vec::new(),
+        active_result: 0,
+        title: table_title(&node),
+        page: 0,
+        sort: None,
+        filter,
+        pending: Default::default(),
+        selected: None,
+        busy: true,
+        job,
+        error: None,
+        structure,
+    });
+    editor.db.active_tab = Some(tab_id);
+    fetch_table_page(editor, tab_id);
+    editor.ui_requests.push("database".to_string());
+    editor.frame_dirty = true;
+    tab_id
 }
 
 /// The one place that (re)fetches a table tab's page: table detail always

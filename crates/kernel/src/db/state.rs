@@ -136,6 +136,9 @@ pub struct DataTab {
     pub job: u64,
     /// Last error surfaced for this tab (query or edit).
     pub error: Option<String>,
+    /// True when a table tab displays its structure (columns, keys, indexes)
+    /// instead of its data rows.
+    pub structure: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -455,6 +458,7 @@ mod tests {
             busy: false,
             job: 0,
             error: None,
+            structure: false,
         }
     }
 

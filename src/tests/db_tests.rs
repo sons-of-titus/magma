@@ -660,3 +660,267 @@ fn async_connect_updates_state() {
     }
     assert!(ed.db.is_connected(id), "connected={}", ed.db.is_connected(id));
 }
+
+#[test]
+fn typed_password_survives_a_properties_edit_with_an_empty_field() {
+    let path = tmp_sqlite("pw");
+    let mut ed = editor();
+    execute_command(
+        &mut ed,
+        "db-source-add",
+        &args(&[
+            ("name", ArgValue::String("demo".into())),
+            ("kind", ArgValue::String("sqlite".into())),
+            ("host", ArgValue::Path(path.to_string_lossy().to_string())),
+            ("password", ArgValue::String("hunter2".into())),
+        ]),
+    )
+    .unwrap();
+    let id = ed.db.active.unwrap();
+    assert_eq!(ed.db.session_passwords.get(&id).map(String::as_str), Some("hunter2"));
+
+    execute_command(
+        &mut ed,
+        "db-source-update",
+        &args(&[
+            ("source", ArgValue::Integer(id as i64)),
+            ("name", ArgValue::String("renamed".into())),
+            ("kind", ArgValue::String("sqlite".into())),
+            ("host", ArgValue::Path(path.to_string_lossy().to_string())),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(ed.db.session_passwords.get(&id).map(String::as_str), Some("hunter2"));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn open_and_toggle_structure_view() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "struct");
+
+    execute_command(
+        &mut ed,
+        "db-open-structure",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+    let tab = ed.db.active_tab().unwrap();
+    assert!(tab.structure);
+    assert!(tab.table_detail().is_some());
+
+    execute_command(&mut ed, "db-toggle-structure", &args(&[])).unwrap();
+    assert!(!ed.db.active_tab().unwrap().structure);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn select_top_opens_console_and_executes_query() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "top");
+
+    execute_command(
+        &mut ed,
+        "db-select-top",
+        &args(&[
+            ("path", ArgValue::String("/main/main/tables/items".into())),
+            ("limit", ArgValue::Integer(2)),
+        ]),
+    )
+    .unwrap();
+    let tab = ed.db.active_tab().unwrap();
+    assert_eq!(tab.result().unwrap().rows.len(), 2);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn follow_fk_jumps_from_data_grid_and_structure_view() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "fk");
+    {
+        let conn = ed.db.connections.values().next().unwrap().clone();
+        conn.execute_script(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT);
+             CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id));
+             INSERT INTO users (id, email) VALUES (10, 'a@b.c'), (20, 'd@e.f');
+             INSERT INTO orders (id, user_id) VALUES (1, 20);",
+            10,
+        )
+        .unwrap();
+    }
+
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/orders".into()))]),
+    )
+    .unwrap();
+
+    execute_command(
+        &mut ed,
+        "db-follow-fk",
+        &args(&[
+            ("row", ArgValue::Integer(0)),
+            ("column", ArgValue::Integer(1)),
+        ]),
+    )
+    .unwrap();
+
+    let tab = ed.db.active_tab().unwrap();
+    assert_eq!(
+        tab.table_node(),
+        Some(&NodeRef::Table {
+            database: "main".into(),
+            schema: "main".into(),
+            name: "users".into(),
+            is_view: false,
+        })
+    );
+    assert_eq!(tab.filter, "\"id\" = 20");
+    let rows = &tab.result().unwrap().rows;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0][1], db::DbValue::Text("d@e.f".into()));
+
+    execute_command(
+        &mut ed,
+        "db-open-structure",
+        &args(&[("path", ArgValue::String("/main/main/tables/orders".into()))]),
+    )
+    .unwrap();
+    execute_command(
+        &mut ed,
+        "db-follow-fk",
+        &args(&[("row", ArgValue::Integer(1))]),
+    )
+    .unwrap();
+    let tab = ed.db.active_tab().unwrap();
+    assert!(matches!(
+        tab.table_node(),
+        Some(NodeRef::Table { name, .. }) if name == "users"
+    ));
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn connect_auto_expands_down_to_tables_folder() {
+    let mut ed = editor();
+    let (id, path) = connected_sqlite(&mut ed, "cascade");
+    let tree = ed.db.tree(id);
+    let tables = tree.node("/main/main/tables").expect("tables folder auto-loaded");
+    assert!(tables.expanded);
+    assert!(
+        tables
+            .children
+            .iter()
+            .any(|c| matches!(c, db::Child::Table { name, .. } if name == "items"))
+    );
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn sql_console_highlights_keywords_comments_and_single_quoted_strings() {
+    let mut ed = editor();
+    ed.fallback_syntax.define_rules(
+        "sql",
+        vec!["SELECT".into(), "select".into(), "FROM".into(), "from".into(), "WHERE".into(), "where".into()],
+        Some("--".into()),
+    );
+    ed.fallback_syntax.map_extension("sql", "sql");
+    let (_id, path) = connected_sqlite(&mut ed, "hl");
+    execute_command(&mut ed, "db-console", &args(&[])).unwrap();
+    let key = ed.focused_buffer_key();
+    {
+        let view = ed.views.get_mut(&key).unwrap();
+        let len = view.buffer.lock().unwrap().len();
+        view.insert(len, "select * from items where label = 'a';\n");
+    }
+    ed.publish_buffer_changes();
+    let ranges = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("syntax")
+        .cloned()
+        .unwrap_or_default();
+    assert!(ranges.iter().any(|(_, _, f)| f == "comment-face"));
+    assert!(ranges.iter().any(|(_, _, f)| f == "keyword-face"));
+    assert!(ranges.iter().any(|(_, _, f)| f == "string-face"));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn sql_console_gutter_renders_play_icon_and_executes_statement_on_click() {
+    let mut ed = editor();
+    ed.options.insert("mouse-support".into(), "true".into());
+    ed.gutter.add_provider(Box::new(
+        crate::kernel::render::gutter_providers::Breakpoints,
+    ));
+    ed.gutter.add_provider(Box::new(
+        crate::kernel::render::gutter_providers::LineNumbers,
+    ));
+    let (_id, path) = connected_sqlite(&mut ed, "gutter_run");
+    execute_command(&mut ed, "db-console", &args(&[])).unwrap();
+    let key = ed.focused_buffer_key();
+    {
+        let arc = ed.buffers.get(key).unwrap();
+        let mut buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        let len = buf.len();
+        buf.insert(len, "SELECT 10 + 5;\nSELECT 20 + 7;\n");
+    }
+
+    let mut surface = crate::kernel::render::surface::Surface::new(80, 24);
+    crate::kernel::render::frame::render_frame(&mut ed, &mut surface);
+    assert_eq!(surface.cell(0, 0).map(|c| c.ch), Some(' '));
+    assert_eq!(surface.cell(0, 1).map(|c| c.ch), Some('▶'));
+    assert_eq!(surface.cell(0, 2).map(|c| c.ch), Some('▶'));
+
+    crate::kernel::input::mouse::dispatch_mouse(
+        &mut ed,
+        &surface,
+        &crate::kernel::input::event::MouseEvent {
+            kind: crate::kernel::state::MouseEventKind::Click,
+            button: crate::kernel::input::event::MouseButton::Left,
+            x: 0,
+            y: 2,
+            modifiers: String::new(),
+        },
+    );
+    let tab = ed.db.active_tab().unwrap();
+    assert_eq!(tab.result().unwrap().rows[0][0], db::DbValue::Integer(27));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn open_table_reuses_existing_tab_and_surfaces_table_detail_errors() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "reuse_tab");
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+    let first_tab = ed.db.active_tab.unwrap();
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+    assert_eq!(ed.db.tabs.len(), 1);
+    assert_eq!(ed.db.active_tab, Some(first_tab));
+
+    crate::kernel::runtime::process_background_event(
+        &mut ed,
+        crate::kernel::runtime::BackgroundEvent::Db(crate::kernel::db::DbEvent::TableDetail {
+            tab_id: first_tab,
+            detail: Err("metadata query failed".into()),
+        }),
+    );
+    let tab = ed.db.tab(first_tab).unwrap();
+    assert!(!tab.busy);
+    assert_eq!(tab.error.as_deref(), Some("metadata query failed"));
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

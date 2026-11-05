@@ -50,7 +50,11 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         app.on_db_source_changed(move |name| {
             let mut s = state.borrow_mut();
             if let Some(src) = s.editor.db.sources.iter().find(|x| x.name == name.as_str()) {
-                s.editor.db.active = Some(src.id);
+                let id = src.id;
+                s.editor.db.active = Some(id);
+                if !s.editor.db.is_connected(id) {
+                    run_s(&mut s, "db-connect", &[("source", ArgValue::Integer(id as i64))]);
+                }
             }
             refresh(&weak, &mut s);
         });
@@ -263,11 +267,20 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_db_dialog_kind_changed(move |label| {
             let mut s = state.borrow_mut();
+            if let Some(a) = weak.upgrade() {
+                dialog_fields(&a, &mut s);
+            }
             if let Some(d) = &mut s.db_dialog
                 && let Some(kind) = DB_KINDS.iter().position(|k| k.label() == label.as_str())
             {
                 d.kind_index = kind;
-                d.port = kind_default_port(kind).to_string();
+                let default_port = kind_default_port(kind);
+                d.port = if default_port == 0 {
+                    String::new()
+                } else {
+                    default_port.to_string()
+                };
+                d.needs_hydration = true;
                 d.port_push = true;
             }
             refresh(&weak, &mut s);
@@ -278,6 +291,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_db_dialog_ssl_changed(move |label| {
             let mut s = state.borrow_mut();
+            if let Some(a) = weak.upgrade() {
+                dialog_fields(&a, &mut s);
+            }
             if let Some(d) = &mut s.db_dialog {
                 d.ssl_index = match label.as_str() {
                     "disabled" => 0,
@@ -293,8 +309,12 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_db_dialog_url_toggled(move || {
             let mut s = state.borrow_mut();
+            if let Some(a) = weak.upgrade() {
+                dialog_fields(&a, &mut s);
+            }
             if let Some(d) = &mut s.db_dialog {
                 d.url_mode = !d.url_mode;
+                d.needs_hydration = true;
             }
             refresh(&weak, &mut s);
         });
@@ -447,18 +467,28 @@ pub(crate) fn open_dialog(ed: &mut kernel::state::Editor, editing: Option<u64>) 
         })
         .unwrap_or(0);
     let source = editing.and_then(|id| ed.db.source(id));
+    let default_port = kind_default_port(kind_index);
     DbDialog {
         editing,
         kind_index,
         name: source.map(|s| s.name.clone()).unwrap_or_default(),
         host: source.map(|s| s.host.clone()).unwrap_or_default(),
         port: source
-            .map(|s| s.port.to_string())
-            .unwrap_or_else(|| kind_default_port(kind_index).to_string()),
+            .map(|s| {
+                let p = if s.port == 0 { s.kind.default_port() } else { s.port };
+                if p == 0 { String::new() } else { p.to_string() }
+            })
+            .unwrap_or_else(|| {
+                if default_port == 0 {
+                    String::new()
+                } else {
+                    default_port.to_string()
+                }
+            }),
         database: source.map(|s| s.database.clone()).unwrap_or_default(),
         user: source.map(|s| s.user.clone()).unwrap_or_default(),
         password: String::new(),
-        save_password: source.map(|s| s.save_password).unwrap_or(false),
+        save_password: source.map(|s| s.save_password).unwrap_or(true),
         ssl_index: source
             .map(|s| match s.ssl_mode {
                 db::SslMode::Disabled => 0usize,
@@ -498,35 +528,102 @@ fn dialog_fields(app: &AppWindow, s: &mut AppState) {
     d.url = app.get_db_dialog_url().to_string();
 }
 
-fn dialog_args(d: &DbDialog) -> Vec<(&'static str, ArgValue)> {
+pub(crate) fn dialog_source(d: &DbDialog) -> db::DataSource {
     let kind = DB_KINDS
         .get(d.kind_index)
         .copied()
         .unwrap_or(db::DriverKind::Sqlite);
+    let url = if d.url_mode && !d.url.trim().is_empty() {
+        Some(d.url.trim().to_string())
+    } else {
+        None
+    };
+    let host = if !d.host.trim().is_empty() {
+        d.host.trim().to_string()
+    } else if !kind.is_embedded() && url.is_none() {
+        "localhost".to_string()
+    } else {
+        String::new()
+    };
+    let port = d
+        .port
+        .trim()
+        .parse::<u16>()
+        .ok()
+        .filter(|&p| p > 0)
+        .unwrap_or_else(|| kind.default_port());
+    let user = if !d.user.trim().is_empty() {
+        d.user.trim().to_string()
+    } else {
+        match kind {
+            db::DriverKind::Postgres => "postgres".to_string(),
+            db::DriverKind::MySql | db::DriverKind::MariaDb => "root".to_string(),
+            db::DriverKind::SqlServer => "sa".to_string(),
+            db::DriverKind::Sqlite => String::new(),
+        }
+    };
+    let database = if !d.database.trim().is_empty() {
+        d.database.trim().to_string()
+    } else if kind == db::DriverKind::Postgres {
+        user.clone()
+    } else {
+        String::new()
+    };
+    let name = if !d.name.trim().is_empty() {
+        d.name.trim().to_string()
+    } else if kind.is_embedded() {
+        std::path::Path::new(&host)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("SQLite")
+            .to_string()
+    } else if !database.is_empty() {
+        format!(
+            "{database}@{}",
+            if host.is_empty() { "localhost" } else { &host }
+        )
+    } else {
+        format!(
+            "{}@{}",
+            kind.label(),
+            if host.is_empty() { "localhost" } else { &host }
+        )
+    };
+    db::DataSource {
+        id: d.editing.unwrap_or(0),
+        name,
+        kind,
+        host,
+        port,
+        database,
+        user,
+        ssl_mode: match d.ssl_index {
+            0 => db::SslMode::Disabled,
+            2 => db::SslMode::Require,
+            _ => db::SslMode::Prefer,
+        },
+        trust_cert: d.trust_cert,
+        save_password: d.save_password,
+        url,
+    }
+}
+
+fn dialog_args(d: &DbDialog) -> Vec<(&'static str, ArgValue)> {
+    let src = dialog_source(d);
     let mut args = vec![
-        ("name", ArgValue::String(d.name.clone())),
-        ("kind", ArgValue::String(kind.as_str().to_string())),
-        ("host", ArgValue::String(d.host.clone())),
-        ("port", ArgValue::Integer(d.port.parse::<i64>().unwrap_or(0))),
-        ("database", ArgValue::String(d.database.clone())),
-        ("user", ArgValue::String(d.user.clone())),
-        ("save-password", ArgValue::Boolean(d.save_password)),
-        (
-            "ssl",
-            ArgValue::String(
-                match d.ssl_index {
-                    0 => db::SslMode::Disabled,
-                    2 => db::SslMode::Require,
-                    _ => db::SslMode::Prefer,
-                }
-                .as_str()
-                .to_string(),
-            ),
-        ),
-        ("trust-cert", ArgValue::Boolean(d.trust_cert)),
+        ("name", ArgValue::String(src.name)),
+        ("kind", ArgValue::String(src.kind.as_str().to_string())),
+        ("host", ArgValue::String(src.host)),
+        ("port", ArgValue::Integer(src.port as i64)),
+        ("database", ArgValue::String(src.database)),
+        ("user", ArgValue::String(src.user)),
+        ("save-password", ArgValue::Boolean(src.save_password)),
+        ("ssl", ArgValue::String(src.ssl_mode.as_str().to_string())),
+        ("trust-cert", ArgValue::Boolean(src.trust_cert)),
     ];
-    if d.url_mode {
-        args.push(("url", ArgValue::String(d.url.clone())));
+    if let Some(url) = src.url {
+        args.push(("url", ArgValue::String(url)));
     }
     if !d.password.is_empty() {
         args.push(("password", ArgValue::String(d.password.clone())));
@@ -540,44 +637,18 @@ fn test_dialog_connection(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
         return;
     };
     d.testing = true;
-    let probe_source = {
-        let mut args = HashMap::new();
-        for (k, v) in dialog_args(d) {
-            args.insert(k.to_string(), v);
+    let probe_source = dialog_source(d);
+    let password = s.db_dialog.as_ref().and_then(|d| {
+        if !d.password.is_empty() {
+            Some(d.password.clone())
+        } else if let Some(id) = d.editing {
+            s.editor
+                .db
+                .password_for(id, || kernel::state::secrets::load_key(&format!("db-source-{id}")))
+        } else {
+            None
         }
-        // Build a probe source without registering it.
-        let kind = DB_KINDS
-            .get(d.kind_index)
-            .copied()
-            .unwrap_or(db::DriverKind::Sqlite);
-        let _ = &mut args;
-        db::DataSource {
-            id: 0,
-            name: "probe".into(),
-            kind,
-            host: d.host.clone(),
-            port: d.port.parse().unwrap_or(kind.default_port()),
-            database: d.database.clone(),
-            user: d.user.clone(),
-            ssl_mode: match d.ssl_index {
-                0 => db::SslMode::Disabled,
-                2 => db::SslMode::Require,
-                _ => db::SslMode::Prefer,
-            },
-            trust_cert: d.trust_cert,
-            save_password: false,
-            url: if d.url_mode && !d.url.is_empty() {
-                Some(d.url.clone())
-            } else {
-                None
-            },
-        }
-    };
-    let password = s
-        .db_dialog
-        .as_ref()
-        .map(|d| d.password.clone())
-        .filter(|p| !p.is_empty());
+    });
     let token = s.editor.db.take_next_test_token();
     if let Some(d) = &mut s.db_dialog {
         d.test_token = token;
@@ -624,6 +695,7 @@ fn save_dialog(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
     match execute_command(&mut s.editor, cmd, &args) {
         Ok(()) => {
             s.message.clear();
+            kernel::state::persist::save_settings(&s.editor);
             // The usual flow is add → explore: connect right away.
             let id = editing.unwrap_or_else(|| {
                 s.editor
@@ -640,7 +712,11 @@ fn save_dialog(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
             }
         }
         Err(e) => {
-            // Keep the form open with the error visible.
+            let token = s.editor.db.take_next_test_token();
+            s.editor.db.last_test = Some(Err(e.clone()));
+            let mut d = d;
+            d.testing = false;
+            d.test_token = token;
             s.db_dialog = Some(d);
             s.message = e;
         }

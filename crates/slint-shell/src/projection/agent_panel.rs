@@ -1,7 +1,7 @@
 //! Agent panel projections for the connection layer: provider cards, auth
 //! flow state, and the composer's capability-driven controls.
 
-use kernel::agent::{AuthInstruction, registry};
+use kernel::agent::AuthInstruction;
 use kernel::state::Editor;
 
 use crate::{AuthPanelView, PickerChoice, ProviderCard};
@@ -27,6 +27,7 @@ pub fn provider_cards(ed: &Editor) -> Vec<ProviderCard> {
                 name: meta.display_name.into(),
                 description: meta.description.into(),
                 glyph: meta.glyph.into(),
+                logo: provider_logo(meta.id),
                 auth_label: meta
                     .auth_methods
                     .first()
@@ -40,6 +41,23 @@ pub fn provider_cards(ed: &Editor) -> Vec<ProviderCard> {
         .collect()
 }
 
+/// Embedded provider logo, loaded from the bundled SVG assets.  Falls back
+/// to an empty image when a provider has no asset, so the UI keeps showing
+/// its Nerd Font glyph.
+fn provider_logo(id: &str) -> slint::Image {
+    let bytes: &[u8] = match id {
+        "openai" => include_bytes!("../../ui/assets/providers/openai.svg"),
+        "anthropic" => include_bytes!("../../ui/assets/providers/anthropic.svg"),
+        "openrouter" => include_bytes!("../../ui/assets/providers/openrouter.svg"),
+        "copilot" => include_bytes!("../../ui/assets/providers/githubcopilot.svg"),
+        "deepseek" => include_bytes!("../../ui/assets/providers/deepseek.svg"),
+        "kimi" => include_bytes!("../../ui/assets/providers/kimi.svg"),
+        "zai" => include_bytes!("../../ui/assets/providers/zai.svg"),
+        _ => return slint::Image::default(),
+    };
+    slint::Image::load_from_svg_data(bytes).unwrap_or_default()
+}
+
 /// The auth flow on screen, if any.
 pub fn auth_panel(ed: &Editor) -> (bool, AuthPanelView) {
     let Some(pending) = &ed.agent_connections.pending else {
@@ -49,6 +67,7 @@ pub fn auth_panel(ed: &Editor) -> (bool, AuthPanelView) {
                 provider_id: "".into(),
                 provider_name: "".into(),
                 provider_glyph: "".into(),
+                provider_logo: slint::Image::default(),
                 method_label: "".into(),
                 instruction: "".into(),
                 instructions: "".into(),
@@ -113,6 +132,7 @@ pub fn auth_panel(ed: &Editor) -> (bool, AuthPanelView) {
         provider_id: pending.provider.clone().into(),
         provider_name: meta.display_name.into(),
         provider_glyph: meta.glyph.into(),
+        provider_logo: provider_logo(&pending.provider),
         method_label: method.map(|m| m.label).unwrap_or("").into(),
         instruction: instruction.into(),
         instructions: instructions.into(),

@@ -3,9 +3,9 @@
 
 use std::collections::HashSet;
 
-use kernel::agent::{AgentStatus, AuthInstruction, EntryKind};
+use kernel::agent::{AgentStatus, EntryKind};
 
-use crate::{AgentEntry, AgentSessionChip, AuthPanelView, PickerChoice, ProviderCard};
+use crate::{AgentEntry, AgentSessionChip};
 use kernel::state::Editor;
 
 // ── Agent tool window ────────────────────────────────────────────────────────

@@ -454,7 +454,7 @@ export component AgentConversation inherits Rectangle {
 
     // ── Session chips (only when there is history) ───────────────────
     if root.sessions.length > 1 : Rectangle {
-        height: 30px;
+    height: 26px;
 
         Rectangle {
             y: parent.height - 1px;
@@ -591,9 +591,9 @@ export component AgentConversation inherits Rectangle {
             height: 100%;
 
             feed := VerticalLayout {
-                padding: 10px;
-                padding-bottom: 18px;
-                spacing: 8px;
+                padding: 8px;
+                padding-bottom: 14px;
+                spacing: 6px;
 
                 if root.entry-count == 0 : VerticalLayout {
                     alignment: start;

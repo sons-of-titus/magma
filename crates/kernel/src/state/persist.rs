@@ -341,8 +341,8 @@ mod tests {
         let parsed: PersistedSettings = serde_json::from_str(&raw).unwrap();
         // Manifest only lists providers the keychain actually accepted; on a
         // machine without a key service the key stays session-only.
-        let accepted = !parsed.keychain_keys.contains(&"zctestprovider".to_string())
-            || super::super::secrets::load_key(TEST_ACCOUNT).is_some();
+        let accepted = parsed.keychain_keys.contains(&"zctestprovider".to_string())
+            && super::super::secrets::load_key(TEST_ACCOUNT).is_some();
 
         let mut restored = editor_with_options(&[]);
         load_settings_from(&dir, &mut restored);

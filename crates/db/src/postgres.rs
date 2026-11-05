@@ -309,10 +309,10 @@ impl PostgresEngine {
         let col_rows = client
             .query(
                 "SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, \
-                        pg_get_expr(d.adbin, d.adrelid), a.attidentity::text <> '' \
+                        pg_get_expr(d.adbin, d.adrelid)::text, a.attidentity::text <> '' \
                  FROM pg_attribute a \
                  LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
-                 WHERE a.attrelid = $1::regclass AND a.attnum > 0 AND NOT a.attisdropped \
+                 WHERE a.attrelid = $1::text::regclass AND a.attnum > 0 AND NOT a.attisdropped \
                  ORDER BY a.attnum",
                 &[&qualified],
             )
@@ -337,7 +337,7 @@ impl PostgresEngine {
                 "SELECT a.attname FROM pg_index i \
                  JOIN pg_attribute a ON a.attrelid = i.indrelid \
                      AND a.attnum = ANY(i.indkey) AND a.attnum > 0 \
-                 WHERE i.indrelid = $1::regclass AND i.indisprimary",
+                 WHERE i.indrelid = $1::text::regclass AND i.indisprimary",
                 &[&qualified],
             )
             .await
@@ -358,7 +358,7 @@ impl PostgresEngine {
                  FROM pg_constraint con \
                  JOIN pg_class rc ON rc.oid = con.confrelid \
                  JOIN pg_namespace nn ON nn.oid = rc.relnamespace \
-                 WHERE con.contype = 'f' AND con.conrelid = $1::regclass ORDER BY con.conname",
+                 WHERE con.contype = 'f' AND con.conrelid = $1::text::regclass ORDER BY con.conname",
                 &[&qualified],
             )
             .await
@@ -382,11 +382,11 @@ impl PostgresEngine {
 
         let idx_rows = client
             .query(
-                "SELECT ic.relname, i.indisunique, i.indkey \
+                "SELECT ic.relname, i.indisunique, i.indkey::int2[] \
                  FROM pg_index i \
                  JOIN pg_class t ON t.oid = i.indrelid \
                  JOIN pg_class ic ON ic.oid = i.indexrelid \
-                 WHERE i.indrelid = $1::regclass AND NOT i.indisprimary ORDER BY ic.relname",
+                 WHERE i.indrelid = $1::text::regclass AND NOT i.indisprimary ORDER BY ic.relname",
                 &[&qualified],
             )
             .await
@@ -621,7 +621,7 @@ async fn column_names(
     let rows = client
         .query(
             "SELECT attnum, attname FROM pg_attribute \
-             WHERE attrelid = $1::regclass AND attnum = ANY($2)",
+             WHERE attrelid = $1::text::regclass AND attnum = ANY($2)",
             &[&table, &attnums],
         )
         .await

@@ -242,6 +242,10 @@ pub fn init_vm() {
         include_str!("../../../builtins/treesitter.janet"),
     );
     load_builtin(
+        "builtins/treesitter_ui.janet",
+        include_str!("../../../builtins/treesitter_ui.janet"),
+    );
+    load_builtin(
         "builtins/folds.janet",
         include_str!("../../../builtins/folds.janet"),
     );

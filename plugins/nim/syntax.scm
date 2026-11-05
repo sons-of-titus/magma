@@ -13,11 +13,11 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "addr" "and" "as" "asm" "bind" "block" "break" "case"
+  "and" "as" "asm" "bind" "block" "break" "case"
   "cast" "concept" "const" "continue" "converter" "defer"
-  "discard" "distinct" "div" "do" "elif" "else" "end" "enum"
+  "discard" "distinct" "div" "do" "elif" "else" "enum"
   "except" "export" "finally" "for" "from" "func" "if" "import"
-  "in" "include" "interface" "is" "isnot" "iterator" "let"
+  "in" "include" "is" "isnot" "iterator" "let"
   "macro" "method" "mixin" "mod" "not" "notin" "object" "of"
   "or" "out" "proc" "ptr" "raise" "ref" "return" "shl" "shr"
   "static" "template" "try" "tuple" "type" "using" "var"
@@ -35,19 +35,22 @@
 
 ; ── Types ─────────────────────────────────────────────────────────────────
 
-(type_declaration name: (identifier) @type)
+(type_declaration
+  (type_symbol_declaration name: (identifier) @type))
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (integer_literal) @constant
 (float_literal) @constant
-"true" @constant
-"false" @constant
-"nil" @constant
+(nil_literal) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 
-(string_literal) @string
+[
+  (interpreted_string_literal)
+  (raw_string_literal)
+  (long_string_literal)
+] @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

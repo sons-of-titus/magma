@@ -13,17 +13,17 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "and" "break" "do" "else" "elseif" "end"
+  "and" "do" "else" "elseif" "end"
   "for" "function" "goto" "if" "in"
   "local" "not" "or" "repeat" "return"
   "then" "until" "while"
 ] @keyword
+(break_statement) @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
 (function_declaration name: (identifier) @function)
 (function_declaration name: (dot_index_expression) @function)
-(local_function_statement name: (identifier) @function)
 (function_call name: (identifier) @function)
 (method_index_expression method: (identifier) @function)
 
@@ -34,9 +34,9 @@
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (number) @constant
-"true" @constant
-"false" @constant
-"nil" @constant
+(true) @constant
+(false) @constant
+(nil) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

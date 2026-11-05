@@ -7,4 +7,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["protobuf"]
+   :grammar-symbols {"protobuf" "tree_sitter_proto"}
    :capabilities [:editor-access]})

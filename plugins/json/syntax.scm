@@ -11,9 +11,9 @@
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (number) @constant
-"true" @constant
-"false" @constant
-"null" @constant
+(true) @constant
+(false) @constant
+(null) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

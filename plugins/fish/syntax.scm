@@ -13,15 +13,16 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "begin" "break" "case" "continue" "else" "end"
-  "for" "function" "if" "in" "not" "or" "and"
+  "begin" "case" "else" "end" "for" "function" "if" "in" "not" "or" "and"
   "return" "switch" "while"
 ] @keyword
+(break) @keyword
+(continue) @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
 (function_definition name: (word) @function)
-(command name: (command_name) @function)
+(command name: (word) @function)
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

@@ -8,23 +8,23 @@
 
 ; ── Fallback ──────────────────────────────────────────────────────────────
 
-(symbol) @variable
+(sym_lit) @variable
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
-(defun name: (symbol) @function)
-(defmacro name: (symbol) @function)
-(list . (symbol) @function)
+(defun_header function_name: (sym_lit) @function)
+(list_lit . (sym_lit) @function)
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
-(number) @constant
-"t" @constant
-"nil" @constant
+(num_lit) @constant
+(nil_lit) @constant
+((sym_lit) @constant (#eq? @constant "t"))
+(kwd_lit) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 
-(string) @string
+(str_lit) @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

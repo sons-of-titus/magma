@@ -12,16 +12,15 @@
 
 ; ── Functions / macros ────────────────────────────────────────────────────
 
-(defun name: (symbol) @function)
-(defmacro name: (symbol) @function)
-(function_call function: (symbol) @function)
+(function_definition name: (symbol) @function)
+(macro_definition name: (symbol) @function)
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (integer) @constant
 (float) @constant
-"t" @constant
-"nil" @constant
+((symbol) @constant (#eq? @constant "t"))
+((symbol) @constant (#eq? @constant "nil"))
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

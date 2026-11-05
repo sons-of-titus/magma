@@ -33,8 +33,10 @@
 
 (integer) @constant
 (float) @constant
-"True" @constant
-"False" @constant
+((constructor) @constant
+ (#eq? @constant "True"))
+((constructor) @constant
+ (#eq? @constant "False"))
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

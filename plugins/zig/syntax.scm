@@ -8,7 +8,7 @@
 
 ; ── Fallback ──────────────────────────────────────────────────────────────
 
-(identifier) @variable
+(IDENTIFIER) @variable
 
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
@@ -25,21 +25,19 @@
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
-(fn_proto name: (identifier) @function)
-(call_expression function: (identifier) @function)
-(call_expression function: (field_access field: (identifier) @function))
-(builtin_call_expression (identifier) @function)
+(FnProto function: (IDENTIFIER) @function)
+(FieldOrFnCall function_call: (IDENTIFIER) @function)
+(FieldOrFnCall field_access: (IDENTIFIER) @function)
+(BUILTINIDENTIFIER) @function
 
 ; ── Types ─────────────────────────────────────────────────────────────────
 
-(struct_declaration) @type
-(enum_declaration) @type
-(union_declaration) @type
+(ContainerDecl) @type
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
-(integer_literal) @constant
-(float_literal) @constant
+(INTEGER) @constant
+(FLOAT) @constant
 "true" @constant
 "false" @constant
 "null" @constant
@@ -47,8 +45,8 @@
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 
-(string) @string
-(multiline_string_literal) @string
+(STRINGLITERALSINGLE) @string
+(LINESTRING) @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

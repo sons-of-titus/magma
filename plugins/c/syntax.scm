@@ -37,7 +37,8 @@
 
 (preproc_def name: (identifier) @constant)
 (preproc_include) @keyword
-["#define" "#ifdef" "#ifndef" "#if" "#else" "#elif" "#endif" "#pragma"] @keyword
+(preproc_call) @keyword
+["#define" "#ifdef" "#ifndef" "#if" "#else" "#elif" "#endif"] @keyword
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 

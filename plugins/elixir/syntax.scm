@@ -13,9 +13,11 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "after" "and" "catch" "do" "else" "end" "fn" "for"
-  "if" "in" "not" "or" "rescue" "try" "unless" "when" "with"
+  "after" "and" "catch" "do" "else" "end" "fn"
+  "in" "not" "or" "rescue" "when"
 ] @keyword
+((identifier) @keyword
+ (#any-of? @keyword "for" "if" "try" "unless" "with"))
 
 ; ── Functions / macros ────────────────────────────────────────────────────
 
@@ -42,7 +44,6 @@
 ; ── Strings ───────────────────────────────────────────────────────────────
 
 (string) @string
-(heredoc) @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

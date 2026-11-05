@@ -13,10 +13,9 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "enum" "extend" "extensions" "import" "map" "message"
-  "oneof" "option" "optional" "package" "repeated"
-  "required" "reserved" "returns" "rpc" "service" "stream"
-  "syntax" "to" "weak"
+  "enum" "import" "map" "max" "message" "oneof" "option" "optional"
+  "package" "public" "repeated" "reserved" "returns" "rpc" "service"
+  "stream" "syntax" "to" "weak"
 ] @keyword
 
 ; ── Types ─────────────────────────────────────────────────────────────────
@@ -28,18 +27,20 @@
 
 ; ── Fields / RPC names ────────────────────────────────────────────────────
 
-(field (field_name) @property)
+(field (identifier) @property)
 (rpc_name) @function
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (int_lit) @constant
 (float_lit) @constant
-(bool_lit) @constant
+(bool) @constant
+(true) @constant
+(false) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 
-(string_literal) @string
+(string) @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

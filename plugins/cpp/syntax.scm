@@ -13,16 +13,18 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "auto" "break" "case" "catch" "class" "const" "constexpr"
+  "break" "case" "catch" "class" "const" "constexpr"
   "continue" "co_await" "co_return" "co_yield" "default"
   "delete" "do" "else" "enum" "explicit" "export"
   "extern" "final" "for" "friend" "goto" "if" "inline"
   "namespace" "new" "noexcept" "nullptr" "operator" "override"
   "private" "protected" "public" "register" "requires" "return"
   "sizeof" "static" "static_assert" "struct" "switch" "template"
-  "this" "throw" "try" "typedef" "typename" "union"
+  "throw" "try" "typedef" "typename" "union"
   "unsigned" "signed" "using" "virtual" "volatile" "while"
 ] @keyword
+(auto) @keyword
+(this) @keyword
 
 ; ── Types ─────────────────────────────────────────────────────────────────
 
@@ -49,7 +51,8 @@
 
 (preproc_function_def name: (identifier) @function)
 (preproc_def name: (identifier) @constant)
-["#define" "#ifdef" "#ifndef" "#if" "#else" "#elif" "#endif" "#pragma"] @keyword
+(preproc_call) @keyword
+["#define" "#ifdef" "#ifndef" "#if" "#else" "#elif" "#endif"] @keyword
 
 ; ── Properties ────────────────────────────────────────────────────────────
 
@@ -58,8 +61,8 @@
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (number_literal) @constant
-"true" @constant
-"false" @constant
+(true) @constant
+(false) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

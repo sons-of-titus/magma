@@ -16,17 +16,18 @@
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
-; defn and def forms: the name symbol is the second child of the tuple.
+; defn and def forms: the binding name is the second child of the tuple.
 (par_tup_lit
-  value: (sym_lit) @keyword
-  value: (sym_lit) @function
-  (#match? @keyword "^(defn|defn-|defmacro|defmacro-)$"))
+  .
+  (sym_lit) @keyword
+  (sym_lit) @function
+  (#match? @keyword "^(defn|defn-|defmacro|defmacro-|def|var|fn)$"))
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (num_lit) @constant
 (bool_lit) @constant
-"nil" @constant
+(nil_lit) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

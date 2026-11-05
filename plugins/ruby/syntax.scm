@@ -13,13 +13,14 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "__ENCODING__" "__FILE__" "__LINE__" "__callee__" "__dir__"
-  "__method__" "alias" "and" "begin" "break" "case" "class"
+  "alias" "and" "begin" "break" "case" "class"
   "def" "defined?" "do" "else" "elsif" "end" "ensure"
   "for" "if" "in" "module" "next" "nil" "not" "or"
-  "redo" "rescue" "retry" "return" "self" "super"
+  "redo" "rescue" "retry" "return"
   "then" "undef" "unless" "until" "when" "while" "yield"
 ] @keyword
+(self) @keyword
+(super) @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
@@ -37,8 +38,8 @@
 
 (integer) @constant
 (float) @constant
-"true" @constant
-"false" @constant
+(true) @constant
+(false) @constant
 "nil" @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────

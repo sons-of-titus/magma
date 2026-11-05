@@ -17,7 +17,7 @@
   "continue" "debugger" "default" "delete" "do" "else"
   "export" "extends" "finally" "for" "from" "function"
   "if" "import" "in" "instanceof" "let" "new"
-  "of" "return" "static" "super" "switch" "target"
+  "of" "return" "static" "switch" "target"
   "throw" "try" "typeof" "var" "void" "while"
   "with" "yield"
 ] @keyword
@@ -25,7 +25,7 @@
 ; ── Functions ─────────────────────────────────────────────────────────────
 
 (function_declaration name: (identifier) @function)
-(function name: (identifier) @function)
+(function_expression name: (identifier) @function)
 (method_definition name: (property_identifier) @function)
 (call_expression function: (identifier) @function)
 (call_expression
@@ -43,11 +43,12 @@
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (number) @constant
-"true" @constant
-"false" @constant
-"null" @constant
-"undefined" @constant
+(true) @constant
+(false) @constant
+(null) @constant
+(undefined) @constant
 (this) @variable
+(super) @variable
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

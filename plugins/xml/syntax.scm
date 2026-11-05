@@ -6,11 +6,11 @@
 
 ; ── Tags ──────────────────────────────────────────────────────────────────
 
-(element_name) @type
-(attribute (attribute_name) @property)
-(attribute_value) @string
-(quoted_attribute_value) @string
-(prolog (Name) @keyword)
+(STag (Name) @type)
+(ETag (Name) @type)
+(Attribute (Name) @property)
+(AttValue) @string
+(prolog) @keyword
 
 ; ── CDATA / entities ──────────────────────────────────────────────────────
 

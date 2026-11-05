@@ -19,7 +19,7 @@
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
-(apply function: (identifier) @function)
+(apply_expression function: (variable_expression (identifier) @function))
 
 ; ── Attributes ────────────────────────────────────────────────────────────
 
@@ -29,9 +29,6 @@
 
 (integer_expression) @constant
 (float_expression) @constant
-"true" @constant
-"false" @constant
-"null" @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

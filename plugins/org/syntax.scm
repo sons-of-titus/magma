@@ -5,6 +5,6 @@
 ; scope-face table.
 
 (headline (stars) @function)
-(keyword) @keyword
-(string) @string
+(directive) @keyword
+(value) @string
 (comment) @comment

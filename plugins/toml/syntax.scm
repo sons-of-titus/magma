@@ -16,8 +16,6 @@
 (integer) @constant
 (float) @constant
 (boolean) @constant
-"true" @constant
-"false" @constant
 (offset_date_time) @constant
 (local_date_time) @constant
 (local_date) @constant

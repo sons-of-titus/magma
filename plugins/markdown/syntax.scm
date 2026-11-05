@@ -16,14 +16,9 @@
 
 (fenced_code_block) @string
 (indented_code_block) @string
-(code_span) @string
 
 ; ── Emphasis ──────────────────────────────────────────────────────────────
-
-(emphasis) @variable
-(strong_emphasis) @keyword
 
 ; ── HTML within markdown ──────────────────────────────────────────────────
 
 (html_block) @type
-(inline_html) @type

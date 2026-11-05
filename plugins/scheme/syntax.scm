@@ -8,17 +8,16 @@
 
 ; ── Fallback ──────────────────────────────────────────────────────────────
 
-(identifier) @variable
+(symbol) @variable
 
 ; ── Functions / definitions ───────────────────────────────────────────────
 
-(list . (identifier) @function)
+(list . (symbol) @function)
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (number) @constant
-"#t" @constant
-"#f" @constant
+(boolean) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

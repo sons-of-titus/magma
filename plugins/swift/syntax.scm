@@ -13,19 +13,25 @@
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
 [
-  "Any" "Protocol" "Self" "Type" "as" "associatedtype"
-  "associativity" "async" "await" "break" "case" "catch" "class"
-  "continue" "convenience" "default" "defer" "deinit" "didSet"
-  "do" "dynamic" "else" "enum" "extension" "fallthrough"
+  "Protocol" "Type" "as" "associatedtype"
+  "async" "await" "break" "case" "class"
+  "continue" "convenience" "deinit" "didSet"
+  "do" "dynamic" "enum" "extension" "fallthrough"
   "fileprivate" "final" "for" "func" "get" "guard"
   "if" "import" "in" "indirect" "infix" "init" "inout"
-  "internal" "is" "lazy" "left" "let" "mutating" "none"
+  "internal" "is" "lazy" "let" "mutating"
   "nonmutating" "open" "operator" "optional" "override" "postfix"
   "precedencegroup" "prefix" "private" "protocol" "public"
-  "rethrows" "return" "right" "set" "some" "static" "struct"
-  "subscript" "super" "switch" "throw" "throws" "try" "typealias"
-  "unowned" "var" "weak" "where" "while" "willSet"
+  "return" "set" "some" "static" "struct"
+  "subscript" "switch" "try" "typealias"
+  "unowned" "var" "weak" "while" "willSet"
 ] @keyword
+(catch_keyword) @keyword
+(default_keyword) @keyword
+(else) @keyword
+(throw_keyword) @keyword
+(throws) @keyword
+(where_keyword) @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
@@ -35,8 +41,6 @@
 ; ── Types ─────────────────────────────────────────────────────────────────
 
 (class_declaration name: (type_identifier) @type)
-(struct_declaration name: (type_identifier) @type)
-(enum_declaration name: (type_identifier) @type)
 (protocol_declaration name: (type_identifier) @type)
 (type_identifier) @type
 
@@ -46,11 +50,15 @@
 (real_literal) @constant
 "true" @constant
 "false" @constant
-"nil" @constant
+(nil_literal) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 
-(string_literal) @string
+[
+  (line_string_literal)
+  (multi_line_string_literal)
+  (raw_string_literal)
+] @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

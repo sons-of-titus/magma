@@ -43,9 +43,9 @@
 (int_literal) @constant
 (float_literal) @constant
 (imaginary_literal) @constant
-"true" @constant
-"false" @constant
-"nil" @constant
+(true) @constant
+(false) @constant
+(nil) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

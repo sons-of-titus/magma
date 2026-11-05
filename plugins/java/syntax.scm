@@ -17,9 +17,11 @@
   "default" "do" "else" "enum" "extends" "final" "finally" "for"
   "if" "implements" "import" "instanceof" "interface" "native" "new"
   "package" "private" "protected" "public" "record" "return"
-  "static" "strictfp" "super" "switch" "synchronized" "this"
+  "static" "strictfp" "switch" "synchronized"
   "throw" "throws" "transient" "try" "volatile" "while"
 ] @keyword
+(this) @keyword
+(super) @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
@@ -40,9 +42,9 @@
 (hex_integer_literal) @constant
 (octal_integer_literal) @constant
 (decimal_floating_point_literal) @constant
-"true" @constant
-"false" @constant
-"null" @constant
+(true) @constant
+(false) @constant
+(null_literal) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

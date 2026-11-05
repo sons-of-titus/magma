@@ -42,9 +42,9 @@
 
 (integer) @constant
 (float) @constant
-"True" @constant
-"False" @constant
-"None" @constant
+(true) @constant
+(false) @constant
+(none) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

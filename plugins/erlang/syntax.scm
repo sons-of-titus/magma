@@ -14,16 +14,17 @@
 
 [
   "after" "and" "andalso" "band" "begin" "bnot" "bor" "bsl"
-  "bsr" "bxor" "case" "catch" "cond" "div" "end" "fun"
-  "if" "let" "maybe" "not" "of" "or" "orelse" "receive"
+  "bsr" "bxor" "case" "catch" "div" "end" "fun"
+  "if" "maybe" "not" "of" "or" "orelse" "receive"
   "rem" "try" "when" "xor"
 ] @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
-(function name: (atom) @function)
-(call target: (remote_call module: (atom) @module function: (atom) @function))
-(call target: (local_call function: (atom) @function))
+(function_clause name: (atom) @function)
+(call expr: (atom) @function)
+(call expr: (remote fun: (atom) @function))
+(remote module: (remote_module module: (atom) @module))
 
 ; ── Types / records ───────────────────────────────────────────────────────
 

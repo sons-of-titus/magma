@@ -19,14 +19,14 @@
   "function" "if" "implements" "import" "in" "instanceof"
   "interface" "let" "module" "namespace" "new" "of" "override"
   "private" "protected" "public" "readonly" "return" "static"
-  "super" "switch" "throw" "try" "type" "typeof" "var"
+  "switch" "throw" "try" "type" "typeof" "var"
   "void" "while" "with" "yield"
 ] @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
 (function_declaration name: (identifier) @function)
-(function name: (identifier) @function)
+(function_expression name: (identifier) @function)
 (method_definition name: (property_identifier) @function)
 (call_expression function: (identifier) @function)
 (call_expression
@@ -48,11 +48,12 @@
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (number) @constant
-"true" @constant
-"false" @constant
-"null" @constant
-"undefined" @constant
+(true) @constant
+(false) @constant
+(null) @constant
+(undefined) @constant
 (this) @variable
+(super) @variable
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

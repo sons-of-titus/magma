@@ -12,33 +12,29 @@
 
 ; ── Keywords ──────────────────────────────────────────────────────────────
 
-[
-  "data" "dynamic" "for" "for_each" "if"
-  "in" "locals" "module" "null" "output"
-  "provider" "resource" "terraform" "variable"
-] @keyword
+["for" "in" "if"] @keyword
 
 ; ── Structure ─────────────────────────────────────────────────────────────
 
 (block (identifier) @type (string_lit) @module)
 (attribute (identifier) @property)
-(object_elem key: (identifier) @property)
+(object_elem key: (expression (variable_expr (identifier) @property)))
 
 ; ── Functions ─────────────────────────────────────────────────────────────
 
-(function_call function: (identifier) @function)
+(function_call (identifier) @function)
 
 ; ── Constants ─────────────────────────────────────────────────────────────
 
 (numeric_lit) @constant
 "true" @constant
 "false" @constant
-"null" @constant
+(null_lit) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 
 (string_lit) @string
-(heredoc) @string
+(heredoc_template) @string
 
 ; ── Comments ──────────────────────────────────────────────────────────────
 

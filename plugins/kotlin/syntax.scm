@@ -18,11 +18,11 @@
   "do" "dynamic" "else" "enum" "expect" "external" "field" "file"
   "final" "finally" "for" "fun" "get" "if" "import" "in"
   "infix" "init" "inline" "inner" "interface" "internal" "is"
-  "it" "lateinit" "noinline" "object" "open" "operator" "out"
+  "lateinit" "noinline" "object" "open" "operator" "out"
   "override" "package" "param" "private" "property" "protected"
   "public" "receiver" "reified" "return" "sealed" "set" "setparam"
   "super" "suspend" "tailrec" "this" "throw" "try" "typealias"
-  "typeof" "val" "var" "vararg" "when" "where" "while"
+  "val" "var" "vararg" "when" "where" "while"
 ] @keyword
 
 ; ── Functions ─────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@
 (real_literal) @constant
 "true" @constant
 "false" @constant
-"null" @constant
+(null_literal) @constant
 
 ; ── Strings ───────────────────────────────────────────────────────────────
 

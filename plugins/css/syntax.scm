@@ -31,7 +31,7 @@
 ; ── At-rules ──────────────────────────────────────────────────────────────
 
 (at_keyword) @keyword
-(import_statement "url" @function)
+(import_statement (call_expression (function_name) @function))
 (keyframes_name) @module
 
 ; ── Comments ──────────────────────────────────────────────────────────────

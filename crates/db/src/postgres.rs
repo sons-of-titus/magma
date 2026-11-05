@@ -451,11 +451,15 @@ impl PostgresEngine {
                             truncated = true;
                             break;
                         }
-                        out.push(
-                            (0..columns.len())
-                                .map(|i| DbValue::Text(row.get::<_, String>(i)))
-                                .collect(),
-                        );
+                        let mut cells = Vec::with_capacity(columns.len());
+                        for i in 0..columns.len() {
+                            cells.push(
+                                row.try_get::<_, Option<String>>(i)
+                                    .map_err(err)?
+                                    .map_or(DbValue::Null, DbValue::Text),
+                            );
+                        }
+                        out.push(cells);
                     }
                     (out, truncated)
                 };
@@ -528,29 +532,33 @@ fn collect_rows(rows: &[Row], max_rows: usize) -> (Vec<Vec<DbValue>>, bool) {
         }
         out.push(
             (0..width)
-                .map(|i| typed_value(row, i))
-                .collect::<Result<Vec<_>, String>>()
-                .unwrap_or_else(|_| vec![DbValue::Null; width]),
+                .map(|i| typed_value(row, i).unwrap_or(DbValue::Null))
+                .collect(),
         );
     }
     (out, truncated)
 }
 
+fn nullable<'a, T: tokio_postgres::types::FromSql<'a>>(
+    row: &'a Row,
+    i: usize,
+) -> Result<Option<T>, String> {
+    row.try_get::<_, Option<T>>(i).map_err(err)
+}
+
 fn typed_value(row: &Row, i: usize) -> Result<DbValue, String> {
     let ty = row.columns()[i].type_().clone();
     Ok(match ty {
-        Type::BOOL => DbValue::Bool(row.try_get::<_, bool>(i).map_err(err)?),
-        Type::INT2 => DbValue::Integer(row.try_get::<_, i16>(i).map_err(err)? as i64),
-        Type::INT4 => DbValue::Integer(row.try_get::<_, i32>(i).map_err(err)? as i64),
-        Type::INT8 | Type::OID => DbValue::Integer(row.try_get::<_, i64>(i).map_err(err)?),
-        Type::FLOAT4 => DbValue::Real(row.try_get::<_, f32>(i).map_err(err)? as f64),
-        Type::FLOAT8 => DbValue::Real(row.try_get::<_, f64>(i).map_err(err)?),
-        Type::BYTEA => DbValue::Blob(row.try_get::<_, Vec<u8>>(i).map_err(err)?),
-        Type::TIMESTAMPTZ | Type::TIMESTAMP => {
-            let t = row.try_get::<_, std::time::SystemTime>(i).map_err(err)?;
-            DbValue::Text(civil_timestamp(t))
-        }
-        _ => DbValue::Text(row.try_get::<_, String>(i).map_err(err)?),
+        Type::BOOL => nullable::<bool>(row, i)?.map_or(DbValue::Null, DbValue::Bool),
+        Type::INT2 => nullable::<i16>(row, i)?.map_or(DbValue::Null, |v| DbValue::Integer(v as i64)),
+        Type::INT4 => nullable::<i32>(row, i)?.map_or(DbValue::Null, |v| DbValue::Integer(v as i64)),
+        Type::INT8 | Type::OID => nullable::<i64>(row, i)?.map_or(DbValue::Null, DbValue::Integer),
+        Type::FLOAT4 => nullable::<f32>(row, i)?.map_or(DbValue::Null, |v| DbValue::Real(v as f64)),
+        Type::FLOAT8 => nullable::<f64>(row, i)?.map_or(DbValue::Null, DbValue::Real),
+        Type::BYTEA => nullable::<Vec<u8>>(row, i)?.map_or(DbValue::Null, DbValue::Blob),
+        Type::TIMESTAMPTZ | Type::TIMESTAMP => nullable::<std::time::SystemTime>(row, i)?
+            .map_or(DbValue::Null, |t| DbValue::Text(civil_timestamp(t))),
+        _ => nullable::<String>(row, i)?.map_or(DbValue::Null, DbValue::Text),
     })
 }
 

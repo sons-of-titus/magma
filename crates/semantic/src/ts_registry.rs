@@ -258,9 +258,10 @@ pub fn highlight_incremental(
 
 /// Load a tree-sitter grammar from a shared library.  `lang_name` is the
 /// registry name the grammar is being registered under — the loader probes
-/// the conventional `tree_sitter_<name>` export before the legacy list;
-/// `symbol` overrides that convention for grammars whose C entry point
-/// deviates (declared in a plugin's language spec).
+/// the conventional `tree_sitter_<name>` export, then the export implied by
+/// the library file name (`tree-sitter-<grammar>.dylib`), before the legacy
+/// list.  `symbol` overrides both conventions for grammars whose C entry
+/// point deviates (declared in a plugin's language spec).
 /// The language function is ABI-validated by building a parser before the
 /// library handle is released; an incompatible grammar is a clean error,
 /// never a silent parse failure later.
@@ -274,11 +275,20 @@ pub fn load_grammar_from_lib(
         .map_err(|e| format!("cannot open shared library: {}", e))?;
 
     let probe = format!("tree_sitter_{}", lang_name.replace('-', "_"));
+    let stem_probe = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.trim_start_matches("lib"))
+        .map(|s| s.strip_prefix("tree-sitter-").unwrap_or(s))
+        .map(|s| format!("tree_sitter_{}", s.replace('-', "_")));
     let mut candidates: Vec<&[u8]> = Vec::new();
     if let Some(s) = symbol {
         candidates.push(s.as_bytes());
     }
     candidates.push(probe.as_bytes());
+    if let Some(stem) = stem_probe.as_deref() {
+        candidates.push(stem.as_bytes());
+    }
     candidates.push(b"tree_sitter_language");
     candidates.extend([
         &b"tree_sitter_rust"[..],

@@ -1258,12 +1258,22 @@ loaded through `language/register`'s `:grammar` or `ts/load-grammar`.
 `ts/ensure-language` consults this before tagging a buffer, so plugin
 languages with shipped grammars highlight without manual registration.
 
+### `(ts/validate-query lang-or-mode query-src)` → bool
+
+Return true when `query-src` compiles against the grammar registered for
+`lang-or-mode` (a `<id>-mode` name resolves to its language id).  A missing
+grammar or an invalid query returns false.  `ts/set-mode-query` uses this to
+hand the syntax layer to tree-sitter only when the query is usable; a broken
+query leaves the fallback highlighter in charge.
+
 ### `(ts/set-mode-query mode query-src)` → nil
 
 Register `query-src` as the tree-sitter highlight query for a major mode,
-replacing any earlier registration.  Plugins normally get this for free:
-`plugin/define` loads the plugin's `syntax.scm` as its language's
-`<lang>-mode` query.
+replacing any earlier registration.  The mode's syntax layer is owned by
+tree-sitter only when a grammar backs the mode and accepts the query;
+otherwise the native fallback highlighter keeps (or takes back) the layer.
+Plugins normally get this for free: `plugin/define` loads the plugin's
+`syntax.scm` as its language's `<lang>-mode` query.
 
 ### `(ts/load-mode-query mode path)` → nil
 

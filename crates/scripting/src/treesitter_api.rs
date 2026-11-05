@@ -264,6 +264,27 @@ unsafe extern "C-unwind" fn c_ts_has_tree(argc: i32, argv: *mut Janet) -> Janet 
     })
 }
 
+/// Compile-check a query against a loaded grammar without running it.
+/// Accepts either a language id or its `<id>-mode` name.
+///
+/// (ts/validate-query lang-or-mode query) → bool
+unsafe extern "C-unwind" fn c_ts_validate_query(argc: i32, argv: *mut Janet) -> Janet {
+    unsafe {
+        let Some(mut lang) = conv::get_str(argc, argv, 0) else {
+            return conv::boolean(false);
+        };
+        let Some(query) = conv::get_str(argc, argv, 1) else {
+            return conv::boolean(false);
+        };
+        if !ts_registry::has_language(&lang) {
+            if let Some(id) = lang.strip_suffix("-mode") {
+                lang = id.to_string();
+            }
+        }
+        conv::boolean(ts_registry::validate_query(&lang, &query).is_ok())
+    }
+}
+
 /// Check whether a grammar is loaded in the tree-sitter registry.
 /// (ts/has-language name) → bool
 unsafe extern "C-unwind" fn c_ts_has_language(argc: i32, argv: *mut Janet) -> Janet {
@@ -312,6 +333,13 @@ pub fn register() -> Vec<JanetReg> {
             name: c"ts/has-tree?".as_ptr() as *const _,
             cfun: Some(c_ts_has_tree as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Check if a buffer has a tree-sitter language set".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"ts/validate-query".as_ptr() as *const _,
+            cfun: Some(
+                c_ts_validate_query as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Compile-check a query against a loaded grammar".as_ptr() as *const _,
         },
         JanetReg {
             name: c"ts/has-language".as_ptr() as *const _,

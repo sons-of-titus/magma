@@ -619,3 +619,29 @@ fn ts_set_mode_query_without_a_grammar_leaves_the_fallback_in_charge() {
         );
     });
 }
+
+#[test]
+fn ts_set_mode_query_takes_ownership_only_when_the_query_compiles() {
+    // A grammar that loads but rejects the query must not claim the mode:
+    // tree-sitter would own the syntax layer and paint nothing, so the
+    // fallback has to stay (or be put back) in charge.
+    janet_test!(ed, {
+        let grammar = helpers::tiny_grammar_lib();
+        scripting::eval(&format!(
+            r#"(ts/load-grammar "{}" "tiny")"#,
+            grammar.to_string_lossy().replace('\\', "/")
+        ));
+
+        scripting::eval(r#"(ts/set-mode-query "tiny-mode" "(source_file) @module")"#);
+        assert!(
+            ed.fallback_syntax.ts_modes.contains("tiny-mode"),
+            "a query that compiles must hand the syntax layer to tree-sitter"
+        );
+
+        scripting::eval(r#"(ts/set-mode-query "tiny-mode" "(no_such_node) @module")"#);
+        assert!(
+            !ed.fallback_syntax.ts_modes.contains("tiny-mode"),
+            "a query that fails to compile must give the layer back to the fallback"
+        );
+    });
+}

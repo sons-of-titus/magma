@@ -40,35 +40,43 @@
                   "so")))
   (when (ts-grammar-file? path) path))
 
-# A mode may only be handed to the tree-sitter lane when a grammar actually
-# backs it: the Rust registry has one loaded (`ts/has-language`) or a path
-# is registered for first use (*ts-grammars*).  A query without a grammar —
-# a plugin that ships syntax.scm but no loadable shared library — must leave
-# the native fallback highlighter in charge, or the mode gets neither.
-(defn- ts-mode-has-grammar? [mode]
+# Resolve a mode (or language id) to a grammar loaded in the registry,
+# loading it from *ts-grammars* on first use.  Returns nil when no grammar
+# backs the name.  A query without a grammar — a plugin that ships
+# syntax.scm but no loadable shared library — must leave the native fallback
+# highlighter in charge, or the mode gets neither highlighter.
+(defn- ts-resolve-language [name]
   (def lang-id
-    (if (string/has-suffix? "-mode" mode)
-      (string/slice mode 0 (- (length mode) 5))
-      mode))
-  (or (ts/has-language lang-id)
-      (ts/has-language mode)
-      (get *ts-grammars* lang-id)
-      (get *ts-grammars* mode)))
+    (if (string/has-suffix? "-mode" name)
+      (string/slice name 0 (- (length name) 5))
+      name))
+  (cond
+    (ts/has-language lang-id) lang-id
+    (ts/has-language name) name
+    (let [path (or (get *ts-grammars* lang-id) (get *ts-grammars* name))]
+      (when path
+        (try (ts/load-grammar path lang-id) ([e] nil))
+        (when (ts/has-language lang-id) lang-id)))))
 
 # Register `query` as the tree-sitter highlight query for a major mode,
-# replacing any earlier registration.  When a grammar backs the mode, its
-# syntax layer belongs to the tree-sitter lane from here on: the native
-# fallback highlighter stands down for it and stale fallback ranges are
-# cleared.  Call ts/register-grammar (or language/define with :grammar)
-# before this, or the fallback stays in charge.
+# replacing any earlier registration.  The syntax layer is handed to the
+# tree-sitter lane only when a grammar backs the mode *and* it accepts the
+# query; otherwise the native fallback highlighter keeps (or takes back) the
+# layer.  A query that compiles nowhere would own the layer and paint
+# nothing, leaving the file with no colors at all.
+#
+# Call ts/register-grammar (or language/define with :grammar) before this.
 (defn ts/set-mode-query
   [mode query]
   # Store as string: file/read yields a buffer, and ts/highlight reads the
   # query through a string-only C boundary — a stored buffer would make
   # every highlight run silently return nil.
-  (put *ts-mode-queries* mode (string query))
-  (when (ts-mode-has-grammar? mode)
-    (syntax/set-ts-mode mode true)))
+  (def src (string query))
+  (put *ts-mode-queries* mode src)
+  (def lang (ts-resolve-language mode))
+  (if (and lang (try (ts/validate-query lang src) ([e] false)))
+    (syntax/set-ts-mode mode true)
+    (syntax/set-ts-mode mode false)))
 
 # Register a major mode's highlight query from a query file on disk
 # (conventionally the plugin's syntax.scm).  A missing or unreadable file

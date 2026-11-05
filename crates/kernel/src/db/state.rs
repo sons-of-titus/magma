@@ -182,6 +182,8 @@ pub struct DbState {
     pub connections: HashMap<u64, Arc<Connection>>,
     /// Introspection cache per source.
     pub trees: HashMap<u64, IntrospectTree>,
+    /// Whole-schema snapshot per source, feeding console completion.
+    pub catalogs: HashMap<u64, Arc<db::Catalog>>,
     /// The source the explorer, console, and new tabs target.
     pub active: Option<u64>,
     /// Nodes with introspection in flight: (source, node key).
@@ -237,6 +239,7 @@ impl DbState {
         self.sources.retain(|s| s.id != id);
         self.connections.remove(&id);
         self.trees.remove(&id);
+        self.catalogs.remove(&id);
         self.consoles.remove(&id);
         self.session_passwords.remove(&id);
         self.loading.retain(|(s, _)| *s != id);

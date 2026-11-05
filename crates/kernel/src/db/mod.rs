@@ -3,9 +3,11 @@
 //! node introspection, scripts, edits) runs on the background pool and
 //! lands here through [`DbEvent`].
 
+mod catalog_load;
 mod events;
 mod state;
 
+pub(crate) use catalog_load::dispatch as dispatch_catalog;
 pub use events::DbEvent;
 pub use state::{DataTab, DataTabKind, DbState, IntrospectTree, NodeState, NodeStatus};
 

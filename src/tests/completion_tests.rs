@@ -704,6 +704,63 @@ fn sql_console_completion_suggests_tables_after_from() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+#[test]
+fn sql_console_completion_suggests_table_columns_without_alias() {
+    let mut ed = make_editor();
+    let dir = std::env::temp_dir().join(format!(
+        "magma-compl3-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("c.sqlite");
+    let conn = ::db::connect(
+        &::db::DataSource {
+            id: 0,
+            name: "c".into(),
+            kind: db::DriverKind::Sqlite,
+            host: path.to_string_lossy().to_string(),
+            port: 0,
+            database: String::new(),
+            user: String::new(),
+            ssl_mode: Default::default(),
+            trust_cert: false,
+            save_password: false,
+            url: None,
+        },
+        None,
+    )
+    .unwrap();
+    conn.execute_script(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT);",
+        10,
+    )
+    .unwrap();
+    execute_source_add_and_connect(&mut ed, &path);
+
+    let key = ed.create_buffer_from_str("*sql: c*", "SELECT usern FROM users");
+    if let Some(win) = ed.view_tree.focused_window_mut() {
+        win.buffer_id = Some(key);
+    }
+    ed.view_of_buffer_mut(key).unwrap().set_cursor("SELECT usern".len());
+    ed.db.consoles.insert(ed.db.active.unwrap(), key);
+
+    crate::kernel::completion::trigger(&mut ed);
+    let labels: Vec<String> = ed
+        .completion
+        .items
+        .iter()
+        .map(|i| i.label.clone())
+        .collect();
+    assert!(
+        labels.contains(&"username".to_string()),
+        "column from FROM table suggested: {labels:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 fn execute_source_add_and_connect(ed: &mut Editor, path: &std::path::Path) {
     use kernel::command::args::ArgValue;
     use std::collections::HashMap;

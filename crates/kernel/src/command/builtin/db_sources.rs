@@ -79,6 +79,7 @@ pub(super) fn register(editor: &mut Editor) {
             // Changing the connection facts invalidates the live session.
             editor.db.connections.remove(&id);
             editor.db.trees.remove(&id);
+            editor.db.catalogs.remove(&id);
             let password = string_arg(args, "password").map(|s| s.to_string());
             store_password(editor, id, password, updated.save_password);
             let name = updated.name.clone();
@@ -149,6 +150,7 @@ pub(super) fn register(editor: &mut Editor) {
             let id = source_id(editor, args)?;
             editor.db.connections.remove(&id);
             editor.db.trees.remove(&id);
+            editor.db.catalogs.remove(&id);
             editor.db.loading.retain(|(s, _)| *s != id);
             editor.frame_dirty = true;
             Ok(())
@@ -192,17 +194,19 @@ pub(super) fn connect_dispatch(editor: &mut Editor, source: DataSource, password
             bg.spawn_blocking(move || match db::connect(&source, password.as_deref()) {
                 Ok(conn) => {
                     let conn = Arc::new(conn);
-                    let root = conn.introspect(&db::NodeRef::Root);
+                    let steps = introspect_cascade(&conn, &db::NodeRef::Root);
                     let _ = sender.send(BackgroundEvent::Db(DbEvent::Connected {
                         source_id: source.id,
                         connection: Some(Arc::clone(&conn)),
                         error: None,
                     }));
-                    let _ = sender.send(BackgroundEvent::Db(DbEvent::Introspected {
-                        source_id: source.id,
-                        path: db::NodeRef::Root.key(),
-                        children: root,
-                    }));
+                    for (path, children) in steps {
+                        let _ = sender.send(BackgroundEvent::Db(DbEvent::Introspected {
+                            source_id: source.id,
+                            path,
+                            children,
+                        }));
+                    }
                 }
                 Err(e) => {
                     let _ = sender.send(BackgroundEvent::Db(DbEvent::Connected {
@@ -218,10 +222,13 @@ pub(super) fn connect_dispatch(editor: &mut Editor, source: DataSource, password
             match db::connect(&source, password.as_deref()) {
                 Ok(conn) => {
                     let conn = Arc::new(conn);
-                    let root = conn.introspect(&db::NodeRef::Root);
+                    let steps = introspect_cascade(&conn, &db::NodeRef::Root);
                     editor.db.connections.insert(source.id, Arc::clone(&conn));
                     editor.db.last_error = None;
-                    editor.db.apply_introspected(source.id, "/", root);
+                    for (path, children) in steps {
+                        editor.db.apply_introspected(source.id, &path, children);
+                    }
+                    crate::db::dispatch_catalog(editor, source.id);
                 }
                 Err(e) => {
                     editor.db.tree_mut(source.id).apply_children(
@@ -252,23 +259,74 @@ pub(super) fn introspect_dispatch(editor: &mut Editor, source_id: u64, path: &st
         Some(bg) => {
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
-                let children = conn.introspect(&db::NodeRef::parse(&path).unwrap_or(db::NodeRef::Root));
-                let _ = sender.send(BackgroundEvent::Db(DbEvent::Introspected {
-                    source_id,
-                    path,
-                    children,
-                }));
+                let node = db::NodeRef::parse(&path).unwrap_or(db::NodeRef::Root);
+                for (step_path, children) in introspect_cascade(&conn, &node) {
+                    let _ = sender.send(BackgroundEvent::Db(DbEvent::Introspected {
+                        source_id,
+                        path: step_path,
+                        children,
+                    }));
+                }
             });
         }
         None => {
-            let children =
-                conn.introspect(&db::NodeRef::parse(&path).unwrap_or(db::NodeRef::Root));
-            editor.db.loading.remove(&(source_id, path.clone()));
-            editor.db.apply_introspected(source_id, &path, children);
+            let node = db::NodeRef::parse(&path).unwrap_or(db::NodeRef::Root);
+            editor.db.loading.remove(&(source_id, path));
+            for (step_path, children) in introspect_cascade(&conn, &node) {
+                editor.db.apply_introspected(source_id, &step_path, children);
+            }
             editor.frame_dirty = true;
         }
     }
     Ok(())
+}
+
+fn introspect_cascade(
+    conn: &db::Connection,
+    start: &db::NodeRef,
+) -> Vec<(String, Result<Vec<db::Child>, String>)> {
+    let mut out = Vec::new();
+    let mut current = Some(start.clone());
+    while let Some(node) = current.take() {
+        let key = node.key();
+        let res = conn.introspect(&node);
+        let next = match (&node, &res) {
+            (db::NodeRef::Root, Ok(children)) => children.iter().find_map(|c| match c {
+                db::Child::Database { name, .. } => Some(db::NodeRef::Database(name.clone())),
+                _ => None,
+            }),
+            (db::NodeRef::Database(db_name), Ok(children)) => {
+                let schemas: Vec<&str> = children
+                    .iter()
+                    .filter_map(|c| match c {
+                        db::Child::Schema { name } => Some(name.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                let pick = schemas
+                    .iter()
+                    .copied()
+                    .find(|s| matches!(*s, "public" | "main" | "dbo"))
+                    .or_else(|| (schemas.len() == 1).then(|| schemas[0]));
+                pick.map(|s| db::NodeRef::Schema {
+                    database: db_name.clone(),
+                    schema: s.to_string(),
+                })
+            }
+            (db::NodeRef::Schema { database, schema }, Ok(children)) => children
+                .iter()
+                .any(|c| matches!(c, db::Child::Folder { kind: db::FolderKind::Tables }))
+                .then(|| db::NodeRef::Folder {
+                    database: database.clone(),
+                    schema: schema.clone(),
+                    kind: db::FolderKind::Tables,
+                }),
+            _ => None,
+        };
+        out.push((key, res));
+        current = next;
+    }
+    out
 }
 
 pub(super) fn source_id(editor: &mut Editor, args: &HashMap<String, ArgValue>) -> Result<u64, String> {
@@ -350,21 +408,19 @@ fn source_from_args(
 
 /// Saved passwords go to the OS keychain; unsaved ones stay session-only
 /// so re-connecting within the session still works.  Neither touches
-/// persisted configuration.
+/// persisted configuration.  A typed password is always kept for the
+/// session as well, because the keychain can refuse a write.  An empty
+/// field on an existing source means "unchanged": the properties dialog
+/// never pre-fills the password.
 fn store_password(editor: &mut Editor, id: u64, password: Option<String>, save: bool) {
-    match password {
-        Some(pw) if !pw.is_empty() => {
-            if save {
-                secrets::save_key(&source_account(id), &pw);
-                editor.db.session_passwords.remove(&id);
-            } else {
-                editor.db.session_passwords.insert(id, pw);
-            }
+    if let Some(pw) = password.filter(|p| !p.is_empty()) {
+        if save {
+            secrets::save_key(&source_account(id), &pw);
         }
-        _ => {
-            secrets::delete_key(&source_account(id));
-            editor.db.session_passwords.remove(&id);
-        }
+        editor.db.session_passwords.insert(id, pw);
+    }
+    if !save {
+        secrets::delete_key(&source_account(id));
     }
 }
 

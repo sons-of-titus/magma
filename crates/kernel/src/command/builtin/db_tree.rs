@@ -75,6 +75,7 @@ pub(super) fn register(editor: &mut Editor) {
             editor.db.tree_mut(id).clear();
             editor.db.tree_mut(id).mark_loading("/");
             introspect_dispatch(editor, id, "/")?;
+            crate::db::dispatch_catalog(editor, id);
             editor.frame_dirty = true;
             Ok(())
         },

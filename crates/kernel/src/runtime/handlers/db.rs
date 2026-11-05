@@ -20,6 +20,7 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 (Some(conn), _) => {
                     ed.db.connections.insert(source_id, conn);
                     ed.db.last_error = None;
+                    crate::db::dispatch_catalog(ed, source_id);
                 }
                 (None, Some(e)) => {
                     // The root node carries the failure so the tree shows
@@ -54,10 +55,18 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             ed.frame_dirty = true;
         }
         crate::db::DbEvent::TableDetail { tab_id, detail } => {
-            if let (Some(tab), Ok(detail)) = (ed.db.tab_mut(tab_id), &detail)
-                && let crate::db::DataTabKind::Table { detail: d, .. } = &mut tab.kind
-            {
-                *d = Some(detail.clone());
+            if let Some(tab) = ed.db.tab_mut(tab_id) {
+                match detail {
+                    Ok(detail) => {
+                        if let crate::db::DataTabKind::Table { detail: d, .. } = &mut tab.kind {
+                            *d = Some(detail);
+                        }
+                    }
+                    Err(e) => {
+                        tab.busy = false;
+                        tab.error = Some(e);
+                    }
+                }
             }
             ed.frame_dirty = true;
         }
@@ -108,6 +117,13 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
             ed.db.last_test = Some(result);
             ed.frame_dirty = true;
             let _ = token;
+        }
+        crate::db::DbEvent::Catalog { source_id, catalog } => {
+            if let Ok(catalog) = catalog
+                && ed.db.connections.contains_key(&source_id)
+            {
+                ed.db.catalogs.insert(source_id, std::sync::Arc::new(catalog));
+            }
         }
     }
 }

@@ -39,6 +39,11 @@ pub enum DbEvent {
         token: u64,
         result: Result<String, String>,
     },
+    /// A source's completion catalog finished loading.
+    Catalog {
+        source_id: u64,
+        catalog: Result<db::Catalog, String>,
+    },
 }
 
 impl std::fmt::Debug for DbEvent {
@@ -60,6 +65,7 @@ impl std::fmt::Debug for DbEvent {
                 write!(f, "DbEvent::EditsApplied(tab={tab_id})")
             }
             DbEvent::TestDone { token, .. } => write!(f, "DbEvent::TestDone({token})"),
+            DbEvent::Catalog { source_id, .. } => write!(f, "DbEvent::Catalog({source_id})"),
         }
     }
 }

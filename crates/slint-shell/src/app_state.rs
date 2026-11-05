@@ -41,6 +41,11 @@ pub(crate) struct DbDialog {
     pub(crate) url_mode: bool,
     pub(crate) url: String,
     pub(crate) testing: bool,
+    /// Whether the UI form still needs to be populated from state.
+    pub(crate) needs_hydration: bool,
+    /// Whether the port field should be pushed from state (e.g. after a
+    /// kind change resets it to the driver default).
+    pub(crate) port_push: bool,
     /// The probe this dialog is waiting on; stale results drop.
     pub(crate) test_token: u64,
 }

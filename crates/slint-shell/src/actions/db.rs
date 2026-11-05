@@ -29,6 +29,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         app.on_db_toggle(move || {
             let mut s = state.borrow_mut();
             s.db_open = !s.db_open;
+            if s.db_open {
+                s.agent_open = false;
+            }
             refresh(&weak, &mut s);
         });
     }
@@ -265,6 +268,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
             {
                 d.kind_index = kind;
                 d.port = kind_default_port(kind).to_string();
+                d.port_push = true;
             }
             refresh(&weak, &mut s);
         });
@@ -452,6 +456,8 @@ fn open_dialog(ed: &mut kernel::state::Editor, editing: Option<u64>) -> DbDialog
         url_mode: source.map(|s| s.url.is_some()).unwrap_or(false),
         url: source.and_then(|s| s.url.clone()).unwrap_or_default(),
         testing: false,
+        needs_hydration: true,
+        port_push: false,
         test_token: ed.db.test_token,
     }
 }
@@ -521,7 +527,6 @@ fn test_dialog_connection(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
     };
     d.testing = true;
     let probe_source = {
-        let ed = &mut s.editor;
         let mut args = HashMap::new();
         for (k, v) in dialog_args(d) {
             args.insert(k.to_string(), v);
@@ -614,8 +619,9 @@ fn save_dialog(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
                     .map(|s| s.id)
                     .unwrap_or(0)
             });
+            s.editor.db.active = Some(id);
             if !s.editor.db.is_connected(id) {
-                run(&mut s.editor, "db-connect", &[]);
+                run(&mut s.editor, "db-connect", &[("source", ArgValue::Integer(id as i64))]);
             }
         }
         Err(e) => {

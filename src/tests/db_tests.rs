@@ -595,3 +595,68 @@ fn node_keys_round_trip() {
         assert_eq!(parsed.key(), key, "round trip for {key}");
     }
 }
+
+#[test]
+fn async_connect_updates_state() {
+    let path = tmp_sqlite("async");
+    {
+        let conn = ::db::connect(
+            &::db::DataSource {
+                id: 0,
+                name: "probe".into(),
+                kind: db::DriverKind::Sqlite,
+                host: path.to_string_lossy().to_string(),
+                port: 0,
+                database: String::new(),
+                user: String::new(),
+                ssl_mode: Default::default(),
+                trust_cert: false,
+                save_password: false,
+                url: None,
+            },
+            None,
+        )
+        .unwrap();
+        conn.execute_script(
+            "CREATE TABLE items (id INTEGER PRIMARY KEY, label TEXT NOT NULL);",
+            10,
+        )
+        .unwrap();
+    }
+    let mut ed = editor();
+    let (bg, mut rx) = crate::kernel::runtime::spawn_background();
+    ed.background = Some(bg);
+    execute_command(
+        &mut ed,
+        "db-source-add",
+        &args(&[
+            ("name", ArgValue::String("demo".into())),
+            ("kind", ArgValue::String("sqlite".into())),
+            ("host", ArgValue::Path(path.to_string_lossy().to_string())),
+        ]),
+    )
+    .unwrap();
+    let id = ed.db.active.unwrap();
+    // mimic save_dialog: set active and connect
+    ed.db.active = Some(id);
+    execute_command(
+        &mut ed,
+        "db-connect",
+        &args(&[("source", ArgValue::Integer(id as i64))]),
+    )
+    .unwrap();
+    for _ in 0..500 {
+        let mut saw = false;
+        while let Ok(event) = rx.try_recv() {
+            saw = true;
+            crate::kernel::runtime::process_background_event(&mut ed, event);
+        }
+        if ed.db.is_connected(id) {
+            break;
+        }
+        if !saw {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+    assert!(ed.db.is_connected(id), "connected={}", ed.db.is_connected(id));
+}

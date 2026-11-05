@@ -15,6 +15,7 @@ export component EditorView inherits Rectangle {
     in property <length> cursor-height: 20px;
     in property <bool> caret-visible: false;
     in property <color> caret-color: Theme.accent;
+    in property <bool> enabled: true;
 
     out property <length> view-width: self.width;
     out property <length> view-height: self.height;
@@ -89,6 +90,7 @@ export component EditorView inherits Rectangle {
     touch := TouchArea {
         width: 100%;
         height: 100%;
+        enabled: root.enabled;
         // Text I-beam over the text area; the gutter is for markers and line
         // numbers, so the pointer reverts to the default arrow there.
         mouse-cursor: self.mouse-x < root.gutter-width ? MouseCursor.default : MouseCursor.text;
@@ -133,6 +135,7 @@ export component EditorView inherits Rectangle {
     scope := FocusScope {
         width: 100%;
         height: 100%;
+        enabled: root.enabled;
         // This scope is declared after (thus above) the TouchArea, so the
         // default `focus-on-click` would accept the press, and Slint stops
         // dispatching it to the items below — the editor never saw the click.
@@ -154,6 +157,7 @@ export component EditorView inherits Rectangle {
         width: 2px;
         height: root.cursor-height;
         opacity: 0.01;
+        enabled: root.enabled;
 
         edited => {
             if (self.text != "") {

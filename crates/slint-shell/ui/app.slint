@@ -627,6 +627,7 @@ export component AppWindow inherits Window {
             }
 
             editor-pane := EditorView {
+                    enabled: !root.db-dialog-visible;
                     horizontal-stretch: 1;
                     vertical-stretch: 1;
                     min-width: 120px;

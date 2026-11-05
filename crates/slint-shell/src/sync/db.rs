@@ -64,7 +64,20 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
 
 fn dialog_sync(app: &AppWindow, state: &mut AppState) {
     use slint::SharedString;
-    let Some(d) = &state.db_dialog else {
+    let (testing, token) = state
+        .db_dialog
+        .as_ref()
+        .map(|d| (d.testing, d.test_token))
+        .unwrap_or((false, 0));
+    if testing {
+        let (note, _) = dialog_note(state, token);
+        if !note.is_empty()
+            && let Some(d) = &mut state.db_dialog
+        {
+            d.testing = false;
+        }
+    }
+    let Some(d) = &mut state.db_dialog else {
         app.set_db_dialog_visible(false);
         return;
     };
@@ -77,26 +90,29 @@ fn dialog_sync(app: &AppWindow, state: &mut AppState) {
         }
         .into(),
     );
-        app.set_db_dialog_kinds(ModelRc::new(VecModel::from(
-            [
-                db::DriverKind::Sqlite,
-                db::DriverKind::Postgres,
-                db::DriverKind::MySql,
-                db::DriverKind::MariaDb,
-                db::DriverKind::SqlServer,
-            ]
+    app.set_db_dialog_kinds(ModelRc::new(VecModel::from(
+        [
+            db::DriverKind::Sqlite,
+            db::DriverKind::Postgres,
+            db::DriverKind::MySql,
+            db::DriverKind::MariaDb,
+            db::DriverKind::SqlServer,
+        ]
+        .iter()
+        .map(|k| SharedString::from(k.label()))
+        .collect::<Vec<_>>(),
+    )));
+    app.set_db_dialog_ssl_choices(ModelRc::new(VecModel::from(
+        ["disabled", "prefer", "require"]
             .iter()
-            .map(|k| SharedString::from(k.label()))
+            .map(|s| SharedString::from(*s))
             .collect::<Vec<_>>(),
-        )));
-        app.set_db_dialog_ssl_choices(ModelRc::new(VecModel::from(
-            ["disabled", "prefer", "require"]
-                .iter()
-                .map(|s| SharedString::from(*s))
-                .collect::<Vec<_>>(),
-        )));
-        app.set_db_dialog_kind_index(d.kind_index as i32);
-        app.set_db_dialog_embedded(d.kind_index == 0);
+    )));
+    app.set_db_dialog_kind_index(d.kind_index as i32);
+    app.set_db_dialog_embedded(d.kind_index == 0);
+    // Hydrate the editable fields only once, when the dialog opens, so
+    // subsequent refreshes don't clobber in-progress typing.
+    if d.needs_hydration {
         app.set_db_dialog_name(d.name.as_str().into());
         app.set_db_dialog_host(d.host.as_str().into());
         app.set_db_dialog_port(d.port.as_str().into());
@@ -104,14 +120,21 @@ fn dialog_sync(app: &AppWindow, state: &mut AppState) {
         app.set_db_dialog_user(d.user.as_str().into());
         app.set_db_dialog_password(d.password.as_str().into());
         app.set_db_dialog_save_password(d.save_password);
-        app.set_db_dialog_ssl_index(d.ssl_index as i32);
         app.set_db_dialog_trust_cert(d.trust_cert);
-        app.set_db_dialog_url_mode(d.url_mode);
         app.set_db_dialog_url(d.url.as_str().into());
-        app.set_db_dialog_testing(d.testing);
-        let (note, is_error) = dialog_note(state, d.test_token);
-        app.set_db_dialog_note(note.into());
-        app.set_db_dialog_note_error(is_error);
+        d.needs_hydration = false;
+    }
+    if d.port_push {
+        app.set_db_dialog_port(d.port.as_str().into());
+        d.port_push = false;
+    }
+    app.set_db_dialog_ssl_index(d.ssl_index as i32);
+    app.set_db_dialog_url_mode(d.url_mode);
+    app.set_db_dialog_testing(d.testing);
+    let token = d.test_token;
+    let (note, is_error) = dialog_note(state, token);
+    app.set_db_dialog_note(note.into());
+    app.set_db_dialog_note_error(is_error);
 }
 
 /// The dialog's note line: probe result for this dialog's token, or

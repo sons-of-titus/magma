@@ -18,6 +18,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         app.on_agent_toggle(move || {
             let mut s = state.borrow_mut();
             s.agent_open = !s.agent_open;
+            if s.agent_open {
+                s.db_open = false;
+            }
             refresh(&weak, &mut s);
         });
     }
@@ -46,6 +49,7 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 Ok(id) => {
                     s.message = format!("agent session {id} started");
                     s.agent_open = true;
+                    s.db_open = false;
                     s.agent_manage_open = false;
                     // Follow the fresh session rather than a pinned old one.
                     s.agent_active = None;

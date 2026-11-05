@@ -34,17 +34,34 @@ export component DbConnectionDialog inherits Rectangle {
     callback ssl-changed(string);
     callback url-toggled();
 
+    width: 100%;
+    height: 100%;
     background: #00000066;
 
     TouchArea { }   // dim backdrop swallows clicks
 
     Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
         width: 380px;
         height: dlg.preferred-height + 48px;
         border-radius: 8px;
         background: Theme.surface-panel;
         border-width: 1px;
         border-color: Theme.border;
+
+        focus := FocusScope {
+            width: 100%;
+            height: 100%;
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.cancel();
+                    accept
+                } else {
+                    reject
+                }
+            }
+        }
 
         dlg := VerticalLayout {
             padding: 14px;

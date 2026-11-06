@@ -131,7 +131,7 @@
         # them to a byte line start.
         (def offset (buffer/offset-of-lsp-position buf-id
                       (scan-number sl) (scan-number sc)))
-        (buffer/cursor buf-id offset)))))
+        (buffer/set-cursor buf-id offset)))))
 
 (command/define "lsp-hover"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/hover lang-id))))

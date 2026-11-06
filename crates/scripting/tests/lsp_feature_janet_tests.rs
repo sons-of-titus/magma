@@ -264,6 +264,48 @@ fn buffer_uri_encodes_reserved_bytes() {
     assert_eq!(ok, "true", "buffer-uri must encode like path_to_uri");
 }
 
+#[test]
+fn did_change_escapes_buffer_text_as_string_in_full_and_incremental_sync() {
+    let _lock = helpers::acquire_janet_lock();
+    let text = "fn main() {\n    println!(\"hi\t\x01\");\n}\n";
+    let mut ed = helpers::make_editor_with_buffer(text);
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let key = helpers::focused_key(&ed);
+    if let Some(arc) = ed.buffers.get(key) {
+        arc.lock().unwrap().path = Some("/tmp/test.rs".to_string());
+    }
+
+    // Full-text sync (default when lsp/sync-kind is nil or 1).
+    let raw_full =
+        scripting::eval_result(&format!(r#"(content-changes "rust" {key} "0:0:9")"#)).unwrap();
+    let full_json: String = serde_json::from_str(&raw_full).expect("Janet string literal");
+    let parsed_full: serde_json::Value =
+        serde_json::from_str(&full_json).expect("full-text change must be valid JSON");
+    assert_eq!(parsed_full["text"], text);
+
+    // Incremental range sync.
+    let raw_inc = scripting::eval_result(&format!(r#"(range-changes {key} "0:0:9")"#)).unwrap();
+    let inc_json: String = serde_json::from_str(&raw_inc).expect("Janet string literal");
+    let parsed_inc: serde_json::Value =
+        serde_json::from_str(&inc_json).expect("incremental range change must be valid JSON");
+    assert_eq!(parsed_inc["text"], "fn main()");
+    assert_eq!(parsed_inc["rangeLength"], 0);
+
+    // Dispatching buffer-changed for an attached buffer must run cleanly.
+    scripting::eval(&format!(r#"(put *buffer-languages* {key} "rust")"#));
+    ed.events.emit_typed(
+        kernel::event::keys::events::BUFFER_CHANGED,
+        kernel::event::payload::BufferChangedPayload {
+            buffer_id: key.to_string(),
+            revision_before: "1".to_string(),
+            revision_after: "2".to_string(),
+            edits: "0:0:9".to_string(),
+        },
+    );
+    ed.dispatch_events_scoped();
+}
+
 // ── Dead-code dimming (hint-diagnostics fallback) ────────────────────────
 
 #[test]

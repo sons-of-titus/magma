@@ -36,10 +36,10 @@
 # including raw UTF-8 above 0x7F — JSON strings carry UTF-8 natively.
 (def json-escape-peg
   ~(any (+ (/ (<- (range "\x00\x1F" "\"\"" "\\\\")) ,escape-json-char)
-          (<- (range "\x20\x21" "\x23\x5B" "\x5D\x7E" "\x80\xFF")))))
+          (<- (some (range "\x20\x21" "\x23\x5B" "\x5D\xFF"))))))
 
-(defn- json-escape [s]
-  (peg/match json-escape-peg s))
+(defn json-escape [s]
+  (string/join (peg/match json-escape-peg s)))
 
 # One range change per edit of the transaction, emitted back-to-front so
 # every range and every inserted-text slice is valid against the final
@@ -58,11 +58,11 @@
         (when (and st oe ne) (array/push out [st oe ne])))))
   out)
 
-(defn- full-text-change [buf-id]
+(defn full-text-change [buf-id]
   (string/format "{\"text\":\"%s\"}"
     (json-escape (buffer/slice buf-id 0 (buffer/len buf-id)))))
 
-(defn- range-changes [buf-id edits-str]
+(defn range-changes [buf-id edits-str]
   (def spans (parse-edit-spans edits-str))
   (when (not (empty? spans))
     (def parts @[])
@@ -81,7 +81,7 @@
 # Incremental range changes only when the server declared kind 2 in its
 # initialize result.  Full text is valid against kinds 1 and 2 alike, so
 # anything else — including servers that never negotiated — syncs whole.
-(defn- content-changes [lang-id buf-id edits-str]
+(defn content-changes [lang-id buf-id edits-str]
   (or (and (= 2 (lsp/sync-kind lang-id)) (range-changes buf-id edits-str))
       (full-text-change buf-id)))
 

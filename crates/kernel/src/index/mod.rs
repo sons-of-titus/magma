@@ -62,10 +62,10 @@ pub fn reconcile_project_index(ed: &mut Editor, files: &[String], generation: u6
                     Some((rel.clone(), meta.len(), mtime))
                 })
                 .collect();
-            let _ = sender.send(BackgroundEvent::Index(crate::index::Event::StampScan {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::Index(crate::index::Event::StampScan {
                 generation,
                 stamps,
-            }));
+            })));
         },
     );
 }
@@ -128,10 +128,10 @@ pub fn apply_stamp_scan(ed: &mut Editor, generation: u64, stamps: Vec<(String, u
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let rec = crate::index::record_from_text(&rel, mtime, &text);
-                let _ = sender.send(BackgroundEvent::Index(crate::index::Event::RecordArrived {
+                logging::LogErr::log_warn(sender.send(BackgroundEvent::Index(crate::index::Event::RecordArrived {
                     generation,
                     record: rec,
-                }));
+                })));
             }
         });
     }
@@ -182,10 +182,10 @@ pub fn reindex_saved_file(ed: &mut Editor, path: &str) {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             let record = crate::index::record_from_text(&rel, mtime, &text);
-            let _ = sender.send(BackgroundEvent::Index(crate::index::Event::RecordArrived {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::Index(crate::index::Event::RecordArrived {
                 generation,
                 record,
-            }));
+            })));
         },
     );
 }

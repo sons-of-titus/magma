@@ -210,11 +210,11 @@ pub(super) fn dispatch_script(
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
                 let results = conn.execute_script(&sql, crate::db::FETCH_LIMIT);
-                let _ = sender.send(BackgroundEvent::Db(DbEvent::QueryDone {
+                logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::QueryDone {
                     job,
                     tab_id,
                     results,
-                }));
+                })));
             });
         }
         None => {

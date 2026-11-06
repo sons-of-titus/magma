@@ -101,12 +101,12 @@ pub fn start_turn(ed: &mut Editor, session_id: u64) -> Result<(), String> {
             Ok((text, calls)) => (text, calls, None),
             Err(e) => (String::new(), Vec::new(), Some(e)),
         };
-        let _ = sender.send(crate::runtime::BackgroundEvent::AgentLlmReply {
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentLlmReply {
             session_id,
             content,
             tool_calls_json: serde_json::to_string(&calls).unwrap_or_else(|_| "[]".into()),
             error,
-        });
+        }));
     });
     Ok(())
 }
@@ -438,17 +438,17 @@ fn run_builtin_session(
     bg.spawn_blocking(move || {
         let plan = BuiltinPlanner.plan(&prompt, &ctx);
 
-        let _ = sender.send(crate::runtime::BackgroundEvent::AgentThought {
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentThought {
             session_id,
             thought: plan.rationale.clone(),
-        });
+        }));
 
         for step in &plan.steps {
-            let _ = sender.send(crate::runtime::BackgroundEvent::AgentAction {
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentAction {
                 session_id,
                 command: step.command.clone(),
                 description: step.description.clone(),
-            });
+            }));
         }
 
         let result = if plan.steps.is_empty() {
@@ -457,7 +457,7 @@ fn run_builtin_session(
             format!("{} step(s) planned", plan.steps.len())
         };
 
-        let _ = sender.send(crate::runtime::BackgroundEvent::AgentResult { session_id, result });
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentResult { session_id, result }));
     });
     Ok(())
 }

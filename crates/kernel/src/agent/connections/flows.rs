@@ -81,22 +81,22 @@ fn start_device_flow(
         let grant = match agent::auth::request_device_code(&method) {
             Ok(g) => g,
             Err(e) => {
-                let _ = sender.send(crate::runtime::BackgroundEvent::AgentAuthResult {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentAuthResult {
                     provider: provider_id,
                     ok: false,
                     credential: None,
                     error: Some(e),
-                });
+                }));
                 return;
             }
         };
-        let _ = sender.send(crate::runtime::BackgroundEvent::AgentAuthInstruction {
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentAuthInstruction {
             provider: provider_id.clone(),
             instruction: AuthInstruction::DeviceCode {
                 verification_url: grant.verification_url.clone(),
                 user_code: grant.user_code.clone(),
             },
-        });
+        }));
         match agent::auth::poll_device_token(&method, &grant, &cancel) {
             agent::AuthOutcome::Authenticated { credential } => {
                 let credential = match &credential {
@@ -114,21 +114,21 @@ fn start_device_flow(
                     }
                     other => other.clone(),
                 };
-                let _ = sender.send(crate::runtime::BackgroundEvent::AgentAuthResult {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentAuthResult {
                     provider: provider_id,
                     ok: true,
                     credential: Some(credential),
                     error: None,
-                });
+                }));
             }
             agent::AuthOutcome::Cancelled => {}
             agent::AuthOutcome::Failed(e) => {
-                let _ = sender.send(crate::runtime::BackgroundEvent::AgentAuthResult {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentAuthResult {
                     provider: provider_id,
                     ok: false,
                     credential: None,
                     error: Some(e),
-                });
+                }));
             }
         }
     });
@@ -152,7 +152,7 @@ pub fn submit_api_key(ed: &mut Editor, key: &str) -> Result<(), String> {
     persist_active_provider(ed, &pending.provider);
     // The catalog fetch validates the key against the real account; if the
     // pool is unavailable now, `ensure_catalogs` retries when the panel opens.
-    let _ = fetch_models(ed, &pending.provider);
+    logging::LogErr::log_err(fetch_models(ed, &pending.provider));
     Ok(())
 }
 
@@ -199,18 +199,18 @@ pub fn fetch_models(ed: &mut Editor, provider_id: &str) -> Result<(), String> {
     let pid = provider_id.to_string();
     bg.spawn_blocking(move || match provider.catalog(&credential) {
         Ok(models) => {
-            let _ = sender.send(crate::runtime::BackgroundEvent::AgentModels {
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentModels {
                 provider: pid,
                 models,
                 error: None,
-            });
+            }));
         }
         Err(e) => {
-            let _ = sender.send(crate::runtime::BackgroundEvent::AgentModels {
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentModels {
                 provider: pid,
                 models: Vec::new(),
                 error: Some(e),
-            });
+            }));
         }
     });
     Ok(())
@@ -227,7 +227,7 @@ pub fn ensure_catalogs(ed: &mut Editor) {
         .map(|(id, _)| id.clone())
         .collect();
     for id in ids {
-        let _ = fetch_models(ed, &id);
+        logging::LogErr::log_err(fetch_models(ed, &id));
     }
 }
 
@@ -274,7 +274,7 @@ pub fn note_auth_result(
             }
         }
         persist_active_provider(ed, provider);
-        let _ = fetch_models(ed, provider);
+        logging::LogErr::log_err(fetch_models(ed, provider));
     } else if let Some(err) = error {
         if let Some(conn) = ed.agent_connections.conns.get_mut(provider) {
             conn.status = ConnStatus::Failed(err.clone());

@@ -249,10 +249,10 @@ fn auto_save_dirty_buffers(ed: &mut Editor) {
         bg.spawn_blocking(move || {
             let result = crate::storage::disk::atomic_write(&path, &content);
             if result.is_ok() {
-                let _ = sender.send(BackgroundEvent::AutoSaveWritten {
+                logging::LogErr::log_warn(sender.send(BackgroundEvent::AutoSaveWritten {
                     buf_key: key,
                     saved_rev,
-                });
+                }));
             }
         });
     }

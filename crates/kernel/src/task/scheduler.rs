@@ -215,13 +215,13 @@ impl TaskScheduler {
                             for line in std::io::BufReader::new(s).lines().map_while(Result::ok) {
                                 sink.push_str(&line);
                                 sink.push('\n');
-                                let _ = sender.send(crate::runtime::BackgroundEvent::Task(
+                                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Task(
                                     super::Event::OutputLine {
                                         id,
                                         stream: stream_name.into(),
                                         line,
                                     },
-                                ));
+                                )));
                             }
                             sink
                         })
@@ -253,7 +253,7 @@ impl TaskScheduler {
                 Err(e) => (-1, String::new(), e.to_string()),
             };
             let duration_ms = start.elapsed().as_millis() as u64;
-            let _ = sender.send(crate::runtime::BackgroundEvent::Task(
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Task(
                 super::Event::RunCompleted {
                     id,
                     exit_code,
@@ -261,7 +261,7 @@ impl TaskScheduler {
                     stderr,
                     duration_ms,
                 },
-            ));
+            )));
         });
 
         Ok(())
@@ -305,7 +305,7 @@ impl TaskScheduler {
             && let Some(child) = guard.as_mut()
         {
             crate::util::proctree::kill_tree_hard(child.id() as i32);
-            let _ = child.kill();
+            logging::LogErr::log_warn(child.kill());
         }
         self.running.remove(&id);
         if let Some(task) = self.tasks.get_mut(&id)

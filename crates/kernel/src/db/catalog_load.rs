@@ -15,10 +15,10 @@ pub(crate) fn dispatch(editor: &mut Editor, source_id: u64) {
         Some(bg) => {
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
-                let _ = sender.send(BackgroundEvent::Db(DbEvent::Catalog {
+                logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::Catalog {
                     source_id,
                     catalog: conn.catalog(),
-                }));
+                })));
             });
         }
         None => {

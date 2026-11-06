@@ -96,9 +96,9 @@ pub(crate) fn spawn_branch_list(editor: &mut Editor) -> CommandResult {
                         .collect()
                 })
                 .unwrap_or_default();
-            let _ = sender.send(BackgroundEvent::Vc(crate::vc::Event::BranchesReady {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::Vc(crate::vc::Event::BranchesReady {
                 branches,
-            }));
+            })));
         });
     } else {
         editor.vc.branches = crate::vc::run_op(&root, &backend, &VcRemoteOp::ListBranches)
@@ -126,9 +126,9 @@ pub(crate) fn spawn_stash_list(editor: &mut Editor) -> CommandResult {
             let stashes = crate::vc::run_op(&root, &backend, &VcRemoteOp::StashList)
                 .map(|out| parse_stash_lines(&out))
                 .unwrap_or_default();
-            let _ = sender.send(BackgroundEvent::Vc(crate::vc::Event::StashListed {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::Vc(crate::vc::Event::StashListed {
                 result: Ok(stashes),
-            }));
+            })));
         });
     } else {
         editor.vc.stashes = crate::vc::run_op(&root, &backend, &VcRemoteOp::StashList)

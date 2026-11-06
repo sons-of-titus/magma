@@ -153,11 +153,11 @@ pub(crate) fn candidate_words(editor: &mut Editor, buf_id: usize) -> Option<Arc<
                         break;
                     }
                 }
-                let _ = sender.send(crate::runtime::BackgroundEvent::BufferWords {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::BufferWords {
                     buf_key: buf_id,
                     revision,
                     words: words.into_iter().collect(),
-                });
+                }));
             },
         );
     }

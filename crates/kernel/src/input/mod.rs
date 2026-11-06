@@ -109,7 +109,7 @@ fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) 
 
     if ctrl || alt || shift {
         if let Some(seq) = modified_named_seq(base, shift, alt, ctrl) {
-            let _ = crate::terminal::send_input(ed, buf_id, &seq);
+            logging::LogErr::log_err(crate::terminal::send_input(ed, buf_id, &seq));
             return;
         }
         // Text keys keep their unmodified byte under shift/ctrl (xterm
@@ -123,7 +123,7 @@ fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) 
             "backspace" => "\x7f".into(),
             "esc" => "\x1b".into(),
             other if alt => {
-                let _ = crate::terminal::send_input(ed, buf_id, &format!("\x1b{other}"));
+                logging::LogErr::log_err(crate::terminal::send_input(ed, buf_id, &format!("\x1b{other}")));
                 return;
             }
             other if ctrl => {
@@ -139,21 +139,21 @@ fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) 
                 };
                 if byte > 0 {
                     let ctrl_bytes = [byte];
-                    let _ = crate::terminal::send_input(
+                    logging::LogErr::log_err(crate::terminal::send_input(
                         ed,
                         buf_id,
                         std::str::from_utf8(&ctrl_bytes).unwrap_or(""),
-                    );
+                    ));
                 }
                 return;
             }
             other => other.to_string(),
         };
-        let _ = if alt {
+        logging::LogErr::log_err(if alt {
             crate::terminal::send_input(ed, buf_id, &format!("\x1b{body}"))
         } else {
             crate::terminal::send_input(ed, buf_id, &body)
-        };
+        });
         return;
     }
 
@@ -162,7 +162,7 @@ fn forward_to_terminal(ed: &mut crate::state::Editor, buf_id: usize, key: &str) 
         None if base == "unknown" => return,
         None => base,
     };
-    let _ = crate::terminal::send_input(ed, buf_id, seq);
+    logging::LogErr::log_err(crate::terminal::send_input(ed, buf_id, seq));
 }
 
 /// Dispatch a single key through the generic editor pipeline.

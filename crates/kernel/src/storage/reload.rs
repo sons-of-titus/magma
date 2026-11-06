@@ -62,8 +62,8 @@ pub fn handle_file_changed(ed: &mut Editor, disk_path: &str, kind: &str) {
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
                 let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
-                let _ = sender
-                    .send(crate::runtime::BackgroundEvent::BufferReloaded { buf_key, content });
+                logging::LogErr::log_warn(sender
+                    .send(crate::runtime::BackgroundEvent::BufferReloaded { buf_key, content }));
             });
         }
         // Without a pool (tests, embedders) the read is cheap enough to do

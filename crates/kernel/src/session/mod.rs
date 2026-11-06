@@ -82,7 +82,7 @@ pub fn save(ed: &Editor, root: &std::path::Path) -> Result<(), String> {
 /// Save when a project is active; a no-op without one.
 pub fn save_if_project(ed: &Editor) {
     if let Some(root) = ed.project_manager.project.root.clone() {
-        let _ = save(ed, &root);
+        logging::LogErr::log_err(save(ed, &root));
     }
 }
 
@@ -182,18 +182,18 @@ pub fn restore_async(ed: &mut Editor, root: &std::path::Path) {
             for entry in state.buffers {
                 let path = crate::project::resolve_path(Some(&root), &entry.path);
                 let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
-                let _ = sender.send(crate::runtime::BackgroundEvent::SessionBufferLoaded {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::SessionBufferLoaded {
                     generation,
                     path,
                     cursor: entry.cursor,
                     content,
-                });
+                }));
             }
-            let _ = sender.send(crate::runtime::BackgroundEvent::SessionRestoreDone {
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::SessionRestoreDone {
                 generation,
                 focused,
                 splits: state.split_buffers.clone(),
-            });
+            }));
         },
     );
 }

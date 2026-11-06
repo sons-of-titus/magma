@@ -245,7 +245,7 @@ fn handle_task_run_completed(
     if let Some(bg) = ed.background.clone() {
         let ready: Vec<u64> = ed.task_scheduler.ready_to_run();
         for rid in ready {
-            let _ = ed.task_scheduler.launch(rid, &bg);
+            logging::LogErr::log_err(ed.task_scheduler.launch(rid, &bg));
         }
     }
 }

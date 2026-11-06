@@ -383,7 +383,7 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                     crate::semantic::edit_apply::apply_workspace_edit(ed, &v);
                     true
                 }
-                Err(_) => false,
+                Err(e) => { logging::error!("lsp.rs:386: {e}"); false }
             };
             if let Some(server) = ed.lsp.get(&language) {
                 server.respond(request_id, serde_json::json!({ "applied": applied }));

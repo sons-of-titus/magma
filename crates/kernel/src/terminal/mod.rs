@@ -125,10 +125,10 @@ impl TerminalManager {
             let mut child = child;
             let status = child.wait().ok();
             let exit_code = status.as_ref().map(|s| s.exit_code() as i32).unwrap_or(-1);
-            let _ = sender.send(BackgroundEvent::TerminalExited {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::TerminalExited {
                 terminal_id: id,
                 exit_code,
-            });
+            }));
         });
         Ok(id)
     }
@@ -274,7 +274,7 @@ fn read_pipe(
                 // The event channel has no waker of its own; this is what
                 // makes the output visible without a frame-rate poll.
                 if let Some(wake) = &pty_waker {
-                    let _ = wake.send(());
+                    logging::LogErr::log_warn(wake.send(()));
                 }
             }
             Err(e) => {

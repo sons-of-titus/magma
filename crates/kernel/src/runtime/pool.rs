@@ -51,11 +51,11 @@ impl BackgroundHandle {
         let sender = self.sender.clone();
         self.spawn_blocking(move || {
             let content = std::fs::read_to_string(&path).map_err(|e| e.to_string());
-            let _ = sender.send(BackgroundEvent::FileReadResult {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::FileReadResult {
                 path,
                 content,
                 request_id,
-            });
+            }));
         });
     }
 
@@ -69,11 +69,11 @@ impl BackgroundHandle {
                 std::fs::write(&path, &content).map_err(|e| e.to_string())?;
                 Ok(())
             })();
-            let _ = sender.send(BackgroundEvent::FileWriteResult {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::FileWriteResult {
                 path,
                 result,
                 request_id,
-            });
+            }));
         });
     }
 }

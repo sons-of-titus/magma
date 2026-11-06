@@ -37,7 +37,8 @@ pub(super) fn handle(ed: &mut Editor, event: BackgroundEvent) {
                 }
                 // Non-UTF8 content (image, PDF) needs the sync open path's
                 // decoding; rare, so a foreground read is acceptable.
-                Err(_) => {
+                Err(e) => {
+                    logging::error!("session.rs:40: {e}");
                     crate::session::open_path(ed, &path);
                 }
             }

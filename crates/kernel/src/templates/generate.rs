@@ -145,13 +145,13 @@ pub fn generate(
     if let Err(e) = walk_result {
         for path in walk.created.iter().rev() {
             if path.is_dir() {
-                let _ = std::fs::remove_dir(path);
+                logging::LogErr::log_warn(std::fs::remove_dir(path));
             } else {
-                let _ = std::fs::remove_file(path);
+                logging::LogErr::log_warn(std::fs::remove_file(path));
             }
         }
         if !dest_pre_existed {
-            let _ = std::fs::remove_dir(dest);
+            logging::LogErr::log_warn(std::fs::remove_dir(dest));
         }
         return Err(e);
     }
@@ -198,7 +198,7 @@ fn check_destination(template: &ProjectTemplate, dest: &Path) -> Result<(), Stri
         ));
     }
     match std::fs::symlink_metadata(dest) {
-        Err(_) => Ok(()),
+        Err(e) => { logging::error!("generate.rs:201: {e}"); Ok(()) }
         Ok(meta) if meta.is_dir() => {
             let empty = std::fs::read_dir(dest)
                 .map(|mut d| d.next().is_none())

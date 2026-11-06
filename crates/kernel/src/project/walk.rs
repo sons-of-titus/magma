@@ -93,7 +93,7 @@ impl Batcher {
             ignored_files: self.ignored.iter().cloned().collect(),
             done,
         });
-        let _ = self.sender.send(event);
+        logging::LogErr::log_warn(self.sender.send(event));
     }
 }
 

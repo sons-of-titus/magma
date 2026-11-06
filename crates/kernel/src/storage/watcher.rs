@@ -69,18 +69,18 @@ impl FileWatcher {
                         match event.kind {
                             EventKind::Modify(_) | EventKind::Create(_) => {
                                 for path_str in paths {
-                                    let _ = sender.send(BackgroundEvent::FileChanged {
+                                    logging::LogErr::log_warn(sender.send(BackgroundEvent::FileChanged {
                                         path: path_str.clone(),
                                         kind: "modified".to_string(),
-                                    });
+                                    }));
                                 }
                             }
                             EventKind::Remove(_) => {
                                 for path_str in paths {
-                                    let _ = sender.send(BackgroundEvent::FileChanged {
+                                    logging::LogErr::log_warn(sender.send(BackgroundEvent::FileChanged {
                                         path: path_str.clone(),
                                         kind: "removed".to_string(),
-                                    });
+                                    }));
                                 }
                             }
                             _ => {}
@@ -150,7 +150,7 @@ impl FileWatcher {
                 .collect()
         };
         for r in &stale {
-            let _ = self._watcher.unwatch(std::path::Path::new(r));
+            logging::LogErr::log_err(self._watcher.unwatch(std::path::Path::new(r)));
             let mut roots = self.project_roots.lock().unwrap_or_else(|e| e.into_inner());
             roots.remove(r);
         }
@@ -164,7 +164,7 @@ impl FileWatcher {
         for p in w.drain() {
             let parent = std::path::Path::new(&p).parent().map(Path::to_path_buf);
             if let Some(parent) = parent {
-                let _ = self._watcher.unwatch(&parent);
+                logging::LogErr::log_err(self._watcher.unwatch(&parent));
             }
         }
     }

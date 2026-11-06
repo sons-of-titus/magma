@@ -221,13 +221,13 @@ pub(crate) fn vc_refresh(editor: &mut Editor) -> CommandResult {
         let sender = bg.sender.clone();
         bg.spawn_blocking(move || {
             let result = crate::vc::status_for_root(&root);
-            let _ = sender.send(crate::runtime::BackgroundEvent::Vc(
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Vc(
                 crate::vc::Event::StatusFetched {
                     backend_idx,
                     root,
                     result,
                 },
-            ));
+            )));
         });
     } else {
         match crate::vc::status_for_root(&root) {
@@ -281,13 +281,13 @@ pub(crate) fn vc_spawn_op(
     let scratch_name = scratch.map(String::from);
     bg.spawn_blocking(move || {
         let result = crate::vc::run_op(&root, &backend, &op);
-        let _ = sender.send(crate::runtime::BackgroundEvent::Vc(
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Vc(
             crate::vc::Event::OpDone {
                 scratch: scratch_name,
                 then_refresh,
                 result,
             },
-        ));
+        )));
     });
     Ok(())
 }

@@ -174,10 +174,10 @@ pub(super) fn register(editor: &mut Editor) {
                     let sender = bg.sender.clone();
                     bg.spawn_blocking(move || {
                         let result = db::test_connection(&probe, password.as_deref());
-                        let _ = sender.send(BackgroundEvent::Db(DbEvent::TestDone {
+                        logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::TestDone {
                             token,
                             result,
-                        }));
+                        })));
                     });
                 }
                 None => {
@@ -199,25 +199,25 @@ pub(super) fn connect_dispatch(editor: &mut Editor, source: DataSource, password
                 Ok(conn) => {
                     let conn = Arc::new(conn);
                     let steps = introspect_cascade(&conn, &db::NodeRef::Root);
-                    let _ = sender.send(BackgroundEvent::Db(DbEvent::Connected {
+                    logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::Connected {
                         source_id: source.id,
                         connection: Some(Arc::clone(&conn)),
                         error: None,
-                    }));
+                    })));
                     for (path, children) in steps {
-                        let _ = sender.send(BackgroundEvent::Db(DbEvent::Introspected {
+                        logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::Introspected {
                             source_id: source.id,
                             path,
                             children,
-                        }));
+                        })));
                     }
                 }
                 Err(e) => {
-                    let _ = sender.send(BackgroundEvent::Db(DbEvent::Connected {
+                    logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::Connected {
                         source_id: source.id,
                         connection: None,
                         error: Some(e),
-                    }));
+                    })));
                 }
             });
         }
@@ -266,11 +266,11 @@ pub(super) fn introspect_dispatch(editor: &mut Editor, source_id: u64, path: &st
             bg.spawn_blocking(move || {
                 let node = db::NodeRef::parse(&path).unwrap_or(db::NodeRef::Root);
                 for (step_path, children) in introspect_cascade(&conn, &node) {
-                    let _ = sender.send(BackgroundEvent::Db(DbEvent::Introspected {
+                    logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::Introspected {
                         source_id,
                         path: step_path,
                         children,
-                    }));
+                    })));
                 }
             });
         }

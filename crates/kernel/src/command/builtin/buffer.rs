@@ -332,9 +332,9 @@ pub(super) fn find_files_register(cmds: &mut crate::command::CommandRegistry) {
                 let sender = bg.sender.clone();
                 bg.spawn_blocking(move || {
                     let files = walk_matching(&cwd, &pattern);
-                    let _ = sender.send(crate::runtime::BackgroundEvent::Project(
+                    logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Project(
                         crate::project::Event::FileSearchListed { pattern, files },
-                    ));
+                    )));
                 });
                 return Ok(());
             }
@@ -506,17 +506,17 @@ fn save_buffer_common(
         let fs = crate::storage::DiskFileSystem::new();
         match fs.write(&path, &content) {
             Ok(()) => {
-                let _ = sender.send(crate::runtime::BackgroundEvent::SaveWritten {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::SaveWritten {
                     buf_key: buf_id,
                     path,
                     saved_rev,
-                });
+                }));
             }
             Err(e) => {
-                let _ = sender.send(crate::runtime::BackgroundEvent::SaveFailed {
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::SaveFailed {
                     buf_key: buf_id,
                     error: e.to_string(),
-                });
+                }));
             }
         }
     });
@@ -538,7 +538,7 @@ fn walk_matching(cwd: &std::path::Path, pattern: &str) -> Vec<String> {
     while let Some(dir) = dirs.pop() {
         let entries = match std::fs::read_dir(&dir) {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => { logging::error!("buffer.rs:541: {e}"); continue }
         };
         for entry in entries.flatten() {
             let path = entry.path();
@@ -551,7 +551,7 @@ fn walk_matching(cwd: &std::path::Path, pattern: &str) -> Vec<String> {
             // still match by their own name.
             let file_type = match entry.file_type() {
                 Ok(ft) => ft,
-                Err(_) => continue,
+                Err(e) => { logging::error!("buffer.rs:554: {e}"); continue }
             };
             if file_type.is_symlink() {
                 let rel = path

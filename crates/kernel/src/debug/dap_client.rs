@@ -109,7 +109,8 @@ impl DapHandle {
                 handle.kill();
                 return Err(format!("DAP initialize failed (session {session_id}): {e}"));
             }
-            Err(_) => {
+            Err(e) => {
+                logging::error!("dap_client.rs:112: {e}");
                 handle.kill();
                 return Err(format!("DAP initialize timed out (session {session_id})"));
             }
@@ -142,7 +143,7 @@ impl DapHandle {
             "command": command,
             "arguments": arguments,
         });
-        let _ = self.core.outbound.send(msg);
+        logging::LogErr::log_warn(self.core.outbound.send(msg));
     }
 
     /// Ordered teardown: `disconnect` request, then kill.  The reader
@@ -157,8 +158,8 @@ impl DapHandle {
         if let Ok(mut guard) = self.child.lock()
             && let Some(mut child) = guard.take()
         {
-            let _ = child.kill();
-            let _ = child.wait();
+            logging::LogErr::log_warn(child.kill());
+            logging::LogErr::log_warn(child.wait());
         }
     }
 }
@@ -185,7 +186,7 @@ where
 {
     loop {
         match crate::semantic::lsp_proto::read_message(&mut read) {
-            Err(_) => break,
+            Err(e) => { logging::error!("dap_client.rs:188: {e:?}"); break }
             Ok(msg) => dispatch_dap_message(&core, &msg, &sink, session_id),
         }
     }
@@ -273,11 +274,11 @@ fn dispatch_dap_message<S: super::EventSink>(
                     .and_then(Value::as_str)
                     .unwrap_or("adapter error");
                 if let Ok(tx) = core.init_signal.lock() {
-                    let _ = tx.send(if failed {
+                    logging::LogErr::log_warn(tx.send(if failed {
                         Err(error.to_string())
                     } else {
                         Ok(())
-                    });
+                    }));
                 }
                 return;
             }

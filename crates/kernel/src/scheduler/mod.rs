@@ -21,13 +21,13 @@ impl WorkHost for BackgroundHandle {
     fn sink(&self) -> WorkSink {
         let sender = self.sender.clone();
         WorkSink::new(move |event| {
-            let _ = sender.send(match event {
+            logging::LogErr::log_warn(sender.send(match event {
                 WorkEvent::Progress { id, done, total } => {
                     BackgroundEvent::WorkProgress { id, done, total }
                 }
                 WorkEvent::Completed { id } => BackgroundEvent::WorkCompleted { id },
                 WorkEvent::Failed { id, error } => BackgroundEvent::WorkFailed { id, error },
-            });
+            }));
         })
     }
 }

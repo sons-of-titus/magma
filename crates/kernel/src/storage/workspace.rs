@@ -294,7 +294,7 @@ impl WorkspaceManager {
                     fname.strip_suffix(".json").map(|s| s.to_string())
                 })
                 .collect(),
-            Err(_) => Vec::new(),
+            Err(e) => { logging::error!("listing workspaces: {e}"); Vec::new() }
         }
     }
 

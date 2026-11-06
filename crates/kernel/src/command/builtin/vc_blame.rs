@@ -56,13 +56,13 @@ pub(crate) fn vc_blame(editor: &mut Editor) -> CommandResult {
     let sender = bg.sender.clone();
     bg.spawn_blocking(move || {
         let result = crate::vc::run_op(&root, &backend, &crate::vc::VcRemoteOp::Blame(path));
-        let _ = sender.send(crate::runtime::BackgroundEvent::Vc(
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Vc(
             crate::vc::Event::BlameReady {
                 buf_id,
                 generation,
                 result,
             },
-        ));
+        )));
     });
     Ok(())
 }
@@ -137,13 +137,13 @@ pub(crate) fn refresh_blame_after_save(editor: &mut Editor, path: &str) {
     let sender = bg.sender.clone();
     bg.spawn_blocking(move || {
         let result = crate::vc::run_op(&root, &backend, &crate::vc::VcRemoteOp::Blame(path));
-        let _ = sender.send(crate::runtime::BackgroundEvent::Vc(
+        logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Vc(
             crate::vc::Event::BlameReady {
                 buf_id,
                 generation,
                 result,
             },
-        ));
+        )));
     });
 }
 

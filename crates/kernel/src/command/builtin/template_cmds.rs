@@ -75,7 +75,7 @@ pub fn register(editor: &mut Editor) {
                         dest_path.display()
                     ));
                 }
-                Err(_) => {}
+                Err(e) => { logging::error!("template_cmds.rs:78: {e}"); {} }
             }
             if !crate::templates::generate::valid_project_name(&name) {
                 return Err(format!(
@@ -97,13 +97,13 @@ pub fn register(editor: &mut Editor) {
                 let result = crate::templates::generate::generate(
                     &template, &dest_path, &name, &vars, &cancel,
                 );
-                let _ = sender.send(crate::runtime::BackgroundEvent::Templates(
+                logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::Templates(
                     crate::templates::TemplateEvent::Generated {
                         request_id,
                         open,
                         result,
                     },
-                ));
+                )));
             });
             ed.show_message(
                 crate::state::MessageKind::Info,

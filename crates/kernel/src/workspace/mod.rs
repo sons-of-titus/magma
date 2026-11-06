@@ -121,7 +121,7 @@ pub fn close_editor_session(ed: &mut Editor) {
     }
     ed.io.terminals.close_all();
     ed.debug.disconnect_all();
-    let _ = ed.index.flush();
+    logging::LogErr::log_err(ed.index.flush());
 }
 
 /// Persist history + marks on shutdown; the project session joins them when

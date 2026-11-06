@@ -135,7 +135,7 @@ pub fn schedule_tree_update(ed: &mut crate::state::Editor, buf_key: usize) {
                     handoff.pop_front();
                 }
             }
-            let _ = sender.send(crate::runtime::BackgroundEvent::TsTreeReady { buf_key, revision });
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::TsTreeReady { buf_key, revision }));
         },
     );
 }

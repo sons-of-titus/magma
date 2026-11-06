@@ -114,10 +114,10 @@ pub fn spawn_diff(editor: &mut Editor, path: String) -> CommandResult {
         let sender = bg.sender.clone();
         bg.spawn_blocking(move || {
             let result = fetch_bundle(&root, &backend, &path);
-            let _ = sender.send(BackgroundEvent::Vc(crate::vc::Event::DiffReady {
+            logging::LogErr::log_warn(sender.send(BackgroundEvent::Vc(crate::vc::Event::DiffReady {
                 path,
                 result,
-            }));
+            })));
         });
     } else {
         match fetch_bundle(&root, &backend, &path) {
@@ -155,7 +155,7 @@ pub(crate) fn reload_diff(editor: &mut Editor) {
         close_diff(editor);
         return;
     }
-    let _ = spawn_diff(editor, view.path);
+    logging::LogErr::log_err(spawn_diff(editor, view.path));
 }
 
 // ── The two panes ────────────────────────────────────────────────────────────

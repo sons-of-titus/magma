@@ -79,7 +79,7 @@ pub async fn run_server(
         getrandom_fill(&mut buf);
         let mut token = String::with_capacity(48);
         for b in buf {
-            let _ = write!(token, "{b:02x}");
+            logging::LogErr::log_err(write!(token, "{b:02x}"));
         }
         token
     });
@@ -261,7 +261,7 @@ fn apply_op(ed: &mut Editor, op: ServerOp) -> Response {
                     Response::ok(serde_json::json!({"saved": true}), id)
                 }
                 Ok(Err(e)) => Response::error(&format!("Save failed: {e}"), id),
-                Err(_) => Response::error("Save task panicked", id),
+                Err(e) => { logging::error!("save task panicked: {e:?}"); Response::error("Save task panicked", id) }
             }
         }
         ServerOp::Eval { code, id } => {
@@ -367,7 +367,7 @@ async fn handle_client(
         }
         let response = match receipt.await {
             Ok(r) => r,
-            Err(_) => Response::error("foreground loop dropped the request", id),
+            Err(e) => { logging::error!("mod.rs:370: {e}"); Response::error("foreground loop dropped the request", id) }
         };
         writer.write_all(response.to_json().as_bytes()).await?;
         writer.write_all(b"\n").await?;

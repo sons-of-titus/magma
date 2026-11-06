@@ -318,18 +318,18 @@ pub(super) fn fetch_table_page(editor: &mut Editor, tab_id: u64) {
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
                 let Some(node) = node else {
-                    let _ = sender.send(BackgroundEvent::Db(DbEvent::QueryDone {
+                    logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::QueryDone {
                         job,
                         tab_id,
                         results: Err("not a table tab".to_string()),
-                    }));
+                    })));
                     return;
                 };
                 let detail = conn.table_detail(&node);
-                let _ = sender.send(BackgroundEvent::Db(DbEvent::TableDetail {
+                logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::TableDetail {
                     tab_id,
                     detail: detail.clone().map_err(|e| e),
-                }));
+                })));
                 if let Ok(detail) = detail {
                     let sql = db::page_query(
                         conn.dialect(),
@@ -340,11 +340,11 @@ pub(super) fn fetch_table_page(editor: &mut Editor, tab_id: u64) {
                         crate::db::FETCH_LIMIT,
                     );
                     let results = conn.execute_script(&sql, crate::db::FETCH_LIMIT);
-                    let _ = sender.send(BackgroundEvent::Db(DbEvent::QueryDone {
+                    logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::QueryDone {
                         job,
                         tab_id,
                         results,
-                    }));
+                    })));
                 }
             });
         }

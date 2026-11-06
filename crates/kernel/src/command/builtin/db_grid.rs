@@ -358,10 +358,10 @@ pub(super) fn register(editor: &mut Editor) {
                     let sender = bg.sender.clone();
                     bg.spawn_blocking(move || {
                         let result = conn.apply_edits(&detail, &pending);
-                        let _ = sender.send(BackgroundEvent::Db(DbEvent::EditsApplied {
+                        logging::LogErr::log_warn(sender.send(BackgroundEvent::Db(DbEvent::EditsApplied {
                             tab_id,
                             result,
-                        }));
+                        })));
                     });
                 }
                 None => {

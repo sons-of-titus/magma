@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// Return the Magma state directory (~/.magma), creating it if needed.
 pub fn state_dir() -> PathBuf {
     let dir = dirs_data_dir().join("magma");
-    let _ = std::fs::create_dir_all(&dir);
+    logging::LogErr::log_err(std::fs::create_dir_all(&dir));
     dir
 }
 
@@ -60,7 +60,12 @@ pub fn load_command_history() -> Vec<String> {
             .map(|l| l.to_string())
             .filter(|l| !l.is_empty())
             .collect(),
-        Err(_) => Vec::new(),
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                logging::error!("reading {}: {e}", path.display());
+            }
+            Vec::new()
+        }
     }
 }
 
@@ -89,7 +94,12 @@ pub fn load_marks() -> Vec<PersistedMark> {
     let path = state_dir().join(MARKS_FILE);
     match std::fs::read_to_string(&path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => Vec::new(),
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                logging::error!("reading {}: {e}", path.display());
+            }
+            Vec::new()
+        }
     }
 }
 
@@ -177,7 +187,7 @@ struct PersistedSettings {
 /// The user config directory (~/.config/magma), creating it if needed.
 pub fn config_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("MAGMA_CONFIG_DIR") {
-        let _ = std::fs::create_dir_all(&dir);
+        logging::LogErr::log_err(std::fs::create_dir_all(&dir));
         return PathBuf::from(dir);
     }
     let home = std::env::var("HOME").unwrap_or_default();
@@ -186,7 +196,7 @@ pub fn config_dir() -> PathBuf {
     } else {
         PathBuf::from(home).join(".config").join("magma")
     };
-    let _ = std::fs::create_dir_all(&dir);
+    logging::LogErr::log_err(std::fs::create_dir_all(&dir));
     dir
 }
 
@@ -262,7 +272,7 @@ pub fn save_settings(ed: &super::Editor) {
 }
 
 pub fn save_settings_to(dir: &std::path::Path, ed: &super::Editor) {
-    let _ = std::fs::create_dir_all(dir);
+    logging::LogErr::log_err(std::fs::create_dir_all(dir));
     let mut file_options = std::collections::HashMap::new();
     let mut keychain_keys: Vec<String> = Vec::new();
     let mut keychain_oauth: Vec<String> = Vec::new();
@@ -341,7 +351,7 @@ fn write_private(path: &std::path::Path, content: &str) {
             .mode(0o600)
             .open(path)
         {
-            let _ = file.write_all(content.as_bytes());
+            logging::LogErr::log_err(file.write_all(content.as_bytes()));
             return;
         }
     }

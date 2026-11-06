@@ -1,12 +1,8 @@
 [package]
-name = "magma-slint"
+name = "ui"
 version = "0.1.0"
 edition = "2024"
 description = "Magma's Slint frontend — declarative shell over the kernel's Surface"
-
-[[bin]]
-name = "magma-slint"
-path = "src/main.rs"
 
 [dependencies]
 kernel = { path = "../kernel" }

@@ -40,7 +40,15 @@ pub(crate) use crate::app_state::{system_prefers_dark, AppState};
 use scripting;
 slint::include_modules!();
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// What the process was asked to open, already resolved by the CLI layer.
+#[derive(Debug, Default)]
+pub struct StartOptions {
+    pub project: Option<std::path::PathBuf>,
+    pub files: Vec<(std::path::PathBuf, Option<usize>)>,
+    pub reopen_last: bool,
+}
+
+pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
     let _ = boot_clock();
     slint::BackendSelector::new().select()?;
     // Register the bundled Symbols Nerd Font so icon-pack glyphs render.
@@ -62,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let boot = boot::bootstrap(
         BootOptions {
             interactive: true,
-            reopen_last_project: true,
+            reopen_last_project: start.reopen_last,
         },
         rt,
     )?;
@@ -117,6 +125,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cell_h: init_cell_h,
         caret_inset: init_caret_inset,
         caret_height: init_caret_height,
+        caret_blink_on: true,
+        caret_blink_last: std::time::Instant::now(),
         surface: Surface::new(1, 1),
         terminal_grid: (0, 0, 0),
         surface_sig: 0,
@@ -139,8 +149,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         find_rows_cache: None,
         sidebar_widths: [240.0, 300.0, 420.0],
         db_open: false,
-        db_height: 340.0,
-        db_explorer_width: 260.0,
         db_col_widths: HashMap::new(),
         db_tree_filter: String::new(),
         db_tree_filter_active: false,
@@ -213,6 +221,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         m_hover_lines: sync::ModelGate::new(),
         m_completion_entries: sync::ModelGate::new(),
         m_quickfix_items: sync::ModelGate::new(),
+        m_db_sources: sync::ModelGate::new(),
+        m_db_tree: sync::ModelGate::new(),
+        m_db_columns: sync::ModelGate::new(),
+        db_rows_cache: Vec::new(),
     }));
 
     let app = AppWindow::new()?;
@@ -297,16 +309,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // establishes context synchronously and pushes the walk, session
     // restore, and task detection onto the pool, so nothing here can stall
     // the first frame.
-    if let Some(path) = boot.reopen_project {
+    let startup_project = start
+        .project
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned())
+        .or(boot.reopen_project);
+    if let Some(path) = startup_project {
         let mut args = HashMap::new();
         args.insert(
             "path".to_string(),
             kernel::command::args::ArgValue::Path(path),
         );
-        if let Err(e) =
-            kernel::command::execute_command(&mut state.borrow_mut().editor, "open-project", &args)
-        {
-            logging::warn!("Could not reopen last project: {e}");
+        let mut s = state.borrow_mut();
+        match kernel::command::execute_command(&mut s.editor, "open-project", &args) {
+            Err(e) => logging::warn!("Could not open project: {e}"),
+            Ok(()) => {
+                for (file, line) in &start.files {
+                    let mut args = HashMap::new();
+                    args.insert(
+                        "path".to_string(),
+                        kernel::command::args::ArgValue::Path(file.to_string_lossy().into_owned()),
+                    );
+                    if let Err(e) =
+                        kernel::command::execute_command(&mut s.editor, "open-file", &args)
+                    {
+                        logging::warn!("Could not open {}: {e}", file.display());
+                        continue;
+                    }
+                    if let Some(line) = line {
+                        let mut args = HashMap::new();
+                        args.insert(
+                            "line".to_string(),
+                            kernel::command::args::ArgValue::Integer(*line as i64),
+                        );
+                        let _ = kernel::command::execute_command(&mut s.editor, "goto-line", &args);
+                    }
+                }
+            }
         }
     }
 
@@ -379,6 +418,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if changed {
                     s.editor.frame_dirty = true;
                 }
+                // Caret blink: reset to visible on any mutation, otherwise
+                // toggle the phase every ~400 ms so the caret blinks while idle.
+                let now = std::time::Instant::now();
+                let focused = s.editor.view_tree.focused_window().is_some();
+                if s.editor.frame_dirty {
+                    s.caret_blink_on = true;
+                    s.caret_blink_last = now;
+                }
+                let mut blink_changed = false;
+                if focused && now.duration_since(s.caret_blink_last) >= Duration::from_millis(400) {
+                    s.caret_blink_on = !s.caret_blink_on;
+                    s.caret_blink_last = now;
+                    blink_changed = true;
+                }
                 let resized = weak.upgrade().is_some_and(|app| {
                     // The window is unmapped during the first refresh, so its
                     // scale factor only becomes final once the backend shows it.
@@ -391,6 +444,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 if resized
                     || s.editor.frame_dirty
+                    || blink_changed
                     || s.rendered_revision != sync::revision_of(&s.editor)
                 {
                     s.editor.frame_dirty = false;

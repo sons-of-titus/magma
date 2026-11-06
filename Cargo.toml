@@ -33,6 +33,7 @@ members = [
     "crates/net",
     "crates/clipboard",
     "crates/slint-shell",
+    "crates/cli",
     "crates/scripting",
     "crates/kernel",
 ]
@@ -76,6 +77,8 @@ extension = { path = "crates/extension" }
 net = { path = "crates/net" }
 clipboard = { path = "crates/clipboard" }
 kernel = { path = "crates/kernel" }
+cli = { path = "crates/cli" }
+ui = { path = "crates/slint-shell", default-features = false }
 agent = { path = "crates/agent" }
 anyhow = "1.0"
 thiserror = "1.0"
@@ -146,7 +149,7 @@ harness = false
 
 [features]
 default = ["janet"]
-janet = []
+janet = ["ui/janet"]
 
 [profile.dev.package.slint]
 opt-level = 3
@@ -166,7 +169,7 @@ opt-level = 3
 # must build optimized even in debug builds.
 [profile.dev.package.kernel]
 opt-level = 3
-[profile.dev.package.magma-slint]
+[profile.dev.package.ui]
 opt-level = 3
 [profile.dev.package.text]
 opt-level = 3

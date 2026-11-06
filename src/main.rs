@@ -1,38 +1,58 @@
 use tokio::io::AsyncWriteExt;
 
+use cli::Command;
 use kernel::boot::{self, BootOptions};
 use logging::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = std::env::args().collect();
-    let server_mode = args.iter().any(|a| a == "--server");
-    let connect_mode = args.iter().any(|a| a == "--connect");
-
-    if connect_mode {
-        let addr = args
-            .iter()
-            .skip_while(|a| a != &"--connect")
-            .nth(1)
-            .map(|s| s.as_str())
-            .unwrap_or("127.0.0.1:7890");
-        return tokio::runtime::Runtime::new()?.block_on(client_connect(addr));
+    let command = match cli::parse(std::env::args().skip(1)) {
+        Ok(command) => command,
+        Err(e) => {
+            eprintln!("magma: {e}\nTry 'magma --help'.");
+            std::process::exit(2);
+        }
+    };
+    logging::install_panic_hook();
+    if !matches!(command, Command::Help | Command::Version) {
+        let log_path = kernel::state::persist::state_dir().join("magma.log");
+        if let Err(e) = logging::init_file(&log_path) {
+            eprintln!("magma: cannot open log file {}: {e}", log_path.display());
+        }
     }
-
-    if !server_mode {
-        eprintln!(
-            "Magma's interactive frontend lives in the `magma-slint` crate: run `cargo run -p magma-slint`, \
-             or pass --server for headless mode."
-        );
-        return Ok(());
+    match command {
+        Command::Help => {
+            print!("{}", cli::HELP);
+            Ok(())
+        }
+        Command::Version => {
+            println!("{}", cli::version_line());
+            Ok(())
+        }
+        Command::Connect { addr } => {
+            tokio::runtime::Runtime::new()?.block_on(client_connect(&addr))
+        }
+        Command::Server { addr } => run_server(addr),
+        Command::Run(options) => {
+            if let Some(level) = options.log_level {
+                logging::set_max_level(level);
+            }
+            let launch = match cli::resolve(&options, &std::env::current_dir()?) {
+                Ok(launch) => launch,
+                Err(e) => {
+                    eprintln!("magma: {e}");
+                    std::process::exit(2);
+                }
+            };
+            ui::run(ui::StartOptions {
+                project: launch.project,
+                files: launch.files,
+                reopen_last: options.reopen_last,
+            })
+        }
     }
+}
 
-    let addr = args
-        .iter()
-        .skip_while(|a| a != &"--server")
-        .nth(1)
-        .map(|s| s.as_str())
-        .unwrap_or("127.0.0.1:7890");
-
+fn run_server(addr: String) -> Result<(), Box<dyn std::error::Error>> {
     let boot = boot::bootstrap(
         BootOptions {
             interactive: false,
@@ -43,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting Magma server on {addr} (headless)");
     let result = boot.runtime.block_on(async move {
-        kernel::server::run_server(boot.editor, boot.bg_receiver, addr, None).await
+        kernel::server::run_server(boot.editor, boot.bg_receiver, &addr, None).await
     });
     drop(result);
     boot::shutdown(boot.runtime);

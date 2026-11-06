@@ -1,0 +1,8 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2024"
+description = "Magma's command-line interface: argument parsing and startup-target resolution"
+
+[dependencies]
+logging = { path = "../logging" }

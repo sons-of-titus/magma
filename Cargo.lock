@@ -1033,6 +1033,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cli"
+version = "0.1.0"
+dependencies = [
+ "logging",
+]
+
+[[package]]
 name = "clipboard"
 version = "0.1.0"
 dependencies = [
@@ -3732,6 +3739,7 @@ dependencies = [
  "agent",
  "anyhow",
  "bgpool",
+ "cli",
  "clipboard",
  "crash_recovery",
  "db",
@@ -3776,6 +3784,7 @@ dependencies = [
  "tool_diag",
  "tree-sitter",
  "tree-sitter-language",
+ "ui",
  "unicode-bidi",
  "unicode-segmentation",
  "unicode-width",
@@ -3784,23 +3793,6 @@ dependencies = [
  "vcs",
  "view_tree",
  "vt",
-]
-
-[[package]]
-name = "magma-slint"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "db",
- "fontdb 0.23.0",
- "kernel",
- "logging",
- "rfd",
- "scripting",
- "serde_json",
- "slint",
- "slint-build",
- "tokio",
 ]
 
 [[package]]
@@ -7136,6 +7128,23 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ui"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "db",
+ "fontdb 0.23.0",
+ "kernel",
+ "logging",
+ "rfd",
+ "scripting",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "tokio",
 ]
 
 [[package]]

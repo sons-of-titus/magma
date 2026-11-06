@@ -57,6 +57,14 @@ pub(super) fn register(editor: &mut Editor) {
             let Some((row, col)) = tab.selected else {
                 return Err("no cell selected".to_string());
             };
+            let pending_val = |r: usize, c: usize| {
+                tab.pending.ops.iter().find_map(|o| match o {
+                    EditOp::UpdateCell { row, col, value, .. } if *row == r && *col == c => {
+                        Some(value)
+                    }
+                    _ => None,
+                })
+            };
             let text = if scope == "row" {
                 result
                     .rows
@@ -64,16 +72,15 @@ pub(super) fn register(editor: &mut Editor) {
                     .map(|cells| {
                         cells
                             .iter()
-                            .map(|v| v.render())
+                            .enumerate()
+                            .map(|(c, v)| pending_val(row, c).unwrap_or(v).render())
                             .collect::<Vec<_>>()
                             .join("\t")
                     })
                     .unwrap_or_default()
             } else {
-                result
-                    .rows
-                    .get(row)
-                    .and_then(|cells| cells.get(col))
+                pending_val(row, col)
+                    .or_else(|| result.rows.get(row).and_then(|cells| cells.get(col)))
                     .map(|v| v.full_text())
                     .unwrap_or_default()
             };
@@ -81,6 +88,7 @@ pub(super) fn register(editor: &mut Editor) {
                 return Ok(());
             }
             editor.clipboard.set_text(&text);
+            editor.show_message(crate::state::MessageKind::Info, "Copied to clipboard");
             editor.frame_dirty = true;
             Ok(())
         },
@@ -176,11 +184,13 @@ pub(super) fn register(editor: &mut Editor) {
             let Some(tab) = editor.db.tab_mut(tab_id) else {
                 return Ok(());
             };
+            let insert_row_idx = tab.result().map(|r| r.rows.len()).unwrap_or(0);
             // A single staged insert row at a time keeps the UI honest.
             tab.pending.ops.retain(|o| !matches!(o, EditOp::InsertRow { .. }));
             tab.pending.ops.push(EditOp::InsertRow {
                 values: vec![db::DbValue::Null; column_count],
             });
+            tab.selected = Some((insert_row_idx, 0));
             editor.frame_dirty = true;
             Ok(())
         },
@@ -254,6 +264,23 @@ pub(super) fn register(editor: &mut Editor) {
                 let Some(result) = tab.result() else {
                     return Err("no result set in this tab".to_string());
                 };
+                let rows_len = result.rows.len();
+                if row == rows_len
+                    && tab
+                        .pending
+                        .ops
+                        .iter()
+                        .any(|o| matches!(o, EditOp::InsertRow { .. }))
+                {
+                    if let Some(tab) = editor.db.tab_mut(tab_id) {
+                        tab.pending
+                            .ops
+                            .retain(|o| !matches!(o, EditOp::InsertRow { .. }));
+                        tab.selected = rows_len.checked_sub(1).map(|r| (r, 0));
+                    }
+                    editor.frame_dirty = true;
+                    return Ok(());
+                }
                 let Some(original_row) = result.rows.get(row).cloned() else {
                     return Err("row out of range".to_string());
                 };
@@ -286,7 +313,7 @@ pub(super) fn register(editor: &mut Editor) {
         "Drop pending edits (one row, or everything without a row)",
         vec![
             ArgSpec::optional("tab", ArgType::Integer, ArgValue::Integer(0)),
-            ArgSpec::optional("row", ArgType::Integer, ArgValue::Integer(0)),
+            ArgSpec::optional("row", ArgType::Integer, ArgValue::Integer(-1)),
         ],
         |editor, args| {
             let tab_id = tab_id(editor, args)?;
@@ -294,8 +321,8 @@ pub(super) fn register(editor: &mut Editor) {
                 return Err("no such tab".to_string());
             };
             match args.get("row").and_then(|a| a.as_integer()) {
-                Some(row) => tab.pending.revert_row(row.max(0) as usize),
-                None => tab.pending.clear(),
+                Some(row) if row >= 0 => tab.pending.revert_row(row as usize),
+                _ => tab.pending.clear(),
             }
             editor.frame_dirty = true;
             Ok(())

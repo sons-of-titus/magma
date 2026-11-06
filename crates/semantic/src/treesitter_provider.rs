@@ -87,7 +87,7 @@ impl LanguageProvider for TreesitterLanguageProvider {
 
                 let name = match std::str::from_utf8(&text_bytes[start..end]) {
                     Ok(s) => s.to_string(),
-                    Err(_) => continue,
+                    Err(e) => { logging::error!("treesitter_provider.rs:90: {e}"); continue }
                 };
                 let kind = match capture_name.as_str() {
                     "function" => SymbolKind::Function,

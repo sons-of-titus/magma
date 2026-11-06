@@ -176,7 +176,8 @@ impl LspHandle {
                 handle.kill();
                 return Err(format!("LSP initialize failed for {language_id}: {e}"));
             }
-            Err(_) => {
+            Err(e) => {
+                logging::error!("mod.rs:179: {e}");
                 handle.kill();
                 return Err(format!("LSP initialize timed out for {language_id}"));
             }

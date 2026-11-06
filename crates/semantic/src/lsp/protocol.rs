@@ -89,15 +89,15 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
             }
             // Other server→client requests (workspace/configuration, …)
             // get an empty response so the server does not stall waiting.
-            let _ = core.outbound.send(serde_json::json!({
+            logging::LogErr::log_warn(core.outbound.send(serde_json::json!({
                 "jsonrpc": "2.0", "id": id, "result": Value::Null,
-            }));
+            })));
         }
         Inbound::Response { id, result, error } => {
             if let Some(err) = error {
                 // initialize errors complete the handshake with failure.
                 if let Ok(tx) = core.init_signal.lock() {
-                    let _ = tx.send(Err(err.to_string()));
+                    logging::LogErr::log_warn(tx.send(Err(err.to_string())));
                 }
                 if let Some(p) = core
                     .pending
@@ -133,7 +133,7 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                 }
                 // The initialize response completes the awaited handshake.
                 if let Ok(tx) = core.init_signal.lock() {
-                    let _ = tx.send(Ok(()));
+                    logging::LogErr::log_warn(tx.send(Ok(())));
                 }
                 core.set_state(ServerState::Ready);
                 return;

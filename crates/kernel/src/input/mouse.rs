@@ -387,6 +387,23 @@ pub fn resolve_click_to_offset(
     // their stops — the same placement walk the renderer uses, so clicks
     // land on the glyph they point at in tab-indented files.
     let tab_w = crate::render::frame::int_option(ed, "tab-width", 4);
+    let trimmed = line_text.strip_suffix('\n').unwrap_or(line_text);
+    let layout = ed.row_layouts.get_or_build(
+        (buf_id, line_start, tab_w),
+        trimmed,
+        buf.revision(),
+        tab_w,
+        &ed.font_config.glyph_widths,
+    );
+    if layout.bidi() {
+        for i in 0..layout.widths.len() {
+            let col = layout.cols[i] as usize;
+            let w = (layout.widths[i] as usize).max(1);
+            if click_col >= col && click_col < col + w {
+                return Some(line_start + layout.offsets[i] as usize);
+            }
+        }
+    }
     let mut display = 0usize;
     let mut byte_offset = line_start;
     for g in crate::text_engine::text_layout::grapheme_iter(line_text) {

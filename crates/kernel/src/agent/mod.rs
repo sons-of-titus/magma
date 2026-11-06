@@ -13,6 +13,7 @@ pub mod types;
 
 // Re-export the editor-independent crate surface so existing paths resolve.
 pub use agent::MAX_TURNS;
+pub use agent::acp;
 pub use agent::auth;
 pub use agent::catalog;
 pub use agent::http;

@@ -1,6 +1,7 @@
 //! Agent state model, provider registry, authentication, model catalog, and
 //! request translation (editor-independent).
 
+pub mod acp;
 pub mod auth;
 pub mod catalog;
 pub mod http;

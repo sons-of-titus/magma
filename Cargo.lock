@@ -156,6 +156,7 @@ dependencies = [
 name = "agent"
 version = "0.1.0"
 dependencies = [
+ "logging",
  "serde",
  "serde_json",
  "ureq",
@@ -661,6 +662,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bgpool"
 version = "0.1.0"
 dependencies = [
+ "logging",
  "tokio",
 ]
 
@@ -1044,6 +1046,7 @@ name = "clipboard"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "logging",
 ]
 
 [[package]]
@@ -1371,6 +1374,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "futures",
+ "logging",
  "mysql_async",
  "rusqlite",
  "rust_decimal",
@@ -2359,6 +2363,7 @@ version = "0.1.0"
 dependencies = [
  "ab_glyph",
  "font",
+ "logging",
  "surface",
 ]
 
@@ -3108,6 +3113,7 @@ checksum = "6e44b0a4eaa4c82f441d50a963f2d5f05a787240aeee097597033e72accfd22f"
 name = "index"
 version = "0.1.0"
 dependencies = [
+ "logging",
  "serde",
  "serde_json",
 ]
@@ -6645,6 +6651,7 @@ name = "text"
 version = "0.1.0"
 dependencies = [
  "id",
+ "logging",
  "ropey",
  "thiserror 1.0.69",
  "unicode-segmentation",
@@ -7302,6 +7309,7 @@ name = "util"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "logging",
 ]
 
 [[package]]
@@ -7335,6 +7343,9 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vcs"
 version = "0.1.0"
+dependencies = [
+ "logging",
+]
 
 [[package]]
 name = "version_check"

@@ -179,6 +179,7 @@ export component AppWindow inherits Window {
     in property <[AgentSessionChip]> agent-sessions;
     in property <int> agent-turns-left: 0;
     in property <length> agent-dock-width: 340px;
+    in property <length> db-explorer-width: 260px;
     in-out property <string> agent-prompt;
     in property <bool> agent-running;
     in property <string> agent-phase: "ready";
@@ -336,6 +337,7 @@ export component AppWindow inherits Window {
     callback db-grid-edit-committed(int, int, string);
     callback db-grid-action(string);
     callback db-col-resized(int, length);
+    callback db-explorer-resized(length);
     callback db-dialog-opened(int);
     callback db-dialog-cancelled();
     callback db-dialog-saved();
@@ -771,6 +773,7 @@ export component AppWindow inherits Window {
                 can-edit: root.db-can-edit;
                 pending-count: root.db-pending-count;
                 has-tab: root.db-has-tab;
+                explorer-width: root.db-explorer-width;
                 source-changed(v) => { root.db-source-changed(v); }
                 toolbar(a) => { root.db-toolbar(a); }
                 tree-clicked(k) => { root.db-tree-clicked(k); }
@@ -785,6 +788,7 @@ export component AppWindow inherits Window {
                 grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
                 grid-action(a) => { root.db-grid-action(a); }
                 col-resized(c, d) => { root.db-col-resized(c, d); }
+                explorer-resized(d) => { root.db-explorer-resized(d); }
             }
             if root.db-open && !root.agent-open : DatabasePanel {
                 vertical-stretch: 1;
@@ -812,6 +816,7 @@ export component AppWindow inherits Window {
                 can-edit: root.db-can-edit;
                 pending-count: root.db-pending-count;
                 has-tab: root.db-has-tab;
+                explorer-width: root.db-explorer-width;
                 source-changed(v) => { root.db-source-changed(v); }
                 toolbar(a) => { root.db-toolbar(a); }
                 tree-clicked(k) => { root.db-tree-clicked(k); }
@@ -826,6 +831,7 @@ export component AppWindow inherits Window {
                 grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
                 grid-action(a) => { root.db-grid-action(a); }
                 col-resized(c, d) => { root.db-col-resized(c, d); }
+                explorer-resized(d) => { root.db-explorer-resized(d); }
             }
 
             RightRail {

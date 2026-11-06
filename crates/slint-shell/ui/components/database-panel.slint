@@ -163,6 +163,7 @@ export component DatabasePanel inherits Rectangle {
     in property <string> grid-title;
     in property <[DbGridColumn]> columns;
     in property <[DbGridRow]> rows;
+    in property <length> explorer-width: 260px;
     in property <string> status;
     in property <bool> status-error: false;
     in property <bool> truncated: false;
@@ -189,6 +190,7 @@ export component DatabasePanel inherits Rectangle {
     callback grid-edit-committed(int, int, string);
     callback grid-action(string);
     callback col-resized(int, length);
+    callback explorer-resized(length);
     callback tree-filter-edited();
 
     background: Theme.surface-panel;
@@ -331,7 +333,7 @@ export component DatabasePanel inherits Rectangle {
 
                 // ── Explorer ─────────────────────────────────────────────
                 Rectangle {
-                    width: root.width * 0.38;
+                    width: root.explorer-width;
                     clip: true;
 
                     if root.sources.length == 0 : EmptyState {
@@ -440,7 +442,17 @@ export component DatabasePanel inherits Rectangle {
                 }
 
                 // ── Splitter ─────────────────────────────────────────────
-                Rectangle { width: 1px; background: Theme.border; }
+                Rectangle {
+                    width: 5px;
+                    background: splitter-touch.has-hover || splitter-touch.pressed
+                        ? Theme.accent.transparentize(0.6) : Theme.border;
+                    splitter-touch := TouchArea {
+                        mouse-cursor: ew-resize;
+                        moved => {
+                            root.explorer-resized(self.mouse-x - self.pressed-x);
+                        }
+                    }
+                }
 
                 // ── Results: tabs + grid ─────────────────────────────────
                 Rectangle {

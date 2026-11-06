@@ -95,6 +95,8 @@ pub(crate) struct AppState {
     /// The Database tool window on the right, beneath the Agent dock.
     pub(crate) db_open: bool,
     pub(crate) db_height: f32,
+    /// Explorer pane width inside the Database tool window.
+    pub(crate) db_explorer_width: f32,
     /// Per-tab grid column widths, the drag handle edits the active tab's.
     pub(crate) db_col_widths: HashMap<u64, Vec<f32>>,
     /// Explorer object-name filter (live, projection-side).

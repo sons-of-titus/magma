@@ -47,6 +47,15 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_db_explorer_resized(move |delta| {
+            let mut s = state.borrow_mut();
+            s.db_explorer_width = (s.db_explorer_width + delta).clamp(180.0, 600.0);
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_db_source_changed(move |name| {
             let mut s = state.borrow_mut();
             if let Some(src) = s.editor.db.sources.iter().find(|x| x.name == name.as_str()) {

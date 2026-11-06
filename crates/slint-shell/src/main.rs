@@ -140,6 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sidebar_widths: [240.0, 300.0, 420.0],
         db_open: false,
         db_height: 340.0,
+        db_explorer_width: 260.0,
         db_col_widths: HashMap::new(),
         db_tree_filter: String::new(),
         db_tree_filter_active: false,

@@ -8,6 +8,7 @@ use crate::{AppState, AppWindow, projection};
 
 pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     let ed = &mut state.editor;
+    app.set_db_explorer_width(state.db_explorer_width);
     app.set_db_sources(ModelRc::new(VecModel::from(
         projection::db_sources(ed)
             .into_iter()

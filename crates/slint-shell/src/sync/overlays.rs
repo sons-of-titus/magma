@@ -293,8 +293,9 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         // sitting above the text.  Both the inset and the beam height are
         // measured from the atlas pixels (sync's atlas-rebuild pass), so the
         // beam covers exactly the capital's ink span — no more, no less.
-        app.set_cursor_y(cy);
-        app.set_cursor_height(row_h.max(1.0));
+        let caret_h = row_h * 0.75;
+        app.set_cursor_y(cy + (row_h - caret_h) / 2.0);
+        app.set_cursor_height(caret_h.max(1.0));
         app.set_caret_visible(focused);
         let (cr, cg, cb) = ed.theme_color("cursor");
         app.set_caret_color(slint::Color::from_rgb_u8(cr, cg, cb));

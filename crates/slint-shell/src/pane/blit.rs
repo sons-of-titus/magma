@@ -1021,5 +1021,47 @@ mod tests {
             &[palette.cursor.0, palette.cursor.1, palette.cursor.2]
         );
     }
+
+    #[test]
+    fn arabic_and_non_ascii_text_blits_distinct_glyphs_instead_of_fallback_boxes() {
+        let (cw, ch) = meas();
+        let mut fc = kernel::state::FontConfig::default();
+        fc.bootstrap_default_font();
+        let chain = fc.font_chain();
+
+        let mut atlas = GpuGlyphAtlas::new();
+        atlas.rasterize_for_grid_with_fallbacks(&chain, 15.0, 1.0, cw, ch);
+
+        let mut ed =
+            kernel::state::Editor::new(Box::new(kernel::storage::disk::DiskFileSystem::new()));
+        kernel::command::builtin::register_builtin_commands(&mut ed);
+        let key = ed.create_buffer_from_str("arabic.txt", "");
+        if let Some(win) = ed.view_tree.focused_window_mut() {
+            win.buffer_id = Some(key);
+        }
+        ed.view_tree.resize(30, 4);
+        for c in "مرحبا".chars() {
+            kernel::input::dispatch_key(&mut ed, &c.to_string());
+        }
+
+        let mut surface = Surface::new(30, 4);
+        kernel::render::frame::render_frame_with(&ed, &mut surface, kernel::render::CursorPaint::Skip);
+        if !atlas.ensure_surface_glyphs(&surface, &chain) {
+            return;
+        }
+
+        let box_uv = atlas.uv_for('\u{25A1}', false).unwrap();
+        let arabic_cells: Vec<char> = surface
+            .cells()
+            .iter()
+            .map(|c| c.ch)
+            .filter(|&c| ('\u{0600}'..='\u{06FF}').contains(&c) || ('\u{FE70}'..='\u{FEFF}').contains(&c))
+            .collect();
+        assert_eq!(arabic_cells.len(), 5, "all 5 typed Arabic characters must appear on the surface");
+        for &c in &arabic_cells {
+            let uv = atlas.uv_for(c, false).unwrap();
+            assert_ne!(uv, box_uv, "Arabic char {c:?} must not use the fallback box UV");
+        }
+    }
 }
 

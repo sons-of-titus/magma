@@ -33,15 +33,26 @@ pub fn request(ed: &mut Editor, buf_id: usize) {
     let Some(arc) = ed.buffers.get(buf_id) else {
         return;
     };
-    let (uri, revision, line_count) = {
+    let (uri, revision, line_count, last_line_len) = {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
         let Some(path) = buf.path.clone() else {
             return;
         };
+        let line_count = buf.line_count();
+        let last_line_len = if line_count == 0 {
+            0
+        } else {
+            let start = buf.line_start_offset(line_count - 1).unwrap_or(buf.len());
+            buf.slice(start, buf.len())
+                .trim_end_matches('\n')
+                .chars()
+                .count()
+        };
         (
             crate::semantic::lsp_proto::path_to_uri(&path),
             buf.revision(),
-            buf.line_count(),
+            line_count,
+            last_line_len,
         )
     };
     if ed.inlay.requested_revision.get(&buf_id) == Some(&revision) {
@@ -54,7 +65,7 @@ pub fn request(ed: &mut Editor, buf_id: usize) {
             "start": { "line": 0, "character": 0 },
             // Lines are 0-based: line_count is one past the last line, and
             // servers reject a range that ends beyond the document.
-            "end": { "line": line_count.saturating_sub(1), "character": 0 },
+            "end": { "line": line_count.saturating_sub(1), "character": last_line_len },
         },
     });
     server.request("textDocument/inlayHint", params, buf_id, revision);
@@ -83,8 +94,20 @@ pub fn apply(ed: &mut Editor, buf_id: usize, revision: u64, result: &str) {
     for h in arr.iter().take(MAX_HINTS) {
         let line = h["position"]["line"].as_u64().unwrap_or(0) as usize;
         let col = h["position"]["character"].as_u64().unwrap_or(0) as usize;
-        let label = match &h["label"] {
+        let mut label = match &h["label"] {
             serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(parts) => parts
+                .iter()
+                .map(|p| match p {
+                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::Object(o) => o
+                        .get("value")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    _ => String::new(),
+                })
+                .collect::<String>(),
             serde_json::Value::Object(o) => o
                 .get("value")
                 .and_then(|v| v.as_str())
@@ -92,7 +115,13 @@ pub fn apply(ed: &mut Editor, buf_id: usize, revision: u64, result: &str) {
                 .to_string(),
             _ => continue,
         };
-        if label.is_empty() {
+        if h["paddingLeft"].as_bool() == Some(true) {
+            label = format!(" {label}");
+        }
+        if h["paddingRight"].as_bool() == Some(true) {
+            label = format!("{label} ");
+        }
+        if label.trim().is_empty() {
             continue;
         }
         hints.push((line, col, label));
@@ -100,7 +129,7 @@ pub fn apply(ed: &mut Editor, buf_id: usize, revision: u64, result: &str) {
     ed.for_each_view_of_buffer_mut(buf_id, |view| {
         view.decor_clear_layer(LAYER);
         for (line, col, label) in &hints {
-            view.decor_set_inline(LAYER, *line, *col, label.clone(), "type-face".to_string());
+            view.decor_set_inline(LAYER, *line, *col, label.clone(), "comment-face".to_string());
         }
     });
     ed.frame_dirty = true;

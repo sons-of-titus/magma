@@ -296,7 +296,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         let caret_h = row_h * 0.75;
         app.set_cursor_y(cy + (row_h - caret_h) / 2.0);
         app.set_cursor_height(caret_h.max(1.0));
-        app.set_caret_visible(focused);
+        app.set_caret_visible(focused && state.caret_blink_on);
         let (cr, cg, cb) = ed.theme_color("cursor");
         app.set_caret_color(slint::Color::from_rgb_u8(cr, cg, cb));
     }

@@ -83,3 +83,16 @@ fn candidates_prefer_home_nerd_fonts_then_system_monospace() {
         );
     }
 }
+
+#[test]
+fn font_chain_starts_with_primary_and_includes_loaded_fallbacks() {
+    let mut fc = FontConfig::default();
+    fc.bootstrap_default_font();
+    let chain = fc.font_chain();
+    assert!(!chain.is_empty(), "primary font must be present");
+    assert_eq!(chain[0], fc.primary_font().unwrap().as_slice());
+    assert!(
+        chain.len() >= 2,
+        "at least the bundled symbols/fallback fonts must follow primary"
+    );
+}

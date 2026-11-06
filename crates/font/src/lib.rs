@@ -34,6 +34,8 @@ pub struct FontConfig {
 
 /// Alias the bundled JetBrains Mono pair is registered under.
 pub const BUNDLED_ALIAS: &str = "magma-mono";
+/// Alias the bundled Symbols Nerd Font is registered under.
+pub const SYMBOLS_NERD_ALIAS: &str = "symbols-nerd";
 /// Alias the preferred system monospace font is registered under.
 pub const SYSTEM_MONO_ALIAS: &str = "system-mono";
 
@@ -59,6 +61,35 @@ pub fn default_font_candidates() -> Vec<std::path::PathBuf> {
         paths.push(std::path::PathBuf::from(p));
     }
     paths
+}
+
+/// Ordered candidate paths for fallback faces covering non-ASCII scripts
+/// (Arabic, Hebrew, Armenian, Georgian, symbols, extended Latin/Cyrillic, CJK).
+pub fn fallback_font_candidates() -> Vec<std::path::PathBuf> {
+    [
+        "/System/Library/Fonts/SFArabic.ttf",
+        "/System/Library/Fonts/Supplemental/Courier New.ttf",
+        "/System/Library/Fonts/Supplemental/Tahoma.ttf",
+        "/System/Library/Fonts/SFHebrew.ttf",
+        "/System/Library/Fonts/SFArmenian.ttf",
+        "/System/Library/Fonts/SFGeorgian.ttf",
+        "/System/Library/Fonts/Apple Symbols.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "C:/Windows/Fonts/cour.ttf",
+        "C:/Windows/Fonts/tahoma.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+    ]
+    .into_iter()
+    .map(std::path::PathBuf::from)
+    .collect()
 }
 
 impl FontConfig {
@@ -108,6 +139,44 @@ impl FontConfig {
         if !self.load_system_mono() {
             self.bootstrap_bundled();
         }
+        self.load_system_fallbacks();
+    }
+
+    /// Populate `fallback` and `loaded_fonts` with bundled and system script
+    /// fallback faces so glyphs missing from the primary monospace font
+    /// (Arabic, Hebrew, extended Latin/Cyrillic, symbols, CJK) still render.
+    pub fn load_system_fallbacks(&mut self) {
+        if self.family != BUNDLED_ALIAS && !self.fallback.iter().any(|f| f == BUNDLED_ALIAS) {
+            self.loaded_fonts
+                .entry(BUNDLED_ALIAS.to_string())
+                .or_insert_with(|| {
+                    include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf").to_vec()
+                });
+            self.fallback.push(BUNDLED_ALIAS.to_string());
+        }
+        if !self.fallback.iter().any(|f| f == SYMBOLS_NERD_ALIAS) {
+            self.loaded_fonts
+                .entry(SYMBOLS_NERD_ALIAS.to_string())
+                .or_insert_with(|| {
+                    include_bytes!("../../../assets/fonts/SymbolsNerdFont-Regular.ttf").to_vec()
+                });
+            self.fallback.push(SYMBOLS_NERD_ALIAS.to_string());
+        }
+        for path in fallback_font_candidates() {
+            let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+                continue;
+            };
+            let alias = format!("fallback:{name}");
+            if self.fallback.iter().any(|f| f == &alias) {
+                continue;
+            }
+            if let Ok(bytes) = std::fs::read(&path)
+                && bytes.len() > 1000
+            {
+                self.loaded_fonts.insert(alias.clone(), bytes);
+                self.fallback.push(alias);
+            }
+        }
     }
 
     /// Bytes of the primary family, when it names a loaded font.  The GPU
@@ -115,6 +184,23 @@ impl FontConfig {
     /// the family alias rather than an arbitrary registry entry.
     pub fn primary_font(&self) -> Option<&Vec<u8>> {
         self.loaded_fonts.get(&self.family)
+    }
+
+    /// Ordered byte slices of the primary font followed by every loaded
+    /// fallback font.
+    pub fn font_chain(&self) -> Vec<&[u8]> {
+        let mut chain = Vec::with_capacity(1 + self.fallback.len());
+        if let Some(primary) = self.primary_font() {
+            chain.push(primary.as_slice());
+        }
+        for name in &self.fallback {
+            if name != &self.family
+                && let Some(bytes) = self.loaded_fonts.get(name)
+            {
+                chain.push(bytes.as_slice());
+            }
+        }
+        chain
     }
 }
 

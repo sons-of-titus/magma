@@ -170,8 +170,8 @@ pub trait LogErr<T> {
 impl<T, E: fmt::Display> LogErr<T> for Result<T, E> {
     #[track_caller]
     fn log_err(self) -> Option<T> {
+        let at = std::panic::Location::caller();
         self.map_err(|e| {
-            let at = std::panic::Location::caller();
             emit(Level::Error, at.file(), format_args!("{}:{}: {e}", at.file(), at.line()));
         })
         .ok()
@@ -179,8 +179,8 @@ impl<T, E: fmt::Display> LogErr<T> for Result<T, E> {
 
     #[track_caller]
     fn log_warn(self) -> Option<T> {
+        let at = std::panic::Location::caller();
         self.map_err(|e| {
-            let at = std::panic::Location::caller();
             emit(Level::Warn, at.file(), format_args!("{}:{}: {e}", at.file(), at.line()));
         })
         .ok()

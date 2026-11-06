@@ -51,7 +51,7 @@ unsafe extern "C-unwind" fn c_project_fs_read(argc: i32, argv: *mut Janet) -> Ja
         };
         match std::fs::read_to_string(&path_str) {
             Ok(content) => conv::string(&content),
-            Err(_) => conv::nil(),
+            Err(e) => { logging::error!("project_registry_api.rs:54: {e}"); conv::nil() }
         }
     }
 }

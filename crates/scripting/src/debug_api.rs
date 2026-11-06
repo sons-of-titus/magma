@@ -61,7 +61,7 @@ unsafe extern "C-unwind" fn c_debug_start(argc: i32, argv: *mut Janet) -> Janet 
             unsafe { conv::get_str(argc, argv, 1) }.and_then(|c| serde_json::from_str(&c).ok());
         match kernel::debug::spawn_session(ed, &adapter, launch_config) {
             Ok(id) => conv::integer(id as i32),
-            Err(_) => conv::nil(),
+            Err(e) => { logging::error!("debug_api.rs:64: {e}"); conv::nil() }
         }
     })
 }

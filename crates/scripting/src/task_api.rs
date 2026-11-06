@@ -310,11 +310,11 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
                     &toolchains,
                     &mut configs,
                 );
-                let _ = sender.send(kernel::runtime::BackgroundEvent::TasksDetected {
+                logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::TasksDetected {
                     generation,
                     language,
                     configs,
-                });
+                }));
             },
         );
         conv::nil()

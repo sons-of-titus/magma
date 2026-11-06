@@ -59,17 +59,17 @@ unsafe extern "C-unwind" fn c_agent_run_task(argc: i32, argv: *mut Janet) -> Jan
         bg.spawn_blocking(move || {
             let plan = BuiltinPlanner.plan(&description, &ctx);
 
-            let _ = sender.send(kernel::runtime::BackgroundEvent::AgentThought {
+            logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::AgentThought {
                 session_id,
                 thought: plan.rationale.clone(),
-            });
+            }));
 
             for step in &plan.steps {
-                let _ = sender.send(kernel::runtime::BackgroundEvent::AgentAction {
+                logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::AgentAction {
                     session_id,
                     command: step.command.clone(),
                     description: step.description.clone(),
-                });
+                }));
             }
 
             let result = if plan.steps.is_empty() {

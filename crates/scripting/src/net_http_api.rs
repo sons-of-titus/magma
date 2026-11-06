@@ -50,15 +50,15 @@ unsafe extern "C-unwind" fn c_http_request(argc: i32, argv: *mut Janet) -> Janet
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
                         id,
                         status,
                         body,
-                    });
+                    }));
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error });
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error }));
                 }
             }
         });
@@ -93,15 +93,15 @@ unsafe extern "C-unwind" fn c_http_get(argc: i32, argv: *mut Janet) -> Janet {
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
                         id,
                         status,
                         body,
-                    });
+                    }));
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error });
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error }));
                 }
             }
         });
@@ -139,15 +139,15 @@ unsafe extern "C-unwind" fn c_http_post(argc: i32, argv: *mut Janet) -> Janet {
             match result {
                 Ok((status, body)) => {
                     debug_http!("← id={id} {status} body_len={}", body.len());
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::HttpResponse {
                         id,
                         status,
                         body,
-                    });
+                    }));
                 }
                 Err(error) => {
                     debug_http!("✗ id={id} {error}");
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error });
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::HttpError { id, error }));
                 }
             }
         });

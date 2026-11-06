@@ -52,10 +52,10 @@ unsafe extern "C-unwind" fn c_scheduler_submit(argc: i32, argv: *mut Janet) -> J
                     let mut out = String::new();
                     let mut err_str = String::new();
                     if let Some(s) = child.stdout.take() {
-                        let _ = std::io::BufReader::new(s).read_to_string(&mut out);
+                        logging::LogErr::log_err(std::io::BufReader::new(s).read_to_string(&mut out));
                     }
                     if let Some(s) = child.stderr.take() {
-                        let _ = std::io::BufReader::new(s).read_to_string(&mut err_str);
+                        logging::LogErr::log_err(std::io::BufReader::new(s).read_to_string(&mut err_str));
                     }
                     let code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
                     progress.report(1, 1);

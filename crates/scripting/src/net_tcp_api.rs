@@ -52,26 +52,26 @@ unsafe extern "C-unwind" fn c_tcp_connect(argc: i32, argv: *mut Janet) -> Janet 
                 Ok(s) => s,
                 Err(e) => {
                     debug!("tcp-error id={id} {e}");
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::TcpError {
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::TcpError {
                         id,
                         error: e.to_string(),
-                    });
+                    }));
                     return;
                 }
             };
             debug!("tcp-connected id={id}");
-            let _ = sender.send(kernel::runtime::BackgroundEvent::TcpConnected { id });
+            logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::TcpConnected { id }));
             let (reader, mut writer) = stream.into_split();
             let mut lines = BufReader::new(reader).lines();
             let sender_read = sender.clone();
             let read_task = tokio::spawn(async move {
                 while let Ok(Some(line)) = lines.next_line().await {
                     debug!("tcp-data id={id} len={}", line.len());
-                    let _ = sender_read
-                        .send(kernel::runtime::BackgroundEvent::TcpData { id, data: line });
+                    logging::LogErr::log_warn(sender_read
+                        .send(kernel::runtime::BackgroundEvent::TcpData { id, data: line }));
                 }
                 debug!("tcp-closed id={id}");
-                let _ = sender_read.send(kernel::runtime::BackgroundEvent::TcpClosed { id });
+                logging::LogErr::log_warn(sender_read.send(kernel::runtime::BackgroundEvent::TcpClosed { id }));
             });
             while let Some(msg) = write_rx.recv().await {
                 if writer
@@ -98,7 +98,7 @@ unsafe extern "C-unwind" fn c_tcp_send(argc: i32, argv: *mut Janet) -> Janet {
         };
         if let Some(conn) = ed.io.net_connections.get(&conn_id) {
             debug!("net/tcp-send id={conn_id} len={}", data.len());
-            let _ = conn.write_tx.send(data);
+            logging::LogErr::log_warn(conn.write_tx.send(data));
         }
         conv::nil()
     })
@@ -159,9 +159,9 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
                 Ok(l)  => l,
                 Err(e) => {
                     debug!("tcp-listen bind error server_id={server_id} port={port}: {e}");
-                    let _ = sender.send(kernel::runtime::BackgroundEvent::TcpError {
+                    logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::TcpError {
                         id: server_id, error: format!("tcp-listen: {e}"),
-                    });
+                    }));
                     return;
                 }
             };
@@ -171,30 +171,30 @@ unsafe extern "C-unwind" fn c_tcp_listen(argc: i32, argv: *mut Janet) -> Janet {
                     Duration::from_millis(100), listener.accept()
                 ).await;
                 match accepted {
-                    Err(_)          => continue,
-                    Ok(Err(_))      => break,
+                    Err(e) => { logging::error!("net_tcp_api.rs:174: {e}"); continue }
+                    Ok(Err(e)) => { logging::error!("net_tcp_api.rs:175: {e}"); break }
                     Ok(Ok((stream, peer))) => {
                         let client_id = next_client_id;
                         next_client_id += 1;
                         debug!("tcp-client-connected server_id={server_id} client_id={client_id} peer={peer}");
                         let (write_tx, mut write_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                        let _ = sender.send(kernel::runtime::BackgroundEvent::TcpClientConnected {
+                        logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::TcpClientConnected {
                             server_id, client_id, write_tx,
-                        });
+                        }));
                         let sender_c = sender.clone();
                         let (reader, mut writer) = stream.into_split();
                         let mut lines = BufReader::new(reader).lines();
                         tokio::spawn(async move {
                             while let Ok(Some(line)) = lines.next_line().await {
                                 debug!("tcp-client-data server_id={server_id} client_id={client_id} len={}", line.len());
-                                let _ = sender_c.send(kernel::runtime::BackgroundEvent::TcpClientData {
+                                logging::LogErr::log_warn(sender_c.send(kernel::runtime::BackgroundEvent::TcpClientData {
                                     server_id, client_id, data: line,
-                                });
+                                }));
                             }
                             debug!("tcp-client-disconnected server_id={server_id} client_id={client_id}");
-                            let _ = sender_c.send(kernel::runtime::BackgroundEvent::TcpClientDisconnected {
+                            logging::LogErr::log_warn(sender_c.send(kernel::runtime::BackgroundEvent::TcpClientDisconnected {
                                 server_id, client_id,
-                            });
+                            }));
                         });
                         tokio::spawn(async move {
                             while let Some(msg) = write_rx.recv().await {
@@ -238,7 +238,7 @@ unsafe extern "C-unwind" fn c_tcp_broadcast(argc: i32, argv: *mut Janet) -> Jane
                 data.len()
             );
             for tx in srv.clients.values() {
-                let _ = tx.send(data.clone());
+                logging::LogErr::log_warn(tx.send(data.clone()));
             }
         }
         conv::nil()
@@ -261,7 +261,7 @@ unsafe extern "C-unwind" fn c_tcp_send_to(argc: i32, argv: *mut Janet) -> Janet 
                 "net/tcp-send-to server_id={server_id} client_id={client_id} len={}",
                 data.len()
             );
-            let _ = tx.send(data);
+            logging::LogErr::log_warn(tx.send(data));
         }
         conv::nil()
     })

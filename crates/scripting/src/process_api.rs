@@ -88,11 +88,11 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             use std::io::BufRead;
             let reader = std::io::BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
-                let _ = sender_out.send(kernel::runtime::BackgroundEvent::ProcessOutput {
+                logging::LogErr::log_warn(sender_out.send(kernel::runtime::BackgroundEvent::ProcessOutput {
                     id,
                     line,
                     stream: "stdout".to_string(),
-                });
+                }));
             }
         });
 
@@ -100,22 +100,22 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             use std::io::BufRead;
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
-                let _ = sender_err.send(kernel::runtime::BackgroundEvent::ProcessOutput {
+                logging::LogErr::log_warn(sender_err.send(kernel::runtime::BackgroundEvent::ProcessOutput {
                     id: exit_id,
                     line,
                     stream: "stderr".to_string(),
-                });
+                }));
             }
         });
 
         // Spawn a wait task to detect process exit
         bg.spawn_blocking(move || {
             let exit_code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
-            let _ = sender_exit.send(kernel::runtime::BackgroundEvent::ProcessExited {
+            logging::LogErr::log_warn(sender_exit.send(kernel::runtime::BackgroundEvent::ProcessExited {
                 id: exit_id,
                 exit_code,
                 cmd: exit_cmd,
-            });
+            }));
         });
 
         // Phase 9: register process in the work scheduler for progress tracking
@@ -308,7 +308,7 @@ unsafe extern "C-unwind" fn c_process_run(argc: i32, argv: *mut Janet) -> Janet 
         };
         if let Some(stdin) = child.stdin.as_mut() {
             use std::io::Write as _;
-            let _ = stdin.write_all(input.as_deref().unwrap_or("").as_bytes());
+            logging::LogErr::log_err(stdin.write_all(input.as_deref().unwrap_or("").as_bytes()));
         }
         let output = match child.wait_with_output() {
             Ok(o) => o,
@@ -381,7 +381,7 @@ unsafe extern "C-unwind" fn c_task_spawn(argc: i32, argv: *mut Janet) -> Janet {
         let sender = bg.sender.clone();
         bg.spawn(async move {
             tokio::task::yield_now().await;
-            let _ = sender.send(kernel::runtime::BackgroundEvent::TaskReady { id });
+            logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::TaskReady { id }));
         });
 
         ed.io

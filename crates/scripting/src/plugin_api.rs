@@ -137,7 +137,8 @@ unsafe extern "C-unwind" fn c_plugin_load(argc: i32, argv: *mut Janet) -> Janet 
         } else {
             match String::from_utf8(bytes) {
                 Ok(text) => text,
-                Err(_) => {
+                Err(e) => {
+                    logging::error!("plugin_api.rs:140: {e}");
                     ed.show_message(
                         kernel::state::MessageKind::Error,
                         format!("plugin {name}: {entry} is neither source nor an image"),

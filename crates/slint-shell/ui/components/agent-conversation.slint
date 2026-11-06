@@ -78,10 +78,11 @@ component EntryRow inherits Rectangle {
         if entry.kind == "thought" : HorizontalLayout {
             spacing: 8px;
             Text {
-                width: 13px;
-                text: "✦";
-                color: Theme.text-faint;
-                font-size: Theme.font-small;
+                width: 14px;
+                text: "\u{EA88}";
+                font-family: "Symbols Nerd Font";
+                color: Theme.accent;
+                font-size: 11px;
                 vertical-alignment: top;
             }
             Text {
@@ -112,8 +113,9 @@ component EntryRow inherits Rectangle {
 
                     Text {
                         width: entry.expanded ? 12px : 10px;
-                        text: entry.expanded ? "▾"
-                            : (entry.text != "" ? "▸" : "");
+                        text: entry.expanded ? "\u{EA62}"
+                            : (entry.text != "" ? "\u{EA61}" : "");
+                        font-family: "Symbols Nerd Font";
                         color: Theme.text-faint;
                         font-size: 10px;
                         vertical-alignment: center;
@@ -506,10 +508,11 @@ export component AgentConversation inherits Rectangle {
                 alignment: start;
 
                 Text {
-                    width: 13px;
-                    text: "⏸";
+                    width: 14px;
+                    text: "\u{F03E4}";
+                    font-family: "Symbols Nerd Font";
                     color: Theme.warning;
-                    font-size: 12px;
+                    font-size: 13px;
                     vertical-alignment: center;
                 }
                 Text {

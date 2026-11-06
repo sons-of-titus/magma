@@ -46,7 +46,9 @@ export component ToolbarIcon inherits Rectangle {
     border-radius: Theme.radius;
     background: enabled && touch.has-hover ? Theme.fill : transparent;
 
-    if root.symbol : Text {
+    property <bool> use-symbol: root.symbol || root.glyph >= "\u{E000}";
+
+    if root.use-symbol : Text {
         text: root.glyph;
         color: root.enabled ? root.tint : Theme.text-faint;
         font-family: "Symbols Nerd Font";
@@ -54,7 +56,7 @@ export component ToolbarIcon inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    if !root.symbol : Text {
+    if !root.use-symbol : Text {
         text: root.glyph;
         color: root.enabled ? root.tint : Theme.text-faint;
         font-size: Theme.font-ui;

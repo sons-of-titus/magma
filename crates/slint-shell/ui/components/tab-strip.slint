@@ -132,11 +132,16 @@ export component TabStrip inherits Rectangle {
         width: parent.width;
         height: parent.height;
 
-        for tab[i] in root.tabs : Tab {
-            item: tab;
-            selected => { root.selected(i); }
-            closed => { root.closed(i); }
-            context-menu(x, y) => { root.context-menu(i, x, y); }
+        HorizontalLayout {
+            spacing: 0px;
+            alignment: start;
+
+            for tab[i] in root.tabs : Tab {
+                item: tab;
+                selected => { root.selected(i); }
+                closed => { root.closed(i); }
+                context-menu(x, y) => { root.context-menu(i, x, y); }
+            }
         }
     }
 }

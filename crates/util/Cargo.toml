@@ -5,4 +5,5 @@ edition = "2024"
 description = "Shared primitives for Magma"
 
 [dependencies]
+logging = { path = "../logging" }
 libc = "0.2"

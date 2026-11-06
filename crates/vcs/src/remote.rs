@@ -206,7 +206,7 @@ pub fn run_cmd_stdin(
         .spawn()
         .map_err(|e| format!("{program}: {e}"))?;
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(stdin_data.as_bytes());
+        logging::LogErr::log_err(stdin.write_all(stdin_data.as_bytes()));
     }
     let out = child
         .wait_with_output()

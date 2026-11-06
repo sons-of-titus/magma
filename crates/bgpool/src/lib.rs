@@ -144,7 +144,7 @@ impl<E> Pool<E> {
     }
 
     pub fn send_event(&self, event: E) {
-        let _ = self.sender.send(event);
+        logging::LogErr::log_warn(self.sender.send(event));
     }
 
     /// Synchronously execute a blocking closure on the runtime's blocking

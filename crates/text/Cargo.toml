@@ -5,6 +5,7 @@ edition = "2024"
 description = "Text engine for Magma: rope, documents, buffers, views, and marks"
 
 [dependencies]
+logging = { path = "../logging" }
 id = { path = "../id" }
 ropey = "1.6"
 thiserror = "1.0"

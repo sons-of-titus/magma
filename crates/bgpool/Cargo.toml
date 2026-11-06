@@ -5,4 +5,5 @@ edition = "2024"
 description = "Priority-lane background work pool with an event channel for Magma"
 
 [dependencies]
+logging = { path = "../logging" }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync"] }

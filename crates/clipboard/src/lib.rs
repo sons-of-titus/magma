@@ -34,7 +34,7 @@ impl Clipboard {
         if let Ok(mut guard) = self.inner.lock()
             && let Some(ref mut clip) = *guard
         {
-            let _ = clip.set_text(text);
+            logging::LogErr::log_err(clip.set_text(text));
         }
     }
 }

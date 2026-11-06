@@ -5,4 +5,5 @@ edition = "2024"
 description = "System clipboard integration for Magma"
 
 [dependencies]
+logging = { path = "../logging" }
 arboard = { version = "3.2", default-features = false }

@@ -58,7 +58,7 @@ pub fn load(path: &Path) -> HashMap<String, FileRecord> {
             Ok(rec) => {
                 out.insert(rec.path.clone(), rec);
             }
-            Err(_) => continue,
+            Err(e) => { logging::error!("store.rs:61: {e}"); continue }
         }
     }
     out

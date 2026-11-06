@@ -1,5 +1,7 @@
 //! Row layout: grapheme→cell mapping of a visible row.
 
+pub mod arabic;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -49,6 +51,7 @@ impl RowLayout {
         if !has_rtl || bidi_info.paragraphs.is_empty() {
             return;
         }
+        arabic::shape_leads(&mut self.leads);
         let para = &bidi_info.paragraphs[0];
         let (levels, runs) = bidi_info.visual_runs(para, para.range.clone());
         let mut visual: Vec<usize> = Vec::with_capacity(self.widths.len());
@@ -256,5 +259,24 @@ mod bidi_tests {
     fn cursor_past_the_last_grapheme_maps_to_the_row_end() {
         let rtl = RowLayout::build("\u{05D0}\u{05D1}\u{05D2}", 1, 4, &widths_map());
         assert_eq!(rtl.visual_col_of(6), 3);
+    }
+
+    #[test]
+    fn arabic_words_shape_to_contextual_forms_and_reorder_rtl() {
+        // "مرحبا" (m-r-ḥ-b-ā):
+        // 'م' (U+0645, dual) -> initial U+FEE3
+        // 'ر' (U+0631, right) -> final U+FEAE
+        // 'ح' (U+062D, dual) -> initial U+FEA3
+        // 'ب' (U+0628, dual) -> medial U+FE92
+        // 'ا' (U+0627, right) -> final U+FE8E
+        // Visually reversed (left-to-right cells): [FE8E, FE92, FEA3, FEAE, FEE3].
+        let rtl = RowLayout::build("مرحبا", 1, 4, &widths_map());
+        assert!(rtl.bidi());
+        assert_eq!(
+            rtl.leads,
+            vec!['\u{FE8E}', '\u{FE92}', '\u{FEA3}', '\u{FEAE}', '\u{FEE3}']
+        );
+        assert_eq!(rtl.offsets, vec![8, 6, 4, 2, 0]);
+        assert_eq!(rtl.widths, vec![1, 1, 1, 1, 1]);
     }
 }

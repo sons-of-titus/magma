@@ -162,6 +162,31 @@ pub fn emit(level: Level, target: &str, args: fmt::Arguments<'_>) {
     }
 }
 
+pub trait LogErr<T> {
+    fn log_err(self) -> Option<T>;
+    fn log_warn(self) -> Option<T>;
+}
+
+impl<T, E: fmt::Display> LogErr<T> for Result<T, E> {
+    #[track_caller]
+    fn log_err(self) -> Option<T> {
+        self.map_err(|e| {
+            let at = std::panic::Location::caller();
+            emit(Level::Error, at.file(), format_args!("{}:{}: {e}", at.file(), at.line()));
+        })
+        .ok()
+    }
+
+    #[track_caller]
+    fn log_warn(self) -> Option<T> {
+        self.map_err(|e| {
+            let at = std::panic::Location::caller();
+            emit(Level::Warn, at.file(), format_args!("{}:{}: {e}", at.file(), at.line()));
+        })
+        .ok()
+    }
+}
+
 pub fn is_http() -> bool {
     static HTTP: OnceLock<AtomicBool> = OnceLock::new();
     HTTP.get_or_init(|| AtomicBool::new(std::env::var("MAGMA_DEBUG_HTTP").is_ok()))

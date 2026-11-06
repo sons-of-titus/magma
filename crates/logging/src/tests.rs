@@ -55,3 +55,11 @@ fn file_sink_records_emitted_errors() {
     assert!(text.contains("[ERROR]") && text.contains("sink probe 42"));
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn log_err_passes_ok_and_swallows_err() {
+    use crate::LogErr;
+    assert_eq!(Ok::<_, String>(3).log_err(), Some(3));
+    assert_eq!(Err::<i32, _>("boom").log_err(), None);
+    assert_eq!(Err::<i32, _>("boom").log_warn(), None);
+}

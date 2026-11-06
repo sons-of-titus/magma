@@ -7,3 +7,6 @@ description = "CPU-side glyph atlas and instance builders for Magma's editor pan
 [dependencies]
 surface = { path = "../surface" }
 ab_glyph = "0.2"
+
+[dev-dependencies]
+font = { path = "../font" }

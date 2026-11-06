@@ -1,11 +1,16 @@
-//! CPU-side glyph atlas: UV map, instance builders, and rect batcher.
+//! CPU-side glyph atlas: UV map, dynamic glyph growth, and re-exports of
+//! instance builders.
 //!
 //! This module contains no wgpu types — it is testable without a GPU.
-//! The GPU texture is created by `gpu_paint_callback` using the UV layout here.
 
 use std::collections::HashMap;
 
 use surface::Surface;
+
+pub use super::gpu_instances::{
+    GlyphInstance, RectInstance, build_glyph_instances, build_rect_instances, glyphs_to_vertices,
+    rects_to_vertices,
+};
 
 // ── Atlas geometry constants ──────────────────────────────────────────────────
 
@@ -65,18 +70,11 @@ pub const ATLAS_CHARS: &str = concat!(
      \u{00E8}\u{00E9}\u{00EA}\u{00EB}\u{00EC}\u{00ED}\u{00EE}\u{00EF}",
     "\u{00F0}\u{00F1}\u{00F2}\u{00F3}\u{00F4}\u{00F5}\u{00F6}\u{00F7}\
      \u{00F8}\u{00F9}\u{00FA}\u{00FB}\u{00FC}\u{00FD}\u{00FE}\u{00FF}",
-    // Cursor shapes and gutter markers — the kernel paints these into the
-    // Surface (`█`, `▏`, `▔`, `▌` for cursors, `▾`/`▸` for folds, `●`/`○`
-    // for breakpoints, `▎` for git signs).  Without their own cells they
-    // would fall back to the box glyph.  The gutter markers are painted as
-    // geometry, not font outlines (see shapes), so they render the same
-    // whatever font the editor uses.
+    // Cursor shapes and gutter markers (`█`, `▏`, `▔`, `▌`, `▾`/`▸`, `●`/`○`, `▎`).
     "\u{2588}\u{258C}\u{258E}\u{258F}\u{2594}\u{25B8}\u{25BE}\u{25CF}\u{25CB}\u{25B6}",
     // Typographic dash used throughout the editor's own docs and comments.
     "\u{2014}",
-    // Greek and Cyrillic (F-35: the GPU path is not ASCII-only) — the
-    // CJK ranges stay off the atlas; they exceed a fixed-grid texture and
-    // fall back to the CPU paint path per glyph.
+    // Greek and Cyrillic (F-35: the GPU path is not ASCII-only).
     "\u{0391}\u{0392}\u{0393}\u{0394}\u{0395}\u{0396}\u{0397}\u{0398}\
      \u{0399}\u{039A}\u{039B}\u{039C}\u{039D}\u{039E}\u{039F}\u{03A0}",
     "\u{03A1}\u{03A3}\u{03A4}\u{03A5}\u{03A6}\u{03A7}\u{03A8}\u{03A9}\
@@ -94,7 +92,6 @@ pub const ATLAS_CHARS: &str = concat!(
     "\u{044E}\u{044F}\u{0451}",
 );
 
-// 95 ASCII + 1 box + 96 Latin-1 = 192 chars → 12 rows of 16
 // ── Data structures ───────────────────────────────────────────────────────────
 
 /// Pixel-space UV coordinates of one glyph cell in the atlas texture.
@@ -104,32 +101,6 @@ pub struct GlyphUv {
     pub y: u32,
     pub w: u32,
     pub h: u32,
-}
-
-/// One glyph to draw on-screen this frame.
-#[derive(Debug, Clone, Copy)]
-pub struct GlyphInstance {
-    /// Top-left screen position in pixels.
-    pub screen_x: f32,
-    pub screen_y: f32,
-    /// Normalized [0, 1] UV rect in the atlas texture.
-    pub uv_x: f32,
-    pub uv_y: f32,
-    pub uv_w: f32,
-    pub uv_h: f32,
-    /// Foreground RGBA (each component in [0, 1]).
-    pub fg: [f32; 4],
-}
-
-/// One background rectangle to draw on-screen this frame.
-#[derive(Debug, Clone, Copy)]
-pub struct RectInstance {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-    /// Fill color RGBA (each component in [0, 1]).
-    pub color: [f32; 4],
 }
 
 // ── Atlas ─────────────────────────────────────────────────────────────────────
@@ -146,42 +117,32 @@ pub struct GpuGlyphAtlas {
     pub atlas_width: u32,
     /// Total atlas texture height (pixels).
     pub atlas_height: u32,
-    /// Width of one glyph cell (pixels).  Grows with `pixels_per_point` so a
-    /// device-resolution glyph never spills into its neighbour.
+    /// Width of one glyph cell (pixels).
     pub cell_w: u32,
     /// Height of one glyph cell (pixels).
     pub cell_h: u32,
     /// True when the atlas texture must be re-uploaded to the GPU.
     pub dirty: bool,
     /// RGBA pixel data (4 bytes per pixel, row-major).
-    /// Placeholder (solid white) until `rasterize()` is called.
     pub atlas_pixels: Vec<u8>,
+    /// Device-scaled font size used by the most recent `rasterize` call.
+    pub scaled_font_size: f32,
+    /// Number of dynamic character pairs appended below the baked grid.
+    dynamic_count: u32,
 }
 
 impl GpuGlyphAtlas {
     /// Build the atlas with a fixed grid layout for all `ATLAS_CHARS`.
-    ///
-    /// `atlas_pixels` is initialised to solid white (placeholder) so that
-    /// background rects render correctly even before `rasterize()` is called.
     pub fn new() -> Self {
         Self::with_cell_size(ATLAS_CELL_W, ATLAS_CELL_H)
     }
 
     /// Build the atlas with an explicit glyph-cell size.
-    ///
-    /// The cell must be large enough for the rasterized font: at a device
-    /// pixel ratio of 2 the glyphs are drawn at twice the point size, so the
-    /// cells double too.  `rasterize_at_ppx` uses this to keep glyphs from
-    /// bleeding into their neighbours.
     pub fn with_cell_size(cell_w: u32, cell_h: u32) -> Self {
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
         let total = chars.len() as u32;
-        // The grid derives from the live character set — no hand-maintained
-        // row constant to drift (the old 12-row constant silently clipped
-        // the 331-char set the GPU path had grown to).
         let rows = total.div_ceil(ATLAS_COLS);
         let atlas_width = ATLAS_COLS * cell_w;
-        // Two blocks: the roman glyphs, then their oblique twins.
         let atlas_height = rows * cell_h * 2;
 
         let cell = |row: u32, col: u32, block: u32| GlyphUv {
@@ -209,24 +170,32 @@ impl GpuGlyphAtlas {
             cell_h,
             dirty: true,
             atlas_pixels,
+            scaled_font_size: 15.0,
+            dynamic_count: 0,
         }
     }
 
     /// Rasterize `font_bytes` into `atlas_pixels` using `ab_glyph`.
-    ///
-    /// Sets `dirty = true` so the GPU texture is re-uploaded next frame.
     pub fn rasterize(&mut self, font_bytes: &[u8], font_size: f32) {
+        self.rasterize_with_fallbacks(&[font_bytes], font_size);
+    }
+
+    /// Rasterize `fonts` (primary + fallback chain) into `atlas_pixels`.
+    pub fn rasterize_with_fallbacks(&mut self, fonts: &[&[u8]], font_size: f32) {
+        if self.dynamic_count > 0 {
+            *self = Self::with_cell_size(self.cell_w, self.cell_h);
+        }
         let chars: Vec<char> = ATLAS_CHARS.chars().collect();
-        let roman = crate::gpu_rasterizer::rasterize_font_atlas(
-            font_bytes,
+        let roman = crate::gpu_rasterizer::rasterize_font_atlas_with_fallbacks(
+            fonts,
             font_size,
             &chars,
             self.cell_w,
             self.cell_h,
             ATLAS_COLS,
         );
-        let oblique = crate::gpu_rasterizer::rasterize_oblique_atlas(
-            font_bytes,
+        let oblique = crate::gpu_rasterizer::rasterize_oblique_atlas_with_fallbacks(
+            fonts,
             font_size,
             &chars,
             self.cell_w,
@@ -235,12 +204,88 @@ impl GpuGlyphAtlas {
         );
         self.atlas_pixels = roman;
         self.atlas_pixels.extend_from_slice(&oblique);
+        self.scaled_font_size = font_size;
         self.dirty = true;
     }
 
-    /// Pixel UV of `ch`, in the oblique block when `italic`.  Characters the
-    /// font does not draw fall back to the box glyph of the same block, so
-    /// missing glyphs stay upright rather than leaning as a box.
+    /// Ensure every character in `chars` has a rasterized cell in the atlas.
+    ///
+    /// Characters outside `ATLAS_CHARS` (such as Arabic, Hebrew, extended
+    /// Latin/Cyrillic, CJK, and symbols) are rasterized on demand using
+    /// `fonts` (primary font + fallback chain) and appended as new rows at
+    /// the bottom of `atlas_pixels`.  Returns `true` if any new glyph was
+    /// added.
+    pub fn ensure_glyphs<I>(&mut self, chars: I, fonts: &[&[u8]]) -> bool
+    where
+        I: IntoIterator<Item = char>,
+    {
+        if fonts.is_empty() {
+            return false;
+        }
+        let mut added = false;
+        let pairs_per_row = (ATLAS_COLS / 2).max(1);
+        for ch in chars {
+            if ch == ' ' || ch.is_control() || self.glyphs.contains_key(&ch) {
+                continue;
+            }
+            if !crate::gpu_rasterizer::has_glyph(fonts, ch) {
+                continue;
+            }
+            let slot = self.dynamic_count;
+            let col_pair = slot % pairs_per_row;
+            if col_pair == 0 {
+                let row_bytes = (self.atlas_width * self.cell_h * 4) as usize;
+                self.atlas_pixels
+                    .resize(self.atlas_pixels.len() + row_bytes, 0);
+                self.atlas_height += self.cell_h;
+            }
+            self.dynamic_count += 1;
+            let row_y = self.atlas_height - self.cell_h;
+            let roman_x = (col_pair * 2) * self.cell_w;
+            let italic_x = (col_pair * 2 + 1) * self.cell_w;
+            crate::gpu_rasterizer::rasterize_dynamic_pair(
+                &mut self.atlas_pixels,
+                self.atlas_width,
+                fonts,
+                self.scaled_font_size,
+                ch,
+                roman_x,
+                italic_x,
+                row_y,
+                self.cell_w,
+                self.cell_h,
+            );
+            self.glyphs.insert(
+                ch,
+                GlyphUv {
+                    x: roman_x,
+                    y: row_y,
+                    w: self.cell_w,
+                    h: self.cell_h,
+                },
+            );
+            self.glyphs_italic.insert(
+                ch,
+                GlyphUv {
+                    x: italic_x,
+                    y: row_y,
+                    w: self.cell_w,
+                    h: self.cell_h,
+                },
+            );
+            self.dirty = true;
+            added = true;
+        }
+        added
+    }
+
+    /// Ensure every visible character present on `surface` is rasterized into
+    /// the atlas.
+    pub fn ensure_surface_glyphs(&mut self, surface: &Surface, fonts: &[&[u8]]) -> bool {
+        self.ensure_glyphs(surface.cells().iter().map(|c| c.ch), fonts)
+    }
+
+    /// Pixel UV of `ch`, in the oblique block when `italic`.
     pub fn uv_for(&self, ch: char, italic: bool) -> Option<GlyphUv> {
         let block = if italic {
             &self.glyphs_italic
@@ -253,14 +298,7 @@ impl GpuGlyphAtlas {
             .copied()
     }
 
-    /// Rasterize at device resolution (F-35): `pixels_per_point` scales the
-    /// font *and* the glyph cells so HiDPI displays sample denser texels
-    /// instead of stretching the 1× atlas.
-    ///
-    /// `cell_w`/`cell_h` are the frontend's logical grid cell in points.  The
-    /// atlas cell is rounded exactly like the frontend rounds its screen cell
-    /// (`cell * ppx`), so the blit is a straight 1:1 texel copy and a glyph
-    /// fills its cell instead of floating in padded atlas space.
+    /// Rasterize at device resolution (F-35) using a single font.
     pub fn rasterize_for_grid(
         &mut self,
         font_bytes: &[u8],
@@ -269,13 +307,25 @@ impl GpuGlyphAtlas {
         cell_w: u32,
         cell_h: u32,
     ) {
+        self.rasterize_for_grid_with_fallbacks(&[font_bytes], font_size, ppx, cell_w, cell_h);
+    }
+
+    /// Rasterize at device resolution using a primary font plus fallback chain.
+    pub fn rasterize_for_grid_with_fallbacks(
+        &mut self,
+        fonts: &[&[u8]],
+        font_size: f32,
+        ppx: f32,
+        cell_w: u32,
+        cell_h: u32,
+    ) {
         let ppx = ppx.max(1.0);
         let cell_w = (cell_w as f32 * ppx).round().max(1.0) as u32;
         let cell_h = (cell_h as f32 * ppx).round().max(1.0) as u32;
-        if cell_w != self.cell_w || cell_h != self.cell_h {
+        if cell_w != self.cell_w || cell_h != self.cell_h || self.dynamic_count > 0 {
             *self = Self::with_cell_size(cell_w, cell_h);
         }
-        self.rasterize(font_bytes, font_size * ppx);
+        self.rasterize_with_fallbacks(fonts, font_size * ppx);
     }
 
     /// Device-resolution rasterization with the default atlas cell geometry.
@@ -316,172 +366,4 @@ impl Default for GpuGlyphAtlas {
     fn default() -> Self {
         Self::new()
     }
-}
-
-// ── Instance builders ─────────────────────────────────────────────────────────
-
-/// Fallback UV for characters not in the atlas — maps to the box glyph (□)
-/// if present, otherwise to the space cell (top-left, transparent after
-/// rasterization but guaranteed white in the placeholder atlas).
-const FALLBACK_UV: GlyphUv = GlyphUv {
-    x: 0,
-    y: 0,
-    w: ATLAS_CELL_W,
-    h: ATLAS_CELL_H,
-};
-
-/// Convert `Surface` cells to a list of `GlyphInstance`s ready for the GPU.
-///
-/// Space and null characters are skipped.  When `skip_last_row` is true
-/// the bottom row (status bar area) is excluded.
-pub fn build_glyph_instances(
-    surface: &Surface,
-    atlas: &GpuGlyphAtlas,
-    char_w: f32,
-    line_h: f32,
-    origin_x: f32,
-    origin_y: f32,
-    skip_last_row: bool,
-) -> Vec<GlyphInstance> {
-    let rows = surface.height as usize;
-    let cols = surface.width as usize;
-    let render_rows = if skip_last_row {
-        rows.saturating_sub(1)
-    } else {
-        rows
-    };
-    let mut out = Vec::with_capacity(render_rows * cols / 2);
-
-    for sy in 0..render_rows {
-        for sx in 0..cols {
-            let Some(cell) = surface.cell(sx as u16, sy as u16) else {
-                continue;
-            };
-            if cell.ch == ' ' || cell.ch.is_control() {
-                continue;
-            }
-
-            // Try the cell's own slant, then the box fallback, then FALLBACK_UV.
-            let uv = atlas
-                .uv_for(cell.ch, cell.style.italic)
-                .unwrap_or(FALLBACK_UV);
-            let [uv_x, uv_y, uv_w, uv_h] = atlas.normalize(&uv);
-            out.push(GlyphInstance {
-                screen_x: origin_x + sx as f32 * char_w,
-                screen_y: origin_y + sy as f32 * line_h,
-                uv_x,
-                uv_y,
-                uv_w,
-                uv_h,
-                fg: [
-                    cell.style.fg.0 as f32 / 255.0,
-                    cell.style.fg.1 as f32 / 255.0,
-                    cell.style.fg.2 as f32 / 255.0,
-                    1.0,
-                ],
-            });
-        }
-    }
-    out
-}
-
-/// Convert `Surface` cells to a list of `RectInstance`s for background fills.
-///
-/// Cells whose background matches `default_bg` are skipped (no rect needed).
-pub fn build_rect_instances(
-    surface: &Surface,
-    char_w: f32,
-    line_h: f32,
-    origin_x: f32,
-    origin_y: f32,
-    default_bg: [f32; 4],
-    skip_last_row: bool,
-) -> Vec<RectInstance> {
-    let rows = surface.height as usize;
-    let cols = surface.width as usize;
-    let render_rows = if skip_last_row {
-        rows.saturating_sub(1)
-    } else {
-        rows
-    };
-    let mut out = Vec::new();
-
-    for sy in 0..render_rows {
-        for sx in 0..cols {
-            let Some(cell) = surface.cell(sx as u16, sy as u16) else {
-                continue;
-            };
-            let bg = [
-                cell.style.bg.0 as f32 / 255.0,
-                cell.style.bg.1 as f32 / 255.0,
-                cell.style.bg.2 as f32 / 255.0,
-                1.0,
-            ];
-            if bg == default_bg {
-                continue;
-            }
-            out.push(RectInstance {
-                x: origin_x + sx as f32 * char_w,
-                y: origin_y + sy as f32 * line_h,
-                w: char_w,
-                h: line_h,
-                color: bg,
-            });
-        }
-    }
-    out
-}
-
-/// Expand glyph instances into raw vertex data (6 verts per instance).
-pub fn glyphs_to_vertices(instances: &[GlyphInstance], char_w: f32, line_h: f32) -> Vec<[f32; 8]> {
-    let mut verts = Vec::with_capacity(instances.len() * 6);
-    for gi in instances {
-        let x0 = gi.screen_x;
-        let y0 = gi.screen_y;
-        let x1 = x0 + char_w;
-        let y1 = y0 + line_h;
-        let u0 = gi.uv_x;
-        let v0 = gi.uv_y;
-        let u1 = u0 + gi.uv_w;
-        let v1 = v0 + gi.uv_h;
-        let [r, g, b, a] = gi.fg;
-        verts.push([x0, y0, u0, v0, r, g, b, a]);
-        verts.push([x0, y1, u0, v1, r, g, b, a]);
-        verts.push([x1, y0, u1, v0, r, g, b, a]);
-        verts.push([x0, y1, u0, v1, r, g, b, a]);
-        verts.push([x1, y1, u1, v1, r, g, b, a]);
-        verts.push([x1, y0, u1, v0, r, g, b, a]);
-    }
-    verts
-}
-
-/// Expand rect instances into raw vertex data (6 verts per instance).
-///
-/// `atlas_width` / `atlas_height` are used to compute the UV of the solid-white
-/// texel at the atlas origin.  Staying inside that first texel keeps the
-/// constant white sample valid whatever cell geometry the atlas uses.
-pub fn rects_to_vertices(
-    instances: &[RectInstance],
-    atlas_width: u32,
-    atlas_height: u32,
-) -> Vec<[f32; 8]> {
-    let mut verts = Vec::with_capacity(instances.len() * 6);
-    let u0 = 0.5f32 / atlas_width as f32;
-    let v0 = 0.5f32 / atlas_height as f32;
-    let u1 = u0;
-    let v1 = v0;
-    for ri in instances {
-        let x0 = ri.x;
-        let y0 = ri.y;
-        let x1 = x0 + ri.w;
-        let y1 = y0 + ri.h;
-        let [r, g, b, a] = ri.color;
-        verts.push([x0, y0, u0, v0, r, g, b, a]);
-        verts.push([x0, y1, u0, v1, r, g, b, a]);
-        verts.push([x1, y0, u1, v0, r, g, b, a]);
-        verts.push([x0, y1, u0, v1, r, g, b, a]);
-        verts.push([x1, y1, u1, v1, r, g, b, a]);
-        verts.push([x1, y0, u1, v0, r, g, b, a]);
-    }
-    verts
 }

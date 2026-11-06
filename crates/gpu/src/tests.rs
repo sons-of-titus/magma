@@ -381,6 +381,46 @@ fn rect_instances_skip_the_default_background_and_expand_to_vertices() {
 }
 
 #[test]
+fn ensure_surface_glyphs_dynamically_rasterizes_non_ascii_and_arabic() {
+    let primary = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
+    let mut fc = font::FontConfig::default();
+    fc.bootstrap_default_font();
+    let mut chain = fc.font_chain();
+    if !chain.contains(&&primary[..]) {
+        chain.insert(0, primary);
+    }
+
+    let mut atlas = GpuGlyphAtlas::new();
+    atlas.rasterize_with_fallbacks(&chain, 15.0);
+    atlas.mark_clean();
+
+    // Extended Latin ('ł', 'ž') is in JetBrainsMono but not in ATLAS_CHARS.
+    let surface = at("łž", 4, 1);
+    assert!(!atlas.contains('ł'));
+    assert!(atlas.ensure_surface_glyphs(&surface, &chain));
+    assert!(atlas.needs_rebuild());
+    assert!(atlas.contains('ł') && atlas.contains('ž'));
+    assert_ne!(atlas.uv_for('ł', false), atlas.uv_for('\u{25A1}', false));
+    assert!(ink_mass(&atlas, 'ł', false) > 0.0);
+    assert!(ink_mass(&atlas, 'ł', true) > 0.0);
+
+    // If a system Arabic font is present in the fallback chain, Arabic base
+    // and presentation-form glyphs are rasterized on demand with real ink.
+    if crate::gpu_rasterizer::has_glyph(&chain, 'م') {
+        let ar_surface = at("م\u{FEE3}\u{FE92}", 4, 1);
+        assert!(atlas.ensure_surface_glyphs(&ar_surface, &chain));
+        for ch in ['م', '\u{FEE3}', '\u{FE92}'] {
+            assert!(atlas.contains(ch), "missing dynamic Arabic glyph {ch:?}");
+            assert_ne!(atlas.uv_for(ch, false), atlas.uv_for('\u{25A1}', false));
+            assert!(
+                ink_mass(&atlas, ch, false) > 0.0,
+                "Arabic glyph {ch:?} must have non-zero ink"
+            );
+        }
+    }
+}
+
+#[test]
 #[ignore]
 fn dump_glyph_cells() {
     let home = std::env::var("HOME").unwrap();

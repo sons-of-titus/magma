@@ -206,7 +206,6 @@ export component TerminalView inherits Rectangle {
     in property <image> image;
     in property <[string]> sessions;
     in property <int> active-session: 0;
-    in-out property <string> input;
     callback new-session();
     callback terminal-focus(int);
     callback terminal-close(int);
@@ -266,8 +265,8 @@ export component TerminalView inherits Rectangle {
     if image.width > 0 : TouchArea {
         y: root.tabs-h;
         width: 100%;
-        height: root.body-h;
-        clicked => { term-input.focus(); }
+        height: root.height - root.tabs-h;
+        clicked => { root.terminal-focus(root.active-session); }
         scroll-event(event) => {
             root.terminal-scroll(event.delta-y);
             accept
@@ -286,56 +285,6 @@ export component TerminalView inherits Rectangle {
         }
     }
 
-    // ── Input line: typing goes to the session's PTY ─────────────────────
-    Rectangle {
-        y: root.height - root.input-h;
-
-        init => { term-input.focus(); }
-        height: root.input-h;
-        background: Theme.chrome;
-
-        Rectangle {
-            y: parent.height - 1px;
-            height: 1px;
-            background: Theme.border;
-        }
-
-        HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
-            spacing: 6px;
-
-            Text {
-                width: 12px;
-                text: sessions.length == 0 ? "" : "\u{F054}";
-                color: Theme.text-faint;
-                font-family: "Symbols Nerd Font";
-                font-size: 11px;
-                vertical-alignment: center;
-            }
-
-            term-input := TextInput {
-                horizontal-stretch: 1;
-                text <=> root.input;
-                color: Theme.text-primary;
-                font-size: Theme.font-ui;
-                vertical-alignment: center;
-                single-line: true;
-                enabled: sessions.length > 0;
-                accepted => {
-                    root.terminal-send(root.input);
-                    root.input = "";
-                }
-            }
-
-            Text {
-                text: sessions.length == 0 ? "start a session to send input" : "Enter sends the line · Ctrl-C interrupts";
-                color: Theme.text-faint;
-                font-size: 10px;
-                vertical-alignment: center;
-            }
-        }
-    }
 }
 
 export component FindView inherits Rectangle {
@@ -673,7 +622,6 @@ export component BottomDock inherits Rectangle {
     in property <image> terminal-image;
     in property <[string]> terminal-sessions;
     in property <int> terminal-active: 0;
-    in-out property <string> terminal-input;
     in property <[FindRow]> find-rows;
     in-out property <string> find-query;
     in property <string> find-status: "";
@@ -787,7 +735,6 @@ export component BottomDock inherits Rectangle {
             image: root.terminal-image;
             sessions: root.terminal-sessions;
             active-session: root.terminal-active;
-            input <=> root.terminal-input;
             new-session => { root.terminal-new(); }
             terminal-focus(i) => { root.terminal-focus(i); }
             terminal-close(i) => { root.terminal-close(i); }

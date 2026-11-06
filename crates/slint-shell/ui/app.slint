@@ -163,7 +163,6 @@ export component AppWindow inherits Window {
     in property <[FindRow]> find-rows;
     in-out property <string> find-query: "";
     in property <string> find-status;
-    in-out property <string> terminal-input: "";
     in property <string> output-title;
     in property <[OutputLine]> output-lines;
     in property <[ProblemRow]> problems;
@@ -845,7 +844,6 @@ export component AppWindow inherits Window {
             terminal-image: root.terminal-image;
             terminal-sessions: root.terminal-sessions;
             terminal-active: root.terminal-active;
-            terminal-input <=> root.terminal-input;
             find-rows: root.find-rows;
             find-query <=> root.find-query;
             find-status: root.find-status;

@@ -203,7 +203,7 @@ impl SqliteConnection {
         let conn = Connection::open(path).map_err(|e| format!("cannot open {path}: {e}"))?;
         // Foreign-key enforcement is off by default in SQLite; the tool
         // should behave like a strict client.
-        let _ = conn.pragma_update(None, "foreign_keys", "ON");
+        logging::LogErr::log_err(conn.pragma_update(None, "foreign_keys", "ON"));
         let interrupt = Arc::new(conn.get_interrupt_handle());
         let engine = SqliteEngine { conn };
         let label = format!("SQLite {}", rusqlite::version());

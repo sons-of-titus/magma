@@ -505,7 +505,7 @@ fn cell_value(row: &tiberius::Row, i: usize) -> DbValue {
             match row.try_get::<$t, _>(i) {
                 Ok(Some(v)) => return $f(v),
                 Ok(None) => return DbValue::Null,
-                Err(_) => {}
+                Err(e) => { logging::error!("mssql.rs:508: {e}"); {} }
             }
         };
     }

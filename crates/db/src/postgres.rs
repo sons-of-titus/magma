@@ -46,10 +46,10 @@ impl PostgresConnection {
                     return Ok(DbConnection::new(
                         Box::new(PostgresEngine { client, version }),
                         Box::new(move || {
-                            let _ = block_on(tokio::time::timeout(
+                            logging::LogErr::log_err(block_on(tokio::time::timeout(
                                 CANCEL_TIMEOUT,
                                 interrupt_token.cancel_query(NoTls),
-                            ));
+                            )));
                         }),
                         label,
                     ));
@@ -230,7 +230,7 @@ impl DbEngine for PostgresEngine {
             for (i, sql) in statements.iter().enumerate() {
                 let changed = tx.execute(sql, &[]).await.map_err(err)?;
                 if changed == 0 && !matches!(edits.ops[i], crate::EditOp::InsertRow { .. }) {
-                    let _ = tx.rollback().await;
+                    logging::LogErr::log_err(tx.rollback().await);
                     return Err(CONFLICT.to_string());
                 }
                 result.rows_affected += changed as i64;
@@ -776,7 +776,7 @@ mod tls {
         } else {
             let mut roots = rustls::RootCertStore::empty();
             for cert in rustls_native_certs::load_native_certs().certs {
-                let _ = roots.add(cert);
+                logging::LogErr::log_err(roots.add(cert));
             }
             builder.with_root_certificates(roots).with_no_client_auth()
         }

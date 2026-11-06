@@ -5,6 +5,7 @@ edition = "2024"
 description = "Database tool domain model: drivers, metadata introspection, bounded queries, table editing"
 
 [dependencies]
+logging = { path = "../logging" }
 rusqlite = { version = "0.41", features = ["bundled"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 tokio-postgres = "0.7"

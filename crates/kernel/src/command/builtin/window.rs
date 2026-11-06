@@ -24,6 +24,7 @@ pub(super) fn register(editor: &mut Editor) {
             {
                 let next = (pos + 1) % keys.len();
                 win.buffer_id = Some(keys[next]);
+                editor.db.active_tab = None;
                 editor.events.emit_typed(
                     crate::event::keys::events::BUFFER_CHANGED,
                     BufferChangedPayload {
@@ -53,6 +54,7 @@ pub(super) fn register(editor: &mut Editor) {
             {
                 let prev = if pos == 0 { keys.len() - 1 } else { pos - 1 };
                 win.buffer_id = Some(keys[prev]);
+                editor.db.active_tab = None;
                 editor.events.emit_typed(
                     crate::event::keys::events::BUFFER_CHANGED,
                     BufferChangedPayload {
@@ -118,6 +120,11 @@ pub(super) fn register(editor: &mut Editor) {
         "Close current window (ctrl-w q)",
         vec![],
         |editor, _args| {
+            if let Some(tab_id) = editor.db.active_tab {
+                editor.db.close_tab(tab_id);
+                editor.frame_dirty = true;
+                return Ok(());
+            }
             if let Some(win) = editor.view_tree.focused_window() {
                 editor.view_tree.close_window(win);
             }

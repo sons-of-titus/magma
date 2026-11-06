@@ -19,9 +19,43 @@ pub(super) fn register(editor: &mut Editor) {
         |editor, args| {
             let id = source_id(editor, args)?;
             let key = open_console_buffer(editor, id)?;
-            if let Some(win) = editor.view_tree.focused_window_mut() {
-                win.buffer_id = Some(key);
+            if let Some(wid) = editor
+                .view_tree
+                .panes()
+                .iter()
+                .find(|p| p.buffer_id == Some(key))
+                .map(|p| p.id)
+            {
+                editor.view_tree.focus(wid);
+            } else {
+                let reusable = editor.view_tree.focused_window().and_then(|wid| {
+                    let pane = editor.view_tree.window(wid)?;
+                    match pane.buffer_id {
+                        None => Some(wid),
+                        Some(buf_key) => {
+                            let arc = editor
+                                .buffers
+                                .get(buf_key)?
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner());
+                            (arc.path.is_none()
+                                && !arc.modified()
+                                && arc.slice(0, arc.len()).is_empty())
+                            .then_some(wid)
+                        }
+                    }
+                });
+                match reusable {
+                    Some(wid) => {
+                        editor.view_tree.set_buffer(wid, key);
+                        editor.view_tree.focus(wid);
+                    }
+                    None => {
+                        editor.view_tree.open_tab(Some(key));
+                    }
+                }
             }
+            editor.db.active_tab = None;
             editor.ui_requests.push("database".to_string());
             editor.frame_dirty = true;
             Ok(())
@@ -68,19 +102,25 @@ pub(super) fn register(editor: &mut Editor) {
 }
 
 fn whole_buffer(editor: &mut Editor) -> Option<String> {
-    let key = focused_buffer(editor)?;
+    let key = target_buffer(editor)?;
     let arc = editor.buffers.get(key)?;
     let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
     Some(buf.slice(0, buf.len()))
 }
 
 fn statement_under_cursor(editor: &mut Editor) -> Option<String> {
-    let key = focused_buffer(editor)?;
-    let cursor = editor.focused_view()?.cursor_offset();
+    let key = target_buffer(editor)?;
+    let cursor = if focused_buffer(editor) == Some(key) {
+        editor.focused_view().map(|v| v.cursor_offset()).unwrap_or(0)
+    } else {
+        editor.views.get(&key).map(|v| v.cursor_offset()).unwrap_or(0)
+    };
     let arc = editor.buffers.get(key)?;
     let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
     let text = buf.slice(0, buf.len());
-    statement_at(&text, cursor).map(|s| s.text)
+    statement_at(&text, cursor)
+        .or_else(|| split_statements(&text).into_iter().last())
+        .map(|s| s.text)
 }
 
 fn selected_text(editor: &mut Editor) -> Option<String> {
@@ -97,6 +137,16 @@ fn selected_text(editor: &mut Editor) -> Option<String> {
 fn focused_buffer(editor: &Editor) -> Option<usize> {
     let key = editor.focused_buffer_key();
     editor.buffers.contains(key).then_some(key)
+}
+
+fn target_buffer(editor: &Editor) -> Option<usize> {
+    if editor.db.active_tab.is_some()
+        && let Some(&key) = editor.db.active.and_then(|id| editor.db.consoles.get(&id))
+        && editor.buffers.contains(key)
+    {
+        return Some(key);
+    }
+    focused_buffer(editor)
 }
 
 /// Shared tail of the execute commands: resolve the console's source,

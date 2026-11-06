@@ -91,6 +91,7 @@ pub(super) fn register(editor: &mut Editor) {
                         }
                     }
                 }
+                editor.db.active_tab = None;
                 editor.events.emit_typed(
                     keys::events::BUFFER_FOCUSED,
                     BufferFocusedPayload {
@@ -167,6 +168,7 @@ pub(super) fn register(editor: &mut Editor) {
                             editor.view_tree.open_tab(Some(key));
                         }
                     }
+                    editor.db.active_tab = None;
                     editor.events.emit_typed(
                         keys::events::BUFFER_CREATED,
                         BufferCreatedPayload {
@@ -212,6 +214,7 @@ pub(super) fn register(editor: &mut Editor) {
 /// Build the buffer/view/tab for file content that finished loading —
 /// the async open event's sink and the sync path share this.
 pub fn open_loaded_file(editor: &mut Editor, path: &str, content: &str) {
+    editor.db.active_tab = None;
     let name = std::path::Path::new(path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -351,12 +354,19 @@ pub(super) fn close_buffer_register(cmds: &mut crate::command::CommandRegistry) 
             ArgValue::Integer(0),
         )],
         |editor, args| {
-            let key = args
+            let explicit_key = args
                 .get("buffer-id")
                 .and_then(|a| a.as_integer())
                 .filter(|&k| k > 0)
-                .map(|k| k as usize)
-                .unwrap_or_else(|| get_current_buffer_id(editor));
+                .map(|k| k as usize);
+            if explicit_key.is_none()
+                && let Some(tab_id) = editor.db.active_tab
+            {
+                editor.db.close_tab(tab_id);
+                editor.frame_dirty = true;
+                return Ok(());
+            }
+            let key = explicit_key.unwrap_or_else(|| get_current_buffer_id(editor));
 
             if !editor.buffers.contains(key) {
                 return Ok(());
@@ -422,6 +432,7 @@ pub(super) fn close_buffer_register(cmds: &mut crate::command::CommandRegistry) 
                 }
             }
             if let Some(new_id) = switched_to {
+                editor.db.active_tab = None;
                 editor.events.emit_typed(
                     keys::events::BUFFER_FOCUSED,
                     BufferFocusedPayload {

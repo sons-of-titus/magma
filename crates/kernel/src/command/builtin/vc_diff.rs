@@ -192,6 +192,7 @@ pub(crate) fn open_diff(editor: &mut Editor, path: &str, data: DiffData) {
     // a freshly created pair is aligned at the top and focused.
     if created && let Some(view) = &editor.vc.diff_view {
         let (left, right) = (view.left, view.right);
+        editor.db.active_tab = None;
         editor.view_tree.focus(right);
         for (id, buf) in [(right, right_buf), (left, left_buf)] {
             if let Some(p) = editor.view_tree.window_mut(id) {

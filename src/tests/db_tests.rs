@@ -963,3 +963,115 @@ fn postgres_source_defaults_port_user_database_and_supports_url() {
         Some("postgres://alice@localhost:5433/analytics")
     );
 }
+
+#[test]
+fn table_viewer_yields_center_view_on_console_and_buffer_focus() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "center_view");
+
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+    let tab_id = ed.db.active_tab.expect("table tab active in center view");
+
+    execute_command(&mut ed, "db-console", &args(&[])).unwrap();
+    assert!(ed.db.active_tab.is_none());
+    assert_eq!(ed.db.tabs.len(), 1);
+
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+    assert_eq!(ed.db.active_tab, Some(tab_id));
+
+    crate::kernel::command::builtin::buffer::open_loaded_file(&mut ed, "/tmp/demo.rs", "fn main() {}\n");
+    assert!(ed.db.active_tab.is_none());
+
+    execute_command(
+        &mut ed,
+        "db-select-tab",
+        &args(&[("tab", ArgValue::Integer(tab_id as i64))]),
+    )
+    .unwrap();
+    assert_eq!(ed.db.active_tab, Some(tab_id));
+
+    execute_command(&mut ed, "tabnext", &args(&[])).unwrap();
+    assert!(ed.db.active_tab.is_none());
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn grid_revert_and_delete_staged_insert_work_across_all_rows() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "revert_all");
+
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+
+    // Edit row 1 (not row 0) and stage a new row, then revert without a row arg.
+    execute_command(
+        &mut ed,
+        "db-grid-edit-cell",
+        &args(&[
+            ("row", ArgValue::Integer(1)),
+            ("column", ArgValue::Integer(1)),
+            ("value", ArgValue::String("edited-row-1".into())),
+        ]),
+    )
+    .unwrap();
+    execute_command(&mut ed, "db-grid-new-row", &args(&[])).unwrap();
+    assert_eq!(ed.db.active_tab().unwrap().selected, Some((3, 0)));
+    assert_eq!(ed.db.active_tab().unwrap().pending.len(), 2);
+
+    // Deleting the staged insert row (row index == result.rows.len() == 3) drops the insert op.
+    execute_command(
+        &mut ed,
+        "db-grid-delete-row",
+        &args(&[("row", ArgValue::Integer(3))]),
+    )
+    .unwrap();
+    assert_eq!(ed.db.active_tab().unwrap().pending.len(), 1);
+
+    // Revert with no row arg clears all remaining edits (including row 1).
+    execute_command(&mut ed, "db-grid-revert", &args(&[])).unwrap();
+    assert!(ed.db.active_tab().unwrap().pending.is_empty());
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn db_console_opens_dedicated_tab_and_close_buffer_closes_active_db_tab() {
+    let mut ed = editor();
+    let (_id, path) = connected_sqlite(&mut ed, "console_tab");
+
+    crate::kernel::command::builtin::buffer::open_loaded_file(&mut ed, "/tmp/app.rs", "fn main() {}\n");
+    let panes_before = ed.view_tree.panes().len();
+
+    execute_command(&mut ed, "db-console", &args(&[])).unwrap();
+    assert_eq!(ed.view_tree.panes().len(), panes_before + 1);
+
+    execute_command(
+        &mut ed,
+        "db-open-table",
+        &args(&[("path", ArgValue::String("/main/main/tables/items".into()))]),
+    )
+    .unwrap();
+    assert!(ed.db.active_tab.is_some());
+
+    // Closing the active tab via close-buffer closes the DB tab first, keeping file buffers intact.
+    execute_command(&mut ed, "close-buffer", &args(&[])).unwrap();
+    assert!(ed.db.active_tab.is_none());
+    assert!(ed.db.tabs.is_empty());
+
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

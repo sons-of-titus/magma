@@ -235,6 +235,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             new_project::open(&weak, &mut s);
             s.editor.frame_dirty = true;
             sync::refresh(&weak, &mut s);
+            if s.editor.project_manager.project.root.is_some() {
+                if let Some(w) = s.welcome.upgrade() {
+                    let _ = w.hide();
+                }
+                if let Some(a) = weak.upgrade() {
+                    let _ = a.show();
+                }
+            }
         });
     }
     {
@@ -245,6 +253,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             actions::open_project_dialog(&mut s);
             s.editor.frame_dirty = true;
             sync::refresh(&weak, &mut s);
+            if s.editor.project_manager.project.root.is_some() {
+                if let Some(w) = s.welcome.upgrade() {
+                    let _ = w.hide();
+                }
+                if let Some(a) = weak.upgrade() {
+                    let _ = a.show();
+                }
+            }
         });
     }
     {
@@ -255,6 +271,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             actions::open_project_path(&mut s, &path);
             s.editor.frame_dirty = true;
             sync::refresh(&weak, &mut s);
+            if s.editor.project_manager.project.root.is_some() {
+                if let Some(w) = s.welcome.upgrade() {
+                    let _ = w.hide();
+                }
+                if let Some(a) = weak.upgrade() {
+                    let _ = a.show();
+                }
+            }
         });
     }
 

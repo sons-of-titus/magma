@@ -65,8 +65,13 @@ pub fn render_decorations(
     let mut layer_names: Vec<&str> = view.decoration_layers.keys().map(|s| s.as_str()).collect();
     layer_names.sort_unstable();
 
-    for layer_name in layer_names {
-        let layer = match view.decoration_layers.get(layer_name) {
+    // Inline-text decorations are collected first so they can be rendered in
+    // column order with cumulative shifting: an inlay hint is *inserted* into
+    // the line, pushing the following text right instead of painting over it.
+    let mut inline_items: Vec<(usize, usize, String, String)> = Vec::new();
+
+    for layer_name in &layer_names {
+        let layer = match view.decoration_layers.get(*layer_name) {
             Some(v) => v,
             None => continue,
         };
@@ -88,21 +93,7 @@ pub fn render_decorations(
                     text,
                     face,
                 } => {
-                    let Some(row_idx) = locate_row(rows, *line) else {
-                        continue;
-                    };
-                    if *col < scroll_left {
-                        continue;
-                    }
-                    let surf_row = row_offset + row_idx as u16;
-                    let sx = content_x + (*col - scroll_left) as u16;
-                    if sx >= surface.width {
-                        continue;
-                    }
-                    let style = editor.resolve_face_style(face);
-                    let max_cols = (surface.width - sx) as usize;
-                    let drawn: String = text.chars().take(max_cols).collect();
-                    surface.set_text(sx, surf_row, &drawn, style);
+                    inline_items.push((*line, *col, text.clone(), face.clone()));
                 }
                 Decoration::EndOfLine { line, text, face } => {
                     let Some(row_idx) = locate_row(rows, *line) else {
@@ -130,6 +121,51 @@ pub fn render_decorations(
                 }
             }
         }
+    }
+
+    inline_items.sort_by_key(|(line, col, _, _)| (*line, *col));
+
+    // Cumulative horizontal shift per rendered row, so multiple hints on one
+    // line each push the text that follows them.
+    let mut row_shift: std::collections::HashMap<u16, usize> =
+        std::collections::HashMap::new();
+
+    for (line, col, text, face) in inline_items {
+        let Some(row_idx) = locate_row(rows, line) else {
+            continue;
+        };
+        if col < scroll_left {
+            continue;
+        }
+        let surf_row = row_offset + row_idx as u16;
+        let base_sx = content_x + (col - scroll_left) as u16;
+        let shift = *row_shift.get(&surf_row).unwrap_or(&0);
+        let sx = base_sx.saturating_add(shift as u16);
+        if sx >= surface.width {
+            continue;
+        }
+        let style = editor.resolve_face_style(&face);
+        let max_cols = (surface.width - sx) as usize;
+        let drawn: String = text.chars().take(max_cols).collect();
+        let hint_width = drawn.chars().count();
+        if hint_width > 0 {
+            let right = surface.width as usize;
+            // Shift the existing row content right by hint_width to make room.
+            for x in (sx as usize..right).rev() {
+                if x + hint_width < right
+                    && let Some(cell) = surface.cell(x as u16, surf_row).cloned()
+                {
+                    surface.set_cell(
+                        (x + hint_width) as u16,
+                        surf_row,
+                        cell.ch,
+                        Some(cell.style),
+                    );
+                }
+            }
+        }
+        surface.set_text(sx, surf_row, &drawn, style);
+        row_shift.insert(surf_row, shift + hint_width);
     }
 }
 

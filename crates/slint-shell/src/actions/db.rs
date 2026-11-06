@@ -38,24 +38,6 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
-        app.on_db_resized(move |delta| {
-            let mut s = state.borrow_mut();
-            s.db_height = (s.db_height + delta).clamp(160.0, 900.0);
-            refresh(&weak, &mut s);
-        });
-    }
-    {
-        let state = Rc::clone(&state);
-        let weak = app.as_weak();
-        app.on_db_explorer_resized(move |delta| {
-            let mut s = state.borrow_mut();
-            s.db_explorer_width = (s.db_explorer_width + delta).clamp(180.0, 600.0);
-            refresh(&weak, &mut s);
-        });
-    }
-    {
-        let state = Rc::clone(&state);
-        let weak = app.as_weak();
         app.on_db_source_changed(move |name| {
             let mut s = state.borrow_mut();
             if let Some(src) = s.editor.db.sources.iter().find(|x| x.name == name.as_str()) {
@@ -377,7 +359,21 @@ fn toolbar(weak: &slint::Weak<AppWindow>, s: &mut AppState, action: &str) {
             let running = s.editor.db.active
                 .map(|id| s.editor.db.tabs.iter().any(|t| t.source_id == id && t.busy))
                 .unwrap_or(false);
-            run_s(s, if running { "db-cancel" } else { "db-execute-current" }, &[]);
+            if running {
+                run_s(s, "db-cancel", &[]);
+            } else {
+                let has_console = s
+                    .editor
+                    .db
+                    .active
+                    .and_then(|id| s.editor.db.consoles.get(&id).copied())
+                    .is_some_and(|k| s.editor.buffers.contains(k));
+                if !has_console && s.editor.db.active_tab.is_some() {
+                    run_s(s, "db-console", &[]);
+                } else {
+                    run_s(s, "db-execute-current", &[]);
+                }
+            }
         }
         "collapse" => {
             let id = s.editor.db.active;

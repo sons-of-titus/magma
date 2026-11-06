@@ -38,8 +38,11 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     }
     {
         let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_context_dismissed(move || {
-            state.borrow_mut().context_menu = None;
+            let mut s = state.borrow_mut();
+            s.context_menu = None;
+            refresh(&weak, &mut s);
         });
     }
     {
@@ -47,8 +50,8 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_context_command(move |cmd| {
             let mut s = state.borrow_mut();
-            s.context_menu = None;
             run_command(&weak, &mut s, &cmd);
+            s.context_menu = None;
             refresh(&weak, &mut s);
         });
     }
@@ -110,25 +113,39 @@ fn run_command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
                 _ => return,
             };
             let all = tabs::collect_tabs(&s.editor);
+            let total = all.len() + s.editor.db.tabs.len();
             if cmd == "context:tab-copy-path" {
                 if let Some(tab) = all.get(index) {
                     copy_buffer_path(s, tab.window_id);
+                } else if let Some(db_tab) = s.editor.db.tabs.get(index.saturating_sub(all.len())) {
+                    let title = db_tab.title.clone();
+                    copy_absolute(s, &title);
                 }
                 return;
             }
             let close: Vec<usize> = match cmd {
                 "context:tab-close" => vec![index],
-                "context:tab-close-others" => (0..all.len()).filter(|i| *i != index).collect(),
-                "context:tab-close-right" => (index + 1..all.len()).collect(),
-                _ => (0..all.len()).collect(),
+                "context:tab-close-others" => (0..total).filter(|i| *i != index).collect(),
+                "context:tab-close-right" => (index + 1..total).collect(),
+                _ => (0..total).collect(),
             };
+            let db_ids: Vec<u64> = s.editor.db.tabs.iter().map(|t| t.id).collect();
             let mut closed = 0;
             for i in close.into_iter().rev() {
                 if let Some(tab) = all.get(i) {
                     tabs::close_tab(&mut s.editor, tab.window_id);
                     closed += 1;
+                } else if let Some(&db_id) = db_ids.get(i - all.len()) {
+                    s.editor.db.close_tab(db_id);
+                    closed += 1;
                 }
             }
+            if cmd == "context:tab-close-others" && index >= all.len() {
+                if let Some(&db_id) = db_ids.get(index - all.len()) {
+                    s.editor.db.active_tab = Some(db_id);
+                }
+            }
+            s.editor.frame_dirty = true;
             s.message = format!("Closed {closed} tab(s)");
         }
         "context:tree-new-file" | "context:tree-new-folder" => {

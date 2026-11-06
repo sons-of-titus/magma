@@ -78,9 +78,14 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_tab_clicked(move |index| {
             let mut s = state.borrow_mut();
+            let idx = index.max(0) as usize;
             let tabs = tabs::collect_tabs(&s.editor);
-            if let Some(tab) = tabs.get(index.max(0) as usize) {
+            if let Some(tab) = tabs.get(idx) {
+                s.editor.db.active_tab = None;
                 s.editor.view_tree.focus(tab.window_id);
+                s.editor.frame_dirty = true;
+            } else if let Some(db_tab) = s.editor.db.tabs.get(idx - tabs.len()) {
+                s.editor.db.active_tab = Some(db_tab.id);
                 s.editor.frame_dirty = true;
             }
             refresh(&weak, &mut s);
@@ -91,9 +96,14 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
         let weak = app.as_weak();
         app.on_tab_closed(move |index| {
             let mut s = state.borrow_mut();
+            let idx = index.max(0) as usize;
             let tabs = tabs::collect_tabs(&s.editor);
-            if let Some(tab) = tabs.get(index.max(0) as usize) {
+            if let Some(tab) = tabs.get(idx) {
                 tabs::close_tab(&mut s.editor, tab.window_id);
+                s.editor.frame_dirty = true;
+            } else if let Some(db_tab) = s.editor.db.tabs.get(idx - tabs.len()) {
+                let id = db_tab.id;
+                s.editor.db.close_tab(id);
                 s.editor.frame_dirty = true;
             }
             refresh(&weak, &mut s);

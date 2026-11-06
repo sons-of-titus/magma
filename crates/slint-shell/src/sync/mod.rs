@@ -23,9 +23,8 @@ use kernel::render::frame::{render_frame_with, sync_viewport_scroll};
 use crate::actions::picker;
 use crate::new_project;
 use crate::pane;
-use crate::{AppState, AppWindow, TabItem, logical_size, projection, theme};
+use crate::{AppState, AppWindow, logical_size, projection, theme};
 use kernel::render::CursorPaint;
-use kernel::render::tabs;
 use kernel::state::Editor;
 
 const STATUS_TTL: Duration = Duration::from_secs(6);
@@ -81,6 +80,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         for request in requests {
             if request == "database" {
                 state.db_open = true;
+                state.agent_open = false;
                 continue;
             }
             if !picker::handle_request(weak, state, &request) {
@@ -170,59 +170,8 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         app.set_gutter_visible(false);
         app.set_gutter(slint::Image::default());
     }
+    tool_windows::sync_tabs(&app, state);
     let ed = &mut state.editor;
-    let focused = ed.view_tree.focused_window();
-    let tab_models: Vec<TabItem> = tabs::collect_tabs(ed)
-        .into_iter()
-        .map(|t| {
-            let (icon, icon_color, icon_path, icon_image) = match t.icon {
-                Some(kernel::icons::IconKind::Glyph { glyph, color }) => (
-                    glyph.to_string(),
-                    color
-                        .map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b))
-                        .unwrap_or(slint::Color::from_rgb_u8(166, 173, 200)),
-                    String::new(),
-                    slint::Image::default(),
-                ),
-                Some(kernel::icons::IconKind::Svg { path }) => {
-                    let p = path.to_string_lossy().into_owned();
-                    // Decoding an SVG per refresh is pure waste; icon paths
-                    // repeat every frame, so cache the decoded image.
-                    let img = match state.icon_images.get(&p) {
-                        Some(img) => img.clone(),
-                        None => {
-                            let img = slint::Image::load_from_path(std::path::Path::new(&p))
-                                .unwrap_or_default();
-                            state.icon_images.insert(p.clone(), img.clone());
-                            img
-                        }
-                    };
-                    (
-                        String::new(),
-                        slint::Color::from_rgb_u8(166, 173, 200),
-                        p,
-                        img,
-                    )
-                }
-                None => (
-                    String::new(),
-                    slint::Color::from_rgb_u8(166, 173, 200),
-                    String::new(),
-                    slint::Image::default(),
-                ),
-            };
-            TabItem {
-                title: t.label.into(),
-                active: focused == Some(t.window_id),
-                modified: t.modified,
-                icon: icon.into(),
-                icon_color,
-                icon_path: icon_path.into(),
-                icon_image,
-            }
-        })
-        .collect();
-    state.m_tabs.set(tab_models, |m| app.set_tabs(m));
 
     app.set_active_rail(state.rail);
     app.set_sidebar_open(state.sidebar_open);

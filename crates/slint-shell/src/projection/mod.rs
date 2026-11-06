@@ -21,9 +21,10 @@ pub use agent_panel::{
     send_blocked_reason,
 };
 pub use db::{
-    db_active_source_name, db_busy, db_can_edit, db_columns, db_connected_label, db_elapsed,
-    db_grid_title, db_has_tab, db_page_info, db_pending_count, db_querying, db_row_count, db_rows,
-    db_sources, db_status, db_tabs, db_tree, db_truncated,
+    db_active_source_name, db_busy, db_can_edit, db_can_next_page, db_can_prev_page, db_columns,
+    db_connected_label, db_elapsed, db_grid_title, db_has_tab, db_page_info, db_pending_count,
+    db_querying, db_row_count, db_rows, db_selected, db_sources, db_status, db_tabs, db_tree,
+    db_truncated,
 };
 pub use debug_view::snapshot as debug_snapshot;
 pub use menus::{menu_items, menu_title};

@@ -1,46 +1,47 @@
 //! Database tool-window sync: one pass per refresh over the live DbState.
 
-use slint::ModelRc;
-
-use slint::VecModel;
+use slint::{Model, ModelRc, VecModel};
 
 use crate::{AppState, AppWindow, projection};
 
 pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
-    let ed = &mut state.editor;
-    app.set_db_explorer_width(state.db_explorer_width);
-    app.set_db_sources(ModelRc::new(VecModel::from(
-        projection::db_sources(ed)
-            .into_iter()
-            .map(Into::into)
-            .collect::<Vec<slint::SharedString>>(),
-    )));
-    app.set_db_active_source(projection::db_active_source_name(ed).into());
-    let active_id = ed.db.active;
-    let connected = active_id.map(|id| ed.db.is_connected(id)).unwrap_or(false);
+    let sources: Vec<slint::SharedString> = projection::db_sources(&state.editor)
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    state.m_db_sources.set(sources, |m| app.set_db_sources(m));
+    app.set_db_active_source(projection::db_active_source_name(&state.editor).into());
+    let active_id = state.editor.db.active;
+    let connected = active_id
+        .map(|id| state.editor.db.is_connected(id))
+        .unwrap_or(false);
     app.set_db_connected(connected);
-    app.set_db_connected_label(projection::db_connected_label(ed).into());
-    app.set_db_busy(projection::db_busy(ed));
-    app.set_db_querying(projection::db_querying(ed));
+    app.set_db_connected_label(projection::db_connected_label(&state.editor).into());
+    app.set_db_busy(projection::db_busy(&state.editor));
+    app.set_db_querying(projection::db_querying(&state.editor));
     app.set_db_open(state.db_open);
-    app.set_db_height(state.db_height);
     app.set_db_tree_filter(state.db_tree_filter.as_str().into());
     app.set_db_tree_filter_active(state.db_tree_filter_active);
-    app.set_db_tree(ModelRc::new(VecModel::from(projection::db_tree(
-        ed,
-        &state.db_tree_filter,
-    ))));
+    let tree = projection::db_tree(&state.editor, &state.db_tree_filter);
+    state.m_db_tree.set(tree, |m| app.set_db_tree(m));
     let widths = active_id
-        .and_then(|_| ed.db.active_tab)
+        .and_then(|_| state.editor.db.active_tab)
         .and_then(|tab| state.db_col_widths.get(&tab).cloned())
         .unwrap_or_default();
-    app.set_db_tabs(ModelRc::new(VecModel::from(projection::db_tabs(ed))));
-    app.set_db_grid_title(projection::db_grid_title(ed).into());
-    app.set_db_columns(ModelRc::new(VecModel::from(projection::db_columns(
-        ed,
-        &widths,
-    ))));
-    app.set_db_rows(ModelRc::new(VecModel::from(projection::db_rows(ed))));
+    app.set_db_tabs(ModelRc::new(VecModel::from(projection::db_tabs(&state.editor))));
+    app.set_db_grid_title(projection::db_grid_title(&state.editor).into());
+    let columns = projection::db_columns(&state.editor, &widths);
+    state.m_db_columns.set(columns, |m| app.set_db_columns(m));
+    let rows = projection::db_rows(&state.editor);
+    let raw_rows: Vec<(String, String, Vec<crate::DbCell>)> = rows
+        .iter()
+        .map(|r| (r.status.to_string(), r.number.to_string(), r.cells.iter().collect()))
+        .collect();
+    if state.db_rows_cache != raw_rows {
+        state.db_rows_cache = raw_rows;
+        app.set_db_rows(ModelRc::new(VecModel::from(rows)));
+    }
+    let ed = &mut state.editor;
     let (status, is_error) = projection::db_status(ed);
     app.set_db_status(status.into());
     app.set_db_status_error(is_error);
@@ -51,6 +52,11 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     app.set_db_can_edit(projection::db_can_edit(ed));
     app.set_db_pending_count(projection::db_pending_count(ed));
     app.set_db_has_tab(projection::db_has_tab(ed));
+    let (sel_row, sel_col) = projection::db_selected(ed);
+    app.set_db_selected_row(sel_row);
+    app.set_db_selected_col(sel_col);
+    app.set_db_can_prev_page(projection::db_can_prev_page(ed));
+    app.set_db_can_next_page(projection::db_can_next_page(ed));
     app.set_db_filter_text(
         ed.db
             .active_tab()

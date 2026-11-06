@@ -13,7 +13,7 @@ use kernel::workspace::WorkspaceRuntime;
 
 use crate::actions::picker;
 use crate::sync;
-use crate::{CompletionEntry, FindRow, GitHistoryRow, MenuItem, OutputLine, ProblemRow, ProgressTask, TabItem, TemplateItem, TemplateVar, TreeItem, WelcomeWindow};
+use crate::{CompletionEntry, DbCell, DbGridColumn, DbTreeRow, FindRow, GitHistoryRow, MenuItem, OutputLine, ProblemRow, ProgressTask, TabItem, TemplateItem, TemplateVar, TreeItem, WelcomeWindow};
 use crate::context;
 
 use crate::new_project;
@@ -62,6 +62,10 @@ pub(crate) struct AppState {
     /// Beam height in logical px: cap line to baseline, measured from the
     /// atlas like `caret_inset` so the beam ends where the ink ends.
     pub(crate) caret_height: f32,
+    /// Whether the caret is currently in its visible blink phase.
+    pub(crate) caret_blink_on: bool,
+    /// Instant of the last blink phase transition (or activity reset).
+    pub(crate) caret_blink_last: std::time::Instant,
     pub(crate) surface: Surface,
     pub(crate) terminal_grid: (usize, u32, u32),
     pub(crate) surface_sig: u64,
@@ -94,9 +98,6 @@ pub(crate) struct AppState {
     /// DAP variablesReferences the user opened in the variables tree.
     /// The Database tool window on the right, beneath the Agent dock.
     pub(crate) db_open: bool,
-    pub(crate) db_height: f32,
-    /// Explorer pane width inside the Database tool window.
-    pub(crate) db_explorer_width: f32,
     /// Per-tab grid column widths, the drag handle edits the active tab's.
     pub(crate) db_col_widths: HashMap<u64, Vec<f32>>,
     /// Explorer object-name filter (live, projection-side).
@@ -199,6 +200,10 @@ pub(crate) struct AppState {
     pub(crate) m_hover_lines: sync::ModelGate<slint::SharedString>,
     pub(crate) m_completion_entries: sync::ModelGate<CompletionEntry>,
     pub(crate) m_quickfix_items: sync::ModelGate<slint::SharedString>,
+    pub(crate) m_db_sources: sync::ModelGate<slint::SharedString>,
+    pub(crate) m_db_tree: sync::ModelGate<DbTreeRow>,
+    pub(crate) m_db_columns: sync::ModelGate<DbGridColumn>,
+    pub(crate) db_rows_cache: Vec<(String, String, Vec<DbCell>)>,
 }
 
 

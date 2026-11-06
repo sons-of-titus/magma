@@ -174,6 +174,7 @@ pub(crate) fn confirm(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
         PickerKind::Buffers => {
             if let Some(key) = payload.and_then(|p| p.parse::<usize>().ok()) {
                 cancel(s);
+                s.editor.db.active_tab = None;
                 if let Some(win) = s.editor.view_tree.focused_window_mut() {
                     win.buffer_id = Some(key);
                 }

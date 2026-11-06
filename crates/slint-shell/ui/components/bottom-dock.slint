@@ -41,7 +41,8 @@ component DockButton inherits Rectangle {
     callback clicked();
 
     height: 22px;
-    width: label-text.preferred-width + 30px + (root.count >= 0 ? 30px : 0px);
+    min-width: label-text.preferred-width + 30px + (root.count >= 0 ? 30px : 0px);
+    horizontal-stretch: 1;
     border-radius: Theme.radius;
     background: active ? Theme.fill : (touch.has-hover ? Theme.fill-muted : transparent);
 
@@ -140,7 +141,6 @@ export component BottomBar inherits Rectangle {
             clicked => { root.toggle(3); }
         }
 
-        Rectangle { horizontal-stretch: 1; }
     }
 }
 

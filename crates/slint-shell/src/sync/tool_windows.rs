@@ -4,8 +4,84 @@
 use slint::{ModelRc, VecModel};
 
 use crate::sync::STATUS_TTL;
-use crate::{AppState, AppWindow, ChangeRow, projection};
+use crate::{AppState, AppWindow, ChangeRow, TabItem, projection};
+use kernel::render::tabs;
 use kernel::state::Editor;
+
+pub(super) fn sync_tabs(app: &AppWindow, state: &mut AppState) {
+    let ed = &state.editor;
+    let focused = ed.view_tree.focused_window();
+    let tab_models: Vec<TabItem> = tabs::collect_tabs(ed)
+        .into_iter()
+        .map(|t| {
+            let (icon, icon_color, icon_path, icon_image) = match t.icon {
+                Some(kernel::icons::IconKind::Glyph { glyph, color }) => (
+                    glyph.to_string(),
+                    color
+                        .map(|(r, g, b)| slint::Color::from_rgb_u8(r, g, b))
+                        .unwrap_or(slint::Color::from_rgb_u8(166, 173, 200)),
+                    String::new(),
+                    slint::Image::default(),
+                ),
+                Some(kernel::icons::IconKind::Svg { path }) => {
+                    let p = path.to_string_lossy().into_owned();
+                    let img = match state.icon_images.get(&p) {
+                        Some(img) => img.clone(),
+                        None => {
+                            let img = slint::Image::load_from_path(std::path::Path::new(&p))
+                                .unwrap_or_default();
+                            state.icon_images.insert(p.clone(), img.clone());
+                            img
+                        }
+                    };
+                    (
+                        String::new(),
+                        slint::Color::from_rgb_u8(166, 173, 200),
+                        p,
+                        img,
+                    )
+                }
+                None => (
+                    String::new(),
+                    slint::Color::from_rgb_u8(166, 173, 200),
+                    String::new(),
+                    slint::Image::default(),
+                ),
+            };
+            TabItem {
+                title: t.label.into(),
+                active: focused == Some(t.window_id) && ed.db.active_tab.is_none(),
+                modified: t.modified,
+                icon: icon.into(),
+                icon_color,
+                icon_path: icon_path.into(),
+                icon_image,
+            }
+        })
+        .chain(ed.db.tabs.iter().map(|tab| {
+            let title = if tab.structure {
+                format!("{} [structure]", tab.title)
+            } else {
+                tab.title.clone()
+            };
+            let icon = if matches!(tab.kind, kernel::db::DataTabKind::Table { .. }) {
+                "\u{F04EB}"
+            } else {
+                "\u{F018D}"
+            };
+            TabItem {
+                title: title.into(),
+                active: ed.db.active_tab == Some(tab.id),
+                modified: !tab.pending.is_empty(),
+                icon: icon.into(),
+                icon_color: slint::Color::from_rgb_u8(137, 180, 250),
+                icon_path: slint::SharedString::default(),
+                icon_image: slint::Image::default(),
+            }
+        }))
+        .collect();
+    state.m_tabs.set(tab_models, |m| app.set_tabs(m));
+}
 
 pub(super) fn sync_commit(app: &AppWindow, ed: &mut Editor, last_message: &str) {
     let status = ed.vc.last_status.clone();

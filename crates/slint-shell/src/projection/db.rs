@@ -368,18 +368,23 @@ pub fn db_rows(ed: &Editor) -> Vec<DbGridRow> {
                         .iter()
                         .enumerate()
                         .map(|(col, v)| {
-                            let edited = tab
-                                .pending
-                                .ops
-                                .iter()
-                                .any(|o| matches!(o, db::EditOp::UpdateCell { row: r, col: c, .. } if *r == row_no && *c == col));
-                            let fk = !v.is_null()
+                            let pending_val = tab.pending.ops.iter().find_map(|o| match o {
+                                db::EditOp::UpdateCell { row: r, col: c, value, .. }
+                                    if *r == row_no && *c == col =>
+                                {
+                                    Some(value)
+                                }
+                                _ => None,
+                            });
+                            let edited = pending_val.is_some();
+                            let effective = pending_val.unwrap_or(v);
+                            let fk = !effective.is_null()
                                 && detail
                                     .zip(result.columns.get(col))
                                     .is_some_and(|(d, c)| d.fk_for_column(&c.name).is_some());
                             DbCell {
-                                text: v.render().into(),
-                                kind: v.kind().into(),
+                                text: effective.render().into(),
+                                kind: effective.kind().into(),
                                 edited,
                                 fk,
                             }
@@ -520,6 +525,33 @@ pub fn db_has_tab(ed: &Editor) -> bool {
     ed.db.active_tab.is_some()
 }
 
+pub fn db_selected(ed: &Editor) -> (i32, i32) {
+    ed.db
+        .active_tab()
+        .and_then(|t| t.selected)
+        .map(|(r, c)| (r as i32, c as i32))
+        .unwrap_or((-1, -1))
+}
+
+pub fn db_can_prev_page(ed: &Editor) -> bool {
+    let Some(tab) = ed.db.active_tab() else {
+        return false;
+    };
+    !tab.structure && matches!(tab.kind, DataTabKind::Table { .. }) && tab.page > 0 && !tab.busy
+}
+
+pub fn db_can_next_page(ed: &Editor) -> bool {
+    let Some(tab) = ed.db.active_tab() else {
+        return false;
+    };
+    !tab.structure
+        && matches!(tab.kind, DataTabKind::Table { .. })
+        && !tab.busy
+        && tab
+            .result()
+            .is_some_and(|r| r.truncated || r.rows.len() >= kernel::db::FETCH_LIMIT)
+}
+
 // ── Sources + connection header ──────────────────────────────────────────────
 
 pub fn db_sources(ed: &Editor) -> Vec<String> {
@@ -618,5 +650,65 @@ mod tests {
         assert_eq!(fk_key, "/app/public/tables/users/fks/users_org_fk");
         assert_eq!(fk_kind, "fk");
         assert!(!fk_expandable);
+    }
+
+    #[test]
+    fn db_rows_projects_staged_cell_edits_and_pagination_flags() {
+        use slint::Model;
+        let mut ed = Editor::new(Box::new(kernel::storage::DiskFileSystem::new()));
+        let tab_id = ed.db.take_next_tab_id();
+        ed.db.tabs.push(kernel::db::DataTab {
+            id: tab_id,
+            source_id: 1,
+            kind: DataTabKind::Table {
+                node: db::NodeRef::Table {
+                    database: "main".into(),
+                    schema: "main".into(),
+                    name: "items".into(),
+                    is_view: false,
+                },
+                detail: None,
+            },
+            results: vec![db::QueryOutcome {
+                statement: "SELECT * FROM items".into(),
+                columns: vec![
+                    db::ColumnOut { name: "id".into(), type_name: "INTEGER".into() },
+                    db::ColumnOut { name: "name".into(), type_name: "TEXT".into() },
+                ],
+                rows: vec![vec![db::DbValue::Integer(1), db::DbValue::Text("alpha".into())]],
+                truncated: false,
+                rows_affected: 0,
+                is_query: true,
+                elapsed_ms: 1,
+            }],
+            active_result: 0,
+            title: "items".into(),
+            page: 0,
+            sort: None,
+            filter: String::new(),
+            pending: db::PendingEdits {
+                ops: vec![db::EditOp::UpdateCell {
+                    row: 0,
+                    col: 1,
+                    value: db::DbValue::Text("updated".into()),
+                    original_row: vec![db::DbValue::Integer(1), db::DbValue::Text("alpha".into())],
+                }],
+            },
+            selected: Some((0, 1)),
+            busy: false,
+            job: 1,
+            error: None,
+            structure: false,
+        });
+        ed.db.active_tab = Some(tab_id);
+
+        let rows = db_rows(&ed);
+        assert_eq!(rows.len(), 1);
+        let cells: Vec<DbCell> = rows[0].cells.iter().collect();
+        assert_eq!(cells[1].text.as_str(), "updated");
+        assert!(cells[1].edited);
+        assert_eq!(db_selected(&ed), (0, 1));
+        assert!(!db_can_prev_page(&ed));
+        assert!(!db_can_next_page(&ed));
     }
 }

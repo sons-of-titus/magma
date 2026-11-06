@@ -11,6 +11,7 @@ import { ProjectTree, TreeItem } from "components/project-tree.slint";
 import { CommitPanel, ChangeRow } from "components/commit-panel.slint";
 import { DebuggerPanel } from "components/debugger-panel.slint";
 import { DatabasePanel, DbTreeRow, DbTabInfo, DbGridColumn, DbCell, DbGridRow } from "components/database-panel.slint";
+import { DatabaseDataView } from "components/database-data-view.slint";
 import { DbConnectionDialog } from "components/db-dialog.slint";
 import { Field } from "components/controls.slint";
 import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
@@ -71,7 +72,6 @@ export component AppWindow inherits Window {
     in property <int> active-rail: 0;
     in property <bool> sidebar-open: true;
     in property <bool> db-open: false;
-    in property <length> db-height: 340px;
     in property <[string]> db-sources;
     in property <string> db-active-source;
     in property <bool> db-connected: false;
@@ -95,6 +95,10 @@ export component AppWindow inherits Window {
     in property <bool> db-can-edit: false;
     in property <int> db-pending-count: 0;
     in property <bool> db-has-tab: false;
+    in property <int> db-selected-row: -1;
+    in property <int> db-selected-col: -1;
+    in property <bool> db-can-prev-page: false;
+    in property <bool> db-can-next-page: false;
     // Connection dialog
     in property <bool> db-dialog-visible: false;
     in property <string> db-dialog-title: "Add Data Source";
@@ -180,7 +184,6 @@ export component AppWindow inherits Window {
     in property <[AgentSessionChip]> agent-sessions;
     in property <int> agent-turns-left: 0;
     in property <length> agent-dock-width: 340px;
-    in property <length> db-explorer-width: 260px;
     in-out property <string> agent-prompt;
     in property <bool> agent-running;
     in property <string> agent-phase: "ready";
@@ -323,7 +326,6 @@ export component AppWindow inherits Window {
     callback tree-clicked(string);
     callback rail-selected(int);
     callback db-toggle();
-    callback db-resized(length);
     callback db-source-changed(string);
     callback db-toolbar(string);
     callback db-tree-clicked(string);
@@ -338,7 +340,6 @@ export component AppWindow inherits Window {
     callback db-grid-edit-committed(int, int, string);
     callback db-grid-action(string);
     callback db-col-resized(int, length);
-    callback db-explorer-resized(length);
     callback db-dialog-opened(int);
     callback db-dialog-cancelled();
     callback db-dialog-saved();
@@ -542,7 +543,7 @@ export component AppWindow inherits Window {
 
         Breadcrumb {
             segments: root.breadcrumbs;
-            visible: root.breadcrumb-enabled;
+            visible: root.breadcrumb-enabled && !root.db-has-tab;
             segment-clicked(i) => { root.breadcrumb-clicked(i); }
         }
 
@@ -628,12 +629,17 @@ export component AppWindow inherits Window {
                 }
             }
 
-            editor-pane := EditorView {
-                    enabled: !root.db-dialog-visible;
-                    horizontal-stretch: 1;
-                    vertical-stretch: 1;
-                    min-width: 120px;
-                    max-width: 100000px;
+            Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                min-width: 120px;
+                max-width: 100000px;
+
+                editor-pane := EditorView {
+                    width: 100%;
+                    height: 100%;
+                    visible: !root.db-has-tab;
+                    enabled: !root.db-dialog-visible && !root.db-has-tab;
                     pane: root.pane;
                     pane-width: root.pane-width;
                     pane-height: root.pane-height;
@@ -651,29 +657,62 @@ export component AppWindow inherits Window {
                     key(text, ctrl, shift, alt, meta) => {
                         root.key(text, ctrl, shift, alt, meta);
                     }
-                mouse-pressed-left(x, y, ctrl, shift, alt, meta) => {
-                    root.mouse-pressed-left(x, y, ctrl, shift, alt, meta);
+                    mouse-pressed-left(x, y, ctrl, shift, alt, meta) => {
+                        root.mouse-pressed-left(x, y, ctrl, shift, alt, meta);
+                    }
+                    mouse-pressed-right(x, y) => {
+                        root.mouse-pressed-right(x, y);
+                    }
+                    mouse-pressed-middle(x, y) => {
+                        root.mouse-pressed-middle(x, y);
+                    }
+                    mouse-moved(x, y) => {
+                        root.mouse-moved(x, y);
+                    }
+                    mouse-hover(x, y) => {
+                        root.mouse-hover(x, y);
+                    }
+                    mouse-released() => {
+                        root.mouse-released();
+                    }
+                    mouse-scrolled(x, y, dx, dy, ctrl, shift, alt, meta) => {
+                        root.mouse-scrolled(x, y, dx, dy, ctrl, shift, alt, meta);
+                    }
+                    ime-committed(text) => {
+                        root.ime-committed(text);
+                    }
                 }
-                mouse-pressed-right(x, y) => {
-                    root.mouse-pressed-right(x, y);
-                }
-                mouse-pressed-middle(x, y) => {
-                    root.mouse-pressed-middle(x, y);
-                }
-                mouse-moved(x, y) => {
-                    root.mouse-moved(x, y);
-                }
-                mouse-hover(x, y) => {
-                    root.mouse-hover(x, y);
-                }
-                mouse-released() => {
-                    root.mouse-released();
-                }
-                mouse-scrolled(x, y, dx, dy, ctrl, shift, alt, meta) => {
-                    root.mouse-scrolled(x, y, dx, dy, ctrl, shift, alt, meta);
-                }
-                ime-committed(text) => {
-                    root.ime-committed(text);
+
+                if root.db-has-tab : DatabaseDataView {
+                    width: 100%;
+                    height: 100%;
+                    tabs: root.db-tabs;
+                    columns: root.db-columns;
+                    rows: root.db-rows;
+                    grid-filter <=> root.db-filter-text;
+                    status: root.db-status;
+                    status-error: root.db-status-error;
+                    truncated: root.db-truncated;
+                    row-count: root.db-row-count;
+                    elapsed: root.db-elapsed;
+                    page-info: root.db-page-info;
+                    can-edit: root.db-can-edit;
+                    pending-count: root.db-pending-count;
+                    busy: root.db-busy;
+                    connected: root.db-connected;
+                    selected-row: root.db-selected-row;
+                    selected-col: root.db-selected-col;
+                    can-prev-page: root.db-can-prev-page;
+                    can-next-page: root.db-can-next-page;
+                    tab-selected(i) => { root.db-tab-selected(i); }
+                    tab-closed(i) => { root.db-tab-closed(i); }
+                    sort-clicked(c) => { root.db-sort-clicked(c); }
+                    filter-accepted => { root.db-filter-accepted(); }
+                    grid-select(r, c) => { root.db-grid-select(r, c); }
+                    grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
+                    grid-action(a) => { root.db-grid-action(a); }
+                    col-resized(c, d) => { root.db-col-resized(c, d); }
+                    toolbar(a) => { root.db-toolbar(a); }
                 }
             }
 
@@ -738,60 +777,7 @@ export component AppWindow inherits Window {
                 manage-providers => { root.agent-manage-providers(); }
             }
 
-            // Vertical handle between the Agent dock and the Database tool.
-            if root.agent-open && root.db-open : Rectangle {
-                height: 5px;
-                TouchArea {
-                    mouse-cursor: ns-resize;
-                    moved => {
-                        root.db-resized(self.pressed-y - self.mouse-y);
-                    }
-                }
-            }
-
-            if root.db-open && root.agent-open : DatabasePanel {
-                width: root.agent-dock-width;
-                sources: root.db-sources;
-                active-source: root.db-active-source;
-                connected: root.db-connected;
-                connection-label: root.db-connected-label;
-                busy: root.db-busy;
-                querying: root.db-querying;
-                tree: root.db-tree;
-                tree-filter <=> root.db-tree-filter;
-                tree-filter-active: root.db-tree-filter-active;
-                grid-filter <=> root.db-filter-text;
-                tabs: root.db-tabs;
-                grid-title: root.db-grid-title;
-                columns: root.db-columns;
-                rows: root.db-rows;
-                status: root.db-status;
-                status-error: root.db-status-error;
-                truncated: root.db-truncated;
-                row-count: root.db-row-count;
-                elapsed: root.db-elapsed;
-                page-info: root.db-page-info;
-                can-edit: root.db-can-edit;
-                pending-count: root.db-pending-count;
-                has-tab: root.db-has-tab;
-                explorer-width: root.db-explorer-width;
-                source-changed(v) => { root.db-source-changed(v); }
-                toolbar(a) => { root.db-toolbar(a); }
-                tree-clicked(k) => { root.db-tree-clicked(k); }
-                tree-opened(k) => { root.db-tree-opened(k); }
-                tree-context(k, x, y) => { root.db-tree-context(k, x, y); }
-                tree-filter-edited => { root.db-tree-filter-edited(); }
-                tab-selected(i) => { root.db-tab-selected(i); }
-                tab-closed(i) => { root.db-tab-closed(i); }
-                sort-clicked(c) => { root.db-sort-clicked(c); }
-                filter-accepted => { root.db-filter-accepted(); }
-                grid-select(r, c) => { root.db-grid-select(r, c); }
-                grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
-                grid-action(a) => { root.db-grid-action(a); }
-                col-resized(c, d) => { root.db-col-resized(c, d); }
-                explorer-resized(d) => { root.db-explorer-resized(d); }
-            }
-            if root.db-open && !root.agent-open : DatabasePanel {
+            if root.db-open : DatabasePanel {
                 vertical-stretch: 1;
                 width: root.agent-dock-width;
                 sources: root.db-sources;
@@ -803,36 +789,12 @@ export component AppWindow inherits Window {
                 tree: root.db-tree;
                 tree-filter <=> root.db-tree-filter;
                 tree-filter-active: root.db-tree-filter-active;
-                grid-filter <=> root.db-filter-text;
-                tabs: root.db-tabs;
-                grid-title: root.db-grid-title;
-                columns: root.db-columns;
-                rows: root.db-rows;
-                status: root.db-status;
-                status-error: root.db-status-error;
-                truncated: root.db-truncated;
-                row-count: root.db-row-count;
-                elapsed: root.db-elapsed;
-                page-info: root.db-page-info;
-                can-edit: root.db-can-edit;
-                pending-count: root.db-pending-count;
-                has-tab: root.db-has-tab;
-                explorer-width: root.db-explorer-width;
                 source-changed(v) => { root.db-source-changed(v); }
                 toolbar(a) => { root.db-toolbar(a); }
                 tree-clicked(k) => { root.db-tree-clicked(k); }
                 tree-opened(k) => { root.db-tree-opened(k); }
                 tree-context(k, x, y) => { root.db-tree-context(k, x, y); }
                 tree-filter-edited => { root.db-tree-filter-edited(); }
-                tab-selected(i) => { root.db-tab-selected(i); }
-                tab-closed(i) => { root.db-tab-closed(i); }
-                sort-clicked(c) => { root.db-sort-clicked(c); }
-                filter-accepted => { root.db-filter-accepted(); }
-                grid-select(r, c) => { root.db-grid-select(r, c); }
-                grid-edit-committed(r, c, t) => { root.db-grid-edit-committed(r, c, t); }
-                grid-action(a) => { root.db-grid-action(a); }
-                col-resized(c, d) => { root.db-col-resized(c, d); }
-                explorer-resized(d) => { root.db-explorer-resized(d); }
             }
 
             RightRail {
@@ -942,7 +904,6 @@ export component AppWindow inherits Window {
         y: Math.min(root.context-menu-y, parent.height - root.context-menu-h - 8px).max(4px);
         items: root.context-items;
         activated(cmd) => {
-            root.context-dismissed();
             root.context-command(cmd);
         }
     }

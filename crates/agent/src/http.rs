@@ -29,8 +29,8 @@ pub fn post_json(
             ureq::Error::Status(code, resp) => {
                 let mut text = String::new();
                 use std::io::Read as _;
-                let _ = std::io::Read::take(resp.into_reader(), 4096)
-                    .read_to_string(&mut text);
+                logging::LogErr::log_err(std::io::Read::take(resp.into_reader(), 4096)
+                    .read_to_string(&mut text));
                 format!("HTTP {code}: {}", text.trim())
             }
             other => other.to_string(),
@@ -51,7 +51,7 @@ pub fn get_json(
         ureq::Error::Status(code, resp) => {
             let mut text = String::new();
             use std::io::Read as _;
-            let _ = std::io::Read::take(resp.into_reader(), 4096).read_to_string(&mut text);
+            logging::LogErr::log_err(std::io::Read::take(resp.into_reader(), 4096).read_to_string(&mut text));
             format!("HTTP {code}: {}", text.trim())
         }
         other => other.to_string(),

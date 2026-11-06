@@ -60,7 +60,7 @@ fn simple_list_catalog(
 ) -> Result<Vec<ModelInfo>, String> {
     match http::get_json(list_url, &bearer_headers(cred), TIMEOUT) {
         Ok((_, raw)) => parse_openai_models(&raw),
-        Err(_) => Ok(fallback_models(GENERIC_HINTS, fallback_ids)),
+        Err(e) => { logging::error!("providers.rs:63: {e}"); Ok(fallback_models(GENERIC_HINTS, fallback_ids)) }
     }
 }
 

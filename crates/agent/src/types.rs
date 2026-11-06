@@ -41,6 +41,8 @@ pub struct TranscriptEntry {
 pub enum EntryKind {
     /// A reasoning/plan step.
     Thought(String),
+    /// A user message in a multi-turn conversation.
+    User(String),
     /// A command the agent dispatched.
     Action {
         command: String,
@@ -192,6 +194,38 @@ impl AgentManager {
 
     pub fn note_thought(&mut self, id: u64, thought: &str) {
         self.note_transcript(id, EntryKind::Thought(thought.to_string()));
+    }
+
+    pub fn note_user(&mut self, id: u64, prompt: &str) {
+        if let Some(s) = self.sessions.get_mut(&id) {
+            let at_ms = s.created.elapsed().as_millis() as u64;
+            s.transcript.push(TranscriptEntry {
+                at_ms,
+                kind: EntryKind::User(prompt.to_string()),
+            });
+        }
+    }
+
+    pub fn reopen_session(&mut self, id: u64, prompt: &str) -> bool {
+        let Some(s) = self.sessions.get_mut(&id) else {
+            return false;
+        };
+        s.status = AgentStatus::Running;
+        s.result = None;
+        s.error = None;
+        s.turns_left = MAX_TURNS;
+        s.pending = None;
+        s.queued_calls.clear();
+        let at_ms = s.created.elapsed().as_millis() as u64;
+        s.transcript.push(TranscriptEntry {
+            at_ms,
+            kind: EntryKind::User(prompt.to_string()),
+        });
+        s.messages.push(serde_json::json!({
+            "role": "user",
+            "content": prompt,
+        }));
+        true
     }
 
     pub fn note_action(&mut self, id: u64, command: &str, description: &str) {

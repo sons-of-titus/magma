@@ -47,6 +47,21 @@ pub fn start_session(ed: &mut Editor, prompt: &str) -> Result<u64, String> {
     Ok(session_id)
 }
 
+/// Continue an existing session with a follow-up user prompt.
+pub fn continue_session(ed: &mut Editor, session_id: u64, prompt: &str) -> Result<(), String> {
+    if !ed.agent.reopen_session(session_id, prompt) {
+        return Err(format!("agent: session {session_id} not found"));
+    }
+    let resolved = connections::resolve_chat(ed).ok();
+    if resolved.is_some() {
+        start_turn(ed, session_id)?;
+    } else {
+        let ctx = EditorContextProvider.gather(ed);
+        run_builtin_session(ed, session_id, prompt, &ctx)?;
+    }
+    Ok(())
+}
+
 // ── LLM loop ─────────────────────────────────────────────────────────────────
 
 /// Seed the chat transcript for a session.

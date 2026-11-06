@@ -15,6 +15,9 @@ fn agent_session<'a>(
     ed: &'a Editor,
     active: Option<u64>,
 ) -> (Option<&'a kernel::agent::AgentSession>, u64) {
+    if active == Some(0) {
+        return (None, 0);
+    }
     let latest = ed.agent.sessions.keys().copied().max().unwrap_or(0);
     let id = active
         .and_then(|a| ed.agent.sessions.get(&a).map(|_| a))
@@ -24,6 +27,9 @@ fn agent_session<'a>(
 
 /// The id backing the dock's current view (pinned or latest).
 pub fn active_session_id(ed: &Editor, active: Option<u64>) -> Option<u64> {
+    if active == Some(0) {
+        return None;
+    }
     let latest = ed.agent.sessions.keys().copied().max()?;
     Some(match active {
         Some(a) if ed.agent.sessions.contains_key(&a) => a,
@@ -101,6 +107,15 @@ pub fn agent_entries(
         let next_ms = session.transcript.get(i + 1).map(|e| e.at_ms);
         let elapsed = next_ms.map(format_elapsed).unwrap_or_default();
         match &entry.kind {
+            EntryKind::User(text) => out.push(AgentEntry {
+                kind: "user".into(),
+                text: text.clone().into(),
+                detail: "".into(),
+                status: "".into(),
+                elapsed: "".into(),
+                expanded: false,
+                idx: i as i32,
+            }),
             EntryKind::Thought(text) => out.push(AgentEntry {
                 kind: "thought".into(),
                 text: text.clone().into(),

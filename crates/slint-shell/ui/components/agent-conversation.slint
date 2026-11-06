@@ -413,6 +413,7 @@ export component AgentConversation inherits Rectangle {
     callback attach-file();
     callback attach-remove(int);
     callback manage-providers();
+    callback new-conversation();
 
     background: Theme.surface-panel;
 
@@ -442,6 +443,13 @@ export component AgentConversation inherits Rectangle {
                 : root.phase == "failed" ? Theme.danger
                 : root.phase == "completed" || root.phase == "stopped" ? Theme.success
                 : Theme.success;
+        }
+
+        IconButton {
+            y: (parent.height - self.height) / 2;
+            glyph: "\u{EA60}";
+            symbol: true;
+            clicked => { root.new-conversation(); }
         }
 
         IconButton {

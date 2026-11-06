@@ -45,17 +45,44 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 composed.push_str(&format!("--- {} ---\n{}\n\n", att.label, att.body));
             }
             composed.push_str(&prompt);
-            match kernel::agent::loop_::start_session(&mut s.editor, &composed) {
+
+            let active_id = projection::active_session_id(&s.editor, s.agent_active);
+            let can_continue = active_id
+                .and_then(|id| s.editor.agent.sessions.get(&id))
+                .map(|sess| {
+                    sess.status != kernel::agent::AgentStatus::Running
+                        && sess.status != kernel::agent::AgentStatus::WaitingApproval
+                })
+                .unwrap_or(false);
+
+            let res = if can_continue && active_id.is_some() {
+                let id = active_id.unwrap();
+                kernel::agent::loop_::continue_session(&mut s.editor, id, &composed).map(|()| id)
+            } else {
+                kernel::agent::loop_::start_session(&mut s.editor, &composed)
+            };
+            match res {
                 Ok(id) => {
-                    s.message = format!("agent session {id} started");
+                    s.message = format!("agent session {id}");
                     s.agent_open = true;
                     s.db_open = false;
                     s.agent_manage_open = false;
-                    // Follow the fresh session rather than a pinned old one.
-                    s.agent_active = None;
+                    s.agent_active = Some(id);
                 }
                 Err(e) => s.message = e,
             }
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_agent_new_session(move || {
+            let mut s = state.borrow_mut();
+            s.agent_active = Some(0);
+            s.agent_open = true;
+            s.agent_manage_open = false;
+            s.message = "started new conversation".into();
             refresh(&weak, &mut s);
         });
     }

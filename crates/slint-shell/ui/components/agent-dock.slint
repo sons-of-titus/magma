@@ -40,6 +40,7 @@ export component AgentDock inherits Rectangle {
     in property <string> send-blocked-reason: "";
 
     // ── Callbacks ────────────────────────────────────────────────────────
+    callback new-conversation();
     callback submit();
     callback stop();
     callback approve();
@@ -107,6 +108,7 @@ export component AgentDock inherits Rectangle {
         reasoning-choices: root.reasoning-choices;
         send-blocked-reason: root.send-blocked-reason;
 
+        new-conversation => { root.new-conversation(); }
         submit => { root.submit(); }
         stop => { root.stop(); }
         approve => { root.approve(); }

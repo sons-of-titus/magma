@@ -398,6 +398,7 @@ export component AppWindow inherits Window {
     callback debug-bp-remove(string, int);
     callback debug-bp-open(string, int);
     callback agent-toggle();
+    callback agent-new-session();
     callback agent-submit();
     callback agent-stop();
     callback agent-select-session(int);
@@ -756,6 +757,7 @@ export component AppWindow inherits Window {
                 phase-detail: root.agent-phase-detail;
                 approval-summary: root.agent-approval-summary;
                 files: root.agent-files;
+                new-conversation => { root.agent-new-session(); }
                 submit => { root.agent-submit(); }
                 stop => { root.agent-stop(); }
                 approve => { root.agent-approve(); }

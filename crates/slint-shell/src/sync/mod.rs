@@ -342,7 +342,7 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     };
     state.m_menu.set(items, |m| app.set_menu_items(m));
     if viewport_ready {
-        terminal::sync(&app, state, logical_w, ppx);
+        terminal::sync(&app, state, logical_w, ppx, state.bottom_height);
         overlays::sync(&app, state);
     }
 

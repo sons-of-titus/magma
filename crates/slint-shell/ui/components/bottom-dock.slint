@@ -206,6 +206,7 @@ export component TerminalView inherits Rectangle {
     in property <image> image;
     in property <[string]> sessions;
     in property <int> active-session: 0;
+    in property <length> body-height: 0px;
     callback new-session();
     callback terminal-focus(int);
     callback terminal-close(int);
@@ -256,7 +257,7 @@ export component TerminalView inherits Rectangle {
     if image.width > 0 : Image {
         y: root.tabs-h;
         width: 100%;
-        height: root.body-h;
+        height: root.body-height;
         source: root.image;
         image-fit: fill;
         image-rendering: smooth;
@@ -276,7 +277,7 @@ export component TerminalView inherits Rectangle {
     ScrollView {
         visible: root.text != "" && image.width == 0;
         y: root.tabs-h;
-        height: root.body-h;
+        height: root.body-height;
         Text {
             text: root.text;
             color: Theme.text-secondary;
@@ -622,6 +623,7 @@ export component BottomDock inherits Rectangle {
     in property <image> terminal-image;
     in property <[string]> terminal-sessions;
     in property <int> terminal-active: 0;
+    in property <length> terminal-body-height: 0px;
     in property <[FindRow]> find-rows;
     in-out property <string> find-query;
     in property <string> find-status: "";
@@ -666,7 +668,7 @@ export component BottomDock inherits Rectangle {
 
         resize-touch := TouchArea {
             mouse-cursor: ns-resize;
-            changed pressed-y => {
+            moved => {
                 if self.pressed {
                     root.resized(self.pressed-y - self.mouse-y);
                 }
@@ -735,6 +737,7 @@ export component BottomDock inherits Rectangle {
             image: root.terminal-image;
             sessions: root.terminal-sessions;
             active-session: root.terminal-active;
+            body-height: root.terminal-body-height;
             new-session => { root.terminal-new(); }
             terminal-focus(i) => { root.terminal-focus(i); }
             terminal-close(i) => { root.terminal-close(i); }

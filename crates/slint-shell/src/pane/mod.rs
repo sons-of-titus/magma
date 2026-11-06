@@ -14,8 +14,6 @@ use kernel::render::gpu_atlas::GpuGlyphAtlas;
 pub const CHAR_W: u32 = 7;
 pub const LINE_H: u32 = 17;
 
-/// Terminal dock inner height: the dock is 200px, its header 26px.
-pub const TERMINAL_DOCK_BODY_H: f32 = 174.0;
 pub const TERMINAL_TABS_H: f32 = 26.0;
 
 pub const MINIMAP_W: u32 = 90;
@@ -23,11 +21,11 @@ pub const MINIMAP_W: u32 = 90;
 /// Grid for the terminal body.  The dock spans the window width; the session
 /// tab strip is carved out of its height, and the body is rounded down to
 /// whole rows so the rendered texture is never scaled.
-pub fn terminal_grid_size(logical_w: f32, sessions: usize, cell_w: u32, cell_h: u32) -> (u32, u32) {
+pub fn terminal_grid_size(logical_w: f32, sessions: usize, cell_w: u32, cell_h: u32, available_h: f32) -> (u32, u32) {
     let tabs = if sessions > 0 { TERMINAL_TABS_H } else { 0.0 };
     let cell_w = cell_w.max(1) as f32;
     let cell_h = cell_h.max(1) as f32;
-    let body = (TERMINAL_DOCK_BODY_H - tabs).max(cell_h);
+    let body = (available_h - tabs).max(cell_h);
     (
         (logical_w / cell_w).floor().max(1.0) as u32,
         (body / cell_h).floor().max(1.0) as u32,

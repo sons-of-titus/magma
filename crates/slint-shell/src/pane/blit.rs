@@ -976,8 +976,8 @@ mod tests {
 
     #[test]
     fn terminal_grid_reserves_the_jetbrains_tab_strip() {
-        assert_eq!(super::super::terminal_grid_size(800.0, 0, 7, 17), (114, 10));
-        assert_eq!(super::super::terminal_grid_size(800.0, 1, 7, 17), (114, 8));
+        assert_eq!(super::super::terminal_grid_size(800.0, 0, 7, 17, 174.0), (114, 10));
+        assert_eq!(super::super::terminal_grid_size(800.0, 1, 7, 17, 174.0), (114, 8));
     }
 
     #[test]

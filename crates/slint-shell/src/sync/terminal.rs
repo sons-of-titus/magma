@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::{AppState, AppWindow, pane, theme};
 
-pub(super) fn sync(app: &AppWindow, state: &mut AppState, logical_w: f32, ppx: f32) {
+pub(super) fn sync(app: &AppWindow, state: &mut AppState, logical_w: f32, ppx: f32, dock_h: f32) {
     let ed = &mut state.editor;
     // terminal sessions
     {
@@ -33,8 +33,10 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState, logical_w: f32, ppx: f
     // terminal image (styled, device resolution)
     {
         let session_count = ed.io.terminals.sessions.len();
+        let term_view_h = (dock_h - 35.0).max(1.0);
         let (term_cols, term_rows) =
-            pane::terminal_grid_size(logical_w, session_count, state.cell_w, state.cell_h);
+            pane::terminal_grid_size(logical_w, session_count, state.cell_w, state.cell_h, term_view_h);
+        app.set_terminal_body_height(term_rows as f32 * state.cell_h as f32);
         let term_id = ed
             .io
             .terminals

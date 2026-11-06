@@ -85,6 +85,13 @@ pub enum Event {
         buf_key: Option<usize>,
         revision: u64,
     },
+    /// Parsed `textDocument/references` locations.
+    References {
+        path: String,
+        locations: Vec<(String, usize, usize, usize, usize)>,
+        buf_key: Option<usize>,
+        revision: u64,
+    },
     /// Parsed rename result (WorkspaceEdit JSON).
     RenameResult {
         path: String,

@@ -964,6 +964,11 @@ Request completion items at the cursor position. Response via `lsp-completion-it
 
 Request a rename of the symbol under the cursor. Response via `lsp-rename-result` event.
 
+### `(lsp/references language-id &opt include-declaration)` → nil
+
+Request the symbol's references at the cursor; `include-declaration` defaults to
+true. Response via `lsp-references` event.
+
 ### `(lsp/apply-edit edit-json)` → nil
 
 Apply a WorkspaceEdit JSON object to open buffers.

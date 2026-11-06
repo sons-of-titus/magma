@@ -30,7 +30,9 @@ use serde_json::{Value, json};
 use crate::lsp_proto;
 
 pub use event::{Event, EventSink};
-pub use protocol::{extract_hover_text, first_location, is_cancellation, parse_diagnostics};
+pub use protocol::{
+    all_locations, extract_hover_text, first_location, is_cancellation, parse_diagnostics,
+};
 pub use registry::LspRegistry;
 pub use semantic_tokens::{SemanticLegend, SemanticToken, decode_semantic_tokens};
 

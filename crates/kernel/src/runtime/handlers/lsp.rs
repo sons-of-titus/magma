@@ -5,6 +5,7 @@ use crate::event::keys;
 use crate::event::payload::*;
 use crate::state::Editor;
 use crate::state::overlay;
+use crate::task::QuickfixEntry;
 
 use super::super::BackgroundEvent;
 
@@ -338,6 +339,14 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
                 },
             );
         }
+        Event::References {
+            path,
+            locations,
+            buf_key,
+            revision,
+        } if revision_current(ed, buf_key, revision) => {
+            apply_lsp_references(ed, &path, &locations);
+        }
         Event::RenameResult {
             path,
             edit,
@@ -392,4 +401,67 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
         // Revision-gated arms fall through here when the buffer moved on.
         _ => {}
     }
+}
+
+fn apply_lsp_references(
+    ed: &mut Editor,
+    language: &str,
+    locations: &[(String, usize, usize, usize, usize)],
+) {
+    let mut entries = Vec::with_capacity(locations.len());
+    for (uri, line, col, _el, _ec) in locations {
+        let path = crate::semantic::lsp_proto::uri_to_path(uri);
+        let byte_col = reference_col(ed, &path, *line, *col);
+        entries.push(QuickfixEntry {
+            filename: path,
+            line: *line + 1,
+            col: byte_col + 1,
+            message: "reference".to_string(),
+            severity: crate::semantic::provider::DiagnosticSeverity::Info,
+        });
+    }
+
+    let count = entries.len();
+    ed.search.set_results(entries);
+    ed.quickfix_focus = crate::task::QuickfixList::Search;
+    ed.ui_requests.push("project-find".to_string());
+    ed.frame_dirty = true;
+
+    let locations_json = serde_json::to_string(&locations.iter().map(|(uri, sl, sc, el, ec)| {
+        serde_json::json!({
+            "uri": uri,
+            "path": crate::semantic::lsp_proto::uri_to_path(uri),
+            "start-line": sl,
+            "start-col": sc,
+            "end-line": el,
+            "end-col": ec,
+        })
+    }).collect::<Vec<_>>()).unwrap_or_else(|_| "[]".to_string());
+    ed.events.emit_typed(
+        keys::events::LSP_REFERENCES,
+        LspReferencesPayload {
+            path: language.to_string(),
+            locations: locations_json,
+        },
+    );
+
+    ed.show_message(
+        crate::state::MessageKind::Info,
+        if count == 0 {
+            "no references found".to_string()
+        } else {
+            format!("{count} reference(s)")
+        },
+    );
+}
+
+fn reference_col(ed: &Editor, path: &str, line: usize, utf16_col: usize) -> usize {
+    for (_, arc) in ed.buffers.iter() {
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        if buf.path.as_deref() == Some(path) {
+            return crate::semantic::edit_apply::offset_of_lsp_position(&buf, line, utf16_col)
+                .saturating_sub(buf.line_start_offset(line).unwrap_or(0));
+        }
+    }
+    utf16_col
 }

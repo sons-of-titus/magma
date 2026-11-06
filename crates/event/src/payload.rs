@@ -96,6 +96,7 @@ event_payload!(LspProgressPayload {
     message,
     percentage
 });
+event_payload!(LspReferencesPayload { path, locations });
 event_payload!(LspRenameResultPayload { path, edit });
 event_payload!(LspResponsePayload {
     path,

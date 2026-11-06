@@ -197,6 +197,12 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                         buf_key: p.buf_key,
                         revision: p.revision,
                     },
+                    "textDocument/references" => Event::References {
+                        path: language_id.to_string(),
+                        locations: result.as_ref().map(all_locations).unwrap_or_default(),
+                        buf_key: p.buf_key,
+                        revision: p.revision,
+                    },
                     "textDocument/rename" => Event::RenameResult {
                         path: language_id.to_string(),
                         edit: result
@@ -294,30 +300,21 @@ pub fn extract_hover_text(result: Option<&Value>) -> String {
     }
 }
 
-/// First `Location`/`LocationLink` from a definition response.
-pub fn first_location(result: &Value) -> Option<(String, usize, usize, usize, usize)> {
-    let arr = match result {
-        Value::Array(a) => a.first().cloned(),
-        Value::Object(_) => Some(result.clone()),
-        _ => None,
-    }?;
-    let target = arr
+/// One `Location`/`LocationLink` decoded as `(uri, start line/col, end line/col)`.
+/// Columns stay UTF-16 as the server sent them.
+fn parse_location(value: &Value) -> Option<(String, usize, usize, usize, usize)> {
+    let target = value
         .get("targetSelectionRange")
-        .or_else(|| arr.get("targetUri").map(|_| &arr))
-        .unwrap_or(&arr);
+        .or_else(|| value.get("targetUri").map(|_| value))
+        .unwrap_or(value);
     let uri = target
         .get("uri")
-        .or_else(|| arr.get("uri"))?
+        .or_else(|| value.get("uri"))?
         .as_str()?
         .to_string();
-    let start = target
-        .get("range")
-        .or_else(|| arr.get("range"))?
-        .get("start")?;
-    let end = target
-        .get("range")
-        .or_else(|| arr.get("range"))?
-        .get("end")?;
+    let range = target.get("range").or_else(|| value.get("range"))?;
+    let start = range.get("start")?;
+    let end = range.get("end")?;
     Some((
         uri,
         start.get("line").and_then(Value::as_u64)? as usize,
@@ -325,6 +322,26 @@ pub fn first_location(result: &Value) -> Option<(String, usize, usize, usize, us
         end.get("line").and_then(Value::as_u64)? as usize,
         end.get("character").and_then(Value::as_u64)? as usize,
     ))
+}
+
+/// First `Location`/`LocationLink` from a definition response.
+pub fn first_location(result: &Value) -> Option<(String, usize, usize, usize, usize)> {
+    let arr = match result {
+        Value::Array(a) => a.first().cloned(),
+        Value::Object(_) => Some(result.clone()),
+        _ => None,
+    }?;
+    parse_location(&arr)
+}
+
+/// All `Location`/`LocationLink` entries from a references/definition response.
+/// `Location[] | Location | null` all normalize to a list.
+pub fn all_locations(result: &Value) -> Vec<(String, usize, usize, usize, usize)> {
+    match result {
+        Value::Array(items) => items.iter().filter_map(parse_location).collect(),
+        Value::Object(_) => parse_location(result).into_iter().collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Typed diagnostics straight off `publishDiagnostics` params.

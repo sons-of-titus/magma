@@ -306,6 +306,27 @@ unsafe extern "C-unwind" fn c_lsp_rename(argc: i32, argv: *mut Janet) -> Janet {
     })
 }
 
+/// (lsp/references language-id &opt include-declaration) → nil
+unsafe extern "C-unwind" fn c_lsp_references(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let include_declaration = conv::get_bool(argc, argv, 1).unwrap_or(true);
+        request_at_cursor(
+            ed,
+            argc,
+            argv,
+            "textDocument/references",
+            |line, character| {
+                serde_json::json!({
+                    "textDocument": { "uri": "" },
+                    "position": { "line": line, "character": character },
+                    "context": { "includeDeclaration": include_declaration },
+                })
+            },
+        );
+        conv::nil()
+    })
+}
+
 /// Send a cursor-scoped request for the language in argv[0], filling in the
 /// focused buffer's URI and UTF-16 position.
 unsafe fn request_at_cursor(
@@ -459,6 +480,13 @@ pub fn register() -> Vec<JanetReg> {
             cfun: Some(c_lsp_rename as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation:
                 c"Request rename of the symbol at the cursor; response via lsp-rename-result event"
+                    .as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"lsp/references".as_ptr() as *const _,
+            cfun: Some(c_lsp_references as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation:
+                c"Request references for the symbol at the cursor; response via lsp-references event"
                     .as_ptr() as *const _,
         },
         JanetReg {

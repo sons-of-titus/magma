@@ -490,6 +490,7 @@ impl Response {
     }
 
     fn error(msg: &str, id: u64) -> Self {
+        logging::error!("server request {id}: {msg}");
         Response {
             ok: false,
             result: None,

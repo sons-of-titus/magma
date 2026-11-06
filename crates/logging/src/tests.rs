@@ -44,3 +44,14 @@ fn labels_match_their_levels() {
     assert_eq!(Level::Debug.label(), "DEBUG");
     assert_eq!(Level::Trace.label(), "TRACE");
 }
+
+#[test]
+fn file_sink_records_emitted_errors() {
+    let path = std::env::temp_dir().join(format!("magma-log-test-{}.log", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    crate::init_file(&path).unwrap();
+    crate::error!("sink probe {}", 42);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[ERROR]") && text.contains("sink probe 42"));
+    let _ = std::fs::remove_file(&path);
+}

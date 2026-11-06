@@ -204,6 +204,7 @@ pub(crate) mod conv {
 
     /// Signal a Janet error — diverges (longjmp back to VM).
     pub fn signal_err(msg: &str) -> ! {
+        logging::error!("{msg}");
         unsafe { janet_signalv(JanetSignal_JANET_SIGNAL_ERROR, string(msg)) }
     }
 }
@@ -403,6 +404,17 @@ pub use loader::take_builtin_load_errors;
 #[cfg(feature = "janet")]
 pub use runtime::JanetRuntime;
 
+#[cfg(feature = "janet")]
+pub(crate) unsafe fn describe_janet(value: evil_janet::Janet) -> String {
+    let s = unsafe { janet_description(value) };
+    if s.is_null() {
+        return "nil".to_string();
+    }
+    unsafe { std::ffi::CStr::from_ptr(s as *const i8) }
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// Evaluate a Janet expression.
 ///
 /// The caller must ensure `EDITOR_PTR` is set (it is set at `init` time and
@@ -434,6 +446,7 @@ pub fn eval_result(expr: &str) -> Result<String, String> {
             result.as_mut_ptr(),
         );
         if status != 0 {
+            logging::error!("Janet error in eval: {}", describe_janet(result.assume_init()));
             Err("Janet error in eval".to_string())
         } else {
             let v = result.assume_init();

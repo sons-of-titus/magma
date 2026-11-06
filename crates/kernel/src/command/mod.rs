@@ -122,6 +122,18 @@ pub fn execute_command(
     name: &str,
     args: &HashMap<String, ArgValue>,
 ) -> CommandResult {
+    let result = dispatch_command(editor, name, args);
+    if let Err(e) = &result {
+        logging::error!("command '{name}' failed: {e}");
+    }
+    result
+}
+
+fn dispatch_command(
+    editor: &mut Editor,
+    name: &str,
+    args: &HashMap<String, ArgValue>,
+) -> CommandResult {
     // Clone the Arc so the borrow on editor.commands ends before we call the handler.
     let (handler, resolved_args) = {
         let entry = editor.commands.get_entry(name);

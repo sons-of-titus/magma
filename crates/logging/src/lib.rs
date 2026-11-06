@@ -7,11 +7,17 @@
 //! `MAGMA_DEBUG` and `MAGMA_DEBUG_HTTP` remain supported: the former raises
 //! the level to `debug`, the latter additionally opens the HTTP channel.
 //!
+//! [`init_file`] adds a persistent sink: every emitted record is also
+//! appended to the file, and [`install_panic_hook`] routes panics through
+//! `error!` so crashes are recorded too.
+//!
 //! The `error!`/`warn!`/`info!`/`debug!`/`trace!` and `debug_http!` macros
 //! write to stderr through [`emit`]/[`emit_http`].
 
 use std::fmt;
-use std::sync::OnceLock;
+use std::io::Write;
+use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 #[macro_export]
@@ -125,9 +131,34 @@ pub fn enabled(level: Level) -> bool {
     max_level() >= level as u8
 }
 
+static FILE_SINK: Mutex<Option<std::fs::File>> = Mutex::new(None);
+
+pub fn init_file(path: &Path) -> std::io::Result<()> {
+    let file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    *FILE_SINK.lock().unwrap_or_else(|e| e.into_inner()) = Some(file);
+    Ok(())
+}
+
+pub fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        error!("panic in thread '{}': {info}", thread.name().unwrap_or("<unnamed>"));
+        previous(info);
+    }));
+}
+
 pub fn emit(level: Level, target: &str, args: fmt::Arguments<'_>) {
-    if enabled(level) {
-        eprintln!("[{}] {}: {}", level.label(), target, args);
+    if !enabled(level) {
+        return;
+    }
+    eprintln!("[{}] {}: {}", level.label(), target, args);
+    if let Some(file) = FILE_SINK.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(file, "{secs} [{}] {}: {}", level.label(), target, args);
     }
 }
 

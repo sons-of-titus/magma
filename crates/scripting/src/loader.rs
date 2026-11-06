@@ -28,6 +28,8 @@ pub(super) fn eval_string(name: &str, source: &str) -> Result<(), String> {
             result.as_mut_ptr(),
         );
         if status != 0 {
+            let detail = crate::describe_janet(result.assume_init());
+            logging::error!("Janet error in {name}: {detail}");
             Err(format!("Janet error in {name}"))
         } else {
             Ok(())
@@ -47,7 +49,8 @@ pub(super) fn load_builtin(name: &str, source: &str) {
             result.as_mut_ptr(),
         );
         if status != 0 {
-            debug!("Janet: error loading {name}");
+            let detail = crate::describe_janet(result.assume_init());
+            logging::error!("Janet: error loading {name}: {detail}");
             LOAD_ERRORS.with(|e| e.borrow_mut().push(name.to_string()));
         }
     }

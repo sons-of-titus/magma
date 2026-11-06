@@ -128,6 +128,9 @@ impl EventBus {
     /// would exceed [`MAX_CASCADE`] handler hops is also dropped: mutual
     /// handler emission must terminate.
     pub fn emit(&mut self, event_name: &str, data: EventData) {
+        if event_name.ends_with("-error") || event_name.ends_with("-failed") || event_name == "error" {
+            error!("event '{}': {}", event_name, data.get(keys::keys::ERROR).map(String::as_str).unwrap_or("(no message)"));
+        }
         if self.dispatching.iter().any(|(n, _)| n == event_name) {
             debug!("event bus: dropped re-entrant emit of '{}'", event_name);
             return;

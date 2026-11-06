@@ -509,9 +509,13 @@ impl Editor {
     /// user-facing feedback — command failures land here instead of being
     /// discarded.
     pub fn show_message(&mut self, kind: MessageKind, text: impl Into<String>) {
+        let text = text.into();
+        if kind == MessageKind::Error {
+            logging::error!("{text}");
+        }
         self.status_message = Some(StatusMessage {
             kind,
-            text: text.into(),
+            text,
             at: std::time::Instant::now(),
         });
     }

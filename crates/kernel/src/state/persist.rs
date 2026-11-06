@@ -11,6 +11,13 @@ pub fn state_dir() -> PathBuf {
     dir
 }
 
+fn write_logged(path: impl AsRef<std::path::Path>, content: impl AsRef<[u8]>) {
+    let path = path.as_ref();
+    if let Err(e) = std::fs::write(path, content) {
+        logging::error!("cannot write {}: {e}", path.display());
+    }
+}
+
 fn dirs_data_dir() -> PathBuf {
     // Follow XDG or fall back to ~/.magma
     if let Ok(dir) = std::env::var("MAGMA_DIR") {
@@ -62,7 +69,7 @@ pub fn save_command_history(history: &[String]) {
     let path = state_dir().join(HISTORY_FILE);
     let max = history.len().min(500);
     let content = history[history.len() - max..].join("\n");
-    let _ = std::fs::write(&path, &content);
+    write_logged(&path, &content);
 }
 
 // ── Marks persistence ────────────────────────────────────────────────
@@ -90,7 +97,7 @@ pub fn load_marks() -> Vec<PersistedMark> {
 pub fn save_marks(marks: &[PersistedMark]) {
     let path = state_dir().join(MARKS_FILE);
     if let Ok(content) = serde_json::to_string(marks) {
-        let _ = std::fs::write(&path, &content);
+        write_logged(&path, &content);
     }
 }
 
@@ -133,7 +140,7 @@ pub fn load_recent_projects() -> Vec<String> {
 /// Save recent project paths (MRU first) to the state directory.
 pub fn save_recent_projects(projects: &[String]) {
     let path = state_dir().join(RECENT_PROJECTS_FILE);
-    let _ = std::fs::write(&path, projects.join("\n"));
+    write_logged(&path, projects.join("\n"));
 }
 
 /// The most recently opened project that still exists on disk — the one to
@@ -338,7 +345,7 @@ fn write_private(path: &std::path::Path, content: &str) {
             return;
         }
     }
-    let _ = std::fs::write(path, content);
+    write_logged(path, content);
 }
 
 #[cfg(test)]

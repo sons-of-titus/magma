@@ -4,6 +4,9 @@
 //! frontend drains it each frame and opens the matching surface.  A
 //! frontend that ignores them (headless, tests) is simply never asked.
 
+use std::collections::HashMap;
+
+use crate::command::execute_command;
 use crate::command::CommandResult;
 use crate::state::Editor;
 
@@ -41,5 +44,27 @@ pub(super) fn register(editor: &mut Editor) {
     });
     cmds.register_fn("gui-branches", "Open the branch switcher", vec![], |ed, _| {
         request(ed, "branches")
+    });
+    cmds.register_fn("hover-close", "Dismiss the hover card", vec![], |ed, _| {
+        ed.hover = None;
+        Ok(())
+    });
+    cmds.register_fn("hover-go-to-definition", "Go to definition of the hovered symbol", vec![], |ed, _| {
+        let Some(card) = ed.hover.clone() else { return Ok(()); };
+        if let Some(view) = ed.view_of_buffer_mut(card.buf_key) {
+            view.cursor.offset = card.offset;
+        }
+        let args = HashMap::new();
+        let has_lsp = ed
+            .lsp
+            .language_for_buffer(card.buf_key)
+            .and_then(|lang| ed.lsp.get(&lang))
+            .is_some();
+        if has_lsp {
+            let _ = execute_command(ed, "lsp-go-to-definition", &args);
+        } else {
+            let _ = execute_command(ed, "goto-definition", &args);
+        }
+        Ok(())
     });
 }

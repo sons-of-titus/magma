@@ -28,7 +28,7 @@ import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint"
 import { PickerView, PickerRow } from "views/picker-view.slint";
 import { QuitView } from "views/quit-view.slint";
 import { NewProjectView, TemplateItem, TemplateVar } from "views/new-project-view.slint";
-import { HoverCard, CompletionPopup, QuickfixMenu, CompletionEntry } from "views/overlays.slint";
+import { HoverCard, CompletionPopup, QuickfixMenu, CompletionEntry, HoverLine } from "views/overlays.slint";
 import { WindowControls, WindowResizeEdges } from "components/window-chrome.slint";
 import { ComboBox, SpinBox } from "std-widgets.slint";
 export component AppWindow inherits Window {
@@ -224,7 +224,7 @@ export component AppWindow inherits Window {
     in property <bool> hover-visible: false;
     in property <length> hover-x: 0px;
     in property <length> hover-y: 0px;
-    in property <[string]> hover-lines;
+    in property <[HoverLine]> hover-lines;
 
     // ── Completion popup ─────────────────────────────────────────────────
     in property <bool> completion-visible: false;
@@ -318,6 +318,7 @@ export component AppWindow inherits Window {
     callback mouse-pressed-middle(length, length);
     callback mouse-moved(length, length);
     callback mouse-hover(length, length);
+    callback hover-card-hovered(bool);
     callback mouse-released();
     callback mouse-scrolled(length, length, length, length, bool, bool, bool, bool);
     callback ime-committed(string);
@@ -1037,6 +1038,9 @@ export component AppWindow inherits Window {
         hover-x: editor-pane.absolute-position.x + root.hover-x;
         hover-y: editor-pane.absolute-position.y + root.hover-y;
         hover-lines: root.hover-lines;
+        go-to-definition() => { root.command("hover-go-to-definition"); }
+        close() => { root.command("hover-close"); }
+        hover-hovered(hovered) => { root.hover-card-hovered(hovered); }
     }
 
     if root.completion-visible : CompletionPopup {

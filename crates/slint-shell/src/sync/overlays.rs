@@ -2,6 +2,7 @@
 //! minimap, breadcrumb option, dialog chrome, and the IME cursor anchor.
 
 use crate::{AppState, AppWindow, pane};
+use slint::ComponentHandle;
 
 /// Logical (x, y) of the focused pane's caret in editor-view coordinates.
 /// The header row and gutter offset the origin, and horizontal scroll pans
@@ -67,6 +68,16 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                         let arc = ed.buffers.get(buf_id)?;
                         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
                         let (ws, we) = kernel::input::mouse::word_range_at(&buf, offset)?;
+                        // Only hover when the pointer is directly over a word
+                        // character, so trailing whitespace never resurrects
+                        // the previous word's card.
+                        let line = buf.position_of(offset).line;
+                        let start = buf.line_start_offset(line).unwrap_or(0);
+                        let chars: Vec<char> = buf.slice(start, buf.line_start_offset(line + 1).unwrap_or(buf.len())).chars().collect();
+                        let ci = offset.saturating_sub(start);
+                        if !chars.get(ci).map(|c| c.is_alphanumeric() || *c == '_').unwrap_or(false) {
+                            return None;
+                        }
                         let diag_line = buf.position_of(offset).line;
                         let diag = buf
                             .get_diagnostics()
@@ -79,11 +90,43 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                 None
             };
 
+            // Pinning: keep an existing card alive while the pointer is over it
+            // or briefly over whitespace on its way to it; dismiss once the
+            // pointer rests on whitespace away from the card.
+            let mut skip_update = false;
+            if let Some(card) = ed.hover.clone() {
+                let card_w = 420.0f32;
+                let card_h = (card.lines.len() as f32 * 19.0 + 56.0).min(380.0);
+                let over_card = state.last_px >= card.px + 14.0
+                    && state.last_px <= card.px + 14.0 + card_w
+                    && state.last_py >= card.py + 20.0
+                    && state.last_py <= card.py + 20.0 + card_h;
+                if over_card {
+                    state.hover_none_since = None;
+                    skip_update = true;
+                } else if target.is_none() {
+                    let now = std::time::Instant::now();
+                    let since = state.hover_none_since.get_or_insert(now);
+                    if since.elapsed() < std::time::Duration::from_millis(300) {
+                        skip_update = true;
+                    } else {
+                        ed.hover = None;
+                        state.hover_none_since = None;
+                        skip_update = true;
+                    }
+                } else {
+                    state.hover_none_since = None;
+                }
+            } else {
+                state.hover_none_since = None;
+            }
+
             let same_word = matches!(
                 (&target, ed.hover.as_ref()),
                 (Some((w, _, _, _)), Some(card)) if &card.word == w
             );
-            if !same_word && let Some((_, _, offset, buf_id)) = &target {
+            if !skip_update {
+                if !same_word && let Some((_, _, offset, buf_id)) = &target {
                 // request LSP hover
                 if let Some(lang) = ed.lsp.language_for_buffer(*buf_id)
                     && let Some(server) = ed.lsp.get(&lang)
@@ -115,8 +158,10 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             let new_card = match (&target, ed.hover.as_ref()) {
                 (None, _) => None,
                 (Some(_), Some(card)) if Some(&card.word) == target.as_ref().map(|t| &t.0) => None,
-                (Some((w, diag, _, _)), _) => Some(kernel::state::HoverCard {
+                (Some((w, diag, offset, buf_id)), _) => Some(kernel::state::HoverCard {
                     word: w.clone(),
+                    buf_key: *buf_id,
+                    offset: *offset,
                     px: state.last_px,
                     py: state.last_py,
                     since: std::time::Instant::now(),
@@ -130,15 +175,24 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                             .take(3)
                             .collect();
                         if defs.is_empty() {
-                            lines.push(format!("{w} — no indexed definition"));
+                            lines.push(kernel::state::HoverLine {
+                                kind: "muted".into(),
+                                text: format!("{w} — no indexed definition"),
+                            });
                         }
                         for (path, sym) in defs {
                             let parts: Vec<&str> = path.rsplit('/').take(2).collect();
                             let short = parts.iter().rev().copied().collect::<Vec<_>>().join("/");
-                            lines.push(format!("{} {w}  ·  {short}:{}", sym.kind, sym.line + 1));
+                            lines.push(kernel::state::HoverLine {
+                                kind: "muted".into(),
+                                text: format!("{} {w}  ·  {short}:{}", sym.kind, sym.line + 1),
+                            });
                         }
                         if let Some(d) = diag {
-                            lines.push(d.clone());
+                            lines.push(kernel::state::HoverLine {
+                                kind: "muted".into(),
+                                text: d.clone(),
+                            });
                         }
                         lines
                     },
@@ -149,6 +203,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             } else if let Some(card) = new_card {
                 ed.hover = Some(card);
             }
+            } // skip_update
         } else if !state.hovering {
             ed.hover = None;
         }
@@ -165,10 +220,25 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
             .unwrap_or(false);
         app.set_hover_visible(show);
         if let Some(card) = &ed.hover {
-            app.set_hover_x(card.px as f32 + 14.0);
-            app.set_hover_y(card.py as f32 + 20.0);
-            let lines: Vec<slint::SharedString> =
-                card.lines.iter().map(|l| l.as_str().into()).collect();
+            let (lw, lh) = {
+                let size = app.window().size();
+                let scale = app.window().scale_factor().max(1.0);
+                (size.width as f32 / scale, size.height as f32 / scale)
+            };
+            let card_w = 420.0f32;
+            let card_h = (card.lines.len() as f32 * 19.0 + 56.0).min(380.0);
+            let x = (card.px + 14.0).clamp(8.0, (lw - card_w - 8.0).max(8.0));
+            let y = (card.py + 20.0).clamp(8.0, (lh - card_h - 8.0).max(8.0));
+            app.set_hover_x(x);
+            app.set_hover_y(y);
+            let lines: Vec<crate::HoverLine> = card
+                .lines
+                .iter()
+                .map(|l| crate::HoverLine {
+                    text: l.text.as_str().into(),
+                    kind: l.kind.as_str().into(),
+                })
+                .collect();
             state.m_hover_lines.set(lines, |m| app.set_hover_lines(m));
         }
     }

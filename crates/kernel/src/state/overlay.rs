@@ -29,6 +29,58 @@ pub struct LayoutSnapshot {
     pub visible_lines: usize,
 }
 
+use crate::state::HoverLine;
+
+/// Flatten a server hover Markdown response into tagged lines: fenced code
+/// blocks become `code` lines (fence markers and language tags dropped),
+/// headings become `heading`, bullets become `•`, and inline markup is
+/// stripped so backticks never leak into the card.
+pub fn parse_hover_markdown(contents: &str) -> Vec<HoverLine> {
+    let mut out: Vec<HoverLine> = Vec::new();
+    let mut in_code = false;
+    for raw in contents.lines() {
+        let trimmed = raw.trim_end();
+        let fence = trimmed.trim_start();
+        if fence.starts_with("```") {
+            in_code = !in_code;
+            continue;
+        }
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        let kind = if in_code {
+            "code"
+        } else if fence.starts_with('#') {
+            "heading"
+        } else {
+            "text"
+        };
+        let mut text = trimmed.to_string();
+        // Strip inline markup markers so they never show verbatim.
+        text = text.replace('`', "");
+        text = text.replace("**", "");
+        text = text.replace("__", "");
+        text = text.replace('*', "");
+        text = text.replace('_', "");
+        let t = text.trim_start();
+        if t.starts_with('#') {
+            text = t.trim_start_matches('#').trim_start().to_string();
+        }
+        let t = text.trim_start();
+        if let Some(rest) = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")) {
+            text = format!("• {}", rest);
+        }
+        out.push(HoverLine {
+            kind: kind.into(),
+            text,
+        });
+    }
+    while out.last().map(|l| l.text.is_empty()).unwrap_or(false) {
+        out.pop();
+    }
+    out
+}
+
 /// Splice server hover text into the visible hover card (server text
 /// first), or surface it as a status message when no card is showing —
 /// that is the manual `lsp-hover` path.  Called from the event pump.
@@ -40,12 +92,7 @@ pub fn attach_lsp_hover(ed: &mut crate::state::Editor, buf_key: usize, contents:
     if focused == Some(buf_key)
         && let Some(card) = ed.hover.as_mut()
     {
-        let mut lines: Vec<String> = contents
-            .lines()
-            .map(str::trim_end)
-            .filter(|l| !l.is_empty())
-            .map(str::to_string)
-            .collect();
+        let mut lines = parse_hover_markdown(contents);
         lines.append(&mut card.lines);
         card.lines = lines;
         return;

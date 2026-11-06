@@ -13,7 +13,7 @@ use kernel::workspace::WorkspaceRuntime;
 
 use crate::actions::picker;
 use crate::sync;
-use crate::{CompletionEntry, DbCell, DbGridColumn, DbTreeRow, FindRow, GitHistoryRow, MenuItem, OutputLine, ProblemRow, ProgressTask, TabItem, TemplateItem, TemplateVar, TreeItem, WelcomeWindow};
+use crate::{CompletionEntry, DbCell, DbGridColumn, DbTreeRow, FindRow, GitHistoryRow, HoverLine, MenuItem, OutputLine, ProblemRow, ProgressTask, TabItem, TemplateItem, TemplateVar, TreeItem, WelcomeWindow};
 use crate::context;
 
 use crate::new_project;
@@ -138,6 +138,8 @@ pub(crate) struct AppState {
     pub(crate) last_px: f32,
     pub(crate) last_py: f32,
     pub(crate) hovering: bool,
+    pub(crate) hover_card_hovered: bool,
+    pub(crate) hover_none_since: Option<std::time::Instant>,
     /// The active picker surface (Go to File/Symbol, buffers, palette,
     /// prompts).  `None` while hidden.
     pub(crate) picker: picker::PickerKind,
@@ -197,7 +199,7 @@ pub(crate) struct AppState {
     pub(crate) m_new_project_templates: sync::ModelGate<TemplateItem>,
     pub(crate) m_new_project_vars: sync::ModelGate<TemplateVar>,
     pub(crate) m_new_project_languages: sync::ModelGate<slint::SharedString>,
-    pub(crate) m_hover_lines: sync::ModelGate<slint::SharedString>,
+    pub(crate) m_hover_lines: sync::ModelGate<HoverLine>,
     pub(crate) m_completion_entries: sync::ModelGate<CompletionEntry>,
     pub(crate) m_quickfix_items: sync::ModelGate<slint::SharedString>,
     pub(crate) m_db_sources: sync::ModelGate<slint::SharedString>,

@@ -46,6 +46,14 @@ fn test_hover_text_markdown() {
 }
 
 #[test]
+fn parse_hover_markdown_strips_fences() {
+    use crate::kernel::state::overlay::parse_hover_markdown;
+    let out = parse_hover_markdown("```rust\nfn foo()\n```\ndoes a thing");
+    assert!(out.iter().any(|l| l.kind == "code" && l.text == "fn foo()"));
+    assert!(out.iter().any(|l| l.text.contains("does a thing")));
+    assert!(out.iter().all(|l| !l.text.contains("```")));
+}
+#[test]
 fn test_hover_text_plain_and_null() {
     let result = json!({"contents": "plain string"});
     assert_eq!(lsp::extract_hover_text(Some(&result)), "plain string");
@@ -231,7 +239,7 @@ fn test_initialize_params_shape() {
 #[test]
 fn lsp_hover_splices_into_visible_card() {
     use crate::kernel::runtime::{process_background_event, BackgroundEvent};
-    use crate::kernel::state::{HoverCard, MessageKind};
+    use crate::kernel::state::{HoverCard, HoverLine, MessageKind};
     use crate::tests::helpers;
 
     let mut ed = helpers::make_editor_with_buffer("fn foo() {}");
@@ -239,7 +247,9 @@ fn lsp_hover_splices_into_visible_card() {
     ed.hover = Some(HoverCard {
         word: "foo".into(), px: 10.0, py: 10.0,
         since: std::time::Instant::now(),
-        lines: vec!["function foo  ·  lib.rs:1".into()],
+        lines: vec![HoverLine { kind: "text".into(), text: "function foo  ·  lib.rs:1".into() }],
+        buf_key: key,
+        offset: 0,
     });
     let rev = ed.buffers.get(key).unwrap().lock().unwrap().revision();
 
@@ -252,9 +262,9 @@ fn lsp_hover_splices_into_visible_card() {
         }));
 
     let card = ed.hover.as_ref().expect("card survives the splice");
-    assert!(card.lines.iter().take(2).any(|l| l.contains("fn foo()")),
+    assert!(card.lines.iter().take(2).any(|l| l.text.contains("fn foo()")),
         "server text leads the card: {:?}", card.lines);
-    assert!(card.lines.iter().any(|l| l.contains("lib.rs:1")),
+    assert!(card.lines.iter().any(|l| l.text.contains("lib.rs:1")),
         "index lines follow: {:?}", card.lines);
     assert!(ed.status_message.is_none(), "no status spam while a card is up");
     let _ = MessageKind::Info;
@@ -284,7 +294,7 @@ fn lsp_hover_without_card_becomes_a_status_message() {
 #[test]
 fn stale_lsp_hover_is_dropped() {
     use crate::kernel::runtime::{process_background_event, BackgroundEvent};
-    use crate::kernel::state::HoverCard;
+    use crate::kernel::state::{HoverCard, HoverLine};
     use crate::tests::helpers;
 
     let mut ed = helpers::make_editor_with_buffer("fn foo() {}");
@@ -292,7 +302,9 @@ fn stale_lsp_hover_is_dropped() {
     ed.hover = Some(HoverCard {
         word: "foo".into(), px: 0.0, py: 0.0,
         since: std::time::Instant::now(),
-        lines: vec!["index only".into()],
+        lines: vec![HoverLine { kind: "text".into(), text: "index only".into() }],
+        buf_key: key,
+        offset: 0,
     });
 
     process_background_event(&mut ed, BackgroundEvent::Lsp(
@@ -303,7 +315,7 @@ fn stale_lsp_hover_is_dropped() {
             revision: 999_999, // buffer has moved on
         }));
     let card = ed.hover.as_ref().unwrap();
-    assert!(card.lines.iter().all(|l| !l.contains("stale")),
+    assert!(card.lines.iter().all(|l| !l.text.contains("stale")),
         "responses for superseded revisions never render");
 }
 

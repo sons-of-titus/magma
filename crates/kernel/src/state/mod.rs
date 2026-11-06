@@ -105,11 +105,25 @@ impl Default for MouseState {
     }
 }
 
+/// One rendered line of a hover card, tagged with a presentation kind so
+/// the GUI can style code blocks, headings, and index hits differently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverLine {
+    /// Presentation kind: "text", "code", "heading", or "muted".
+    pub kind: String,
+    /// The line's display text (Markdown already flattened).
+    pub text: String,
+}
+
 /// A hover card: code info shown near the pointer after it rests on a word.
 #[derive(Debug, Clone)]
 pub struct HoverCard {
     /// The word under the pointer when the card was created.
     pub word: String,
+    /// Buffer the hover refers to.
+    pub buf_key: usize,
+    /// Byte offset of the hovered word in that buffer.
+    pub offset: usize,
     /// Pointer position in pixels (GUI layer coordinates).
     pub px: f32,
     pub py: f32,
@@ -118,7 +132,7 @@ pub struct HoverCard {
     pub since: std::time::Instant,
     /// Ready-to-render lines: declaration kind/name, definition sites,
     /// diagnostics on the line.
-    pub lines: Vec<String>,
+    pub lines: Vec<HoverLine>,
 }
 
 /// Severity of a transient status-bar message.

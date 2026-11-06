@@ -1,4 +1,5 @@
 import { Theme } from "../theme.slint";
+import { ScrollView } from "std-widgets.slint";
 
 export struct CompletionEntry {
     label: string,
@@ -6,30 +7,107 @@ export struct CompletionEntry {
     detail: string,
 }
 
+export struct HoverLine {
+    text: string,
+    kind: string,
+}
+
 export component HoverCard inherits Rectangle {
     in property <length> hover-x: 0px;
     in property <length> hover-y: 0px;
-    in property <[string]> hover-lines;
+    in property <[HoverLine]> hover-lines;
+    callback go-to-definition();
+    callback close();
+    callback hover-hovered(bool);
 
     x: root.hover-x;
     y: root.hover-y;
-    width: 260px;
-    height: (root.hover-lines.length * 18px + 10px);
+    width: 420px;
+    height: (root.hover-lines.length * 19px + 72px).min(400px);
     background: Theme.chrome;
-    border-radius: 6px;
+    border-radius: 8px;
     border-width: 1px;
     border-color: Theme.fill;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000060;
 
     VerticalLayout {
-        padding: 6px;
-        spacing: 2px;
-        for line in root.hover-lines : Text {
-            text: line;
-            color: Theme.text-secondary;
-            font-size: 11px;
-            wrap: word-wrap;
+        padding: 8px;
+        spacing: 4px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            height: (root.hover-lines.length * 19px + 4px).min(320px);
+
+            VerticalLayout {
+                spacing: 2px;
+                for line in root.hover-lines : Rectangle {
+                    height: line-text.preferred-height + 4px;
+                    background: line.kind == "code" ? Theme.fill-muted : transparent;
+                    border-radius: line.kind == "code" ? 4px : 0px;
+
+                    line-text := Text {
+                        x: 6px;
+                        y: 2px;
+                        width: parent.width - 12px;
+                        text: line.text;
+                        color: line.kind == "heading" ? Theme.text-primary
+                             : line.kind == "muted" ? Theme.text-secondary
+                             : line.kind == "code" ? Theme.text-primary
+                             : Theme.text-secondary;
+                        font-size: 11px;
+                        font-weight: line.kind == "heading" ? 700 : 400;
+                        font-family: line.kind == "code" ? "monospace" : "";
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        // ── Footer actions ─────────────────────────────────────────────
+        Rectangle { height: 1px; background: Theme.fill; }
+        HorizontalLayout {
+            spacing: 6px;
+            padding-top: 4px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Rectangle {
+                width: 110px;
+                height: 22px;
+                border-radius: 4px;
+                background: gd-touch.has-hover ? Theme.fill : Theme.fill-muted;
+                gd-touch := TouchArea {
+                    clicked => { root.go-to-definition(); }
+                }
+                Text {
+                    text: "Go to definition";
+                    color: Theme.text-primary;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 4px;
+                background: close-touch.has-hover ? Theme.fill : transparent;
+                close-touch := TouchArea {
+                    clicked => { root.close(); }
+                }
+                Text {
+                    text: "×";
+                    color: Theme.text-secondary;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
+
 }
 
 export component CompletionPopup inherits Rectangle {

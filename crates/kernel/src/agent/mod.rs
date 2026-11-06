@@ -9,6 +9,7 @@ pub mod context;
 pub mod executor;
 #[path = "loop.rs"]
 pub mod loop_;
+pub mod tools;
 pub mod types;
 
 // Re-export the editor-independent crate surface so existing paths resolve.

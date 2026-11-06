@@ -11,8 +11,6 @@ use std::collections::HashMap;
 use agent::registry::ChatTurn;
 use serde_json::{Value, json};
 
-use crate::command::args::ArgValue;
-use crate::command::execute_command;
 use crate::event::keys;
 use crate::state::Editor;
 use crate::state::MessageKind;
@@ -21,6 +19,8 @@ use super::TranscriptEntry;
 use super::connections;
 use super::context::EditorContextProvider;
 use super::llm::{self, ToolCall};
+use super::tools::{record_side_effects, requires_approval, tool_summary};
+pub use super::tools::execute_tool;
 use super::types::{AgentContext, ContextProvider, PlanStep, Planner};
 
 /// Maximum model round-trips per session.
@@ -293,135 +293,12 @@ pub fn resolve_approval(ed: &mut Editor, approve: bool) -> bool {
     true
 }
 
-/// The read-only commands the agent may run without asking.  Everything
-/// else dispatched through `run_editor_command` — file writes, shell
-/// commands, VC mutations — parks the session until the user approves.
-const APPROVAL_EXEMPT_COMMANDS: &[&str] = &[
-    "get-diagnostics",
-    "list-commands",
-    "describe-mode",
-    "buffer-info",
-    "vc-status",
-    "project-info",
-];
-
-fn requires_approval(call: &ToolCall) -> bool {
-    if call.name != "run_editor_command" {
-        return false;
-    }
-    let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
-    match args.get("command").and_then(Value::as_str) {
-        Some(cmd) => !APPROVAL_EXEMPT_COMMANDS.contains(&cmd),
-        None => true,
-    }
-}
-
-/// Track observable side effects of an executed call for the session's
-/// file list (the context panel's "files" chips).
-fn record_side_effects(ed: &mut Editor, session_id: u64, call: &ToolCall) {
-    if call.name != "run_editor_command" {
-        return;
-    }
-    let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
-    let command = args.get("command").and_then(Value::as_str).unwrap_or("");
-    if command == "open-file" {
-        if let Some(path) = args
-            .get("args")
-            .and_then(|a| a.get("path"))
-            .and_then(Value::as_str)
-        {
-            ed.agent.record_file(session_id, path);
-        }
-    }
-}
-
-/// Human-readable one-liner for a tool call (transcript + events).
-fn tool_summary(call: &ToolCall) -> String {
-    let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
-    match call.name.as_str() {
-        "run_editor_command" => {
-            let cmd = args.get("command").and_then(Value::as_str).unwrap_or("?");
-            let rest = args.get("args").map(|a| a.to_string()).unwrap_or_default();
-            if rest == "{}" {
-                cmd.to_string()
-            } else {
-                format!("{cmd} {rest}")
-            }
-        }
-        _ => call.name.clone(),
-    }
-}
-
-/// Execute one tool call on the foreground.  Every editor mutation goes
-/// through the command registry — the agent has no private path.
-pub fn execute_tool(ed: &mut Editor, call: &ToolCall) -> String {
-    let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
-    match call.name.as_str() {
-        "read_active_buffer" => {
-            let key = ed.focused_buffer_key();
-            ed.buffers
-                .get(key)
-                .map(|arc| {
-                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                    let text = buf.slice(0, buf.len().min(65_536));
-                    format!("buffer: {}\n{}", buf.name, llm::truncate_for_context(&text))
-                })
-                .unwrap_or_else(|| "no active buffer".to_string())
-        }
-        "get_diagnostics" => {
-            let key = ed.focused_buffer_key();
-            ed.buffers
-                .get(key)
-                .map(|arc| {
-                    let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-                    let diags: Vec<String> = buf.diagnostic_strings();
-                    if diags.is_empty() {
-                        "no diagnostics".to_string()
-                    } else {
-                        diags.join("\n")
-                    }
-                })
-                .unwrap_or_else(|| "no active buffer".to_string())
-        }
-        "list_editor_commands" => {
-            let mut lines: Vec<String> = ed
-                .commands
-                .list_detailed()
-                .into_iter()
-                .map(|(name, desc, _has_args)| format!("{name}: {desc}"))
-                .collect();
-            lines.sort();
-            lines.join("\n")
-        }
-        "run_editor_command" => {
-            let Some(command) = args.get("command").and_then(Value::as_str) else {
-                return "error: run_editor_command requires a command".to_string();
-            };
-            let mut cmd_args: HashMap<String, ArgValue> = HashMap::new();
-            if let Some(obj) = args.get("args").and_then(Value::as_object) {
-                for (k, v) in obj {
-                    let val = match v {
-                        Value::String(s) => s.clone(),
-                        Value::Number(n) => n.to_string(),
-                        Value::Bool(b) => b.to_string(),
-                        other => other.to_string(),
-                    };
-                    cmd_args.insert(k.clone(), ArgValue::String(val));
-                }
-            }
-            match execute_command(ed, command, &cmd_args) {
-                Ok(()) => "ok".to_string(),
-                Err(e) => format!("error: {e}"),
-            }
-        }
-        other => format!("error: unknown tool {other}"),
-    }
-}
+// Tool execution, inspection, and side-effect tracking are implemented in `super::tools`.
 
 // ── Deterministic fallback (no API key) ─────────────────────────────────────
 
 /// The pre-LLM behavior: plan with `BuiltinPlanner` on the background
-/// thread and publish the plan as events.  No model, no execution.
+/// thread and publish the plan as events, running tasks where possible.
 fn run_builtin_session(
     ed: &mut Editor,
     session_id: u64,
@@ -434,6 +311,12 @@ fn run_builtin_session(
     };
     let prompt = prompt.to_string();
     let ctx = ctx.clone();
+    let root = ed
+        .project_manager
+        .project
+        .root
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
     let sender = bg.sender.clone();
     bg.spawn_blocking(move || {
         let plan = BuiltinPlanner.plan(&prompt, &ctx);
@@ -449,12 +332,53 @@ fn run_builtin_session(
                 command: step.command.clone(),
                 description: step.description.clone(),
             }));
+
+            // Execute shell commands and task runs so running commands works even without an API key
+            let output = if step.command == "shell-command" || step.command == "task/run" {
+                let cmd_str = step
+                    .args
+                    .get("command")
+                    .or_else(|| step.args.get("name"))
+                    .cloned()
+                    .unwrap_or_default();
+                let full_cmd = if step.command == "task/run" {
+                    format!("cargo {cmd_str}")
+                } else {
+                    cmd_str
+                };
+                #[cfg(target_os = "windows")]
+                let res = std::process::Command::new("cmd")
+                    .args(["/C", &full_cmd])
+                    .current_dir(&root)
+                    .output();
+                #[cfg(not(target_os = "windows"))]
+                let res = std::process::Command::new("sh")
+                    .args(["-c", &full_cmd])
+                    .current_dir(&root)
+                    .output();
+                match res {
+                    Ok(out) => {
+                        let code = out.status.code().unwrap_or(-1);
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        format!("exit code: {code}\n{stdout}{stderr}")
+                    }
+                    Err(e) => format!("error: {e}"),
+                }
+            } else {
+                format!("ok: {}", step.description)
+            };
+
+            logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentStepResult {
+                session_id,
+                output,
+            }));
         }
 
         let result = if plan.steps.is_empty() {
             plan.rationale.clone()
         } else {
-            format!("{} step(s) planned", plan.steps.len())
+            format!("{} step(s) completed", plan.steps.len())
         };
 
         logging::LogErr::log_warn(sender.send(crate::runtime::BackgroundEvent::AgentResult { session_id, result }));

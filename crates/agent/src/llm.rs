@@ -19,6 +19,111 @@ pub fn tools_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "run_command",
+                "description": "Run a shell/terminal command in the project root directory. Returns exit code, stdout, and stderr.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The exact shell command line to execute (e.g. 'cargo test', 'git status', 'ls -la')."
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read the text contents of a file in the workspace.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file relative to the project root or absolute."
+                        },
+                        "start_line": {
+                            "type": "integer",
+                            "description": "Optional 1-based start line number to begin reading from."
+                        },
+                        "line_count": {
+                            "type": "integer",
+                            "description": "Optional maximum number of lines to read."
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "Write or overwrite a file in the workspace with new content.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file relative to the project root or absolute."
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The full content to write to the file."
+                        }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "edit_file",
+                "description": "Replace a specific target text block in a file with new replacement text.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file relative to the project root or absolute."
+                        },
+                        "target": {
+                            "type": "string",
+                            "description": "The exact existing text to replace."
+                        },
+                        "replacement": {
+                            "type": "string",
+                            "description": "The new replacement text."
+                        }
+                    },
+                    "required": ["path", "target", "replacement"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_directory",
+                "description": "List files and directories at a given path in the workspace.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path relative to project root (defaults to '.')."
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "read_active_buffer",
                 "description": "Read the text of the currently focused buffer (truncated).",
                 "parameters": { "type": "object", "properties": {}, "required": [] }
@@ -44,7 +149,7 @@ pub fn tools_schema() -> Value {
             "type": "function",
             "function": {
                 "name": "run_editor_command",
-                "description": "Run an editor command, e.g. {\"command\":\"open-file\",\"args\":{\"path\":\"src/main.rs\"}} or {\"command\":\"shell-command\",\"args\":{\"command\":\"cargo build\"}}.",
+                "description": "Run an editor command, e.g. {\"command\":\"open-file\",\"args\":{\"path\":\"src/main.rs\"}} or {\"command\":\"save-buffer\"}.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -63,17 +168,25 @@ pub fn tools_schema() -> Value {
 }
 
 pub fn system_prompt() -> String {
-    "You are the Magma editor's built-in agent. You fulfill the user's goal \
-     by calling tools — editing files, running commands and build tasks, \
-     inspecting diagnostics — and then report concisely what you did and \
-     what the result was. Prefer run_editor_command with real editor \
-     commands (open-file, save-buffer, shell-command, make, run-config, vc, \
-     find-files, keyword-context, goto-line, …); use list_editor_commands to \
-     discover more. Mutating commands require the user's approval: the \
-     session pauses until they decide, and a declined action reports back \
-     to you — never assume it ran. Never fabricate results: if a tool call \
-     fails, say so and try a different approach. When the goal is met, \
-     answer with a short summary and call no more tools."
+    "You are Magma's built-in intelligent coding agent. You collaborate with \
+     the user using a realistic development workflow: exploring files, making \
+     targeted edits, running shell/build commands to verify changes, and \
+     inspecting diagnostics.\n\
+     \n\
+     Available tools:\n\
+     - run_command: Run terminal/shell commands (e.g. cargo check, cargo test, git status, etc.). \
+       Returns real stdout, stderr, and exit codes.\n\
+     - read_file: Read workspace file content with line numbers.\n\
+     - write_file: Write or overwrite full file content.\n\
+     - edit_file: Perform precise search-and-replace edits in files.\n\
+     - list_directory: Inspect files and directories in the project.\n\
+     - read_active_buffer: Inspect the editor's currently focused buffer.\n\
+     - get_diagnostics: Check compiler/LSP errors and warnings.\n\
+     - run_editor_command: Dispatch editor actions (open-file, save-buffer, etc.).\n\
+     \n\
+     Always verify your changes by running tests or checks when appropriate. \
+     Actions that modify files or execute shell commands require the user's \
+     approval — never assume an unapproved action executed. Report concisely what you did."
         .to_string()
 }
 

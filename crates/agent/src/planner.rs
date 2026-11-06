@@ -29,6 +29,46 @@ impl Planner for BuiltinPlanner {
                 }],
                 rationale: format!("Looking up definition of '{symbol}' in the symbol index"),
             }
+        } else if let Some(cmd) = goal.strip_prefix("sh:")
+            .or_else(|| goal.strip_prefix("cmd:"))
+            .or_else(|| goal.strip_prefix("exec:"))
+        {
+            let cmd = cmd.trim().to_string();
+            Plan {
+                steps: vec![PlanStep {
+                    command: "shell-command".to_string(),
+                    args: HashMap::from([("command".to_string(), cmd.clone())]),
+                    description: format!("Execute: {cmd}"),
+                }],
+                rationale: format!("Running shell command '{cmd}'"),
+            }
+        } else if goal == "build" || goal == "cargo build" {
+            Plan {
+                steps: vec![PlanStep {
+                    command: "shell-command".to_string(),
+                    args: HashMap::from([("command".to_string(), "cargo build".to_string())]),
+                    description: "cargo build".to_string(),
+                }],
+                rationale: "Building project with cargo".to_string(),
+            }
+        } else if goal == "test" || goal == "cargo test" {
+            Plan {
+                steps: vec![PlanStep {
+                    command: "shell-command".to_string(),
+                    args: HashMap::from([("command".to_string(), "cargo test".to_string())]),
+                    description: "cargo test".to_string(),
+                }],
+                rationale: "Running tests with cargo".to_string(),
+            }
+        } else if goal.starts_with("cargo ") || goal.starts_with("git ") {
+            Plan {
+                steps: vec![PlanStep {
+                    command: "shell-command".to_string(),
+                    args: HashMap::from([("command".to_string(), goal.to_string())]),
+                    description: goal.to_string(),
+                }],
+                rationale: format!("Executing '{goal}'"),
+            }
         } else if let Some(path) = goal.strip_prefix("diagnose:") {
             let path = path.trim();
             let diag_count = ctx.diagnostics.len();

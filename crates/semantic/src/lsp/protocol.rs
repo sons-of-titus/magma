@@ -95,8 +95,12 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
         }
         Inbound::Response { id, result, error } => {
             if let Some(err) = error {
-                // initialize errors complete the handshake with failure.
-                if let Ok(tx) = core.init_signal.lock() {
+                // Only the initialize response (id == 1) drives the handshake;
+                // later error responses are handled below and must not touch
+                // the (already consumed) init signal.
+                if id == 1
+                    && let Ok(tx) = core.init_signal.lock()
+                {
                     logging::LogErr::log_warn(tx.send(Err(err.to_string())));
                 }
                 if let Some(p) = core

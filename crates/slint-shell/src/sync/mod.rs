@@ -256,16 +256,16 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         state.launcher_visible = now_welcome;
         if let Some(w) = state.welcome.upgrade() {
             if now_welcome {
-                let _ = w.show();
-                let _ = app.hide();
+                logging::LogErr::log_err(w.show());
+                logging::LogErr::log_err(app.hide());
             } else {
                 // The editor window is (re)mapping: re-arm the stabilization
                 // gate so the pane paints from its real size, never the
                 // stub one it reported while hidden.
                 state.window_ready = false;
                 state.last_logical_width = 0.0;
-                let _ = app.show();
-                let _ = w.hide();
+                logging::LogErr::log_err(app.show());
+                logging::LogErr::log_err(w.hide());
             }
         }
     }

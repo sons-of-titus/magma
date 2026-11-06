@@ -663,9 +663,9 @@ fn test_dialog_connection(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
             let sender = bg.sender.clone();
             bg.spawn_blocking(move || {
                 let result = db::test_connection(&probe_source, password.as_deref());
-                let _ = sender.send(kernel::runtime::BackgroundEvent::Db(
+                logging::LogErr::log_warn(sender.send(kernel::runtime::BackgroundEvent::Db(
                     kernel::db::DbEvent::TestDone { token, result },
-                ));
+                )));
             });
         }
         None => {

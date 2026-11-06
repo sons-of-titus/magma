@@ -253,10 +253,10 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
             sync::refresh(&weak, &mut s);
             if s.editor.project_manager.project.root.is_some() {
                 if let Some(w) = s.welcome.upgrade() {
-                    let _ = w.hide();
+                    logging::LogErr::log_err(w.hide());
                 }
                 if let Some(a) = weak.upgrade() {
-                    let _ = a.show();
+                    logging::LogErr::log_err(a.show());
                 }
             }
         });
@@ -271,10 +271,10 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
             sync::refresh(&weak, &mut s);
             if s.editor.project_manager.project.root.is_some() {
                 if let Some(w) = s.welcome.upgrade() {
-                    let _ = w.hide();
+                    logging::LogErr::log_err(w.hide());
                 }
                 if let Some(a) = weak.upgrade() {
-                    let _ = a.show();
+                    logging::LogErr::log_err(a.show());
                 }
             }
         });
@@ -289,10 +289,10 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
             sync::refresh(&weak, &mut s);
             if s.editor.project_manager.project.root.is_some() {
                 if let Some(w) = s.welcome.upgrade() {
-                    let _ = w.hide();
+                    logging::LogErr::log_err(w.hide());
                 }
                 if let Some(a) = weak.upgrade() {
-                    let _ = a.show();
+                    logging::LogErr::log_err(a.show());
                 }
             }
         });
@@ -359,9 +359,9 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
         s.launcher_visible
     };
     if launcher {
-        let _ = welcome.show();
+        logging::LogErr::log_err(welcome.show());
     } else {
-        let _ = app.show();
+        logging::LogErr::log_err(app.show());
     }
 
     sync::refresh(&app.as_weak(), &mut state.borrow_mut());
@@ -383,7 +383,7 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
                 if !s.editor.running {
                     workspace::persist_session(&s.editor);
                     workspace::close_editor_session(&mut s.editor);
-                    let _ = slint::quit_event_loop();
+                    logging::LogErr::log_err(slint::quit_event_loop());
                     return;
                 }
                 // A refused `quit` (dirty buffers) raises the confirmation

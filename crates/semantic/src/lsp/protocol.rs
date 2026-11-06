@@ -160,7 +160,7 @@ pub(super) fn dispatch<S: EventSink>(core: &Arc<Core>, language_id: &str, sink: 
                         let loc = result.as_ref().and_then(first_location);
                         match loc {
                             Some((uri, sl, sc, el, ec)) => Event::Definition {
-                                path: language_id.to_string(),
+                                path: crate::lsp_proto::uri_to_path(&uri),
                                 uri,
                                 start_line: sl,
                                 start_col: sc,

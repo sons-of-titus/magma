@@ -112,9 +112,10 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
         if font_changed {
             state.editor.row_layouts.clear();
         }
-        if let Some(bytes) = state.editor.font_config.primary_font() {
-            state.atlas.rasterize_for_grid(
-                bytes,
+        let chain = state.editor.font_config.font_chain();
+        if !chain.is_empty() {
+            state.atlas.rasterize_for_grid_with_fallbacks(
+                &chain,
                 state.editor.font_config.size,
                 ppx,
                 state.cell_w,

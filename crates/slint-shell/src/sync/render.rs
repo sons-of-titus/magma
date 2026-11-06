@@ -100,6 +100,9 @@ pub(crate) fn sync_pane_images(app: &AppWindow, state: &mut AppState, _ppx: f32)
             .map(|gs| pane::surface_signature(gs))
             .unwrap_or(0);
 
+        let chain = ed.font_config.font_chain();
+        state.atlas.ensure_surface_glyphs(&state.surface, &chain);
+
         if gutter_cols > 0 && gutter_sig != state.gutter_sig {
             if let Some(gs) = &gutter_surf {
                 let (rgba, pw, ph) = pane::blit_rgba(

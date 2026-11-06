@@ -74,6 +74,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut editor = boot.editor;
     if editor.font_config.loaded_fonts.is_empty() {
         editor.font_config.bootstrap_default_font();
+    } else if editor.font_config.fallback.is_empty() {
+        editor.font_config.load_system_fallbacks();
     }
     // Follow the OS appearance for the first launch; a persisted choice
     // (Settings › Theme) always wins over the system default.
@@ -91,8 +93,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let mut atlas = GpuGlyphAtlas::new();
-    if let Some(bytes) = editor.font_config.primary_font() {
-        atlas.rasterize(bytes, editor.font_config.size);
+    let chain = editor.font_config.font_chain();
+    if !chain.is_empty() {
+        atlas.rasterize_with_fallbacks(&chain, editor.font_config.size);
     }
     let (init_cell_w, init_cell_h, init_caret_inset, init_caret_height) = editor
         .font_config

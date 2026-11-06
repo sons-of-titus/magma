@@ -58,7 +58,7 @@ pub fn translate_key(text: &str, ctrl: bool, shift: bool, alt: bool, meta: bool)
         return None;
     }
 
-    if ctrl || alt {
+    if ctrl || (alt && c.is_ascii()) {
         if c == '\\' {
             return Some(format!("{}-\\", modifier_prefix(ctrl, shift)));
         }
@@ -206,6 +206,15 @@ mod tests {
         assert_eq!(
             translate_key("é", false, false, false, false).as_deref(),
             Some("é")
+        );
+        assert_eq!(
+            translate_key("ض", false, false, false, false).as_deref(),
+            Some("ض")
+        );
+        assert_eq!(
+            translate_key("چ", false, false, true, false).as_deref(),
+            Some("چ"),
+            "Option-typed non-ASCII characters must insert text rather than becoming meta- chords"
         );
     }
 

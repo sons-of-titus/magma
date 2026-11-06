@@ -86,6 +86,11 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState, logical_w: f32, ppx: f
                 content_key.hash(&mut hasher);
                 let sig = hasher.finish();
                 if sig != state.terminal_sig {
+                    let chain = ed.font_config.font_chain();
+                    state.atlas.ensure_glyphs(
+                        lines.iter().flat_map(|l| l.text.chars()),
+                        &chain,
+                    );
                     let (cell_w, cell_h) = pane::cell_size(state.cell_w, state.cell_h, ppx);
                     let (rgba, tw, th) = pane::blit_terminal_rgba(
                         &lines,

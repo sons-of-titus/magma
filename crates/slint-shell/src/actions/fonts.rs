@@ -45,6 +45,7 @@ pub(crate) fn apply_fonts(weak: &slint::Weak<AppWindow>, s: &mut AppState, f: Fo
     }
     s.editor.font_config.size = f.editor_font_size;
     s.editor.font_config.ligatures = f.ligatures;
+    s.editor.font_config.load_system_fallbacks();
     s.editor.font_changed = true;
 
     s.editor

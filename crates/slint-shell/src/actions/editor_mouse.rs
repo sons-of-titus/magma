@@ -20,11 +20,11 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
-        app.on_mouse_pressed_left(move |x, y, ctrl, shift, alt, _meta| {
+        app.on_mouse_pressed_left(move |x, y, ctrl, shift, alt, meta| {
             let mut s = state.borrow_mut();
             let (cell_x, cell_y) = cell_xy(&s, x, y);
             let mut mods = Vec::new();
-            if ctrl {
+            if ctrl || meta {
                 mods.push("ctrl");
             }
             if shift {

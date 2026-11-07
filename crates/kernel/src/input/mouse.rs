@@ -287,6 +287,17 @@ fn dispatch_text_click(
             button: format!("{:?}", event.button),
         },
     );
+
+    // ctrl/cmd+click jumps to the definition of the symbol under the cursor,
+    // mirroring the goto-definition command (tree-sitter index, LSP fallback).
+    if event.modifiers.contains("ctrl") {
+        let _ = crate::command::execute_command(
+            ed,
+            "goto-definition",
+            &std::collections::HashMap::new(),
+        );
+    }
+
     crate::script_runtime::dispatch_events(ed);
 }
 

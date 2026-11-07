@@ -133,6 +133,13 @@
                       (scan-number sl) (scan-number sc)))
         (buffer/set-cursor buf-id offset)))))
 
+(event/on "lsp-references"
+  (fn [ev]
+    # References land in the search/quickfix list via the kernel; keep a
+    # subscriber so observers (and tests) can react to the result.
+    (def locations (get ev :locations))
+    (when locations (editor/log-message (string "lsp: " locations)))))
+
 (command/define "lsp-hover"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/hover lang-id))))
 
@@ -141,6 +148,9 @@
 
 (command/define "lsp-code-actions"
   (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/code-actions lang-id))))
+
+(command/define "lsp-references"
+  (fn [] (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id)) (when lang-id (lsp/references lang-id))))
 
 # Code-action results open the kernel's quick-fix picker; applying an
 # action routes through the shared workspace-edit applier.

@@ -65,8 +65,12 @@ fn dispatch_click(ed: &mut Editor, surface: &Surface, event: &MouseEvent) {
     ed.mouse_state.press_offset = None;
 
     // Only the primary button places the cursor; secondary is the context
-    // menu's, middle is unused.
-    if event.button != MouseButton::Left {
+    // menu's, middle is unused.  ctrl/cmd+click (which some platforms
+    // report as a right-button press) also places the cursor so goto-definition
+    // can resolve the symbol under the pointer.
+    if event.button != MouseButton::Left
+        && !(event.button == MouseButton::Right && event.modifiers.contains("ctrl"))
+    {
         return;
     }
 
@@ -291,11 +295,23 @@ fn dispatch_text_click(
     // ctrl/cmd+click jumps to the definition of the symbol under the cursor,
     // mirroring the goto-definition command (tree-sitter index, LSP fallback).
     if event.modifiers.contains("ctrl") {
-        let _ = crate::command::execute_command(
-            ed,
-            "goto-definition",
-            &std::collections::HashMap::new(),
-        );
+        // Resolve the word at the clicked offset in Rust so the jump does
+        // not depend on where the cursor landed.
+        let word = ed.buffers.get(buf_id).and_then(|a| {
+            let buf = a.lock().unwrap_or_else(|e| e.into_inner());
+            word_range_at(&buf, offset).map(|(s, e)| buf.slice(s, e).to_string())
+        });
+        if let Some((start, _)) = ed.buffers.get(buf_id).and_then(|a| {
+            let buf = a.lock().unwrap_or_else(|e| e.into_inner());
+            word_range_at(&buf, offset)
+        }) && let Some(view) = ed.view_of_buffer_mut(buf_id) {
+            view.set_cursor(start);
+        }
+        let mut args = std::collections::HashMap::new();
+        if let Some(w) = word {
+            args.insert("arg".to_string(), crate::command::args::ArgValue::String(w));
+        }
+        let _ = crate::command::execute_command(ed, "goto-definition", &args);
     }
 
     crate::script_runtime::dispatch_events(ed);

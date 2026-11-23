@@ -22,7 +22,7 @@ export component EditorView inherits Rectangle {
 
     callback key(string, bool, bool, bool, bool);
     callback mouse-pressed-left(length, length, bool, bool, bool, bool);
-    callback mouse-pressed-right(length, length);
+    callback mouse-pressed-right(length, length, bool, bool, bool, bool);
     callback mouse-pressed-middle(length, length);
     callback mouse-moved(length, length);
     callback mouse-hover(length, length);
@@ -108,7 +108,9 @@ export component EditorView inherits Rectangle {
                         event.modifiers.control, event.modifiers.shift,
                         event.modifiers.alt, event.modifiers.meta);
                 } else if (event.button == PointerEventButton.right) {
-                    root.mouse-pressed-right(self.mouse-x, self.mouse-y);
+                    root.mouse-pressed-right(self.mouse-x, self.mouse-y,
+                        event.modifiers.control, event.modifiers.shift,
+                        event.modifiers.alt, event.modifiers.meta);
                 } else if (event.button == PointerEventButton.middle) {
                     root.mouse-pressed-middle(self.mouse-x, self.mouse-y);
                 }

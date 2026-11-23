@@ -26,10 +26,10 @@
 # ── Navigation: go-to-definition (tree-sitter index, LSP fallback) ───────────
 
 (command/define "goto-definition"
-  (fn [&]
+  (fn [sym-arg]
     (def buf (buffer/current))
     (unless buf (break))
-    (def sym (buffer/word-under-cursor buf))
+    (def sym (if (empty? sym-arg) (buffer/word-under-cursor buf) sym-arg))
     (unless sym
       (editor/echo "No symbol under cursor" "error")
       (break))
@@ -46,7 +46,7 @@
           (when-let [nb (buffer/current)]
             (when-let [off (buffer/line-start-offset nb (or line 0))]
               (buffer/set-cursor nb off))
-            (editor/echo (string sym " → " file ":" (+ 1 (or line 0))))))
-      (editor/run-command "lsp-go-to-definition")))))
+            (editor/echo (string sym " → " file ":" (+ 1 (or line 0)))))))
+      (editor/run-command "lsp-go-to-definition"))))
 
 (print "symbols loaded")

@@ -49,7 +49,18 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
-        app.on_mouse_pressed_right(move |x, y| {
+        app.on_mouse_pressed_right(move |x, y, ctrl, shift, alt, meta| {
+            let mut mods = Vec::new();
+            if ctrl || meta {
+                mods.push("ctrl");
+            }
+            if shift {
+                mods.push("shift");
+            }
+            if alt {
+                mods.push("alt");
+            }
+            let mods_str = mods.join(",");
             let mut s = state.borrow_mut();
             let (cell_x, cell_y) = cell_xy(&s, x, y);
             let ev = MouseEvent {
@@ -57,10 +68,17 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 x: cell_x,
                 y: cell_y,
                 button: MouseButton::Right,
-                modifiers: String::new(),
+                modifiers: mods_str.clone(),
             };
             let dummy_surface = kernel::render::surface::Surface::new(1, 1);
             kernel::input::mouse::dispatch_mouse(&mut s.editor, &dummy_surface, &ev);
+            // ctrl/cmd+right-click (or ctrl/cmd+click on platforms that
+            // report it as a right button) jumps to definition instead of
+            // opening the context menu.
+            if mods_str.contains("ctrl") {
+                refresh(&weak, &mut s);
+                return;
+            }
             // Right-click is also the editor's context menu: cursor first,
             // then the menu under the pointer.
             crate::actions::context_menu::raise_editor_menu(&weak, &mut s, x, y);

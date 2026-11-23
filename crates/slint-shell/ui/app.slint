@@ -315,7 +315,7 @@ export component AppWindow inherits Window {
     callback settings-select-category(int);
     callback key(string, bool, bool, bool, bool);
     callback mouse-pressed-left(length, length, bool, bool, bool, bool);
-    callback mouse-pressed-right(length, length);
+    callback mouse-pressed-right(length, length, bool, bool, bool, bool);
     callback mouse-pressed-middle(length, length);
     callback mouse-moved(length, length);
     callback mouse-hover(length, length);
@@ -663,8 +663,8 @@ export component AppWindow inherits Window {
                     mouse-pressed-left(x, y, ctrl, shift, alt, meta) => {
                         root.mouse-pressed-left(x, y, ctrl, shift, alt, meta);
                     }
-                    mouse-pressed-right(x, y) => {
-                        root.mouse-pressed-right(x, y);
+                     mouse-pressed-right(x, y, ctrl, shift, alt, meta) => {
+                        root.mouse-pressed-right(x, y, ctrl, shift, alt, meta);
                     }
                     mouse-pressed-middle(x, y) => {
                         root.mouse-pressed-middle(x, y);

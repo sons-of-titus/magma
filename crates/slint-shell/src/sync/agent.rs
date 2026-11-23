@@ -61,6 +61,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     app.set_agent_model_choice(projection::active_model_choice(ed));
     app.set_agent_model_choices(ModelRc::new(VecModel::from(projection::model_choices(
         ed,
+        &state.agent_model_search,
     ))));
     app.set_agent_reasoning_supported(projection::reasoning_supported(ed));
     app.set_agent_reasoning_label(projection::reasoning_label(ed).into());

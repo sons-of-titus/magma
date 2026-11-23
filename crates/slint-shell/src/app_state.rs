@@ -133,6 +133,7 @@ pub(crate) struct AppState {
     pub(crate) agent_dock_width: f32,
     /// Context attachments staged in the composer (label + body).
     pub(crate) agent_attachments: Vec<AgentAttachment>,
+    pub(crate) agent_model_search: String,
     /// The provider-management overlay is open over a live conversation.
     pub(crate) agent_manage_open: bool,
     pub(crate) last_px: f32,

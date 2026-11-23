@@ -196,12 +196,20 @@ pub fn active_provider_choice(ed: &Editor) -> PickerChoice {
 }
 
 /// Models of the active connection as toolbar choices with capability hints.
-pub fn model_choices(ed: &Editor) -> Vec<PickerChoice> {
+pub fn model_choices(ed: &Editor, search: &str) -> Vec<PickerChoice> {
     let Some((_, conn)) = ed.agent_connections.active(&ed.options) else {
         return Vec::new();
     };
+    let needle = search.trim().to_lowercase();
     conn.models
         .iter()
+        .filter(|m| {
+            if needle.is_empty() {
+                return true;
+            }
+            m.label().to_lowercase().contains(&needle)
+                || m.id.to_lowercase().contains(&needle)
+        })
         .map(|m| {
             let mut hints: Vec<String> = Vec::new();
             if !m.reasoning.levels().is_empty() {

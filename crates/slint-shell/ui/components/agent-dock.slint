@@ -34,6 +34,7 @@ export component AgentDock inherits Rectangle {
     in property <[PickerChoice]> provider-choices;
     in property <PickerChoice> model;
     in property <[PickerChoice]> model-choices;
+    in-out property <string> model-search: "";
     in property <bool> reasoning-supported: false;
     in property <string> reasoning-label: "";
     in property <[PickerChoice]> reasoning-choices;
@@ -56,6 +57,7 @@ export component AgentDock inherits Rectangle {
     callback onboarding-back();
     callback provider-selected(string);
     callback model-changed(string);
+    callback model-search-changed(string);
     callback reasoning-changed(string);
     callback attach-active-buffer();
     callback attach-file();
@@ -103,6 +105,7 @@ export component AgentDock inherits Rectangle {
         provider-choices: root.provider-choices;
         model: root.model;
         model-choices: root.model-choices;
+        model-search <=> root.model-search;
         reasoning-supported: root.reasoning-supported;
         reasoning-label: root.reasoning-label;
         reasoning-choices: root.reasoning-choices;
@@ -118,6 +121,7 @@ export component AgentDock inherits Rectangle {
         open-file(p) => { root.open-file(p); }
         provider-selected(id) => { root.provider-selected(id); }
         model-changed(id) => { root.model-changed(id); }
+        model-search-changed(s) => { root.model-search-changed(s); }
         reasoning-changed(v) => { root.reasoning-changed(v); }
         attach-active-buffer => { root.attach-active-buffer(); }
         attach-file => { root.attach-file(); }

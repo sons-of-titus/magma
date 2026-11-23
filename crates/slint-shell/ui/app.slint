@@ -199,6 +199,7 @@ export component AppWindow inherits Window {
     in property <[PickerChoice]> agent-provider-choices;
     in property <PickerChoice> agent-model-choice;
     in property <[PickerChoice]> agent-model-choices;
+    in-out property <string> agent-model-search: "";
     in property <bool> agent-reasoning-supported: false;
     in property <string> agent-reasoning-label: "";
     in property <[PickerChoice]> agent-reasoning-choices;
@@ -415,6 +416,7 @@ export component AppWindow inherits Window {
     callback agent-onboarding-back();
     callback agent-provider-selected(string);
     callback agent-model-changed(string);
+    callback agent-model-search-changed(string);
     callback agent-reasoning-changed(string);
     callback agent-attach-active-buffer();
     callback agent-attach-file();
@@ -749,6 +751,7 @@ export component AppWindow inherits Window {
                 provider-choices: root.agent-provider-choices;
                 model: root.agent-model-choice;
                 model-choices: root.agent-model-choices;
+                model-search <=> root.agent-model-search;
                 reasoning-supported: root.agent-reasoning-supported;
                 reasoning-label: root.agent-reasoning-label;
                 reasoning-choices: root.agent-reasoning-choices;
@@ -774,6 +777,7 @@ export component AppWindow inherits Window {
                 onboarding-back => { root.agent-onboarding-back(); }
                 provider-selected(id) => { root.agent-provider-selected(id); }
                 model-changed(id) => { root.agent-model-changed(id); }
+                model-search-changed(s) => { root.agent-model-search-changed(s); }
                 reasoning-changed(v) => { root.agent-reasoning-changed(v); }
                 attach-active-buffer => { root.agent-attach-active-buffer(); }
                 attach-file => { root.agent-attach-file(); }

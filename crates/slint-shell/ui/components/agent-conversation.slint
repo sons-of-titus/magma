@@ -199,7 +199,7 @@ component EntryRow inherits Rectangle {
                     color: Theme.text-muted;
                     font-family: Theme.font-mono;
                     font-size: 11px;
-                    wrap: word-wrap;
+                    wrap: char-wrap;
                     vertical-alignment: top;
                 }
             }
@@ -221,7 +221,7 @@ component EntryRow inherits Rectangle {
                 color: Theme.text-muted;
                 font-family: Theme.font-mono;
                 font-size: 11px;
-                wrap: word-wrap;
+                wrap: char-wrap;
                 vertical-alignment: top;
             }
         }
@@ -395,6 +395,7 @@ export component AgentConversation inherits Rectangle {
     in property <[PickerChoice]> provider-choices;
     in property <PickerChoice> model;
     in property <[PickerChoice]> model-choices;
+    in-out property <string> model-search: "";
     in property <bool> reasoning-supported: false;
     in property <string> reasoning-label: "";
     in property <[PickerChoice]> reasoning-choices;
@@ -410,6 +411,7 @@ export component AgentConversation inherits Rectangle {
     callback open-file(string);
     callback provider-selected(string);
     callback model-changed(string);
+    callback model-search-changed(string);
     callback reasoning-changed(string);
     callback attach-active-buffer();
     callback attach-file();
@@ -600,6 +602,7 @@ export component AgentConversation inherits Rectangle {
         scroll := ScrollView {
             width: 100%;
             height: 100%;
+            content-width: self.width;
 
             feed := VerticalLayout {
                 padding: 8px;
@@ -609,7 +612,7 @@ export component AgentConversation inherits Rectangle {
                 if root.entry-count == 0 : VerticalLayout {
                     alignment: start;
                     spacing: 6px;
-                    padding-top: 32px;
+                    padding-top: 8px;
                     Text {
                         text: "\u{EC20}";
                         color: Theme.text-faint;
@@ -700,52 +703,6 @@ export component AgentConversation inherits Rectangle {
         }
     }
 
-    // ── Context strip: files the agent touched ───────────────────────
-    if root.files.length > 0 : Rectangle {
-        background: Theme.chrome;
-
-        Rectangle {
-            y: 0;
-            height: 1px;
-            background: Theme.border;
-        }
-
-        VerticalLayout {
-            spacing: 4px;
-            padding-top: 6px;
-            padding-bottom: 6px;
-
-            HorizontalLayout {
-                padding-left: 10px;
-                padding-right: 10px;
-                spacing: 6px;
-                Text {
-                    text: "Files opened";
-                    color: Theme.text-faint;
-                    font-size: 10px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
-                Text {
-                    text: root.files.length;
-                    color: Theme.text-faint;
-                    font-size: 10px;
-                    vertical-alignment: center;
-                }
-            }
-
-            HorizontalLayout {
-                padding-left: 10px;
-                padding-right: 10px;
-                spacing: 6px;
-                alignment: start;
-                for path in root.files : FileChip {
-                    path: path;
-                    open(p) => { root.open-file(p); }
-                }
-            }
-        }
-    }
 
     // ── Composer ─────────────────────────────────────────────────────
     AgentComposer {
@@ -758,6 +715,7 @@ export component AgentConversation inherits Rectangle {
         provider-choices: root.provider-choices;
         model: root.model;
         model-choices: root.model-choices;
+        model-search <=> root.model-search;
         reasoning-supported: root.reasoning-supported;
         reasoning-label: root.reasoning-label;
         reasoning-choices: root.reasoning-choices;
@@ -771,6 +729,7 @@ export component AgentConversation inherits Rectangle {
         stop => { root.stop(); }
         provider-selected(id) => { root.provider-selected(id); }
         model-changed(id) => { root.model-changed(id); }
+        model-search-changed(s) => { root.model-search-changed(s); }
         reasoning-changed(v) => { root.reasoning-changed(v); }
         attach-active-buffer => { root.attach-active-buffer(); }
         attach-file => { root.attach-file(); }

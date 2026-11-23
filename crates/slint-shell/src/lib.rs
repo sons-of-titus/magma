@@ -172,6 +172,7 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
         agent_expanded: HashSet::new(),
         agent_dock_width: 380.0,
         agent_attachments: Vec::new(),
+        agent_model_search: String::new(),
         agent_manage_open: false,
         last_px: 0.0,
         last_py: 0.0,

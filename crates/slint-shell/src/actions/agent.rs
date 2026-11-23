@@ -273,6 +273,15 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     {
         let state = Rc::clone(&state);
         let weak = app.as_weak();
+        app.on_agent_model_search_changed(move |q| {
+            let mut s = state.borrow_mut();
+            s.agent_model_search = q.to_string();
+            refresh(&weak, &mut s);
+        });
+    }
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
         app.on_agent_reasoning_changed(move |label| {
             let mut s = state.borrow_mut();
             // The reasoning picker's ids are display labels; map back to the

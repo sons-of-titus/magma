@@ -136,7 +136,7 @@ pub(super) fn collect_items(s: &mut AppState, kind: &PickerKind) -> Vec<PickerIt
             })
             .collect(),
         PickerKind::GotoLine | PickerKind::NewFile(_) | PickerKind::NewFolder(_)
-        | PickerKind::Rename(_) => Vec::new(),
+        | PickerKind::Rename(_) | PickerKind::RenameSymbol => Vec::new(),
     }
 }
 
@@ -152,6 +152,7 @@ pub(super) fn header(kind: &PickerKind) -> (&'static str, &'static str, &'static
         PickerKind::NewFile(_) => ("New File", "Name of the file to create", "Enter creates"),
         PickerKind::NewFolder(_) => ("New Folder", "Name of the folder to create", "Enter creates"),
         PickerKind::Rename(_) => ("Rename", "New name", "Enter renames"),
+        PickerKind::RenameSymbol => ("Rename Symbol", "New name", "Enter renames"),
     }
 }
 

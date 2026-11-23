@@ -42,6 +42,9 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("gui-goto-line", "Open the go-to-line prompt", vec![], |ed, _| {
         request(ed, "goto-line")
     });
+    cmds.register_fn("gui-rename-symbol", "Rename the symbol at the cursor via LSP", vec![], |ed, _| {
+        request(ed, "rename-symbol")
+    });
     cmds.register_fn("gui-branches", "Open the branch switcher", vec![], |ed, _| {
         request(ed, "branches")
     });

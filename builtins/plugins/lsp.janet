@@ -162,10 +162,10 @@
 # kernel (server items lead, duplicates drop); no handler is needed here.
 
 (command/define "lsp-rename"
-  (fn [& new-name]
+  (fn [new-name]
     (def buf-id (buffer/current)) (def lang-id (language-id-for buf-id))
     (when lang-id
-      (lsp/rename lang-id (if (empty? new-name) "new_name" (first new-name))))))
+      (lsp/rename lang-id (if (empty? new-name) "new_name" new-name)))))
 
 (event/on "lsp-rename-result"
   (fn [ev] (def edit (get ev :edit)) (when edit (lsp/apply-edit edit) (editor/log-message "[rename] applied"))))

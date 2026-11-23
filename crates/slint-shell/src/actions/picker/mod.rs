@@ -31,6 +31,8 @@ pub(crate) enum PickerKind {
     NewFolder(String),
     /// Rename the payload path to the typed name.
     Rename(String),
+    /// Rename the symbol at the cursor via LSP.
+    RenameSymbol,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +56,7 @@ fn refresh_rows(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
             | PickerKind::NewFile(_)
             | PickerKind::NewFolder(_)
             | PickerKind::Rename(_)
+            | PickerKind::RenameSymbol
     );
     let indices = ranked(s, &query, prompt);
     s.picker_selected = s.picker_selected.min(indices.len().saturating_sub(1));
@@ -88,13 +91,32 @@ pub(crate) fn open(weak: &slint::Weak<AppWindow>, s: &mut AppState, kind: Picker
     let (title, placeholder, hint) = header(&kind);
     s.picker = kind.clone();
     s.picker_query.clear();
+    // Prefill rename with the symbol under the cursor (JetBrains Shift+F6).
+    if matches!(kind, PickerKind::RenameSymbol) {
+        let buf_key = kernel::input::focused_buffer_id(&s.editor);
+        if let Some(view) = s.editor.view_of_buffer(buf_key) {
+            let pos = view.cursor_offset();
+            let buf = view.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            let is_word = |c: char| c.is_alphanumeric() || c == '_';
+            let start = buf
+                .rfind_char_before(pos, |c| !is_word(c))
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let end = buf
+                .find_char_from(start, |c| !is_word(c))
+                .unwrap_or(buf.len());
+            if start < end {
+                s.picker_query = buf.slice(start, end).to_string();
+            }
+        }
+    }
     s.picker_selected = 0;
     s.picker_items = collect_items(s, &kind);
     if let Some(a) = weak.upgrade() {
         a.set_picker_title(title.into());
         a.set_picker_placeholder(placeholder.into());
         a.set_picker_hint(hint.into());
-        a.set_picker_query("".into());
+        a.set_picker_query(s.picker_query.clone().into());
     }
     refresh_rows(weak, s);
 }
@@ -264,6 +286,20 @@ pub(crate) fn confirm(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
                 }
             }
         }
+        PickerKind::RenameSymbol => {
+            let name = s.picker_query.trim().to_string();
+            cancel(s);
+            if name.is_empty() {
+                s.message = "Name it something first.".into();
+            } else {
+                let mut args = HashMap::new();
+                args.insert("arg".to_string(), ArgValue::String(name));
+                match execute_command(&mut s.editor, "lsp-rename", &args) {
+                    Ok(()) => s.message.clear(),
+                    Err(e) => s.message = e,
+                }
+            }
+        }
     }
     s.editor.frame_dirty = true;
     refresh(weak, s);
@@ -300,6 +336,7 @@ pub(crate) fn handle_request(
         "commands" => open(weak, s, PickerKind::Commands),
         "branches" => open(weak, s, PickerKind::Branches),
         "goto-line" => open(weak, s, PickerKind::GotoLine),
+        "rename-symbol" => open(weak, s, PickerKind::RenameSymbol),
         "find" => {
             s.find_visible = true;
             s.find_replace_visible = false;

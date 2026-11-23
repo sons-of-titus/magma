@@ -127,6 +127,7 @@
 # shift-k is a vim-ism the non-modal map cannot honor: shift+K must type
 # "K", so hover lives on alt+K (the GUI names keyboard alt "meta-").
 (keymap/set "meta-k" "lsp-hover"      :editor)
+(keymap/set "shift-f6" "gui-rename-symbol" :editor)
 (keymap/set "meta-return" "lsp-code-actions" :editor)
 (keymap/set "ctrl-o" "mark-ring-jump-back"    :editor)
 (keymap/set "ctrl-i" "mark-ring-jump-forward" :editor)

@@ -1755,8 +1755,6 @@ dependencies = [
 [[package]]
 name = "evil-janet"
 version = "1.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d04df1d652c839887ca5a9b163fb840bc36c082277977549fe6bd55053e56d0d"
 dependencies = [
  "bindgen",
  "cc",

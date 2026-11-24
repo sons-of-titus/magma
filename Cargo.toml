@@ -151,6 +151,11 @@ harness = false
 default = ["janet"]
 janet = ["ui/janet"]
 
+# Carries the one-line MSVC fix the upstream crate has not released
+# (see vendor/evil-janet/README.md).
+[patch.crates-io]
+evil-janet = { path = "vendor/evil-janet" }
+
 [profile.dev.package.slint]
 opt-level = 3
 [profile.dev.package.i-slint-core]

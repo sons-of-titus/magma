@@ -506,20 +506,16 @@ impl Response {
 }
 
 fn getrandom_fill(buf: &mut [u8]) {
-    // getentropy(2) never blocks and cannot fail for ≤256 bytes.
-    unsafe {
-        let ptr = buf.as_mut_ptr();
-        let len = buf.len();
-        if libc::getentropy(ptr as *mut libc::c_void, len) != 0 {
-            // Unreachable on any supported platform; fall back to a
-            // time-address mix rather than a constant token.
-            let seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
-            for (i, b) in buf.iter_mut().enumerate() {
-                *b = ((seed >> ((i % 16) * 8)) & 0xff) as u8 ^ (i as u8);
-            }
-        }
+    // The OS CSPRNG never fails on supported platforms; the fallback only
+    // exists so a token can never silently become a constant.
+    if getrandom::getrandom(buf).is_ok() {
+        return;
+    }
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for (i, b) in buf.iter_mut().enumerate() {
+        *b = ((seed >> ((i % 16) * 8)) & 0xff) as u8 ^ (i as u8);
     }
 }

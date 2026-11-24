@@ -134,6 +134,9 @@ fn escape_clears_the_selection() {
 
 #[test]
 fn ctrl_a_selects_all_and_copy_yanks_it() {
+    if !helpers::clipboard_available() {
+        return;
+    }
     janet_test!(ed, {
         let key = ed.create_buffer_from_str("probe.txt", "hello\nworld");
         if let Some(win) = ed.view_tree.focused_window_mut() {

@@ -11,6 +11,7 @@ use db::NodeRef;
 use kernel::db::{DataTabKind, NodeStatus};
 
 fn editor() -> Editor {
+    crate::tests::helpers::disable_keychain();
     let mut ed = Editor::new(Box::new(crate::kernel::storage::disk::DiskFileSystem::new()));
     crate::kernel::command::builtin::register_builtin_commands(&mut ed);
     ed

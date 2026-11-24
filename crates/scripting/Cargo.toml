@@ -21,3 +21,6 @@ slab = "0.4"
 tree-sitter = "0.27"
 tree-sitter-language = "0.1"
 streaming-iterator = "0.1"
+
+[dev-dependencies]
+cc = "1"

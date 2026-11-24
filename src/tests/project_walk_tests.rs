@@ -1,6 +1,7 @@
 //! Project file walk — gitignore rules, symlinks, and cycles.
 
 #[test]
+#[cfg(unix)]
 fn walk_respects_gitignore_symlinks_and_cycles() {
     use std::os::unix::fs::symlink;
     let root = std::env::temp_dir().join("magma_walk_gitignore");
@@ -108,6 +109,7 @@ fn atomic_write_temp_files_never_mark_the_index_dirty() {
 }
 
 #[test]
+#[cfg(unix)]
 fn find_files_survives_a_symlink_cycle_in_the_tree() {
     // `walk_matching` used `path.is_dir()` (follows links) with no cycle
     // guard: one `ln -s . loop` spun the blocking walk forever.  The sync

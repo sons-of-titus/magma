@@ -126,6 +126,14 @@ pub fn python3_available() -> bool {
         .is_ok()
 }
 
+/// A headless CI container has no clipboard service: arboard cannot open
+/// X11/Wayland there, and every clipboard-backed assertion would fail.
+pub fn clipboard_available() -> bool {
+    cfg!(target_os = "macos")
+        || std::env::var_os("DISPLAY").is_some()
+        || std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
 pub struct FakeDap {
     pub script: std::path::PathBuf,
     pub log: std::path::PathBuf,

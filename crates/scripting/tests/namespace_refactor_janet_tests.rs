@@ -71,6 +71,9 @@ fn plugin_state_set_get_del() {
 
 #[test]
 fn clipboard_set_and_get() {
+    if !helpers::clipboard_available() {
+        return;
+    }
     janet_test!(ed, {
         scripting::eval(r#"(clipboard/set "board-text")"#);
         let got = ed.clipboard.get_text();

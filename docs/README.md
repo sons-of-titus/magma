@@ -22,7 +22,10 @@ Magma is not an application with plugins. It is a live runtime environment where
 
 ## Quick Start
 
+See [Building](building.md) for per-OS prerequisites, then:
+
 ```bash
+cargo xtask grammars --all   # syntax-highlighting libraries (not committed)
 cargo build --release
 ./target/release/magma
 ```

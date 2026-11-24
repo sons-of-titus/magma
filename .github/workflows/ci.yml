@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev pkg-config libdbus-1-dev tree-sitter-cli
+      - name: Git identity for the live VCS tests
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name "CI"
+      - name: Build the tree-sitter grammar libraries
+        run: cargo xtask grammars --all
+      - name: Test
+        run: cargo test --locked --workspace --features janet
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: System dependencies
+        run: brew install tree-sitter
+      - name: Git identity for the live VCS tests
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name "CI"
+      - name: Build the tree-sitter grammar libraries
+        run: cargo xtask grammars --all
+      - name: Test
+        run: cargo test --locked --workspace --features janet
+
+  windows:
+    # The grammar-library path is verified per commit; the test suite runs
+    # on Linux and macOS.  Windows gates on a full compile of every crate
+    # and test target (MSVC toolchain, per rust-toolchain.toml).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: libclang for the Janet bindings
+        run: |
+          choco install llvm -y
+          Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
+      - name: Check
+        run: cargo check --locked --workspace --all-targets

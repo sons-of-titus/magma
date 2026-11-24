@@ -32,22 +32,24 @@ Janet extension.
 Every new Rust primitive (C function, command, event) and every new Janet macro
 must have tests.  "It compiles" and "I tried it manually" are not tests.
 
-**Location:** `src/tests/` — one file pair per feature area, declared in `src/tests/mod.rs`.
+**Location:** integration tests live in `src/tests/` (pure Rust, declared in
+`src/tests/mod.rs`) and in `crates/scripting/tests/` (Janet VM tests).
 
 | Kind | File | When |
 |------|------|------|
 | Pure Rust (no Janet VM) | `src/tests/<feature>_tests.rs` | Buffer fields, event counts, command registry, slab state |
-| Janet API | `src/tests/<feature>_janet_tests.rs` under `#[cfg(feature = "janet")]` | C functions, Janet macros, event handlers |
+| Janet API | `crates/scripting/tests/<feature>_janet_tests.rs` under `#[cfg(feature = "janet")]` | C functions, Janet macros, event handlers |
 
 File names reflect the **feature area**, not the sprint number.  Sprint numbers
 rot; feature names stay meaningful.  Example: the Extension Foundation tests
 live in `extension_foundation_tests.rs` and `extension_foundation_janet_tests.rs`.
 
-Janet tests **must** acquire `janet_bridge::JANET_VM_LOCK` at the top of every
-test function:
+Janet tests **must** acquire `scripting::JANET_VM_LOCK` at the top of every
+test function (or run inside the `janet_test!` macro / `acquire_janet_lock()`
+helper, which do it for you):
 
 ```rust
-let _lock = janet_bridge::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+let _lock = scripting::JANET_VM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 ```
 
 Use `unwrap_or_else(|e| e.into_inner())`, never bare `unwrap()`.  A panic in
@@ -55,7 +57,7 @@ one test poisons the mutex and cascades failures to every test that follows.
 
 **What to assert:** observable Rust-side state after Janet runs — field values,
 mode names, option maps, event subscriber counts.  Do not assert only that
-`janet_bridge::eval` returned `"ok"`.
+`scripting::eval` returned `"ok"`.
 
 **Nested fiber constraint:** Janet does not support `janet_continue` called
 from within a fiber C-callback that was itself started by a direct
@@ -95,8 +97,8 @@ being split at a natural abstraction boundary.
 
 | Situation | Correct split |
 |-----------|---------------|
-| New group of related Janet C functions | New `src/janet_bridge/<topic>_api.rs`, registered in `mod.rs` |
-| New editor subsystem (project, process, LSP) | New `src/<subsystem>/mod.rs` |
+| New group of related Janet C functions | New `crates/scripting/src/<topic>_api.rs`, registered in `crates/scripting/src/lib.rs` |
+| New editor subsystem (project, process, LSP) | New `crates/<subsystem>/mod.rs` |
 | Janet init script growing large | Split topic into `builtins/<topic>.janet`, `require` it from `init.janet` |
 
 Do not add significant logic to a file that is already near the size limit.

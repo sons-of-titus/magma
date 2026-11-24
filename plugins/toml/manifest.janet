@@ -8,5 +8,5 @@
    :entry "main.janet"
    :languages ["toml"]
    :extensions {"toml" ["toml"]}
-   :lsp {"toml" {:single-file true}}
+   :lsp {"toml" {:single-file true :args ["lsp" "stdio"]}}
    :capabilities [:process-execution :editor-access]})

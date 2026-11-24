@@ -8,10 +8,13 @@
 # without markers are single-file: the server starts with the first buffer.
 # A :server-key groups languages onto one process (tsserver for js/ts,
 # clangd for c/cpp); the group shares the first server that becomes ready.
+# The server binary itself resolves in priority order: the
+# `<lang>-lsp-command` option, a bundled `:command` (plugin-relative,
+# platform-suffixed), a previous `install/fetch` landing, a system
+# install, and finally the manifest's `:install` pin, which downloads
+# (url + sha256 + format) when `servers-auto-install` is on.
 
 (var *lang-lsp-specs* @{})
-
-(var *missing-reported* @{})
 
 (defn lsp/register-language-spec
   "Record `lang`'s launch policy.  Spec keys: :markers (project-root file
@@ -26,27 +29,11 @@
 (defn- server-key [lang] (get (spec-for lang) :server-key nil))
 
 (defn- resolve-command
-  "Command override for a language: the `<lang>-lsp-command` editor option
-  wins (the per-language config packs set these).  Resolution goes through
-  `toolchain/find-extended` and returns the resolved *path*, so a server
-  installed outside `$PATH` (keg-only Homebrew, Xcode) is both found and
-  spawnable.  A command that is missing everywhere reports once and returns
-  nil — a raw spawn failure is the wrong way for a user to learn a server
-  is missing."
+  "The server binary per install.janet's priority chain — the option
+   override, the plugin's bundled :command, a previous install landing,
+   a system install, or the manifest-pinned download."
   [lang]
-  (def cmd (option/get (string lang "-lsp-command")))
-  (if (and cmd (> (length cmd) 0))
-    (if-let [path (toolchain/find-extended cmd)]
-      path
-      (do
-        (unless (get *missing-reported* cmd)
-          (put *missing-reported* cmd true)
-          (notify/post "error"
-                       (string "Language server not found: " cmd)
-                       (string "LSP features disabled for " lang
-                               " — install it or set " lang "-lsp-command")))
-        nil))
-    nil))
+  (install/resolve-lsp-command lang (spec-for lang)))
 
 (defn- resolve-args
   "Extra argv: the `<lang>-lsp-args` option wins over the manifest spec."
@@ -144,3 +131,14 @@
 (event/on "language-unregistered"
   (fn [data]
     (put *lang-lsp-specs* (get data :name "?") nil)))
+
+# A pinned download landing clears the way: start the server now.  The
+# lsp-initialized handler syncs every buffer of the language once the
+# handshake is ready — ensure-server alone is enough here, and its guards
+# make a duplicate completion a no-op.
+(event/on "install-completed"
+  (fn [ev]
+    (when (= "servers" (get ev :kind))
+      (def lang (get ev :id))
+      (when (spec-for lang)
+        (ensure-server lang)))))

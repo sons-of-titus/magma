@@ -94,7 +94,11 @@
       (unless (has-value? caps :process-execution)
         (error (string "plugin/define: " name " declares :lsp for " lang
                        " without the :process-execution capability")))
-      (lsp/register-language-spec lang lsp))
+      (when (and (get lsp :install) (not (has-value? caps :network)))
+        (error (string "plugin/define: " name " declares :lsp :install for "
+                       lang " without the :network capability")))
+      # The root rides along so a bundled :command resolves plugin-relative.
+      (lsp/register-language-spec lang (merge lsp {:plugin-root root})))
     (array/push langs lang))
   (when-let [toolchain (get spec :toolchain)]
     (toolchain/register (merge toolchain {:plugin name})))

@@ -50,7 +50,7 @@ registered automatically.
 | Key | Effect |
 |-----|--------|
 | `:extensions` / `:filenames` | File-type → mode activation |
-| `:lsp` | Language-server launch policy (`:markers`, `:single-file`, `:server-key`) |
+| `:lsp` | Language-server launch policy (`:markers`, `:single-file`, `:server-key`, bundled `:command`, pinned `:install`) |
 | `syntax.scm`, `folds.scm` | Tree-sitter highlight/fold queries for the mode |
 | `grammars/tree-sitter-<lang>.dylib` | Grammar, loaded and ABI-validated at registration |
 | `:toolchain` | Build/test/run/debug actions with project detection |
@@ -80,9 +80,41 @@ Nothing to write.  Declare the launch policy in the manifest:
 :lsp {"nova" {:markers ["project.nova"]}}
 ```
 
-The server command comes from the `nova-lsp-command` option (seed it in
-`config.janet`); attach, didOpen/didChange, hover, completion, rename,
+The server binary resolves in priority order: the `nova-lsp-command`
+option (seed it in `config.janet`), a server the plugin bundles, one a
+previous download landed, a system install, and — when the manifest pins
+one — a download.  Attach, didOpen/didChange, hover, completion, rename,
 and diagnostics are the editor's.
+
+### Bundling the server
+
+Ship the executable in the plugin and point `:command` at it, relative to
+the plugin directory:
+
+```janet
+:lsp {"nova" {:markers ["project.nova"] :command "servers/nova-lsp"}}
+```
+
+A platform suffix picks the build per OS (`servers/nova-lsp.macos`,
+`.linux`, `.exe`) exactly like grammars do.  Bundling suits small
+single-file servers; big ones should be pinned instead.
+
+### Pinning a download
+
+```janet
+:lsp {"nova" {:markers ["project.nova"]
+              :install {:url "https://example.com/nova-lsp.tar.gz"
+                        :sha256 "9f2…"
+                        :format "tar.gz"
+                        :bin "nova-lsp"}}}
+```
+
+When the server is installed nowhere, the editor fetches the payload,
+verifies the checksum before executing anything, unpacks (`raw`, `gz`,
+`tar.gz`), and starts the server — announcing the download and the
+outcome as notifications.  The `servers-auto-install` option turns this
+off.  A manifest that declares `:install` must also declare the
+`:network` capability.
 
 ## Management verbs
 

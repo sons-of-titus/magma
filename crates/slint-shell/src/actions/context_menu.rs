@@ -169,8 +169,20 @@ fn run_command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
                 .status()
                 .map(|_| ())
                 .map_err(|e| e.to_string());
-            #[cfg(not(target_os = "macos"))]
-            let result: Result<(), String> = Err("Reveal in Finder is macOS-only".into());
+            // xdg-open can only open the containing directory; Explorer's
+            // /select, highlights the entry itself.
+            #[cfg(target_os = "linux")]
+            let result = std::process::Command::new("xdg-open")
+                .arg(dir_of(s, &path))
+                .status()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+            #[cfg(target_os = "windows")]
+            let result = std::process::Command::new("explorer")
+                .arg(format!("/select,{path}"))
+                .status()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
             match result {
                 Ok(()) => s.message.clear(),
                 Err(e) => s.message = e,
@@ -250,16 +262,19 @@ fn run_command(weak: &slint::Weak<AppWindow>, s: &mut AppState, cmd: &str) {
         "context:tree-delete" => {
             let path = absolute(s, &s.context_path);
             #[cfg(target_os = "macos")]
-            let result = trash_macos(&path);
+            let (result, message) = (trash_macos(&path), format!("Moved {} to Trash", name_of(&path)));
+            // No trash service is wired up off macOS: the delete is
+            // permanent, and the status line must say so.
             #[cfg(not(target_os = "macos"))]
-            let result: Result<(), String> = {
+            let (result, message) = {
                 let mut args = HashMap::new();
                 args.insert("path".to_string(), ArgValue::Path(path.clone()));
-                execute_command(&mut s.editor, "delete-path", &args)
+                let result = execute_command(&mut s.editor, "delete-path", &args);
+                (result, format!("Deleted {} permanently", name_of(&path)))
             };
             match result {
                 Ok(()) => {
-                    s.message = format!("Moved {} to Trash", name_of(&path));
+                    s.message = message;
                     s.tree_epoch = u64::MAX;
                 }
                 Err(e) => s.message = e,

@@ -140,6 +140,10 @@
 (keymap/set "ctrl-shift-f" "gui-project-find" :editor)
 (keymap/set "ctrl-shift-o" "gui-goto-symbol" :editor)
 (keymap/set "ctrl-shift-p" "gui-command-palette" :editor)
+# Which-key: every binding under a prefix, in a scratch split.  All
+# bindings are single chords (no pending-prefix state), so this is the
+# keymap's in-editor reference — IntelliJ's "keyboard shortcuts" list.
+(keymap/set "alt-k" "which-key" :editor)
 (keymap/set "ctrl-l" "gui-goto-line" :editor)
 (keymap/set "ctrl-q" "quit" :editor)
 

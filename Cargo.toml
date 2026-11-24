@@ -31,6 +31,7 @@ members = [
     "crates/keymap",
     "crates/extension",
     "crates/net",
+    "crates/install",
     "crates/clipboard",
     "crates/slint-shell",
     "crates/cli",

@@ -74,6 +74,8 @@ pub mod events {
     pub const SCHEDULER_WORK_PROGRESS: &str = "scheduler-work-progress";
     pub const SCHEDULER_WORK_COMPLETED: &str = "scheduler-work-completed";
     pub const SCHEDULER_WORK_FAILED: &str = "scheduler-work-failed";
+    pub const INSTALL_COMPLETED: &str = "install-completed";
+    pub const INSTALL_FAILED: &str = "install-failed";
     pub const EXTENSION_DECLARED: &str = "extension-declared";
     pub const EXTENSION_UNDECLARED: &str = "extension-undeclared";
     pub const AGENT_THOUGHT: &str = "agent-thought";

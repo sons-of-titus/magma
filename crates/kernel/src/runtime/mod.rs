@@ -159,6 +159,16 @@ pub enum BackgroundEvent {
     Dap(crate::debug::Event),
     /// The LSP subsystem's own event vocabulary.
     Lsp(crate::semantic::Event),
+    /// A managed download finished: `path` is the installed executable,
+    /// `error` set means the fetch, checksum, or unpack failed.  `id` is
+    /// the language / toolchain slot the payload was pinned for.
+    InstallFinished {
+        name: String,
+        kind: String,
+        id: String,
+        path: String,
+        error: Option<String>,
+    },
     // ─────────────────────────────────────────────────────────────────────
     Custom(String, String),
     // ── Phase 11 AI/Agent Architecture ───────────────────────────────────────

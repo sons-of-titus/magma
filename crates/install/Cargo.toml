@@ -1,0 +1,11 @@
+[package]
+name = "install"
+version = "0.1.0"
+edition = "2024"
+description = "Download, verify, and unpack language servers and toolchains for Magma"
+
+[dependencies]
+ureq = "2"
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"

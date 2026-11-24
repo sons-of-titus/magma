@@ -10,6 +10,7 @@ janet = ["dep:evil-janet"]
 
 [dependencies]
 kernel = { path = "../kernel" }
+install = { path = "../install" }
 logging = { path = "../logging" }
 evil-janet = { version = "1.37", features = ["link-amalg"], optional = true }
 serde = { version = "1", features = ["derive"] }

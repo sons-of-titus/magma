@@ -9,6 +9,7 @@ mod dap;
 mod db;
 mod fs;
 mod index;
+mod install;
 mod lsp;
 mod net;
 mod process;
@@ -36,6 +37,9 @@ pub(super) fn dispatch(ed: &mut Editor, event: BackgroundEvent) {
 
         // ── LSP ──────────────────────────────────────────────────────────
         BackgroundEvent::Lsp(_) => lsp::handle(ed, event),
+
+        // ── Managed downloads ────────────────────────────────────────────
+        BackgroundEvent::InstallFinished { .. } => install::handle(ed, event),
 
         // ── Debug Adapter Protocol ───────────────────────────────────────
         BackgroundEvent::Dap(_) => dap::handle(ed, event),

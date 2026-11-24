@@ -180,6 +180,15 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
         description: "Plugin names that stay off until the next startup (comma-separated)",
         category: OptionCategory::Behavior,
     },
+    OptionSpec {
+        name: "servers-auto-install",
+        label: "Auto-install servers and toolchains",
+        kind: OptionKind::Bool,
+        choices: &[],
+        default: "true",
+        description: "Download a project's pinned language server or toolchain when missing",
+        category: OptionCategory::Behavior,
+    },
 ];
 
 /// The option's current value: user-set, else the registry default.

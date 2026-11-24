@@ -1605,14 +1605,32 @@ detected, every action becomes a run configuration (saved configurations
 keep priority — toolchain actions fill the gaps).  Actions are structured
 program/argument lists, never shell strings.  Re-registering the same id
 from the same plugin replaces the entry; another plugin claiming the id is
-an error.
+an error.  An optional `:install` pin (`{:url :sha256 :format :bin}`) lets
+the editor fetch the toolchain when its program is missing; landed
+binaries are found through the task PATH.
 
-### `(toolchain/registered)` → `[{:id :language :detect :actions :debug-adapter :plugin} …]`
+### `(toolchain/registered)` → `[{:id :language :detect :actions :debug-adapter :install :plugin} …]`
 
 All registered toolchains with their detection markers, declared actions,
-and debug adapter declaration.
+debug adapter declaration, and install pin (nil when absent).
 
 Return an array of line numbers (integers) for all breakpoints set in `file`.
+
+---
+
+### `(install/fetch name kind id spec)` → work-id
+
+Download, checksum-verify, and unpack a pinned payload.  `kind` selects the
+landing area ("servers" or "toolchains"), `id` the per-language or
+per-toolchain slot; `spec` pins the payload as `{:url :sha256 :format :bin}`
+with `:format` one of `raw`, `gz`, `tar.gz`.  Progress reports through the
+work scheduler; the outcome arrives as `install-completed` or
+`install-failed`.  Identical pins never re-download.
+
+### `(install/find kind id bin)` → path string or nil
+
+Locate a previously installed executable in its download slot; the newest
+version wins, nil when nothing was installed.
 
 ---
 

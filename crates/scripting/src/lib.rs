@@ -321,6 +321,8 @@ mod gutter_api;
 #[cfg(feature = "janet")]
 mod icons_api;
 #[cfg(feature = "janet")]
+mod install_api;
+#[cfg(feature = "janet")]
 mod jtable;
 #[cfg(feature = "janet")]
 mod keymap_api;

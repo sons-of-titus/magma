@@ -171,6 +171,8 @@ event_payload!(SchedulerWorkProgressPayload {
 });
 event_payload!(SchedulerWorkCompletedPayload { id, name });
 event_payload!(SchedulerWorkFailedPayload { id, name, error });
+event_payload!(InstallCompletedPayload { name, kind, id, path });
+event_payload!(InstallFailedPayload { name, kind, id, error });
 event_payload!(ExtensionDeclaredPayload { name, version });
 event_payload!(ExtensionUndeclaredPayload { name });
 event_payload!(AgentThoughtPayload {

@@ -166,6 +166,7 @@ pub fn init_vm() {
         regs.extend(super::task_api::register());
         regs.extend(super::debug_api::register());
         regs.extend(super::toolchain_api::register());
+        regs.extend(super::install_api::register());
         regs.extend(super::scheduler_api::register());
         regs.extend(super::extension_api::register());
         regs.extend(super::plugin_api::register());
@@ -224,6 +225,12 @@ pub fn init_vm() {
     load_builtin(
         "builtins/help.janet",
         include_str!("../../../builtins/help.janet"),
+    );
+    // Before lsp_attach.janet and task.janet: both reference its helpers,
+    // and Janet compiles referenced symbols at file-load time.
+    load_builtin(
+        "builtins/install.janet",
+        include_str!("../../../builtins/install.janet"),
     );
     load_builtin(
         "builtins/plugins/lsp.janet",

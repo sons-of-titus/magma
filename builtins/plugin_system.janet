@@ -185,10 +185,12 @@
   [cwd home]
   (unless (= (option/get "plugins-enabled") "false")
     (plugin/discover (string cwd "/plugins"))
+    (def configured (option/get "plugins-root"))
     (def user-root
-      (if (> (length home) 0)
-        (or (plugin/user-root) (string home "/.config/magma/plugins"))
-        (plugin/user-root)))
+      (cond
+        (and configured (> (length configured) 0)) configured
+        (> (length home) 0) (string home "/.config/magma/plugins")
+        nil))
     (when (and user-root (> (length user-root) 0))
       (plugin/discover user-root))
     # Installed means enabled: every manifest plugin found is loaded with

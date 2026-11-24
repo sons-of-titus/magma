@@ -386,6 +386,29 @@ unsafe extern "C-unwind" fn c_lsp_shutdown(argc: i32, argv: *mut Janet) -> Janet
     })
 }
 
+/// (lsp/share-server from-language to-language) → :ok or nil
+///
+/// Alias `from`'s live server under `to` as well, so one process serves
+/// several language ids.  The attach layer calls this once a server-key
+/// group's first server is ready; the alias drops when the process exits.
+unsafe extern "C-unwind" fn c_lsp_share_server(argc: i32, argv: *mut Janet) -> Janet {
+    with_editor(|ed| unsafe {
+        let from = match conv::get_str(argc, argv, 0) {
+            Some(l) => l,
+            None => return conv::nil(),
+        };
+        let to = match conv::get_str(argc, argv, 1) {
+            Some(l) => l,
+            None => return conv::nil(),
+        };
+        if ed.lsp.share(&from, &to) {
+            conv::keyword("ok")
+        } else {
+            conv::nil()
+        }
+    })
+}
+
 /// (lsp/sync-kind language-id) → 0 none, 1 full, 2 incremental, or nil
 /// before the initialize result names one.  The didChange path uses this to
 /// honor the server's negotiated sync kind instead of assuming incremental.
@@ -494,6 +517,14 @@ pub fn register() -> Vec<JanetReg> {
             cfun: Some(c_lsp_shutdown as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"Shut down a language server (ordered shutdown + exit)".as_ptr()
                 as *const _,
+        },
+        JanetReg {
+            name: c"lsp/share-server".as_ptr() as *const _,
+            cfun: Some(
+                c_lsp_share_server as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet,
+            ),
+            documentation: c"Alias one language's live server under another language id; :ok when shared"
+                .as_ptr() as *const _,
         },
     ]
 }

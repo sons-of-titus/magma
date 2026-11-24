@@ -48,7 +48,9 @@ pub fn semantic_token_legend(initialize_result: &Value) -> SemanticLegend {
 
 /// Decode a `textDocument/semanticTokens/full` result: relative
 /// quintuples (delta line, delta start, length, type index, modifier bits)
-/// resolved through the server legend.  Unknown type indices keep their
+/// resolved through the server legend.  Deltas accumulate: `deltaStart` is
+/// relative to the previous token's start on the same line, and to the line
+/// start once `deltaLine` moves forward.  Unknown type indices keep their
 /// number as the name so nothing silently drops.
 pub fn decode_semantic_tokens(result: &Value, legend: &SemanticLegend) -> Vec<SemanticToken> {
     let Some(data) = result.get("data").and_then(Value::as_array) else {
@@ -56,14 +58,21 @@ pub fn decode_semantic_tokens(result: &Value, legend: &SemanticLegend) -> Vec<Se
     };
     let mut tokens = Vec::with_capacity(data.len() / 5);
     let quintuples = data.chunks_exact(5);
+    let mut line = 0usize;
+    let mut col_utf16 = 0usize;
     for chunk in quintuples {
         let nums: Option<Vec<u64>> = chunk.iter().map(Value::as_u64).collect();
         let Some(nums) = nums else { continue };
         if nums.len() != 5 {
             continue;
         }
-        let d_line = nums[0];
-        let d_start = nums[1];
+        let (d_line, d_start) = (nums[0], nums[1]);
+        if d_line > 0 {
+            line += d_line as usize;
+            col_utf16 = d_start as usize;
+        } else {
+            col_utf16 += d_start as usize;
+        }
         let len = nums[2];
         let ty = nums[3];
         let mods = nums[4];
@@ -80,8 +89,8 @@ pub fn decode_semantic_tokens(result: &Value, legend: &SemanticLegend) -> Vec<Se
             .map(|(_, name)| name.clone())
             .collect();
         tokens.push(SemanticToken {
-            line: d_line as usize,
-            col_utf16: d_start as usize,
+            line,
+            col_utf16,
             len_utf16: len as usize,
             token_type,
             modifiers,
@@ -135,18 +144,28 @@ mod semantic_token_tests {
     }
 
     #[test]
-    fn delta_quintuples_decode_to_absolute_positions() {
-        // Two tokens on line 5: (line 0 → 5, col 0 → 8, len 3, type 2, mods bit1)
-        let result = serde_json::json!({ "data": [5, 0, 3, 2, 2, 0, 12, 5, 1, 1] });
+    fn delta_quintuples_accumulate_to_absolute_positions() {
+        // Token 1: line +5, col 0, len 3 → (5, 0).
+        // Token 2: same line (+0), col +12 → (5, 12).
+        // Token 3: line +2, col 4 → (7, 4) — col restarts at the line start.
+        let result = serde_json::json!({
+            "data": [5, 0, 3, 2, 2, 0, 12, 5, 1, 2, 2, 4, 5, 3, 0]
+        });
         let tokens = decode_semantic_tokens(&result, &legend());
-        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0].line, 5);
         assert_eq!(tokens[0].col_utf16, 0);
         assert_eq!(tokens[0].len_utf16, 3);
         assert_eq!(tokens[0].token_type, "variable");
         assert_eq!(tokens[0].modifiers, vec!["unreferenced".to_string()]);
+        assert_eq!(tokens[1].line, 5);
+        assert_eq!(tokens[1].col_utf16, 12);
         assert_eq!(tokens[1].token_type, "type");
-        assert_eq!(tokens[1].modifiers, vec!["declaration".to_string()]);
+        assert_eq!(tokens[1].modifiers, vec!["unreferenced".to_string()]);
+        assert_eq!(tokens[2].line, 7);
+        assert_eq!(tokens[2].col_utf16, 4);
+        assert_eq!(tokens[2].len_utf16, 5);
+        assert_eq!(tokens[2].token_type, "parameter");
     }
 
     #[test]

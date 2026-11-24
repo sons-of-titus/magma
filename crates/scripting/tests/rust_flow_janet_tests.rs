@@ -23,6 +23,9 @@ fn rs_file(tag: &str, body: &str) -> String {
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("main.rs");
     std::fs::write(&file, body).unwrap();
+    // The attach layer starts marker-policy servers only inside a real
+    // project — the same behavior a user gets opening a file from a repo.
+    std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"t\"\n").unwrap();
     file.to_str().unwrap().replace('\\', "/")
 }
 
@@ -788,6 +791,39 @@ fn real_rust_analyzer_serves_semantic_tokens() {
         scopes.iter().any(|s| s == "function" || s == "keyword"),
         "server token types must survive the resolvable-scope filter, got {scopes:?}"
     );
+
+    // Positions, not just presence: token deltas are relative, and a decoder
+    // that treats them as absolute paints every token after the first at a
+    // shifted offset — garbage that lands ON TOP of the syntax layer.  The
+    // file starts "fn main() {…", so the `main` token must be exactly bytes
+    // 3..7, and no token can straddle the newline at byte 12.
+    let layer = ed
+        .views
+        .get(&key)
+        .unwrap()
+        .highlight_layers
+        .get("semantic")
+        .unwrap()
+        .clone();
+    assert!(
+        layer.iter().any(|&(s, e, _)| (s, e) == (3, 7)),
+        "the `main` token must decode at bytes 3..7, spans: {layer:?}"
+    );
+    let text = ed
+        .buffers
+        .get(key)
+        .map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).slice(0, 64).to_string())
+        .unwrap_or_default();
+    for (s, e, _) in &layer {
+        let covered = text
+            .get(*s..(*e).min(text.len()))
+            .map(|x| x.contains('\n'))
+            .unwrap_or(true);
+        assert!(
+            !covered,
+            "no server token spans a line break; [{s}..{e}) does — deltas were mis-decoded"
+        );
+    }
     // No orphans: the spawned server must not outlive the test.
     ed.lsp.shutdown_all();
 }

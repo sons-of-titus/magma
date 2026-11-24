@@ -44,6 +44,19 @@ impl LspRegistry {
         self.starting.remove(language_id);
     }
 
+    /// Alias `from`'s live server under `to` as well, so one process
+    /// serves several language ids (tsserver for js/ts, clangd for c/cpp).
+    /// False when `from` has no live handle yet.
+    pub fn share(&mut self, from: &str, to: &str) -> bool {
+        match self.servers.get(from).cloned() {
+            Some(handle) => {
+                self.insert(to, handle);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Reserve a spawn slot: true when a start for this language is not
     /// already running or live.
     pub fn can_start(&self, language_id: &str) -> bool {
@@ -70,7 +83,12 @@ impl LspRegistry {
     }
 
     pub fn exited(&mut self, language_id: &str) {
-        self.servers.remove(language_id);
+        // A shared server dies as one: drop every key aliasing the same
+        // handle, or the surviving alias keeps routing to a dead process.
+        let dead = self.servers.get(language_id).cloned();
+        if let Some(dead) = dead {
+            self.servers.retain(|_, h| !Arc::ptr_eq(h, &dead));
+        }
         self.starting.remove(language_id);
     }
 
@@ -131,5 +149,66 @@ mod tests {
         assert_eq!(reg.language_for_buffer(7).as_deref(), Some("rust"));
         reg.forget_buffer(7);
         assert_eq!(reg.language_for_buffer(7), None);
+    }
+
+    // A dead-process handle is fine here: the registry only routes Arcs,
+    // it never speaks the protocol through them.
+    fn fake_handle(language_id: &str) -> Arc<LspHandle> {
+        let (outbound, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (init_tx, _init_rx) = std::sync::mpsc::channel();
+        let core = Arc::new(Core {
+            outbound,
+            pending: std::sync::Mutex::new(HashMap::new()),
+            sink: Arc::new(NullSink),
+            state: std::sync::Mutex::new(ServerState::Ready),
+            next_id: std::sync::atomic::AtomicU64::new(1),
+            legend: std::sync::Mutex::new(SemanticLegend::default()),
+            sync_kind: std::sync::Mutex::new(None),
+            init_signal: std::sync::Mutex::new(init_tx),
+        });
+        Arc::new(LspHandle {
+            core,
+            language_id: language_id.to_string(),
+            child: Arc::new(std::sync::Mutex::new(None)),
+        })
+    }
+
+    struct NullSink;
+    impl EventSink for NullSink {
+        fn send(&self, _event: Event) {}
+    }
+
+    use super::super::{Core, Event, EventSink, LspHandle, SemanticLegend, ServerState};
+
+    #[test]
+    fn share_aliases_one_process_under_two_languages() {
+        let mut reg = LspRegistry::default();
+        reg.insert("typescript", fake_handle("typescript"));
+        assert!(reg.share("typescript", "javascript"));
+        assert!(
+            !reg.can_start("javascript"),
+            "a shared server must not double-spawn"
+        );
+        assert!(
+            reg.get("javascript").is_some(),
+            "didOpen routes through the alias"
+        );
+        assert!(
+            !reg.share("kotlin", "scala"),
+            "no live handle under `from`, no share"
+        );
+    }
+
+    #[test]
+    fn exited_drops_every_alias_of_the_shared_handle() {
+        let mut reg = LspRegistry::default();
+        reg.insert("typescript", fake_handle("typescript"));
+        reg.share("typescript", "javascript");
+        reg.exited("typescript");
+        assert!(
+            reg.get("javascript").is_none(),
+            "a crash kills the whole group, not just one alias"
+        );
+        assert!(reg.can_start("javascript"));
     }
 }

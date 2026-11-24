@@ -159,6 +159,7 @@ pub fn init_vm() {
         regs.extend(super::picker_api::register());
         regs.extend(super::notifications_api::register());
         regs.extend(super::status_api::register());
+        regs.extend(super::plugin_query_api::register());
         regs.extend(super::plugin_state_api::register());
         regs.extend(super::search_api::register());
         regs.extend(super::clipboard_api::register());
@@ -379,12 +380,12 @@ pub fn init_vm() {
         include_str!("../../../builtins/plugin_system.janet"),
     );
     load_builtin(
-        "builtins/plugin_verbs.janet",
-        include_str!("../../../builtins/plugin_verbs.janet"),
-    );
-    load_builtin(
         "builtins/plugin_install.janet",
         include_str!("../../../builtins/plugin_install.janet"),
+    );
+    load_builtin(
+        "builtins/plugin_verbs.janet",
+        include_str!("../../../builtins/plugin_verbs.janet"),
     );
     load_builtin(
         "builtins/plugin_images.janet",

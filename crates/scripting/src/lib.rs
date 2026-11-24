@@ -353,6 +353,8 @@ mod plugin_api;
 #[cfg(feature = "janet")]
 mod picker_api;
 #[cfg(feature = "janet")]
+mod plugin_query_api;
+#[cfg(feature = "janet")]
 mod plugin_state_api;
 #[cfg(feature = "janet")]
 mod process_api;

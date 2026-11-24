@@ -33,6 +33,9 @@ pub(crate) enum PickerKind {
     Rename(String),
     /// Rename the symbol at the cursor via LSP.
     RenameSymbol,
+    /// A plugin-registered source: entries come from the kernel's
+    /// `picker_state`, collected by a Janet handler per query.
+    Source(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,6 +139,10 @@ pub(crate) fn query_changed(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
         let kind = s.picker.clone();
         s.picker_items = collect_items(s, &kind);
     }
+    if let PickerKind::Source(id) = s.picker.clone() {
+        let query = s.picker_query.clone();
+        emit_source_query(s, &id, &query);
+    }
     s.picker_selected = 0;
     refresh_rows(weak, s);
 }
@@ -218,6 +225,28 @@ pub(crate) fn confirm(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
                         // or the script runtime knows — never a guess.
                         Err(e) => s.message = e,
                     }
+                }
+            }
+        }
+        PickerKind::Source(_) => {
+            if let Some(p) = payload {
+                if let Some(line) = p.strip_prefix("cmd:") {
+                    let line = line.to_string();
+                    cancel(s);
+                    match kernel::command::execute_command_line(&mut s.editor, &line) {
+                        Ok(()) => s.message.clear(),
+                        Err(e) => s.message = e,
+                    }
+                } else {
+                    let mut parts = p.split(PAYLOAD_SEP);
+                    let path = parts.next().unwrap_or_default().to_string();
+                    let line = parts
+                        .next()
+                        .and_then(|l| l.parse::<i64>().ok())
+                        .unwrap_or(1);
+                    cancel(s);
+                    run(s, "open-file", ("path", ArgValue::Path(path)));
+                    run(s, "goto-line", ("line", ArgValue::Integer(line)));
                 }
             }
         }
@@ -322,6 +351,74 @@ fn join_path(parent: &str, name: &str) -> String {
     }
 }
 
+/// Open a plugin-registered source: metadata from the kernel registry,
+/// entries collected asynchronously — the query event fires now and the
+/// collector's `picker/push-items` answer projects on the following frame.
+pub(crate) fn open_source(
+    weak: &slint::Weak<AppWindow>,
+    s: &mut AppState,
+    id: &str,
+) {
+    let Some(source) = s.editor.picker_sources.get(id).cloned() else {
+        s.message = format!("no picker source registered: {id}");
+        s.editor.frame_dirty = true;
+        return;
+    };
+    s.picker = PickerKind::Source(id.to_string());
+    s.picker_query.clear();
+    s.picker_items.clear();
+    s.picker_selected = 0;
+    if let Some(a) = weak.upgrade() {
+        a.set_picker_title(source.title.clone().into());
+        a.set_picker_placeholder(source.placeholder.clone().into());
+        a.set_picker_hint("".into());
+        a.set_picker_query("".into());
+        a.set_picker_visible(true);
+    }
+    emit_source_query(s, id, "");
+    refresh_rows(weak, s);
+}
+
+/// Ask the collector for the current query; the answer lands in
+/// `editor.picker_state` on the next dispatch.
+fn emit_source_query(s: &mut AppState, id: &str, query: &str) {
+    s.editor.events.emit(
+        "picker-source-query",
+        [
+            ("source".to_string(), id.to_string()),
+            ("query".to_string(), query.to_string()),
+        ]
+        .into_iter()
+        .collect(),
+    );
+}
+
+/// Project the collector's cached answer into the rows — called every
+/// frame while a source picker is open, since the answer arrives
+/// asynchronously.
+pub(crate) fn sync_source_items(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
+    let PickerKind::Source(id) = s.picker.clone() else {
+        return;
+    };
+    let fresh: Vec<PickerItem> = s
+        .editor
+        .picker_state
+        .items
+        .iter()
+        .map(|e| PickerItem {
+            title: e.title.clone(),
+            detail: e.detail.clone(),
+            meta: e.meta.clone(),
+            payload: e.payload.clone(),
+        })
+        .collect();
+    if fresh != s.picker_items {
+        s.picker_items = fresh;
+        refresh_rows(weak, s);
+    }
+    let _ = id;
+}
+
 /// Route a `gui-*` ui_request from the keymap to its surface.  Returns true
 /// when the request was recognized.
 pub(crate) fn handle_request(
@@ -337,6 +434,9 @@ pub(crate) fn handle_request(
         "branches" => open(weak, s, PickerKind::Branches),
         "goto-line" => open(weak, s, PickerKind::GotoLine),
         "rename-symbol" => open(weak, s, PickerKind::RenameSymbol),
+        r if r.starts_with("picker-source:") => {
+            open_source(weak, s, &r["picker-source:".len()..])
+        }
         "find" => {
             s.find_visible = true;
             s.find_replace_visible = false;

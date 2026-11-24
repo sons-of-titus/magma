@@ -33,6 +33,38 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("gui-goto-symbol", "Open the Go to Symbol picker", vec![], |ed, _| {
         request(ed, "goto-symbol")
     });
+    cmds.register_fn(
+        "gui-picker",
+        "Open a registered picker source by id",
+        vec![crate::command::args::ArgSpec::new(
+            "id",
+            crate::command::args::ArgType::String,
+        )],
+        |ed, args| {
+            let id = args
+                .get("id")
+                .and_then(|a| a.as_string())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "gui-picker: source id required".to_string())?;
+            if ed.picker_sources.get(&id).is_none() {
+                return Err(format!("no picker source registered: {id}"));
+            }
+            ed.ui_requests.push(format!("picker-source:{id}"));
+            Ok(())
+        },
+    );
+    cmds.register_fn(
+        "gui-goto-symbol-in-file",
+        "Open the Go to Symbol in File picker",
+        vec![],
+        |ed, _| {
+            if ed.picker_sources.get("document-symbols").is_none() {
+                return Err("no symbol provider for this buffer".to_string());
+            }
+            ed.ui_requests.push("picker-source:document-symbols".to_string());
+            Ok(())
+        },
+    );
     cmds.register_fn("gui-buffers", "Open the buffer switcher", vec![], |ed, _| {
         request(ed, "buffers")
     });

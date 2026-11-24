@@ -74,6 +74,12 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     // syntax highlighting and LSP attach); nothing else would drain them.
     state.editor.dispatch_events_scoped();
 
+    // A picker source's answer arrives via the dispatch above; project it
+    // while the overlay is open.
+    if matches!(state.picker, crate::actions::picker::PickerKind::Source(_)) {
+        picker::sync_source_items(weak, state);
+    }
+
     // Chord-bound `gui-*` commands ask for chrome surfaces here.
     if !state.editor.ui_requests.is_empty() {
         let requests = std::mem::take(&mut state.editor.ui_requests);

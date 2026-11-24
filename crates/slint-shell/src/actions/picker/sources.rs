@@ -43,7 +43,7 @@ fn title_of(path: &str) -> &str {
 pub(super) fn collect_items(s: &mut AppState, kind: &PickerKind) -> Vec<PickerItem> {
     let ed = &mut s.editor;
     match kind {
-        PickerKind::None => Vec::new(),
+        PickerKind::None | PickerKind::Source(_) => Vec::new(),
         PickerKind::Files => ed
             .project_manager
             .project
@@ -153,6 +153,7 @@ pub(super) fn header(kind: &PickerKind) -> (&'static str, &'static str, &'static
         PickerKind::NewFolder(_) => ("New Folder", "Name of the folder to create", "Enter creates"),
         PickerKind::Rename(_) => ("Rename", "New name", "Enter renames"),
         PickerKind::RenameSymbol => ("Rename Symbol", "New name", "Enter renames"),
+        PickerKind::Source(_) => ("", "", ""),
     }
 }
 

@@ -78,7 +78,8 @@ pub fn notification(method: &str, params: Value) -> Value {
 }
 
 /// Convert a `file://` URI to a filesystem path, decoding every `%XX`
-/// escape.  Non-URI input passes through unchanged.
+/// escape.  Drive-letter forms (`file:///C:/…`, `file://C:/…`) come back
+/// as `C:/…`; non-URI input passes through unchanged.
 pub fn uri_to_path(uri: &str) -> String {
     let Some(path) = uri.strip_prefix("file://") else {
         return uri.to_string();
@@ -98,15 +99,27 @@ pub fn uri_to_path(uri: &str) -> String {
             i += 1;
         }
     }
-    String::from_utf8_lossy(&out).into_owned()
+    let decoded = String::from_utf8_lossy(&out).into_owned();
+    // "/C:/Users/x" (and the sloppy "C:/Users/x" some servers send) both
+    // mean drive C; strip the slash a real URI carries before the letter.
+    if decoded.starts_with('/') && decoded.len() >= 3 && decoded.as_bytes()[2] == b':' {
+        return decoded[1..].to_string();
+    }
+    decoded
 }
 
 /// Match a server-sent document URI against a buffer path.  didOpen sends
 /// the percent-encoded URI, and servers echo it back — decode that side
 /// before comparing; raw-path and undecoded comparisons keep sloppy
-/// servers working.
+/// servers working.  Separator style never matters: Windows buffers hold
+/// backslash paths while URIs carry slashes.
 pub fn uri_matches_path(uri: &str, buf_path: &str) -> bool {
-    uri_to_path(uri) == buf_path || uri.strip_prefix("file://") == Some(buf_path) || uri == buf_path
+    let normalized = |s: &str| s.replace('\\', "/");
+    let decoded = uri_to_path(uri);
+    decoded == buf_path
+        || normalized(&decoded) == normalized(buf_path)
+        || uri.strip_prefix("file://") == Some(buf_path)
+        || uri == buf_path
 }
 
 /// Build `initialize` params.  A real rootUri matters: rust-analyzer refuses
@@ -157,9 +170,17 @@ pub fn initialize_params(root: Option<&str>) -> Value {
 }
 
 pub fn path_to_uri(path: &str) -> String {
+    let slashes = path.replace('\\', "/");
+    // A drive path ("C:/x") needs the empty-authority slash: file:///C:/x.
+    let prefix = if slashes.len() >= 2 && slashes.as_bytes()[1] == b':' {
+        "/"
+    } else {
+        ""
+    };
     format!(
-        "file://{}",
-        path.replace('%', "%25")
+        "file://{prefix}{}",
+        slashes
+            .replace('%', "%25")
             .replace(' ', "%20")
             .replace('#', "%23")
             .replace('?', "%3F")
@@ -237,5 +258,23 @@ mod tests {
             "/a/my notes.rs"
         ));
         assert!(!uri_matches_path("file:///a/b.rs", "/a/other.rs"));
+    }
+
+    #[test]
+    fn drive_paths_round_trip_through_uris() {
+        assert_eq!(
+            path_to_uri("C:\\Users\\u\\my notes.rs"),
+            "file:///C:/Users/u/my%20notes.rs"
+        );
+        assert_eq!(uri_to_path("file:///C:/Users/u/x.rs"), "C:/Users/u/x.rs");
+        // Some servers drop the empty authority: file://C:/…
+        assert_eq!(uri_to_path("file://C:/Users/u/x.rs"), "C:/Users/u/x.rs");
+        assert!(uri_matches_path(
+            "file:///C:/Users/u/my%20notes.rs",
+            "C:\\Users\\u\\my notes.rs"
+        ));
+        for path in ["C:/Users/u/file.rs", "C:/Users/u/50% off/x#y.rs"] {
+            assert_eq!(uri_to_path(&path_to_uri(path)), path);
+        }
     }
 }

@@ -1,5 +1,11 @@
 import { Theme } from "../theme.slint";
 
+export struct StatusSegment {
+    id: string,
+    text: string,
+    kind: string,
+}
+
 export component StatusPill inherits Rectangle {
     in property <string> label;
     in property <color> tint: Theme.text-muted;
@@ -27,6 +33,7 @@ export component StatusPill inherits Rectangle {
 }
 
 export component StatusBar inherits Rectangle {
+    in property <[StatusSegment]> segments;
     in property <string> file;
     in property <bool> modified: false;
     in property <string> message;
@@ -52,6 +59,14 @@ export component StatusBar inherits Rectangle {
             label: root.modified ? root.file + " •" : root.file;
             tint: root.modified ? Theme.text-primary : Theme.text-muted;
             clicked => { root.file-clicked(); }
+        }
+
+        // Plugin-contributed segments: LSP state, test status, anything a
+        // source registers.  Tinted by kind, ordered by registration.
+        for seg in root.segments : StatusPill {
+            label: seg.text;
+            tint: seg.kind == "error" ? Theme.danger
+                : seg.kind == "warn" ? Theme.warning : Theme.text-muted;
         }
 
         StatusPill {

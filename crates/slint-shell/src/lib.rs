@@ -8,6 +8,7 @@
 mod actions;
 mod app_state;
 mod context;
+mod dock_icon;
 mod catppuccin;
 mod dracula;
 mod input;
@@ -51,6 +52,7 @@ pub struct StartOptions {
 pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
     let _ = boot_clock();
     slint::BackendSelector::new().select()?;
+    dock_icon::apply_logo();
     // Register the bundled Symbols Nerd Font so icon-pack glyphs render.
     {
         use slint::fontique_011::fontique;
@@ -456,6 +458,9 @@ pub fn run(start: StartOptions) -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
+    // The dock tile is only created once the app finishes launching, so the
+    // icon set before the loop starts is dropped — re-apply from inside it.
+    slint::Timer::single_shot(Duration::from_millis(100), dock_icon::apply_logo);
     slint::run_event_loop()?;
     drop(timer);
     {

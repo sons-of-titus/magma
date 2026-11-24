@@ -118,7 +118,7 @@ impl LspHandle {
         S: EventSink + Send + Sync + 'static,
     {
         let sink = Arc::new(sink);
-        let mut child = std::process::Command::new(command)
+        let mut child = std::process::Command::new(util::exec::resolve_command(command))
             .args(args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

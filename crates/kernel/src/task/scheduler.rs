@@ -175,11 +175,10 @@ impl TaskScheduler {
         bg.spawn_blocking(move || {
             let start = Instant::now();
             let mut cmd = if args.is_empty() {
-                let mut c = std::process::Command::new("sh");
-                c.arg("-c").arg(&command);
-                c
+                crate::util::exec::shell_command(&command)
             } else {
-                let mut c = std::process::Command::new(&command);
+                let mut c =
+                    std::process::Command::new(crate::util::exec::resolve_command(&command));
                 c.args(&args);
                 c
             };

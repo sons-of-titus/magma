@@ -177,8 +177,7 @@ pub(super) fn register(editor: &mut Editor) {
             let (cmd, cmd_args) = if let Some(shell) = custom_shell {
                 (shell, vec![])
             } else {
-                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-                (shell, vec![])
+                (crate::util::exec::default_shell(), vec![])
             };
             let cwd = editor
                 .project_manager

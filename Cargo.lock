@@ -5962,6 +5962,7 @@ dependencies = [
  "tokio",
  "tree-sitter",
  "tree-sitter-language",
+ "util",
 ]
 
 [[package]]
@@ -7343,6 +7344,7 @@ name = "vcs"
 version = "0.1.0"
 dependencies = [
  "logging",
+ "util",
 ]
 
 [[package]]

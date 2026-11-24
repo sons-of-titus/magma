@@ -79,11 +79,7 @@ unsafe extern "C-unwind" fn c_editor_shell(argc: i32, argv: *mut Janet) -> Janet
             let Some(cmd) = conv::get_str(argc, argv, 0) else {
                 conv::signal_err("editor/shell requires a command string")
             };
-            match std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&cmd)
-                .output()
-            {
+            match kernel::util::exec::shell_command(&cmd).output() {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let stderr = String::from_utf8_lossy(&output.stderr);

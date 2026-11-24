@@ -69,8 +69,7 @@ impl ShellTemplateBackend {
         limit: Option<usize>,
     ) -> Result<String, String> {
         let cmd = self.render(tmpl, dir, file, msg, limit);
-        let out = std::process::Command::new("sh")
-            .args(["-c", &cmd])
+        let out = util::exec::shell_command(&cmd)
             .current_dir(dir)
             .output()
             .map_err(|e| format!("sh: {e}"))?;

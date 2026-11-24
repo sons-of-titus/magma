@@ -43,8 +43,7 @@ unsafe extern "C-unwind" fn c_scheduler_submit(argc: i32, argv: *mut Janet) -> J
             if cancel.is_cancelled() {
                 return Err("cancelled".into());
             }
-            let mut command = std::process::Command::new("sh");
-            command.arg("-c").arg(&cmd);
+            let mut command = kernel::util::exec::shell_command(&cmd);
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
             match command.spawn() {

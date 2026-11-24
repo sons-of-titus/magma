@@ -50,7 +50,7 @@ impl DapHandle {
     where
         S: super::EventSink + Send + 'static,
     {
-        let mut child = std::process::Command::new(adapter)
+        let mut child = std::process::Command::new(crate::util::exec::resolve_command(adapter))
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())

@@ -5,4 +5,5 @@ edition = "2024"
 description = "Version-control backend abstraction for Magma (git, hg, svn, jj)"
 
 [dependencies]
+util = { path = "../util" }
 logging = { path = "../logging" }

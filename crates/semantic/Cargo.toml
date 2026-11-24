@@ -5,6 +5,7 @@ edition = "2024"
 description = "Language-intelligence core for Magma: providers, symbols, project graph, tree-sitter"
 
 [dependencies]
+util = { path = "../util" }
 text = { path = "../text" }
 logging = { path = "../logging" }
 libloading = "0.8"

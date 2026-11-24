@@ -48,14 +48,12 @@ unsafe extern "C-unwind" fn c_process_spawn(argc: i32, argv: *mut Janet) -> Jane
             None => conv::signal_err("no background runtime available"),
         };
 
-        let mut command = std::process::Command::new("sh");
-        command.arg("-c");
         let full_cmd = if args_str.is_empty() {
             cmd.clone()
         } else {
             format!("{} {}", cmd, args_str)
         };
-        command.arg(&full_cmd);
+        let mut command = kernel::util::exec::shell_command(&full_cmd);
         if let Some(ref cwd) = cwd_opt {
             command.current_dir(cwd);
         }
@@ -296,7 +294,8 @@ unsafe extern "C-unwind" fn c_process_run(argc: i32, argv: *mut Janet) -> Janet 
         let args = conv::get_str_array(argc, argv, 1).unwrap_or_default();
         let input = conv::get_opt_str(argc, argv, 2).flatten();
 
-        let mut command = std::process::Command::new(&cmd);
+        let mut command =
+            std::process::Command::new(kernel::util::exec::resolve_command(&cmd));
         command.args(&args);
         command.stdin(std::process::Stdio::piped());
         command.stdout(std::process::Stdio::piped());

@@ -3,6 +3,7 @@
 
 pub mod id_pool;
 pub mod proctree;
+pub mod exec;
 
 pub use id_pool::IdPool;
 

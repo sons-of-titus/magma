@@ -645,3 +645,91 @@ fn ts_set_mode_query_takes_ownership_only_when_the_query_compiles() {
         );
     });
 }
+
+#[test]
+fn every_semantic_legend_name_resolves_to_a_face() {
+    // A legend name without a scope-face registration is dropped from the
+    // semantic layer by the kernel's resolvable-scope filter — a typo in
+    // one of these camelCase names would silently grey out that token
+    // class for every LSP-driven buffer.
+    janet_test!(ed, {
+        let expected: &[(&str, &str)] = &[
+            ("comment", "comment-face"),
+            ("constant", "constant-face"),
+            ("function", "function-face"),
+            ("keyword", "keyword-face"),
+            ("method", "function-face"),
+            ("namespace", "type-face"),
+            ("operator", "operator-face"),
+            ("parameter", "parameter-face"),
+            ("property", "field-face"),
+            ("string", "string-face"),
+            ("type", "type-face"),
+            ("variable", "variable-face"),
+            ("class", "type-face"),
+            ("enum", "type-face"),
+            ("interface", "trait-face"),
+            ("trait", "trait-face"),
+            ("struct", "type-face"),
+            ("union", "type-face"),
+            ("builtinType", "type-face"),
+            ("generic", "type-face"),
+            ("module", "type-face"),
+            ("selfTypeKeyword", "type-face"),
+            ("typeParameter", "type-parameter-face"),
+            ("constParameter", "constant-face"),
+            ("macro", "macro-face"),
+            ("procMacro", "macro-face"),
+            ("derivative", "macro-face"),
+            ("derive", "macro-face"),
+            ("enumMember", "constant-face"),
+            ("enumLiteral", "constant-face"),
+            ("number", "constant-face"),
+            ("boolean", "constant-face"),
+            ("char", "constant-face"),
+            ("escapeSequence", "constant-face"),
+            ("escapedSequence", "constant-face"),
+            ("lifetime", "lifetime-face"),
+            ("attribute", "keyword-face"),
+            ("decorator", "keyword-face"),
+            ("selfKeyword", "keyword-face"),
+            ("formatString", "string-face"),
+            ("formatSpecifier", "constant-face"),
+            ("regexp", "string-face"),
+            ("event", "function-face"),
+            ("controlFlow", "keyword-face"),
+            ("const", "constant-face"),
+            ("declaration", "declaration-face"),
+            ("mutable", "mutable-face"),
+            ("unsafe", "unsafe-face"),
+        ];
+        for (scope, face) in expected {
+            let resolved = scripting::eval_result(&format!(
+                r#"(face/resolve-scope "{scope}")"#
+            ))
+            .expect("resolve-scope eval must not error");
+            // eval_result prints Janet values: strings come back quoted.
+            assert_eq!(
+                resolved,
+                format!(r#""{face}""#),
+                "legend scope {scope} must resolve to {face}"
+            );
+        }
+        for face in [
+            "macro-face",
+            "lifetime-face",
+            "type-parameter-face",
+            "trait-face",
+            "field-face",
+            "declaration-face",
+            "mutable-face",
+            "parameter-face",
+            "unsafe-face",
+        ] {
+            assert!(
+                ed.faces.contains_key(face),
+                "{face} must exist in the default theme"
+            );
+        }
+    });
+}

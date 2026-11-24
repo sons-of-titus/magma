@@ -21,7 +21,7 @@
        ["keyword" "keyword-face"]
        ["module" "type-face"]
        ["operator" "operator-face"]
-       ["property" "variable-face"]
+       ["property" "field-face"]
        ["punctuation" "punctuation-face"]
        ["string" "string-face"]
        ["type" "type-face"]

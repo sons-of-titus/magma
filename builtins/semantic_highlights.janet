@@ -1,4 +1,5 @@
-# Semantic highlighting presentation — dead code and deprecations.
+# Semantic highlighting presentation — the full token legend, plus the
+# dead-code and deprecation styling.
 #
 # The mechanism lives in the kernel: an LSP semanticTokens response is
 # decoded into (start end scope) ranges in the "semantic" highlight layer,
@@ -17,8 +18,12 @@
 
 # ── Token types → faces ──────────────────────────────────────────────────────
 #
-# The standard LSP token types.  Registered onto the existing theme faces so
-# a semantic layer agrees with the tree-sitter syntax layer underneath.
+# The standard LSP token types plus the custom entries rust-analyzer adds to
+# its legend.  Types without a mapping here are dropped from the semantic
+# layer, leaving the tree-sitter colors underneath — safe for punctuation
+# the syntax layer already paints, wrong for anything the server knows and
+# tree-sitter cannot (macros' token trees, type parameter identities,
+# format-string specifiers).  Unmapped types lose that richness.
 
 (each [scope face]
       [["comment" "comment-face"]
@@ -28,18 +33,71 @@
        ["method" "function-face"]
        ["namespace" "type-face"]
        ["operator" "operator-face"]
-       ["parameter" "variable-face"]
-       ["property" "variable-face"]
+       ["parameter" "parameter-face"]
+       ["property" "field-face"]
        ["string" "string-face"]
        ["type" "type-face"]
-       ["variable" "variable-face"]]
+       ["variable" "variable-face"]
+       # Type families — everything that names a type reads as a type, and
+       # generic parameters read apart from the types they parameterize.
+       # Traits are their own thing (rust-analyzer reports them as
+       # "interface"): italic rosewater, apart from the structs they are
+       # implemented for.
+       ["class" "type-face"]
+       ["enum" "type-face"]
+       ["interface" "trait-face"]
+       ["trait" "trait-face"]
+       ["struct" "type-face"]
+       ["union" "type-face"]
+       ["builtinType" "type-face"]
+       ["generic" "type-face"]
+       ["module" "type-face"]
+       ["selfTypeKeyword" "type-face"]
+       ["typeParameter" "type-parameter-face"]
+       ["constParameter" "constant-face"]
+       # Macros and macro-adjacent tokens: the semantic layer is the only
+       # color source inside macro token trees, where tree-sitter's parser
+       # sees raw tokens.
+       ["macro" "macro-face"]
+       ["procMacro" "macro-face"]
+       ["derivative" "macro-face"]
+       ["derive" "macro-face"]
+       # Literal-like tokens.
+       ["enumMember" "constant-face"]
+       ["enumLiteral" "constant-face"]
+       ["number" "constant-face"]
+       ["boolean" "constant-face"]
+       ["char" "constant-face"]
+       ["escapeSequence" "constant-face"]
+       ["escapedSequence" "constant-face"]
+       ["lifetime" "lifetime-face"]
+       # Attributes and self read as keywords.
+       ["attribute" "keyword-face"]
+       ["decorator" "keyword-face"]
+       ["selfKeyword" "keyword-face"]
+       # String-like tokens, including the pieces of a format string a
+       # builtin macro hands back: the literal reads as a string, its {}
+       # specifiers pop as constants.
+       ["formatString" "string-face"]
+       ["formatSpecifier" "constant-face"]
+       ["regexp" "string-face"]
+       ["event" "function-face"]
+       # Control-flow keywords and const items the server names directly.
+       ["controlFlow" "keyword-face"]
+       ["const" "constant-face"]]
   (face/scope-face scope face))
 
 # ── Modifiers → faces ────────────────────────────────────────────────────────
 #
-# Modifier ranges arrive after their token's type range in the layer, so
-# these win on the cells they cover: dead code greys out, deprecations
-# strike through.
+# Modifier ranges arrive after their token's type range in the layer, so a
+# modifier repaints the cells its type colored: what a name IS stays (a
+# function stays peach), what it DOES HERE wins — a declaration goes bold,
+# a mutable binding stays bold at every use, unsafe code can never look
+# ordinary, dead code greys out, deprecations strike through.
+
+(face/scope-face "declaration" "declaration-face")
+(face/scope-face "mutable" "mutable-face")
+(face/scope-face "unsafe" "unsafe-face")
 
 # Both the semantic-token modifier and the diagnostics fallback below
 # reach the same face: the modifier's scope, and the "unused" scope the

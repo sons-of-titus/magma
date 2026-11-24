@@ -81,6 +81,51 @@
   {:fg (catppuccin-mocha :subtext0) :bg (catppuccin-mocha :base)
    :bold false :italic false :underline false :strikethrough false :dim false})
 
+# Semantic-only distinctions — faces with no tree-sitter capture today.
+# Macros read apart from plain calls (sapphire vs peach), lifetimes apart
+# from constants (teal vs yellow), generic parameters apart from the types
+# they parameterize (lavender vs blue).
+(face/define "macro-face"
+  {:fg (catppuccin-mocha :sapphire) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough false :dim false})
+
+(face/define "lifetime-face"
+  {:fg (catppuccin-mocha :teal) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough false :dim false})
+
+(face/define "type-parameter-face"
+  {:fg (catppuccin-mocha :lavender) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough false :dim false})
+
+# IntelliJ-style semantic distinctions: identity colors above, and
+# style-only faces below — same foreground, different weight — so a
+# declaration reads as bold where its uses read normal, a mutable binding
+# reads bold, a parameter leans italic, a trait leans italic in its own
+# hue, and unsafe code never looks ordinary.
+(face/define "declaration-face"
+  {:fg (catppuccin-mocha :text) :bg (catppuccin-mocha :base)
+   :bold true :italic false :underline false :strikethrough false :dim false})
+
+(face/define "mutable-face"
+  {:fg (catppuccin-mocha :text) :bg (catppuccin-mocha :base)
+   :bold true :italic false :underline false :strikethrough false :dim false})
+
+(face/define "parameter-face"
+  {:fg (catppuccin-mocha :text) :bg (catppuccin-mocha :base)
+   :bold false :italic true :underline false :strikethrough false :dim false})
+
+(face/define "trait-face"
+  {:fg (catppuccin-mocha :rosewater) :bg (catppuccin-mocha :base)
+   :bold false :italic true :underline false :strikethrough false :dim false})
+
+(face/define "field-face"
+  {:fg (catppuccin-mocha :flamingo) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough false :dim false})
+
+(face/define "unsafe-face"
+  {:fg (catppuccin-mocha :maroon) :bg (catppuccin-mocha :base)
+   :bold false :italic false :underline false :strikethrough false :dim false})
+
 (face/define "error-face"
   {:fg (catppuccin-mocha :red) :bg (catppuccin-mocha :base)
    :bold true :italic false :underline false :strikethrough false :dim false})

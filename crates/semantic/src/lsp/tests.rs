@@ -352,6 +352,24 @@ fn start_reports_a_missing_binary() {
     );
 }
 
+/// A binary that exits instantly (bad args, wrong subcommand) must fail
+/// the handshake at once with the exit in it — not burn INIT_TIMEOUT and
+/// report a timeout for a server that died immediately.
+#[test]
+fn a_server_that_dies_before_initialize_fails_fast() {
+    let started = std::time::Instant::now();
+    let err = LspHandle::start("/usr/bin/true", &[], "rust", None, Collect::new()).unwrap_err();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "an exited server must not wait out the init timeout: {:?}",
+        started.elapsed()
+    );
+    assert!(
+        err.contains("exited before initialize"),
+        "unexpected error: {err}"
+    );
+}
+
 #[test]
 fn request_ids_are_sequential_and_keep_their_context() {
     let (core, _init, mut outbound) = core();

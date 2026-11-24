@@ -388,7 +388,17 @@ where
         }
     }
 
+    let was_initializing = core.state() == ServerState::Initializing;
     core.set_state(ServerState::Exited);
+    // A server that dies before answering initialize (bad args, missing
+    // subcommand) must fail the awaited handshake now — waiting out
+    // INIT_TIMEOUT reports a timeout for a server that said goodbye
+    // instantly.
+    if was_initializing
+        && let Ok(tx) = core.init_signal.lock()
+    {
+        let _ = tx.send(Err("server exited before initialize completed".to_string()));
+    }
     // Every pending request dies with the server; say so instead of leaving
     // callers waiting forever.
     let pending: Vec<Pending> = core

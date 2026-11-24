@@ -158,17 +158,26 @@ pub fn detect_and_seed(
         configs.load_or_defaults(root, lang);
     }
     if let Some(tc) = toolchain {
-        merge_run_configs(&mut configs.configs, tc);
+        merge_run_configs(&mut configs.configs, tc, configs.loaded_from_disk);
     }
     language
 }
 
 /// Merge a toolchain's actions into a project's run configurations without
-/// clobbering anything: saved configs and built-in detection defaults keep
-/// priority, toolchain actions fill the gaps (format, lint, clean, …).
-pub fn merge_run_configs(configs: &mut Vec<RunConfig>, toolchain: &ToolchainInfo) {
+/// clobbering anything: saved configs keep priority, and toolchain actions
+/// fill the gaps (format, lint, clean, …).  One exception: a toolchain may
+/// mark a built-in default debuggable — the static defaults cannot know
+/// which languages have adapters.  Saved user edits are never touched.
+pub fn merge_run_configs(
+    configs: &mut Vec<RunConfig>,
+    toolchain: &ToolchainInfo,
+    saved_from_disk: bool,
+) {
     for (name, action) in &toolchain.actions {
-        if configs.iter().any(|c| &c.name == name) {
+        if let Some(existing) = configs.iter_mut().find(|c| &c.name == name) {
+            if !saved_from_disk && action.debuggable {
+                existing.debuggable = true;
+            }
             continue;
         }
         configs.push(RunConfig {

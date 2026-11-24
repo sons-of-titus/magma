@@ -428,13 +428,13 @@ fn merge_run_configs_never_clobbers() {
         debuggable: false,
     }];
     let tc = toolchain("test.merge", "x", &["m"]);
-    toolchains::merge_run_configs(&mut configs, &tc);
+    toolchains::merge_run_configs(&mut configs, &tc, false);
     assert_eq!(configs.len(), 2);
     assert_eq!(configs[0].command, "saved-build", "saved config wins");
     assert_eq!(configs[1].name, "run");
     assert!(configs[1].debuggable);
     // Merging twice is idempotent.
-    toolchains::merge_run_configs(&mut configs, &tc);
+    toolchains::merge_run_configs(&mut configs, &tc, false);
     assert_eq!(configs.len(), 2);
 }
 

@@ -25,6 +25,10 @@ pub struct RunConfigManager {
     pub active: Option<String>,
     /// (task id of the in-flight build step, config waiting to launch).
     pub pending: Option<(u64, String)>,
+    /// True while `configs` holds the project's saved file, not in-memory
+    /// defaults — toolchain actions may upgrade defaults (debuggability
+    /// the static table cannot know) but never saved user edits.
+    pub loaded_from_disk: bool,
 }
 
 impl RunConfigManager {
@@ -112,8 +116,10 @@ impl RunConfigManager {
     /// user edit saves them.
     pub fn load_or_defaults(&mut self, root: &Path, language: &str) {
         if self.load(root) {
+            self.loaded_from_disk = true;
             return;
         }
+        self.loaded_from_disk = false;
         self.configs = defaults_for(language);
         self.active = self.configs.first().map(|c| c.name.clone());
     }

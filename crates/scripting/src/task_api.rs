@@ -282,6 +282,7 @@ unsafe extern "C-unwind" fn c_task_detect_project(argc: i32, argv: *mut Janet) -
                 kernel::toolchains::merge_run_configs(
                     &mut ed.project_manager.run_configs.configs,
                     tc,
+                    ed.project_manager.run_configs.loaded_from_disk,
                 );
             }
             ed.project_manager.sync_active_to_registry();

@@ -10,14 +10,11 @@ use crate::command::args::ArgValue;
 use crate::command::execute_command;
 use crate::state::Editor;
 
-/// Commands that never mutate files or spawn processes.
-pub const APPROVAL_EXEMPT_COMMANDS: &[&str] = &[
-    "buffer-list",
-    "project-find-file",
-    "grep",
-    "search",
-    "project-info",
-];
+/// Editor commands that never mutate files or spawn processes.  Every name
+/// here must be a registered command: an exempt command that is not
+/// registered falls through execute_tool's shell fallback and would run
+/// without approval.
+pub const APPROVAL_EXEMPT_COMMANDS: &[&str] = &["find-files", "search-buffer"];
 
 pub fn requires_approval(call: &ToolCall) -> bool {
     match call.name.as_str() {

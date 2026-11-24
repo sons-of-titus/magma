@@ -553,10 +553,10 @@ mod tests {
     #[test]
     fn read_only_commands_run_without_approval() {
         let mut ed = editor();
-        let sid = ed.agent.create_session("check diagnostics");
+        let sid = ed.agent.create_session("check the buffer");
         let calls = vec![call(
             "run_editor_command",
-            r#"{"command":"get-diagnostics"}"#,
+            r#"{"command":"search-buffer","args":{"pattern":"agent"}}"#,
         )];
         let calls_json = serde_json::to_string(&calls).unwrap();
         handle_reply(&mut ed, sid, String::new(), &calls_json, None);
@@ -574,7 +574,10 @@ mod tests {
         ed.agent
             .begin_messages(sid, vec![json!({"role": "user", "content": "go"})]);
         let calls = vec![
-            call("run_editor_command", r#"{"command":"get-diagnostics"}"#),
+            call(
+                "run_editor_command",
+                r#"{"command":"search-buffer","args":{"pattern":"agent"}}"#,
+            ),
             call("read_active_buffer", "{}"),
         ];
         // No approval in this mix — both run in order, output follows each.

@@ -25,6 +25,59 @@
 
 (defn- server-key [lang] (get (spec-for lang) :server-key nil))
 
+(defn- resolve-command
+  "Command override for a language: the `<lang>-lsp-command` editor option
+  wins (the per-language config packs set these).  Resolution goes through
+  `toolchain/find-extended` and returns the resolved *path*, so a server
+  installed outside `$PATH` (keg-only Homebrew, Xcode) is both found and
+  spawnable.  A command that is missing everywhere reports once and returns
+  nil — a raw spawn failure is the wrong way for a user to learn a server
+  is missing."
+  [lang]
+  (def cmd (option/get (string lang "-lsp-command")))
+  (if (and cmd (> (length cmd) 0))
+    (if-let [path (toolchain/find-extended cmd)]
+      path
+      (do
+        (unless (get *missing-reported* cmd)
+          (put *missing-reported* cmd true)
+          (notify/post "error"
+                       (string "Language server not found: " cmd)
+                       (string "LSP features disabled for " lang
+                               " — install it or set " lang "-lsp-command")))
+        nil))
+    nil))
+
+(defn- resolve-args
+  "Extra argv: the `<lang>-lsp-args` option wins over the manifest spec."
+  [lang]
+  (def opt (option/get (string lang "-lsp-args")))
+  (if (and opt (> (length (string/trim opt)) 0))
+    (filter |(> (length $) 0) (string/split " " (string/trim opt)))
+    (get (spec-for lang) :args @[])))
+
+(defn- group-started?
+  "True when a sibling language of this :server-key group already has a
+   live or starting server — the group shares it once ready."
+  [lang]
+  (def key (server-key lang))
+  (when key
+    (some (fn [l] (and (not (= l lang))
+                       (= key (server-key l))
+                       (get *lsp-servers* l)))
+          (keys *lang-lsp-specs*))))
+
+(defn- ensure-server
+  "Start `lang`'s server unless it or its server-key group is live."
+  [lang]
+  (when (and (spec-for lang)
+             (not (get *lsp-servers* lang))
+             (not (group-started? lang)))
+    (def cmd (resolve-command lang))
+    (when cmd
+      (put *lsp-servers* lang :starting)
+      (lsp/start lang cmd ;(resolve-args lang)))))
+
 (defn- attach-buffer
   "Track the buffer's language and start its server when the buffer's
    location calls for one."

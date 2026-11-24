@@ -23,6 +23,15 @@
 (event/on "language-unregistered"
   (fn [data]
     (def name (get data :name "?"))
+    # Drop the registration's file-type entries and the mode itself —
+    # plugin teardown emits this per language so its activation surface
+    # disappears with it.
+    (def mode (string name "-mode"))
+    (eachp [ext m] *extension-mode-map*
+      (when (= m mode) (put *extension-mode-map* ext nil)))
+    (eachp [fname m] *filename-mode-map*
+      (when (= m mode) (put *filename-mode-map* fname nil)))
+    (put *major-modes* mode nil)
     (editor/log-message (string "[language] unregistered: " name))))
 
 # ── Registration ─────────────────────────────────────────────────────────────
@@ -45,6 +54,8 @@
   "Register a language and wire its behavior.  Spec keys:
      :id         language name (required)
      :extensions file extensions mapped to `<id>-mode` (array)
+     :filenames  exact file basenames mapped to `<id>-mode` (array) —
+                 Makefile, Dockerfile, Jenkinsfile …
      :grammar    absolute path to a plugin grammar shared library
      :syntax     absolute path to the highlight query (conventionally
                  syntax.scm; drives tree-sitter highlighting for the mode)
@@ -68,6 +79,13 @@
         (string "[language] extension ." ext " already maps to " existing
                 "; refusing to override for " id))
       (put *extension-mode-map* ext mode)))
+  (each fname (get spec :filenames @[])
+    (def existing (get *filename-mode-map* fname))
+    (if (and existing (not (= existing mode)))
+      (editor/warn
+        (string "[language] file " fname " already maps to " existing
+                "; refusing to override for " id))
+      (put *filename-mode-map* fname mode)))
   (when-let [syntax (get spec :syntax)]
     (ts/load-mode-query mode syntax))
   (when-let [folds (get spec :folds)]

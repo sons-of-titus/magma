@@ -1,14 +1,15 @@
 # Plugin unload / reload verbs.
 #
-# plugin/unload (the C function) removes a plugin's registry-level
-# contributions — languages, project templates, toolchains — and marks it
-# not loaded.  Scripts the plugin already registered (commands, event
-# handlers, keymaps) keep running until the session ends: the scripting
-# runtime has no per-plugin teardown, so unload is an unregistration, not
-# a sandboxed suspension.
+# plugin/unload (the C function) removes everything a plugin contributed:
+# registry-level state (languages, templates, toolchains) and the
+# script-level registrations its entry made — commands, event handlers,
+# keymap bindings — which the contribution journal attributes at
+# registration time.  What survives is state the plugin wrote elsewhere
+# (buffers, options it set); unload is an unregistration, not a sandboxed
+# suspension of arbitrary written state.
 
 (defn colon-plugin-unload
-  "Unload a plugin's registry-level contributions: :plugin-unload <name>"
+  "Unload a plugin's registry-level and script-level contributions: :plugin-unload <name>"
   [arg]
   (def name (string/trim (string arg)))
   (if (= (length name) 0)
@@ -16,7 +17,7 @@
     (do
       (def result (plugin/unload name))
       (if (= result :ok)
-        (print "plugin unloaded: " name " (scripts it registered stay active until restart)")
+        (print "plugin unloaded: " name)
         (print "plugin unload failed")))))
 
 (defn colon-plugin-reload
@@ -74,9 +75,27 @@
     (do
       (print "name:          " (get p :name))
       (print "version:       " (get p :version))
+      (when-let [d (get p :description)] (print "description:   " d))
+      (when-let [a (get p :author)] (print "author:        " a))
+      (when-let [h (get p :homepage)] (print "homepage:      " h))
       (print "root:          " (get p :root))
       (print "entry:         " (get p :entry))
       (print "deps:          " (string/join (get p :deps @[]) " "))
       (print "languages:     " (string/join (get p :languages @[]) " "))
+      (print "tags:          " (string/join (get p :tags @[]) " "))
       (print "capabilities:  " (string/join (map string (get p :capabilities @[])) " "))
       (print "loaded:        " (get p :loaded)))))
+
+(defn colon-plugin-install
+  "Clone a plugin repository into a plugin root and enable it: :plugin-install <git-url> [root]"
+  [arg]
+  (def parts (string/split " " (string/trim (string arg))))
+  (def source (string/trim (or (first parts) "")))
+  (if (= (length source) 0)
+    (print "plugin-install: provide a git URL or path")
+    (do
+      (def explicit-root (string/trim (or (get parts 1) "")))
+      (def result (plugin/install source (if (> (length explicit-root) 0) explicit-root nil)))
+      (if (= result :ok)
+        nil
+        (print "plugin-install failed: " result)))))

@@ -10,10 +10,18 @@ unsafe extern "C-unwind" fn c_keymap_set(argc: i32, argv: *mut Janet) -> Janet {
         let key = conv::get_str(argc, argv, 0);
         let cmd = conv::get_str(argc, argv, 1);
         if let (Some(key), Some(cmd)) = (key, cmd) {
-            match conv::get_opt_str(argc, argv, 2) {
-                Some(Some(layer)) => ed.keymaps.set_layer(&layer, &key, &cmd),
-                _ => ed.keymaps.set(&key, &cmd),
+            let layer = conv::get_opt_str(argc, argv, 2).flatten();
+            match layer.as_deref() {
+                Some(l) => ed.keymaps.set_layer(l, &key, &cmd),
+                None => ed.keymaps.set(&key, &cmd),
             }
+            super::extension_api::record_if_plugin(
+                ed,
+                kernel::state::contributions::Contribution::Keymap {
+                    layer,
+                    key: key.clone(),
+                },
+            );
         }
         conv::nil()
     })

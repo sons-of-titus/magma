@@ -955,3 +955,318 @@ fn http_plugin_sends_request_with_variables_and_headers() {
         "the {{token}} variable must reach the server as a header: {output}"
     );
 }
+
+// ── unload tears down script-level registrations ─────────────────────────────
+
+// A plugin's entry script registers commands, event handlers, and keymap
+// bindings that no registry attributes to it.  The contribution journal
+// records them at registration time (the entry evaluates under the
+// plugin's Extension context) so unload removes exactly those — the old
+// behavior left zombie handlers running until the session ended.
+#[test]
+fn unload_removes_script_level_registrations() {
+    janet_test!(ed, {
+        let root = plugin_root("teardown");
+        let dir = root.join("zz-tdown");
+        std::fs::create_dir_all(&dir).unwrap();
+        write_file(
+            &dir.join("main.janet"),
+            r#"(language/define {:id "zztd" :extensions ["zztd"] :filenames ["Zztdfile"] :plugin "zz-tdown"})
+(major-mode/define "zztd-mode" {:parent "prog"})
+(formatter/register "zztd" {:command "cat" :args @[]})
+(command/define "zztd-cmd" (fn [&] nil))
+(event/on "zztd-tick" (fn [_] nil))
+(keymap/set "ctrl-shift-zzz" "zztd-cmd")"#,
+        );
+        scripting::eval(&format!(
+            r#"(plugin/register "zz-tdown" "1.0" "{}" "main.janet" @[] @[] @[:editor-access])"#,
+            root_str(&dir)
+        ));
+        let result = scripting::eval_result(r#"(plugin/enable "zz-tdown")"#).unwrap_or_default();
+        assert_eq!(result, ":ok");
+
+        // Everything the entry registered is live.
+        assert!(ed.commands.exists("zztd-cmd"), "command registered");
+        assert_eq!(
+            ed.events.subscriber_count("zztd-tick"),
+            1,
+            "event subscription registered"
+        );
+        assert_eq!(
+            ed.keymaps.describe("ctrl-shift-zzz"),
+            Some("zztd-cmd".to_string()),
+            "keymap binding registered"
+        );
+        assert_eq!(
+            scripting::eval_result(r#"(get *extension-mode-map* "zztd")"#).unwrap_or_default(),
+            r#""zztd-mode""#
+        );
+        assert!(
+            ed.language_registry.get("zztd").is_some(),
+            "language registered"
+        );
+
+        let result = scripting::eval_result(r#"(plugin/unload "zz-tdown")"#).unwrap_or_default();
+        assert_eq!(result, ":ok");
+        ed.dispatch_events_scoped();
+
+        // And nothing survives it.
+        assert!(
+            !ed.commands.exists("zztd-cmd"),
+            "the plugin's command must be gone"
+        );
+        assert_eq!(
+            ed.events.subscriber_count("zztd-tick"),
+            0,
+            "the plugin's subscription must be gone"
+        );
+        assert!(
+            ed.keymaps.describe("ctrl-shift-zzz").is_none(),
+            "the plugin's keybinding must be gone"
+        );
+        assert_eq!(
+            scripting::eval_result(r#"(get *extension-mode-map* "zztd")"#).unwrap_or_default(),
+            "nil",
+            "the extension map entry must be gone"
+        );
+        assert_eq!(
+            scripting::eval_result(r#"(get *formatters* "zztd")"#).unwrap_or_default(),
+            "nil",
+            "the formatter registration must be gone"
+        );
+        assert!(
+            ed.language_registry.get("zztd").is_none(),
+            "the language must be unregistered"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    });
+}
+
+// ── manifest metadata ────────────────────────────────────────────────────────
+
+// plugin/define hands the whole manifest to plugin/register, so
+// description/author/homepage/tags land in the record the Plugins page
+// and :plugin-info read.
+#[test]
+fn plugin_register_spec_table_carries_metadata() {
+    janet_test!(_ed, {
+        scripting::eval(
+            r#"(plugin/register {:name "zz-meta" :version "1.2" :root "/tmp/m" :entry "main.janet"
+                   :description "A test plugin" :author "Ada" :homepage "https://example.com"
+                   :tags @["tools" "test"] :languages @[] :capabilities @[:editor-access]})"#,
+        );
+        let fields = scripting::eval_result(
+            r#"(let [p (plugin/status "zz-meta")]
+                 (string (get p :description) "|" (get p :author) "|"
+                         (get p :homepage) "|" (string/join (get p :tags) ",") "|"
+                         (get p :version)))"#,
+        )
+        .unwrap_or_default();
+        assert_eq!(
+            fields,
+            r#""A test plugin|Ada|https://example.com|tools,test|1.2""#
+        );
+    });
+}
+
+// ── plugin/install ───────────────────────────────────────────────────────────
+
+// Install is a git clone into a plugin root, then discover + enable.
+// The test clones a local repository — same code path as a URL, no
+// network.
+#[test]
+fn plugin_install_clones_enables_and_registers() {
+    janet_test!(ed, {
+        // The clone directory comes from the source name, so name the fixture
+        // repo what its manifest declares — the normal layout.
+        let src = std::env::temp_dir().join(format!("zz-installed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&src);
+        std::fs::create_dir_all(&src).unwrap();
+        write_file(
+            &src.join("manifest.janet"),
+            r#"(plugin/define {:name "zz-installed" :version "0.3.0"
+                 :languages ["zzinst"] :extensions {"zzinst" ["zzinst"]}
+                 :capabilities [:editor-access]})"#,
+        );
+        write_file(&src.join("main.janet"), "(plugin-state/set \"installed\" \"yes\")");
+        let git = |args: &[&str]| {
+            let mut cmd = std::process::Command::new("git");
+            cmd.args(args)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t");
+            assert!(cmd.current_dir(&src).status().unwrap().success(), "git {args:?}");
+        };
+        git(&["init", "-q"]);
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "init"]);
+
+        let dst_root = std::env::temp_dir().join(format!("magma_install_root_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dst_root);
+        std::fs::create_dir_all(&dst_root).unwrap();
+
+        let result = scripting::eval_result(&format!(
+            r#"(describe (plugin/install "{}" "{}"))"#,
+            src.to_str().unwrap().replace('\\', "/"),
+            dst_root.to_str().unwrap().replace('\\', "/")
+        ))
+        .unwrap_or_default();
+        assert_eq!(result, r#"":ok""#, "install must clone, discover, enable");
+
+        let loaded = scripting::eval_result(
+            r#"(string (get (plugin/status "zz-installed") :loaded))"#,
+        )
+        .unwrap_or_default();
+        assert_eq!(loaded, r#""true""#, "the installed plugin must be loaded");
+        assert!(
+            ed.language_registry.get("zzinst").is_some(),
+            "the installed plugin's language is registered"
+        );
+        assert!(
+            dst_root.join(format!("zz-installed-{}", std::process::id())).join("manifest.janet").exists(),
+            "the clone lands in the plugin root"
+        );
+
+        // Re-installing the same name is refused, not clobbered.
+        let again = scripting::eval_result(&format!(
+            r#"(describe (plugin/install "{}" "{}"))"#,
+            src.to_str().unwrap().replace('\\', "/"),
+            dst_root.to_str().unwrap().replace('\\', "/")
+        ))
+        .unwrap_or_default();
+        assert!(
+            again.contains("already installed"),
+            "second install must be refused: {again}"
+        );
+
+        std::fs::remove_dir_all(&src).ok();
+        std::fs::remove_dir_all(&dst_root).ok();
+    });
+}
+
+// ── per-project plugin configuration ─────────────────────────────────────────
+
+// <root>/.magma/plugins.janet can unload plugins the project does not
+// want and load ones it needs — unload is a real teardown, so this is
+// not a zombie-handlers game anymore.
+#[test]
+fn project_config_disables_and_enables_plugins() {
+    janet_test!(ed, {
+        let root = plugin_root("projcfg");
+        let victim = root.join("zz-victim");
+        let wanted = root.join("zz-wanted");
+        std::fs::create_dir_all(&victim).unwrap();
+        std::fs::create_dir_all(&wanted).unwrap();
+        write_file(&victim.join("main.janet"), "(command/define \"zz-victim-cmd\" (fn [&] nil))");
+        write_file(&wanted.join("main.janet"), "(command/define \"zz-wanted-cmd\" (fn [&] nil))");
+        scripting::eval(&format!(
+            r#"(do (plugin/register "zz-victim" "1.0" "{}" "main.janet" @[] @[] @[:editor-access])
+                  (plugin/register "zz-wanted" "1.0" "{}" "main.janet" @[] @[] @[:editor-access]))"#,
+            root_str(&victim),
+            root_str(&wanted)
+        ));
+        scripting::eval(r#"(plugin/enable "zz-victim")"#);
+        assert!(ed.commands.exists("zz-victim-cmd"));
+        assert!(!ed.commands.exists("zz-wanted-cmd"));
+
+        let proj = root.join("proj");
+        std::fs::create_dir_all(proj.join(".magma")).unwrap();
+        write_file(
+            &proj.join(".magma/plugins.janet"),
+            r#"{:disable ["zz-victim"] :enable ["zz-wanted"]}"#,
+        );
+
+        let ok = scripting::eval_result(&format!(
+            r#"(do (event/emit "project-opened" {{"root" "{}"}}) true)"#,
+            proj.to_str().unwrap().replace('\\', "/")
+        ))
+        .unwrap();
+        assert_eq!(ok, "true");
+        ed.dispatch_events_scoped();
+
+        assert!(
+            !ed.commands.exists("zz-victim-cmd"),
+            "project-disable must tear the plugin down"
+        );
+        assert_eq!(
+            scripting::eval_result(r#"(string (get (plugin/status "zz-victim") :loaded))"#)
+                .unwrap_or_default(),
+            r#""false""#
+        );
+        assert!(
+            ed.commands.exists("zz-wanted-cmd"),
+            "project-enable must load the plugin"
+        );
+        assert_eq!(
+            scripting::eval_result(r#"(string (get (plugin/status "zz-wanted") :loaded))"#)
+                .unwrap_or_default(),
+            r#""true""#
+        );
+        std::fs::remove_dir_all(&root).ok();
+    });
+}
+
+// ── mainstream toolchains ────────────────────────────────────────────────────
+
+// The deep half of the manifest (build/test/run/debug actions) reaches
+// every mainstream language: their actions seed run configurations at
+// project detection, and the debug adapter chain consults :debug.
+#[test]
+fn mainstream_plugins_declare_toolchains_with_actions() {
+    janet_test!(ed, {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        scripting::eval(&format!(
+            r#"(plugin/discover "{}")"#,
+            repo.join("plugins").to_str().unwrap().replace('\\', "/")
+        ));
+        scripting::eval(
+            r#"(plugin/enable-many @["go" "python" "javascript" "java" "kotlin" "zig" "swift" "dart"])"#,
+        );
+
+        let actions = |id: &str| {
+            ed.toolchains.get(id).map(|t| t.actions.len()).unwrap_or(0)
+        };
+        for id in [
+            "go.toolchain",
+            "python.toolchain",
+            "javascript.node",
+            "java.maven",
+            "java.gradle",
+            "kotlin.gradle",
+            "zig.toolchain",
+            "swift.package",
+            "dart.pub",
+        ] {
+            assert!(
+                actions(id) >= 2,
+                "{id} must declare build/test/run actions"
+            );
+        }
+        // Toolchain actions seed run configs at detection: a go project
+        // gets its build/test/run even though the core table already has
+        // go defaults (toolchain actions fill the gaps, names upsert).
+        let root = std::env::temp_dir().join(format!("magma_go_seed_{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("go.mod"), "module t\n").unwrap();
+        let detected = kernel::toolchains::detect_and_seed(
+            &root,
+            ed.toolchains.list(),
+            &mut ed.project_manager.run_configs,
+        );
+        assert_eq!(detected.as_deref(), Some("go"));
+        assert!(
+            ed.project_manager.run_configs.named("test").is_some(),
+            "detection seeds the test config"
+        );
+        assert!(
+            ed.project_manager.run_configs.named("run").unwrap().debuggable,
+            "toolchain run action carries debuggable"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    });
+}

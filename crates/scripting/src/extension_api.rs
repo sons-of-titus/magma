@@ -56,6 +56,19 @@ pub(crate) fn with_context<R>(ctx: ExecContext, f: impl FnOnce() -> R) -> R {
     out
 }
 
+/// Attribute a script-level registration to the current plugin.  Core
+/// registrations record nothing — the journal only ever holds what a
+/// plugin's entry script registered, which is exactly what `plugin/unload`
+/// may remove.
+pub(crate) fn record_if_plugin(
+    ed: &mut kernel::state::Editor,
+    contribution: kernel::state::contributions::Contribution,
+) {
+    if let ExecContext::Extension(plugin) = current_context() {
+        ed.plugin_contributions.record(&plugin, contribution);
+    }
+}
+
 /// The capability verdict for the calling context.
 pub(super) fn check_capability(cap: &Capability) -> bool {
     match current_context() {

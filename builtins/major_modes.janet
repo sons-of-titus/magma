@@ -116,77 +116,48 @@
   (when last-dot
     (string/slice path (+ last-dot 1))))
 
-# Mutable: language/define adds plugin-declared extensions at registration.
+# Extension → mode is declared by plugins through language/define; the
+# only hardcoded entries are files with no owning plugin.
 (def *extension-mode-map*
-  @{"rs"    "rust-mode"
-   "py"    "python-mode"
-   "js"    "javascript-mode"
-   "ts"    "typescript-mode"
-   "jsx"   "javascript-mode"
-   "tsx"   "typescript-mode"
-   "c"     "c-mode"
-   "h"     "c-mode"
-   "cpp"   "cpp-mode"
-   "cc"    "cpp-mode"
-   "cxx"   "cpp-mode"
-   "hpp"   "cpp-mode"
-   "go"    "go-mode"
-   "hs"    "haskell-mode"
-   "lua"   "lua-mode"
-   "rb"    "ruby-mode"
-   "java"  "java-mode"
-   "kt"    "kotlin-mode"
-   "swift" "swift-mode"
-   "sh"    "sh-mode"
-   "bash"  "sh-mode"
-   "zsh"   "sh-mode"
-   "fish"  "fish-mode"
-   "janet" "janet-mode"
-   "jn"    "janet-mode"
-   "md"    "markdown-mode"
-   "markdown" "markdown-mode"
-   "org"   "org-mode"
-   "txt"   "text-mode"
-   "toml"  "toml-mode"
-   "yaml"  "yaml-mode"
-   "yml"   "yaml-mode"
-   "json"  "json-mode"
-   "html"  "html-mode"
-   "htm"   "html-mode"
-   "css"   "css-mode"
-   "scss"  "css-mode"
-   "xml"   "xml-mode"
-   "sql"   "sql-mode"
-   "el"    "emacs-lisp-mode"
-   "lisp"  "lisp-mode"
-   "scm"   "scheme-mode"
-   "clj"   "clojure-mode"
-   "ex"    "elixir-mode"
-   "exs"   "elixir-mode"
-   "erl"   "erlang-mode"
-   "nim"   "nim-mode"
-   "zig"   "zig-mode"
-   "nix"   "nix-mode"
-   "tf"    "terraform-mode"
-   "proto" "protobuf-mode"})
+  @{"txt" "text-mode"})
+
+# Exact file basename → mode (Makefile, Dockerfile, Jenkinsfile …),
+# declared by plugins through language/define.
+(def *filename-mode-map* @{})
+
+(defn- file-basename
+  "Last path segment, with backslash separators normalized."
+  [path]
+  (def norm (string/replace-all "\\" "/" path))
+  (if-let [i (last (string/find-all "/" norm))]
+    (string/slice norm (+ i 1))
+    norm))
+
+(defn- mode-for-path
+  "The major mode for `path`: extension match first, then exact basename."
+  [path]
+  (or (get *extension-mode-map* (path-extension path))
+      (get *filename-mode-map* (file-basename path))))
+
+(defn- activate-mode
+  "Activate `mode-name` on the buffer an event describes."
+  [mode-name buf-id]
+  # Janet-defined modes activate directly (nested fiber constraint);
+  # core modes fall through to the command registry.
+  (def entry (get *major-modes* mode-name))
+  (if entry
+    ((get entry :activate) buf-id)
+    (when (and buf-id (command/exists? mode-name))
+      (editor/run-command mode-name buf-id))))
 
 (event/on "buffer-created"
   (fn [data]
     (def path (get data :path ""))
     (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when ext
-        (def mode-name (get *extension-mode-map* ext nil))
-        (when mode-name
-          # The mode must land on the buffer this event describes:
-          # events queue and drain in batches, so the focused buffer at
-          # drain time can be a different file entirely (a rust file
-          # would come out in toml-mode after restoring a session).
-          (def buf-id (scan-number (get data :buffer-id)))
-          # Janet-defined modes activate directly (nested fiber constraint);
-          # core modes fall through to the command registry.
-          (def entry (get *major-modes* mode-name))
-          (if entry
-            ((get entry :activate) buf-id)
-            (when (and buf-id (command/exists? mode-name))
-              (editor/run-command mode-name buf-id))))))))
+      (when-let [mode-name (mode-for-path path)]
+        # The mode must land on the buffer this event describes:
+        # events queue and drain in batches, so the focused buffer at
+        # drain time can be a different file entirely (a rust file
+        # would come out in toml-mode after restoring a session).
+        (def buf-id (scan-number (get data :buffer-id)))
+        (activate-mode mode-name buf-id)))))

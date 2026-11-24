@@ -184,6 +184,10 @@ unsafe extern "C-unwind" fn c_command_define(argc: i32, argv: *mut Janet) -> Jan
         }
         store_janet_command(&name, fn_val);
         register_janet_command_wrapper(ed, &name);
+        super::extension_api::record_if_plugin(
+            ed,
+            kernel::state::contributions::Contribution::Command(name.clone()),
+        );
         conv::nil()
     })
 }
@@ -205,6 +209,10 @@ unsafe extern "C-unwind" fn c_command_redefine(argc: i32, argv: *mut Janet) -> J
     store_janet_command(&name, fn_val);
     with_editor(|ed| {
         register_janet_command_wrapper(ed, &name);
+        super::extension_api::record_if_plugin(
+            ed,
+            kernel::state::contributions::Contribution::Command(name.clone()),
+        );
         conv::nil()
     })
 }

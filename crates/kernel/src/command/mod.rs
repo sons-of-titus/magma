@@ -80,6 +80,13 @@ impl CommandRegistry {
         self.register(name, description, args, Box::new(handler));
     }
 
+    /// Remove a command.  False when the name was not registered — the
+    /// registry does not distinguish core from plugin commands; teardown
+    /// paths only ever name what they recorded.
+    pub fn unregister(&mut self, name: &str) -> bool {
+        self.commands.remove(name).is_some()
+    }
+
     pub fn list(&self) -> Vec<&str> {
         self.commands.keys().map(|s| s.as_str()).collect()
     }

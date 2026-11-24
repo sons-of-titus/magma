@@ -25,6 +25,7 @@ export struct PluginRow {
     loaded: bool,
     enabled: bool,
     capabilities: string,
+    description: string,
 }
 
 component OptionRow inherits Rectangle {
@@ -420,7 +421,7 @@ export component SettingsView inherits Rectangle {
                             font-size: Theme.font-small;
                         }
                         for p in root.plugin-rows : Rectangle {
-                            height: 44px;
+                            height: p.description != "" ? 56px : 44px;
                             border-radius: Theme.radius;
                             HorizontalLayout {
                                 padding: 4px;
@@ -438,9 +439,18 @@ export component SettingsView inherits Rectangle {
                                         font-size: Theme.font-ui;
                                     }
                                     Text {
+                                        text: p.description != "" ? p.description
+                                             : "v" + p.version + "  ·  " + p.entry
+                                               + (p.capabilities != "" ? "  ·  " + p.capabilities : "");
+                                        color: Theme.text-muted;
+                                        font-size: Theme.font-small;
+                                        wrap: word-wrap;
+                                    }
+                                    Text {
+                                        visible: p.description != "";
                                         text: "v" + p.version + "  ·  " + p.entry
                                               + (p.capabilities != "" ? "  ·  " + p.capabilities : "");
-                                        color: Theme.text-muted;
+                                        color: Theme.text-faint;
                                         font-size: Theme.font-small;
                                         wrap: word-wrap;
                                     }

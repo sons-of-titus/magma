@@ -940,6 +940,11 @@ Performs an ordered shutdown of the server and forgets it.
 
 Start an LSP server for the given language. No-op if already running.
 
+### `(lsp/share-server from-language to-language)` → `:ok` or nil
+
+Aliases `from`'s live server under `to` as well, so one process serves
+several language ids.  The alias drops when the process exits.
+
 ### `(lsp/notify language-id method &opt json-params)` → nil
 
 Send a JSON-RPC notification to a running LSP server.
@@ -1182,6 +1187,20 @@ Replace the find-in-files result list. Each entry is a table with `:filename`, `
 Return the current find-in-files result list.
 
 ---
+
+## snippet/ — Snippet Registry
+
+### `(snippet/register trigger body &opt language description)` → `:ok`
+
+Registers a snippet: `body` is LSP tab-stop syntax (`$1`, `${1:placeholder}`, `$0`); a nil language applies to every buffer, otherwise the snippet serves that language only.  Re-registering a trigger in the same scope replaces it.
+
+### `(snippet/remove trigger &opt language)` → `:ok` or nil
+
+Removes the snippet for a trigger and language scope.
+
+### `(snippet/list &opt language)` → array of tables
+
+Returns `{:trigger :body :language :description}` for snippets serving the language (globals included); without a language, globals only.
 
 ## syntax/ — Fallback Syntax Rules
 
@@ -2072,12 +2091,11 @@ capability system remains the gate.
 
 ### `(plugin/unload name)` → `:ok` or `:error`
 
-Unload a plugin at the registry level: its languages, project templates,
-and toolchains are removed, its record is marked not-loaded, and a
-`plugin-unloaded` event fires.  Scripts the plugin already registered
-(commands, event handlers, keymaps) keep running until the session ends —
-the scripting runtime has no per-plugin teardown, so this is an
-unregistration, not a sandboxed suspension.  `:plugin-reload` re-reads the
+Unload a plugin: its languages, project templates, and toolchains are
+removed; every command, event subscription, and keymap binding its entry
+script registered is removed with them (registrations are attributed to
+the plugin at registration time); each language's `language-unregistered`
+event fires, then `plugin-unloaded`.  `:plugin-reload` re-reads the
 manifest and enables the plugin again.
 
 ### Events

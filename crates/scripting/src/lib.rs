@@ -349,6 +349,8 @@ mod overlay_api;
 #[cfg(feature = "janet")]
 mod plugin_api;
 #[cfg(feature = "janet")]
+mod picker_api;
+#[cfg(feature = "janet")]
 mod plugin_state_api;
 #[cfg(feature = "janet")]
 mod process_api;
@@ -368,6 +370,8 @@ mod search_api;
 mod selection_api;
 #[cfg(feature = "janet")]
 mod semantic_api;
+#[cfg(feature = "janet")]
+mod snippet_api;
 #[cfg(feature = "janet")]
 mod special_buffer_api;
 #[cfg(feature = "janet")]

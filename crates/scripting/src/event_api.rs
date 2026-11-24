@@ -110,6 +110,13 @@ unsafe extern "C-unwind" fn c_event_on(argc: i32, argv: *mut Janet) -> Janet {
             }
             None
         });
+        super::extension_api::record_if_plugin(
+            ed,
+            kernel::state::contributions::Contribution::Event {
+                name,
+                subscription: sub_id,
+            },
+        );
         conv::integer(sub_id as i32)
     })
 }
@@ -140,6 +147,13 @@ unsafe extern "C-unwind" fn c_event_once(argc: i32, argv: *mut Janet) -> Janet {
                 }
                 None
             });
+        super::extension_api::record_if_plugin(
+            ed,
+            kernel::state::contributions::Contribution::Event {
+                name,
+                subscription: sub_id,
+            },
+        );
         conv::integer(sub_id as i32)
     })
 }
@@ -151,6 +165,16 @@ unsafe extern "C-unwind" fn c_event_off(argc: i32, argv: *mut Janet) -> Janet {
             return conv::nil();
         };
         ed.events.off(id as u64);
+        release_handler(id as u64);
+        conv::nil()
+    })
+}
+
+/// Drop a subscription's Janet handler: unroot it so the closure is not
+/// kept alive by the registry after the subscriber is gone.  Shared by
+/// `event/off` and plugin teardown.
+pub(crate) fn release_handler(id: u64) {
+    unsafe {
         let idx = id as usize;
         if let Ok(mut handlers) = JANET_HANDLERS.lock()
             && idx < handlers.len()
@@ -158,8 +182,7 @@ unsafe extern "C-unwind" fn c_event_off(argc: i32, argv: *mut Janet) -> Janet {
         {
             janet_gcunroot(fn_val);
         }
-        conv::nil()
-    })
+    }
 }
 
 /// (event/list-events) → [{:name s :count n} ...]

@@ -236,6 +236,7 @@ fn auto_detect_mode_activates_when_command_registered() {
 
         let r = scripting::eval(
             r#"(do
+                 (put *extension-mode-map* "zig" "zig-mode")
                  (def ext (path-extension "/home/user/main.zig"))
                  (def mode-name (when ext (get *extension-mode-map* ext nil)))
                  (when (and mode-name (command/exists? mode-name))

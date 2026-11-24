@@ -152,9 +152,11 @@ pub fn init_vm() {
         regs.extend(super::net_tcp_api::register());
         regs.extend(super::selection_api::register());
         regs.extend(super::buffer_word_api::register());
+        regs.extend(super::snippet_api::register());
         regs.extend(super::syntax_api::register());
         regs.extend(super::register_api::register());
         regs.extend(super::option_api::register());
+        regs.extend(super::picker_api::register());
         regs.extend(super::plugin_state_api::register());
         regs.extend(super::search_api::register());
         regs.extend(super::clipboard_api::register());
@@ -229,6 +231,10 @@ pub fn init_vm() {
         include_str!("../../../builtins/plugins/lsp_sync.janet"),
     );
     load_builtin(
+        "builtins/plugins/lsp_attach.janet",
+        include_str!("../../../builtins/plugins/lsp_attach.janet"),
+    );
+    load_builtin(
         "builtins/plugins/tags_gen.janet",
         include_str!("../../../builtins/plugins/tags_gen.janet"),
     );
@@ -257,6 +263,10 @@ pub fn init_vm() {
         include_str!("../../../builtins/symbols.janet"),
     );
     load_builtin(
+        "builtins/picker_sources.janet",
+        include_str!("../../../builtins/picker_sources.janet"),
+    );
+    load_builtin(
         "builtins/window.janet",
         include_str!("../../../builtins/window.janet"),
     );
@@ -283,6 +293,10 @@ pub fn init_vm() {
     load_builtin(
         "builtins/ui.janet",
         include_str!("../../../builtins/ui.janet"),
+    );
+    load_builtin(
+        "builtins/formatter.janet",
+        include_str!("../../../builtins/formatter.janet"),
     );
     load_builtin(
         "builtins/lsp_diag_eol.janet",

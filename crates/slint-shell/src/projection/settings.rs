@@ -148,6 +148,7 @@ pub fn plugin_rows(ed: &Editor) -> Vec<PluginRow> {
                 })
                 .unwrap_or_default()
                 .into(),
+            description: p.description.clone().unwrap_or_default().into(),
         })
         .collect()
 }

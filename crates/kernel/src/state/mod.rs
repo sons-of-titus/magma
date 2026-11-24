@@ -1,8 +1,10 @@
 //! Editor state — the central `Editor` struct and all sub-modules.
 
+pub mod contributions;
 pub mod mode;
 pub mod persist;
 pub mod secrets;
+pub mod settings;
 pub mod views;
 pub use font;
 pub mod completion;
@@ -12,6 +14,7 @@ pub mod gutter;
 pub mod io;
 pub mod minimap;
 pub mod options;
+pub mod picker;
 pub mod overlay;
 pub mod search;
 pub mod signature;
@@ -273,6 +276,13 @@ pub struct Editor {
     pub scheduler: WorkScheduler,
     pub extension_registry: ExtensionRegistry,
     pub plugin_registry: PluginRegistry,
+    /// Script-level registrations per plugin (commands, event
+    /// subscriptions, keymap bindings), recorded at registration time so
+    /// `plugin/unload` can remove what registries cannot attribute.
+    pub plugin_contributions: contributions::ContributionJournal,
+    /// Plugin-registered picker sources and the current source's entries.
+    pub picker_sources: picker::PickerSourceRegistry,
+    pub picker_state: picker::PickerState,
     /// Plugin-contributed project templates (New Project wizard).
     pub templates: crate::templates::TemplateRegistry,
     /// In-flight project generations and their last result.
@@ -398,6 +408,9 @@ impl Editor {
             scheduler: WorkScheduler::new(),
             extension_registry: ExtensionRegistry::new(),
             plugin_registry: PluginRegistry::new(),
+            plugin_contributions: contributions::ContributionJournal::default(),
+            picker_sources: picker::PickerSourceRegistry::default(),
+            picker_state: picker::PickerState::default(),
             templates: crate::templates::TemplateRegistry::default(),
             template_jobs: crate::templates::TemplateJobs::default(),
             toolchains: crate::toolchains::ToolchainRegistry::default(),

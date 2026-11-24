@@ -35,7 +35,21 @@
    project-templates/<name>/ template register too.
 
    Spec keys beyond the loader's own:
+     :description    one-line summary, shown on the Plugins page
+     :author         author name or handle
+     :homepage       project URL
+     :tags           discovery keywords (array of strings)
      :extensions     {\"rust\" [\"rs\"]} — file extensions per language
+     :filenames      {\"makefile\" [\"Makefile\"]} — exact basenames per
+                     language, for extensionless build files
+     :lsp            {\"rust\" {:markers [\"Cargo.toml\"]}} — language-server
+                     launch policy per language.  :markers are project-root
+                     file names (\"*.suffix\" globs allowed) that trigger a
+                     server on project open or buffer attach; without them
+                     the server starts per buffer (:single-file true is
+                     implied).  :server-key names a shared process for
+                     several languages (\"tsserver\" for js/ts, \"clangd\"
+                     for c/cpp); :args are extra argv.
      :grammar-symbols {\"terraform\" \"tree_sitter_hcl\"} — export name
                      override for a grammar whose C entry point deviates
                      from the conventional tree_sitter_<lang>
@@ -46,6 +60,9 @@
   (unless name (error "plugin/define: :name required"))
   (def entry (get spec :entry "main.janet"))
   (def ext-map (get spec :extensions @{}))
+  (def filename-map (get spec :filenames @{}))
+  (def lsp-map (get spec :lsp @{}))
+  (def caps (get spec :capabilities @[]))
   (def symbol-map (get spec :grammar-symbols @{}))
   (def langs @[])
   (each lang (get spec :languages @[])
@@ -60,6 +77,7 @@
                :folds folds
                :config config
                :extensions (get ext-map lang @[])
+               :filenames (get filename-map lang @[])
                :plugin name})
     (def grammar (ts/grammar-lib-path root lang))
     # The spec literal is a struct; optional grammar keys merge into a
@@ -69,18 +87,35 @@
     (when-let [sym (get symbol-map lang)]
       (put overrides :grammar-symbol sym))
     (language/define (merge spec overrides))
+    # Spawning a language server is process execution: a manifest that
+    # launches one without declaring the capability is a bug, not a
+    # sandbox escape — fail loudly so the author fixes the manifest.
+    (when-let [lsp (get lsp-map lang)]
+      (unless (has-value? caps :process-execution)
+        (error (string "plugin/define: " name " declares :lsp for " lang
+                       " without the :process-execution capability")))
+      (lsp/register-language-spec lang lsp))
     (array/push langs lang))
   (when-let [toolchain (get spec :toolchain)]
     (toolchain/register (merge toolchain {:plugin name})))
+  # Multi-flavor languages (maven + gradle, make + cmake) declare a list.
+  (each tc (get spec :toolchains @[])
+    (toolchain/register (merge tc {:plugin name})))
   (plugin/register-templates root name)
+  # Snippets are language-scoped in the registry, so plugin teardown
+  # removes them with the language — no plugin attribution needed here.
+  (def snippets (string root "/snippets.janet"))
+  (when (file-exists? snippets)
+    (try
+      (editor/load-file snippets)
+      ([err]
+        (editor/warn (string "[plugin] bad snippets file " snippets ": " err)))))
   (plugin/register
-    name
-    (get spec :version "0.0.0")
-    root
-    entry
-    (get spec :deps @[])
-    langs
-    (get spec :capabilities @[])))
+    (merge spec
+           {:root root
+            :entry entry
+            :languages langs
+            :capabilities caps})))
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 
@@ -140,6 +175,52 @@
 
 # ── Startup ──────────────────────────────────────────────────────────────────
 
+(defn plugin/user-root
+  "The user plugin directory: the plugins-root option when set, else
+   ~/.config/magma/plugins.  Nil when no home directory is known."
+  []
+  (def configured (option/get "plugins-root"))
+  (cond
+    (and configured (> (length configured) 0)) configured
+    (> (length (os/getenv "HOME" "")) 0)
+    (string (os/getenv "HOME" "") "/.config/magma/plugins")
+    nil))
+
+(defn plugin/install
+  "Clone a plugin repository into a plugin root (the user root unless
+   given explicitly), discover it, and enable it.  `source` is anything
+   `git clone` accepts; the plugin directory name comes from the URL.
+   Returns :ok or a failure description."
+  [source &opt root]
+  (default root (plugin/user-root))
+  (if (or (nil? root) (= (length root) 0))
+    "no plugin root (set plugins-root or $HOME)"
+    (let [norm (string/replace-all "\\" "/" source)
+          stripped (string/replace ".git" "" norm)
+          name (last (string/split "/" stripped))
+          dest (string root "/" name)]
+      (cond
+        (or (nil? name) (= (length name) 0))
+        "cannot derive a plugin name from the source"
+        (dir-exists? dest)
+        (string "already installed: " dest)
+        (let [result (process/run "git" @["clone" "--depth" "1" source dest])]
+          (if (= (get result :exit-code) 0)
+            (let [found (plugin/discover root)]
+              # The directory name is not the plugin name: enable whatever
+              # the cloned manifest declared itself as.
+              (def installed
+                (find (fn [p] (= (get p :root) dest)) (plugin/list)))
+              (if (and installed (= :ok (plugin/enable (get installed :name))))
+                (do
+                  (editor/log-message
+                    (string "[plugin] installed " (get installed :name)
+                            " (" found " plugins at " root ")"))
+                  :ok)
+                "cloned, but no manifest.janet with a valid plugin was found"))
+            (let [err (or (get result :stderr "") (get result :stdout ""))]
+              (string "git clone failed: " (string/slice err 0 (min 160 (length err)))))))))))
+
 (defn plugin/bootstrap
   "Discover plugins from disk, then enable the bundled language plugins.
    Honors the user settings: plugins-enabled=false disables loading
@@ -150,12 +231,10 @@
   [cwd home]
   (unless (= (option/get "plugins-enabled") "false")
     (plugin/discover (string cwd "/plugins"))
-    (def configured (option/get "plugins-root"))
     (def user-root
-      (cond
-        (and configured (> (length configured) 0)) configured
-        (> (length home) 0) (string home "/.config/magma/plugins")
-        nil))
+      (if (> (length home) 0)
+        (or (plugin/user-root) (string home "/.config/magma/plugins"))
+        (plugin/user-root)))
     (when (and user-root (> (length user-root) 0))
       (plugin/discover user-root))
     # Installed means enabled: every manifest plugin found is loaded with
@@ -176,4 +255,40 @@
 (event/on "plugin-loaded"
   (fn [data]
     (editor/log-message (string "[plugin] loaded: " (get data :name "?")))))
+
+# ── Per-project configuration ────────────────────────────────────────────────
+#
+# <root>/.magma/plugins.janet holds a table:
+#   {:enable  ["rust"]          load these in this project, even if the
+#                               global plugins-disabled list keeps them off
+#    :disable  ["graphql"]}     unload these while this project is open
+#
+# Unload is a real teardown now (commands, handlers, and bindings go with
+# the plugin), so a project can shed plugins it does not want without a
+# restart.  A bad config file reports and is skipped.
+
+(event/on "project-opened"
+  (fn [data]
+    (def root (get data :root ""))
+    (def config (string root "/.magma/plugins.janet"))
+    (when (file-exists? config)
+      # The file is a Janet file whose last expression is the config table
+      # (eval-string returns it across the evaluation boundary; load-file
+      # discards values).
+      (def spec
+        (try
+          (eval-string (slurp config))
+          ([err]
+            (editor/warn (string "[plugin] bad project config " config ": " err))
+            nil)))
+      (when (dictionary? spec)
+        (when (get spec :enable)
+          (each name (get spec :enable)
+            (when (= :ok (plugin/enable name))
+              (editor/log-message (string "[plugin] enabled by project: " name)))))
+        (when (get spec :disable)
+          (each name (get spec :disable)
+            (when (plugin/status name)
+              (plugin/unload name)
+              (editor/log-message (string "[plugin] disabled by project: " name)))))))))
 

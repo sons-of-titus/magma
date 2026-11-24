@@ -21,6 +21,12 @@ pub struct PluginRecord {
     pub languages: Vec<String>,
     /// Whether the entry script has been evaluated successfully.
     pub loaded: bool,
+    /// One-line what-this-is for the Plugins page and `:plugin-info`.
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub homepage: Option<String>,
+    /// Free-form discovery keywords.
+    pub tags: Vec<String>,
 }
 
 /// Registry of installed plugins, keyed by name.
@@ -82,6 +88,10 @@ mod tests {
             dependencies: deps.iter().map(|s| s.to_string()).collect(),
             languages: Vec::new(),
             loaded: false,
+            description: None,
+            author: None,
+            homepage: None,
+            tags: Vec::new(),
         }
     }
 

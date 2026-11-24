@@ -13,10 +13,13 @@
 //!   (plugin/status name)  → table or nil
 
 use super::conv;
+use super::jtable;
 use super::with_editor;
 use evil_janet::*;
 use kernel::event::keys;
-use kernel::event::payload::{PluginLoadedPayload, PluginRegisteredPayload};
+use kernel::event::payload::{
+    LanguageUnregisteredPayload, PluginLoadedPayload, PluginRegisteredPayload,
+};
 use kernel::extension::{Capability, ExtensionManifest, PluginRecord};
 
 use super::extension_api::{ExecContext, with_context};
@@ -24,42 +27,81 @@ use super::extension_api::{ExecContext, with_context};
 // ── C functions ──────────────────────────────────────────────────────────────
 
 /// `(plugin/register name version root entry deps langs caps)` → `:ok`
+/// `(plugin/register spec-table)` → `:ok`
 ///
-/// Register a plugin.  `deps` and `langs` are arrays of names, `caps` an
-/// array of capability keywords.  Registers both the plugin record and the
-/// extension manifest (capabilities become enforceable for this plugin's
-/// handlers).
+/// Register a plugin.  The positional form takes the core fields; the
+/// table form is what `plugin/define` passes and carries the rest:
+/// `{:name :version :root :entry :deps :languages :capabilities
+///   :description :author :homepage :tags}`.  Either way the registration
+/// installs the extension manifest, so the declared capabilities gate
+/// this plugin's handlers at invocation time.
 unsafe extern "C-unwind" fn c_plugin_register(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
-        if argc < 4 {
-            conv::signal_err("plugin/register: name version root entry required");
-        }
-        let name = conv::get_str(argc, argv, 0)
-            .unwrap_or_else(|| conv::signal_err("plugin/register: name must be a string"));
-        let version = conv::get_str(argc, argv, 1).unwrap_or_else(|| "0.0.0".to_string());
-        let root = conv::get_str(argc, argv, 2).unwrap_or_default();
-        let entry = conv::get_str(argc, argv, 3).unwrap_or_default();
-        let deps = conv::get_str_array(argc, argv, 4).unwrap_or_default();
-        let langs = conv::get_str_array(argc, argv, 5).unwrap_or_default();
-        let caps: Vec<Capability> = conv::get_str_array(argc, argv, 6)
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|s| Capability::from_str(s))
-            .collect();
+        let (name, version, root, entry, deps, langs, caps, description, author, homepage, tags) =
+            if argc >= 1 && jtable::is_spec(*argv.add(0)) {
+                let spec = *argv.add(0);
+                let get_arr =
+                    |key: &str| -> Vec<String> { jtable::get_str_array(spec, key).unwrap_or_default() };
+                let get_str =
+                    |key: &str| -> Option<String> { jtable::get_str(spec, key).filter(|s| !s.is_empty()) };
+                (
+                    get_str("name")
+                        .unwrap_or_else(|| conv::signal_err("plugin/register: :name required")),
+                    get_str("version").unwrap_or_else(|| "0.0.0".to_string()),
+                    get_str("root").unwrap_or_default(),
+                    get_str("entry").unwrap_or_else(|| "main.janet".to_string()),
+                    get_arr("deps"),
+                    get_arr("languages"),
+                    get_arr("capabilities")
+                        .iter()
+                        .filter_map(|s| Capability::from_str(s))
+                        .collect::<Vec<Capability>>(),
+                    get_str("description"),
+                    get_str("author"),
+                    get_str("homepage"),
+                    get_arr("tags"),
+                )
+            } else {
+                if argc < 4 {
+                    conv::signal_err("plugin/register: name version root entry required");
+                }
+                let name = conv::get_str(argc, argv, 0)
+                    .unwrap_or_else(|| conv::signal_err("plugin/register: name must be a string"));
+                (
+                    name,
+                    conv::get_str(argc, argv, 1).unwrap_or_else(|| "0.0.0".to_string()),
+                    conv::get_str(argc, argv, 2).unwrap_or_default(),
+                    conv::get_str(argc, argv, 3).unwrap_or_default(),
+                    conv::get_str_array(argc, argv, 4).unwrap_or_default(),
+                    conv::get_str_array(argc, argv, 5).unwrap_or_default(),
+                    conv::get_str_array(argc, argv, 6)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|s| Capability::from_str(s))
+                        .collect(),
+                    None,
+                    None,
+                    None,
+                    Vec::new(),
+                )
+            };
 
         let manifest = ExtensionManifest::new(name.clone(), version.clone(), caps, entry.clone());
         ed.extension_registry.register(manifest);
 
         let record = PluginRecord {
             name: name.clone(),
-            version,
+            version: version.clone(),
             root,
             entry_point: entry,
             dependencies: deps,
             languages: langs,
             loaded: false,
+            description,
+            author,
+            homepage,
+            tags,
         };
-        let version = record.version.clone();
         ed.plugin_registry.register(record);
         ed.events.emit_typed(
             keys::events::PLUGIN_REGISTERED,
@@ -181,12 +223,12 @@ unsafe extern "C-unwind" fn c_plugin_load(argc: i32, argv: *mut Janet) -> Janet 
 
 /// `(plugin/unload name)` → `:ok` or `:error`
 ///
-/// Unload a plugin at the registry level: its languages, project templates,
-/// and toolchains are removed, its record is marked not-loaded, and a
-/// `plugin-unloaded` event fires.  Scripts the plugin already registered
-/// (commands, event handlers, keymaps) keep running until the session ends
-/// — the scripting runtime has no per-plugin teardown, so this is an
-/// unregistration, not a sandboxed suspension.
+/// Unload a plugin: its languages, project templates, and toolchains are
+/// removed; every script-level registration its entry made (commands,
+/// event subscriptions, keymap bindings — recorded in the contribution
+/// journal at registration time) is removed with it; each language's
+/// `language-unregistered` event fires so Janet-side per-language tables
+/// clean up; and `plugin-unloaded` fires last.
 unsafe extern "C-unwind" fn c_plugin_unload(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| {
         let Some(name) = (unsafe { conv::get_str(argc, argv, 0) }) else {
@@ -202,15 +244,64 @@ unsafe extern "C-unwind" fn c_plugin_unload(argc: i32, argv: *mut Janet) -> Jane
         if !record.loaded {
             return conv::keyword("ok");
         }
+        let owned: Vec<String> = ed
+            .language_registry
+            .list()
+            .into_iter()
+            .filter(|l| l.owner.as_deref() == Some(name.as_str()))
+            .map(|l| l.name.clone())
+            .collect();
         let langs_removed = ed.language_registry.remove_owner(&name);
         let templates_removed = ed.templates.remove_owner(&name);
         let toolchains_removed = ed.toolchains.remove_owner(&name);
         if let Some(record) = ed.plugin_registry.get_mut(&name) {
             record.loaded = false;
         }
+        // Script-level teardown: what the entry registered, and only that.
+        let mut commands = 0usize;
+        let mut events = 0usize;
+        let mut keymaps = 0usize;
+        let mut snippets_removed_total = 0usize;
+        let mut sources = 0usize;
+        for contribution in ed.plugin_contributions.take(&name) {
+            match contribution {
+                kernel::state::contributions::Contribution::Command(cmd) => {
+                    if ed.commands.unregister(&cmd) {
+                        commands += 1;
+                    }
+                }
+                kernel::state::contributions::Contribution::Event { subscription, .. } => {
+                    ed.events.off(subscription);
+                    super::event_api::release_handler(subscription);
+                    events += 1;
+                }
+                kernel::state::contributions::Contribution::Keymap { layer, key } => {
+                    match layer.as_deref() {
+                        Some(l) => ed.keymaps.unset_layer(l, &key),
+                        None => ed.keymaps.unset(&key),
+                    }
+                    keymaps += 1;
+                }
+                kernel::state::contributions::Contribution::PickerSource(id) => {
+                    if ed.picker_sources.remove(&id) {
+                        sources += 1;
+                    }
+                }
+            }
+        }
+        // Per-language events let Janet-side registries (mode maps,
+        // formatter and LSP specs) drop the language's entries.
+        for lang in owned {
+            let snippets_removed = ed.snippet.registry.remove_language(&lang);
+            snippets_removed_total += snippets_removed;
+            ed.events.emit_typed(
+                keys::events::LANGUAGE_UNREGISTERED,
+                LanguageUnregisteredPayload { name: lang },
+            );
+        }
         info!(
-            "plugin unloaded: {name} ({} languages, {} templates, {} toolchains)",
-            langs_removed, templates_removed, toolchains_removed
+            "plugin unloaded: {name} ({} languages, {} templates, {} toolchains, {} commands, {} handlers, {} keybindings, {} snippets)",
+            langs_removed, templates_removed, toolchains_removed, commands, events, keymaps, snippets_removed_total
         );
         ed.events.emit(
             kernel::event::keys::events::PLUGIN_UNLOADED,
@@ -250,12 +341,15 @@ unsafe extern "C-unwind" fn c_plugin_status(argc: i32, argv: *mut Janet) -> Jane
 
 unsafe fn plugin_record_table(ed: &mut kernel::state::Editor, record: &PluginRecord) -> Janet {
     unsafe {
-        let tbl = janet_wrap_table(janet_table(8));
+        let tbl = janet_wrap_table(janet_table(12));
         let t = janet_unwrap_table(tbl);
         janet_table_put(t, conv::keyword("name"), conv::string(&record.name));
         janet_table_put(t, conv::keyword("version"), conv::string(&record.version));
         janet_table_put(t, conv::keyword("root"), conv::string(&record.root));
         janet_table_put(t, conv::keyword("entry"), conv::string(&record.entry_point));
+        put_opt(t, "description", record.description.as_deref());
+        put_opt(t, "author", record.author.as_deref());
+        put_opt(t, "homepage", record.homepage.as_deref());
 
         let deps = janet_wrap_array(janet_array(record.dependencies.len() as i32));
         for dep in &record.dependencies {
@@ -269,6 +363,12 @@ unsafe fn plugin_record_table(ed: &mut kernel::state::Editor, record: &PluginRec
         }
         janet_table_put(t, conv::keyword("languages"), langs);
 
+        let tags = janet_wrap_array(janet_array(record.tags.len() as i32));
+        for tag in &record.tags {
+            janet_array_push(janet_unwrap_array(tags), conv::string(tag));
+        }
+        janet_table_put(t, conv::keyword("tags"), tags);
+
         let caps = janet_wrap_array(janet_array(4));
         if let Some(manifest) = ed.extension_registry.get(&record.name) {
             for cap in &manifest.capabilities {
@@ -279,6 +379,16 @@ unsafe fn plugin_record_table(ed: &mut kernel::state::Editor, record: &PluginRec
 
         janet_table_put(t, conv::keyword("loaded"), conv::boolean(record.loaded));
         tbl
+    }
+}
+
+unsafe fn put_opt(t: *mut JanetTable, key: &str, value: Option<&str>) {
+    unsafe {
+        let v = match value {
+            Some(s) => conv::string(s),
+            None => conv::nil(),
+        };
+        janet_table_put(t, conv::keyword(key), v);
     }
 }
 

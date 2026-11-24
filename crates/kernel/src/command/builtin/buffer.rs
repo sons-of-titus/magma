@@ -461,15 +461,17 @@ fn save_buffer_common(
         .get(buf_id)
         .ok_or_else(|| "No current buffer".to_string())?
         .clone();
-    let (path, content, saved_rev) = {
+    let path = {
         let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
-        let path = path_arg
+        path_arg
             .filter(|p| !p.is_empty())
             .or_else(|| buf.path.clone())
-            .ok_or_else(|| "No path specified".to_string())?;
-        let content = buf.slice(0, buf.len());
-        (path, content, buf.revision())
+            .ok_or_else(|| "No path specified".to_string())?
     };
+    // before-save hooks must run before the content snapshot, or a hook
+    // that rewrites the buffer (format-on-save) silently saves pre-format
+    // text.  The bus queues events, so this drains the hooks right here —
+    // a handler that saves again re-entrantly is dropped by the bus guard.
     editor.events.emit_typed(
         keys::events::BUFFER_BEFORE_SAVE,
         BufferBeforeSavePayload {
@@ -477,6 +479,11 @@ fn save_buffer_common(
             buffer_id: buf_id.to_string(),
         },
     );
+    editor.events.drain_and_dispatch();
+    let (content, saved_rev) = {
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        (buf.slice(0, buf.len()), buf.revision())
+    };
 
     let Some(bg) = editor.background.clone() else {
         editor

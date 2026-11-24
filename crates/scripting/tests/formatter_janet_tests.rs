@@ -27,14 +27,14 @@ fn failing_formatter_keeps_text_and_reports_once() {
         let got = scripting::eval_result(r#"(formatter/format "zzfail" "keep me")"#)
             .unwrap_or_default();
         assert_eq!(got, r#""keep me""#, "a failed format leaves the text alone");
-        let detail = ed
-            .status_message
-            .as_ref()
-            .map(|m| m.text.clone())
-            .unwrap_or_default();
+        let card = scripting::eval_result(
+            r#"(let [n (first (notifications))]
+                 (string (get n :kind) "|" (get n :title)))"#,
+        )
+        .unwrap_or_default();
         assert!(
-            detail.contains("failed"),
-            "the failure must be user-visible: {detail}"
+            card.contains("error") && card.contains("Formatter failed"),
+            "the failure must be user-visible: {card}"
         );
     });
 }
@@ -51,14 +51,14 @@ fn missing_formatter_binary_is_reported_not_silent() {
         let got = scripting::eval_result(r#"(formatter/format "zznone" "untouched")"#)
             .unwrap_or_default();
         assert_eq!(got, r#""untouched""#);
-        let detail = ed
-            .status_message
-            .as_ref()
-            .map(|m| m.text.clone())
-            .unwrap_or_default();
+        let card = scripting::eval_result(
+            r#"(let [n (first (notifications))]
+                 (string (get n :title) "|" (get n :body)))"#,
+        )
+        .unwrap_or_default();
         assert!(
-            detail.contains("not found") && detail.contains("zz-no-such-formatter"),
-            "missing formatter names the binary: {detail}"
+            card.contains("not found") && card.contains("zz-no-such-formatter"),
+            "missing formatter names the binary: {card}"
         );
     });
 }

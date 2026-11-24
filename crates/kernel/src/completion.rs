@@ -97,6 +97,36 @@ pub fn trigger(editor: &mut Editor) {
         }
     }
 
+    // Registered snippets join the popup with the engine's kind: accepting
+    // one inserts the body with live tab stops.  Language-scoped entries
+    // and globals both apply, matching expand_snippet's resolution.
+    let buffer_language = editor.buffers.get(buf_id).and_then(|arc| {
+        let buf = arc.lock().unwrap_or_else(|e| e.into_inner());
+        buf.major_mode
+            .name()
+            .strip_suffix("-mode")
+            .map(|s| s.to_string())
+    });
+    for s in editor
+        .snippet
+        .registry
+        .for_language(buffer_language.as_deref())
+    {
+        if s.trigger.starts_with(prefix.as_str())
+            && !items.iter().any(|i| i.label == s.trigger)
+            && items.len() < MAX_ITEMS
+        {
+            items.push(CompletionItem {
+                label: s.trigger.clone(),
+                insert: s.body.clone(),
+                kind: "snippet".to_string(),
+                detail: s.description.clone().unwrap_or_default(),
+                is_snippet: true,
+                ..Default::default()
+            });
+        }
+    }
+
     // The language server is the primary source — its items carry kinds,
     // signatures, and snippets.  Words/index symbols fill the popup
     // immediately while the response is in flight; server items lead once

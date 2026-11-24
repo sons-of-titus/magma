@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["lua"]
-   :capabilities [:editor-access]})
+   :extensions {"lua" ["lua"]}
+   :lsp {"lua" {:markers [".luarc.json" ".luarc.jsonc"]}}
+   :capabilities [:process-execution :editor-access]})

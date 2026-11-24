@@ -180,29 +180,6 @@
 (keymap/set "ctrl-return" "http-send-request" "http-mode")
 (keymap/set "meta-r" "http-send-request" "http-mode")
 
-# ── Mode activation ──────────────────────────────────────────────────────────
-# The core extension map predates this plugin, so the plugin routes its
-# own extensions: its major mode wins over the core's pick.
-
-(def http-exts @["http" "rest"])
-
-(defn- path-extension
-  "File extension of `path` (after the last dot), or nil."
-  [path]
-  (when-let [i (last (string/find-all "." path))]
-    (string/slice path (+ i 1))))
-
-(event/on "buffer-created"
-  (fn [data]
-    (def path (get data :path ""))
-    (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when (index-of ext http-exts)
-        # Janet-defined modes activate directly (nested fiber constraint).
-        (if-let [entry (get *major-modes* "http-mode")]
-          ((get entry :activate))
-          (editor/run-command "http-mode"))))))
-
 # ── Colon verbs ──────────────────────────────────────────────────────────────
 
 (defn colon-http

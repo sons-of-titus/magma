@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["json"]
-   :capabilities [:editor-access]})
+   :extensions {"json" ["json"]}
+   :lsp {"json" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

@@ -1,233 +1,54 @@
-# Plugin System Design
+# Plugin System Architecture
 
-## Overview
+## Layers
 
-Plugins are just Janet code. There is no special plugin format, no manifest files, no build step. A plugin is a `.janet` file placed in `~/.magma/plugins/`.
+| Layer | Lives in | Owns |
+|-------|----------|------|
+| Manifest pipeline | `builtins/plugin_system.janet` | `plugin/define`, discovery, dependency resolution, capability validation |
+| Registries (Rust) | `crates/extension`, `crates/scripting/src/plugin_api.rs` | Plugin records, capability enforcement (`ExecContext`), load/unload |
+| Language surface | `builtins/language.janet`, `crates/scripting/src/language_api.rs` | Language registration, grammar load + ABI validation, file-type maps |
+| Mode activation | `builtins/major_modes.janet` | Extension and filename registries, `buffer-created` activation |
+| LSP attach | `builtins/plugins/lsp_attach.janet` | Launch policies from `:lsp` specs, server-key sharing, marker matching |
+| LSP client | `builtins/plugins/lsp.janet`, `crates/semantic/src/lsp` | Server state, requests, responses |
+| Formatting | `builtins/formatter.janet` | Formatter registry, format-on-save, presence checks, failure reporting |
 
-## Plugin Lifecycle
+## Startup flow
 
-```
-                    ┌─────────────────────────────┐
-                    │    Plugin Loading Pipeline    │
-                    │                              │
-                    │  ┌───────────────────────┐  │
-                    │  │ 1. Discovery           │  │
-                    │  │   Scan plugins/ dir    │  │
-                    │  │   Build file list      │  │
-                    │  └───────────┬───────────┘  │
-                    │              ▼              │
-                    │  ┌───────────────────────┐  │
-                    │  │ 2. Parse & Dep        │  │
-                    │  │    Resolution          │  │
-                    │  │   Topological sort     │  │
-                    │  │   Cycle detection      │  │
-                    │  └───────────┬───────────┘  │
-                    │              ▼              │
-                    │  ┌───────────────────────┐  │
-                    │  │ 3. Sandboxed Eval      │  │
-                    │  │   Fresh environment    │  │
-                    │  │   Capture exports      │  │
-                    │  │   Timeout: 5s          │  │
-                    │  └───────────┬───────────┘  │
-                    │              ▼              │
-                    │  ┌───────────────────────┐  │
-                    │  │ 4. Registration        │  │
-                    │  │   Commands → Registry  │  │
-                    │  │   Hooks → Event Bus    │  │
-                    │  │   Keymaps → Manager    │  │
-                    │  └───────────┬───────────┘  │
-                    │              ▼              │
-                    │  ┌───────────────────────┐  │
-                    │  │ 5. Caching             │  │
-                    │  │   PluginRecord stored  │  │
-                    │  │   in PluginRegistry    │  │
-                    │  └───────────────────────┘  │
-                    │                              │
-                    │  Hot Reload Path:            │
-                    │  5a. Call unload hook        │
-                    │  5b. Remove registrations    │
-                    │  5c. Eval new file           │
-                    │  5d. Re-register             │
-                    └─────────────────────────────┘
-```
+1. Builtins load in fixed order (`crates/scripting/src/loader.rs`).
+2. `plugin/bootstrap` discovers plugins from `<cwd>/plugins` and the
+   user root (`plugins-root` option, default `~/.config/magma/plugins`),
+   evaluating each `manifest.janet`.  Manifest evaluation registers
+   languages, file types, launch policies, toolchains, and templates;
+   a bad manifest warns and is skipped.
+3. Every discovered plugin is enabled (dependencies first, depth-first),
+   except names in `plugins-disabled`.  Installed means enabled.
 
-## Plugin Structure
+## Capability model
 
-### Simple Plugin
+`crates/extension` defines the capability set (filesystem, network,
+process-execution, editor-access).  A plugin's entry script evaluates
+under `ExecContext::Extension(name)`, and every privileged call checks
+the declaring manifest at invocation time.  Unknown capabilities are
+denied; the core context is unrestricted.  `plugin/define` validates
+consistency eagerly — launching a language server requires
+`:process-execution`.
 
-```janet
-# ~/.magma/plugins/hello.janet
-(defn say-hello []
-  (print "Hello from plugin!"))
+## Loading and unloading
 
-(command/define "hello" say-hello
-  {:doc "Print a greeting"})
+`plugin/load` evaluates the entry script (or a precompiled `main.jimage`,
+sniffed by its `MGIMG1` magic) under the capability context.  `plugin/unload`
+removes registry-level contributions — languages, templates, toolchains —
+and emits `plugin-unloaded`.  Commands, event handlers, and keymaps a
+plugin registered stay active until the session ends; the scripting
+runtime has no per-plugin teardown of script-level registrations.
 
-(event/on :editor-ready
-  (fn [&] (print "Hello plugin loaded!")))
-```
+## Packaging
 
-### Plugin with State
+A plugin entry can be compiled to a `main.jimage` (`plugin/build`,
+`:plugin-build`) — marshaled bytecode pinned to the Janet version — and
+loads through the same path as source.
 
-```janet
-# ~/.magma/plugins/counter.janet
-(def- state @{:count 0})
+## Reference
 
-(defn increment []
-  (put state :count (+ (state :count) 1))
-  (print "Count: " (state :count)))
-
-(defn reset []
-  (put state :count 0)
-  (print "Reset"))
-
-(command/define "counter-increment" increment
-  {:doc "Increment the counter"})
-(command/define "counter-reset" reset
-  {:doc "Reset the counter"})
-```
-
-### Plugin with Unload Hook
-
-```janet
-# ~/.magma/plugins/timer.janet
-(def- fiber nil)
-
-(defn start-timer []
-  (set fiber (fiber/new
-    (fn []
-      (while true
-        (print "tick")
-        (fiber/sleep 1)))))
-
-(defn stop-timer []
-  (when fiber
-    (fiber/cancel fiber)))
-
-# Register unload hook for clean teardown
-(defn on-unload []
-  (stop-timer)
-  (print "Timer plugin unloaded"))
-
-(command/define "timer-start" start-timer
-  {:doc "Start the timer"})
-(command/define "timer-stop" stop-timer
-  {:doc "Stop the timer"})
-```
-
-## Plugin Registry
-
-```rust
-pub struct PluginRegistry {
-    plugins: HashMap<String, PluginRecord>,
-    load_order: Vec<String>,
-}
-
-pub struct PluginRecord {
-    pub name: String,
-    pub path: PathBuf,
-    pub source: String,                           // Original source code
-    pub environment: Option<JanetEnvironment>,     // Plugin's sandbox
-    pub exports: HashMap<String, JanetFunction>,
-    pub commands: Vec<CommandId>,
-    pub hooks: Vec<HookId>,
-    pub keybindings: Vec<(String, String)>,        // (key-seq, command-name)
-    pub subscriptions: Vec<SubscriptionId>,
-    pub unload_hook: Option<JanetFunction>,
-}
-```
-
-## Dependency Management
-
-Plugins can depend on other plugins via Janet's `require`:
-
-```janet
-# ~/.magma/plugins/lsp.janet
-(require plugins/git)  # Depends on git plugin
-
-(defn lsp-attach [buf-id]
-  (git/blame buf-id)  # Use git plugin's function
-  ...)
-```
-
-The loader resolves dependencies topologically:
-
-1. Parse all `require` calls from each plugin
-2. Build dependency graph
-3. Detect cycles (error if found)
-4. Load in dependency order
-
-## Hot Reload
-
-### From REPL
-
-```janet
-# Reload a specific plugin
-(editor/reload "my-plugin")
-
-# Reload all plugins
-(each plugin (plugin/list)
-  (editor/reload plugin))
-```
-
-### Automatic Reload
-
-```janet
-# Watch plugin file and auto-reload
-(fs/watch "~/.magma/plugins/my-plugin.janet"
-  (fn [path]
-    (editor/reload "my-plugin")
-    (print "Reloaded: " path)))
-```
-
-### Reload Process
-
-1. Look up `PluginRecord` for the named plugin
-2. Call `unload_hook` if defined (allows cleanup)
-3. Remove all registered commands from the registry
-4. Remove all hooks from the event bus
-5. Remove all keybindings from the keymap manager
-6. Remove all event subscriptions
-7. Re-evaluate the plugin source in a fresh environment
-8. Re-register all commands, hooks, keybindings, subscriptions
-9. Update the `PluginRecord`
-10. Emit `:plugin-reloaded` event
-
-## Plugin Loading Order
-
-1. **Built-in plugins** — Embedded in the Rust binary:
-   - `builtins/init.janet` — Core initialization, REPL setup
-   - `builtins/vim.janet` — Vim keybindings (default mode)
-
-2. **User init** — `~/.magma/init.janet`
-
-3. **Plugin directory** — `~/.magma/plugins/*.janet` (sorted by dependency)
-
-4. **User override** — `~/.magma/user.janet` (loaded last, for overrides)
-
-## Sandboxing
-
-Each plugin gets a fresh environment:
-
-```janet
-# Plugin A
-(def !secret "password")
-
-# Plugin B (separate environment, cannot access !secret)
-(print !secret)  # => nil
-```
-
-The sandbox restricts:
-
-- No access to `os/shell` or `os/execute` by default (can be enabled via `dangerous-permissions`)
-- No access to `ffi` by default
-- Access to editor APIs is controlled (cannot directly mutate Rust state)
-- File system access is limited to `~/.magma/` directory by default
-
-## Best Practices
-
-1. **Use `def-` for private state** — prefix with `-` to indicate module-private
-2. **Define an unload hook** — for cleanup for timers, fibers, file watchers, etc.
-3. **Prefix commands** — use namespaced names like `git-blame`, `lsp-format`
-4. **Handle errors** — use `protect` for operations that might fail
-5. **Avoid global state** — prefer local state scoped to the plugin
+The manifest schema and trust model: [plugins-templates.md](../plugins-templates.md).
+The Janet API: [api/janet-api.md](api/janet-api.md).

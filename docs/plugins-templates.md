@@ -20,11 +20,11 @@ and an entry script.  The full surface:
 ```text
 plugins/rust/
 ├── manifest.janet                  plugin/define — identity + contributions
-├── main.janet                      entry: modes, hooks, commands, LSP wiring
+├── main.janet                      entry: modes, hooks, commands
 ├── config.janet                    option defaults (loaded by main.janet)
 ├── syntax.scm                      tree-sitter highlight query for <lang>-mode
-├── grammar/                        optional: grammar shared libraries
-│   └── libtree-sitter-rust.dylib
+├── grammars/                       optional: grammar shared libraries
+│   └── tree-sitter-rust.dylib
 └── project-templates/
     ├── binary/
     │   ├── template.janet          template/define — metadata
@@ -41,8 +41,31 @@ plugins/rust/
 | `:deps` | Dependencies, resolved depth-first before load |
 | `:languages` | Language names the plugin serves |
 | `:extensions` | `{lang [ext …]}` — file extensions mapped to `<lang>-mode` |
+| `:filenames` | `{lang [name …]}` — exact file basenames mapped to `<lang>-mode` (Makefile, Dockerfile, Jenkinsfile …) |
+| `:lsp` | `{lang spec}` — language-server launch policy (see below) |
 | `:toolchain` | One `toolchain/register` spec (see below) |
 | `:capabilities` | `[:filesystem :network :process-execution :editor-access]` |
+
+A manifest that declares `:lsp` must also declare the
+`:process-execution` capability — spawning a language server is process
+execution, and the declaration is validated at define time.
+
+### Language-server launch policy
+
+The `:lsp` key declares how a language's server starts; the editor owns
+the launch itself.  Spec keys:
+
+| Key | Meaning |
+|-----|---------|
+| `:markers` | Project-root file names that trigger a start (`"Cargo.toml"`, `"*.nimble"`, `"Dockerfile.*"` — a leading or trailing `*` is a glob).  Checked at the open project's root and walking up from an opened file's directory. |
+| `:single-file` | Start with the first buffer of the language even when no marker matches |
+| `:server-key` | Share one server process across languages (`"tsserver"` for js/ts, `"clangd"` for c/cpp) |
+| `:args` | Extra argv for the server command |
+
+The server command comes from the `<lang>-lsp-command` option (seeded by
+the plugin's `config.janet`, overridable by the user); `<lang>-lsp-args`
+overrides `:args`.  A command that resolves nowhere reports once and the
+language stays without a server.
 
 Discovery scans `<cwd>/plugins` and the user plugin root
 (`plugins-root` option, default `~/.config/magma/plugins`); a directory is
@@ -69,7 +92,8 @@ error, while the same plugin re-registering replaces its entry.
 (language/define
   {:id "nova"
    :extensions ["nova" "nva"]
-   :grammar (string plugin-dir "/grammar/libtree-sitter-nova.dylib")
+   :filenames ["Novafill"]
+   :grammar (string plugin-dir "/grammars/tree-sitter-nova.dylib")
    :syntax  (string plugin-dir "/highlights.scm")
    :comments {:line "//" :block ["/*" "*/"]}
    :indentation {:size 4 :style "spaces"}})
@@ -85,10 +109,10 @@ What registration wires, and where it lives:
 - **Query validation** (Rust): when a grammar is loaded, the highlight
   query is compile-checked at registration; errors are reported instead
   of appearing as silently missing colors.
-- **Extension mapping** (Janet): each extension maps to `<id>-mode` in the
-  major-mode map.  First registration wins; conflicts are reported, never
-  silently overridden.  The built-in extension map is unaffected unless a
-  plugin language declares the same extension.
+- **Extension and filename mapping** (Janet): each `:extensions` entry
+  and `:filenames` basename maps to `<id>-mode` in the major-mode
+  registries, which drive activation on `buffer-created`.  First
+  registration wins; conflicts are reported, never silently overridden.
 - **Highlight query** (Janet): `:syntax` becomes the mode's tree-sitter
   query (the `syntax` highlight layer transfers to the tree-sitter lane).
 - **Options** (Janet): `:comments` and `:indentation` seed
@@ -262,3 +286,25 @@ templates capped at 20k files and 32 nesting levels).
   detection with saved-config precedence, unload/reload cleanup, and
   malformed-plugin isolation.
 - `crates/slint-shell/src/new_project.rs` — wizard validation rules.
+
+## Per-project plugin configuration
+
+A project can shed plugins it does not want and pull in ones it needs
+through `<root>/.magma/plugins.janet` — a Janet file whose last
+expression is the config table:
+
+```janet
+{:enable  ["http"]        # load in this project even if globally disabled
+ :disable ["graphql"]}    # unload while this project is open
+```
+
+Applied when the project opens: `:enable` loads plugins (overriding the
+global `plugins-disabled` list for this project), `:disable` unloads
+them — a real teardown: the plugin's commands, event handlers, keymap
+bindings, languages, formatters, and launch policies all go with it.
+
+## Installing plugins
+
+`:plugin-install <git-url>` clones a repository into the user plugin
+root, discovers it, and enables it in one step.  The plugin's directory
+name comes from the source; its identity comes from its manifest.

@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["yaml"]
-   :capabilities [:editor-access]})
+   :extensions {"yaml" ["yaml" "yml"]}
+   :lsp {"yaml" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

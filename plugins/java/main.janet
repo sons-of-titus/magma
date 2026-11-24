@@ -7,16 +7,6 @@
 (semantic/register-provider "java" "treesitter")
 (semantic/register-provider "java" "lsp")
 
-# ── LSP ──────────────────────────────────────────────────────────────────────
-
-(event/on "project-opened"
-  (fn [data]
-    (def root (get data :root ""))
-    (defn marker [f] (try (os/stat (string root "/" f)) ([_] nil)))
-    (when (or (marker "pom.xml")
-              (marker "build.gradle"))
-      (lsp/start "java" (option/get "java-lsp-command")))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 # Auto-activated for .java buffers by the core extension map on
 # buffer-created.

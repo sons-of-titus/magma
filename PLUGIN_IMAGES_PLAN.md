@@ -1,6 +1,6 @@
 # Plan — Package Plugins as Janet Images
 
-Status: research complete, implementation not started.
+Status: implemented (builtins/plugin_images.janet, plugin_api.rs image sniffing; tested in plugin_system_janet_tests.rs).
 Every claim in "Validated findings" was probed live against the embedded VM
 (evil-janet 1.42.0-dev) on 2026-10-29.
 

@@ -21,39 +21,6 @@
 (syntax/map-extension "mk" "makefile")
 (syntax/map-extension "mak" "makefile")
 
-# ── Activation ───────────────────────────────────────────────────────────────
-# Makefiles are usually extensionless, so the plugin matches the file's
-# basename as well as its extension.
-
-(def makefile-exts @["mk" "mak"])
-(def makefile-names @["Makefile" "makefile" "GNUmakefile" "BSDmakefile"])
-
-(defn- path-extension
-  "File extension of `path` (after the last dot), or nil."
-  [path]
-  (when-let [i (last (string/find-all "." path))]
-    (string/slice path (+ i 1))))
-
-(defn- file-basename
-  "Last path segment, with backslash separators normalized."
-  [path]
-  (def norm (string/replace-all "\\" "/" path))
-  (if-let [i (last (string/find-all "/" norm))]
-    (string/slice norm (+ i 1))
-    norm))
-
-(event/on "buffer-created"
-  (fn [data]
-    (def path (get data :path ""))
-    (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when (or (index-of ext makefile-exts)
-                (index-of (file-basename path) makefile-names))
-        # Janet-defined modes activate directly (nested fiber constraint).
-        (if-let [entry (get *major-modes* "makefile-mode")]
-          ((get entry :activate))
-          (editor/run-command "makefile-mode"))))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 
 (major-mode/define "makefile-mode"

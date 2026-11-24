@@ -4,4 +4,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["scala"]
-   :capabilities [:editor-access]})
+   :extensions {"scala" ["scala" "sc"]}
+   :lsp {"scala" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

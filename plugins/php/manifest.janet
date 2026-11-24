@@ -4,4 +4,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["php"]
-   :capabilities [:editor-access]})
+   :extensions {"php" ["php" "phtml"]}
+   :lsp {"php" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

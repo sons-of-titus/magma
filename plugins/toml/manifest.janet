@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["toml"]
-   :capabilities [:editor-access]})
+   :extensions {"toml" ["toml"]}
+   :lsp {"toml" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

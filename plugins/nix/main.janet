@@ -7,15 +7,6 @@
 (semantic/register-provider "nix" "treesitter")
 (semantic/register-provider "nix" "lsp")
 
-# ── LSP ──────────────────────────────────────────────────────────────────────
-
-(event/on "project-opened"
-  (fn [data]
-    (def root (get data :root ""))
-    (defn marker [f] (try (os/stat (string root "/" f)) ([_] nil)))
-    (when (or (marker "flake.nix"))
-      (lsp/start "nix" (option/get "nix-lsp-command")))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 # Auto-activated for .nix buffers by the core extension map on
 # buffer-created.
@@ -30,26 +21,5 @@
 
 # ── Formatting ───────────────────────────────────────────────────────────────
 
-(defn nix/format
-  "Format source text with nixpkgs-fmt; returns the input unchanged on failure."
-  [text]
-  (def result (process/run "nixpkgs-fmt" @[] text))
-  (if (= (get result :exit-code) 0)
-    (get result :stdout text)
-    text))
+(formatter/register "nix" {:command "nixpkgs-fmt" :args @[]})
 
-(defn- format-current-buffer []
-  (def buf (buffer/current))
-  (when (and buf (= (buffer/major-mode buf) "nix-mode"))
-    (def formatted (nix/format (buffer/slice buf 0 (buffer/len buf))))
-    (buffer/delete buf 0 (buffer/len buf))
-    (buffer/insert buf 0 formatted)))
-
-(command/define "nix-format-buffer" (fn [&] (format-current-buffer)))
-
-(event/on "buffer-before-save"
-  (fn [_]
-    (when (= (option/get "nix-format-on-save") "true")
-      # Direct call: entering the command registry from a handler would
-      # create a nested fiber, which Janet silently drops.
-      (format-current-buffer))))

@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["nix"]
+   :extensions {"nix" ["nix"]}
+   :lsp {"nix" {:markers ["flake.nix" "shell.nix" "default.nix"]}}
    :capabilities [:process-execution :editor-access]})

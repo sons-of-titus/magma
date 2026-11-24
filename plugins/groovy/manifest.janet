@@ -4,4 +4,7 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["groovy"]
-   :capabilities [:editor-access]})
+   :extensions {"groovy" ["groovy" "gradle" "jenkinsfile"]}
+   :filenames {"groovy" ["Jenkinsfile"]}
+   :lsp {"groovy" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

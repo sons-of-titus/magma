@@ -4,4 +4,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["perl"]
+   :extensions {"perl" ["pl" "pm" "t"]}
    :capabilities [:editor-access]})

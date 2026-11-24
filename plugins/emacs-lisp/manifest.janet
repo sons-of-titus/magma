@@ -7,5 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["emacs-lisp"]
+   :extensions {"emacs-lisp" ["el"]}
    :grammar-symbols {"emacs-lisp" "tree_sitter_elisp"}
    :capabilities [:editor-access]})

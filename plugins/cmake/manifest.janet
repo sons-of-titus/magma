@@ -4,4 +4,7 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["cmake"]
-   :capabilities [:editor-access]})
+   :extensions {"cmake" ["cmake"]}
+   :filenames {"cmake" ["CMakeLists.txt"]}
+   :lsp {"cmake" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

@@ -7,5 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["lisp"]
+   :extensions {"lisp" ["lisp" "lsp"]}
    :grammar-symbols {"lisp" "tree_sitter_commonlisp"}
    :capabilities [:editor-access]})

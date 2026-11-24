@@ -4,4 +4,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["ocaml"]
-   :capabilities [:editor-access]})
+   :extensions {"ocaml" ["ml" "mli"]}
+   :lsp {"ocaml" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

@@ -14,7 +14,6 @@
 (option/set "rust-max-line-length" "100")
 
 # Debug adapter used when launching a debuggable run configuration
-(option/set "rust-debug-adapter" "lldb")
 
 # Format with rustfmt before every save of a Rust buffer
 (option/set "rust-format-on-save" "false")

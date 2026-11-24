@@ -11,7 +11,6 @@
 (option/set "c-lsp-command" "clangd")
 
 # Debug adapter suggested when launching a debug session
-(option/set "c-debug-adapter" "lldb")
 
 # Directory the CMake run configurations configure, build, and test in
 (option/set "c-build-dir" "build")

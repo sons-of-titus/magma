@@ -19,43 +19,6 @@
 
 (syntax/map-extension "dockerfile" "dockerfile")
 
-# ── Activation + LSP ─────────────────────────────────────────────────────────
-# Dockerfiles are usually extensionless, so the plugin matches the file's
-# basename as well as its extension.  The docker language server speaks
-# stdio and serves single files, so it starts with the first Dockerfile
-# buffer rather than waiting for a project to open.
-
-(def dockerfile-exts @["dockerfile"])
-(def dockerfile-names @["Dockerfile" "dockerfile"])
-
-(defn- path-extension
-  "File extension of `path` (after the last dot), or nil."
-  [path]
-  (when-let [i (last (string/find-all "." path))]
-    (string/slice path (+ i 1))))
-
-(defn- file-basename
-  "Last path segment, with backslash separators normalized."
-  [path]
-  (def norm (string/replace-all "\\" "/" path))
-  (if-let [i (last (string/find-all "/" norm))]
-    (string/slice norm (+ i 1))
-    norm))
-
-(event/on "buffer-created"
-  (fn [data]
-    (def path (get data :path ""))
-    (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when (or (index-of ext dockerfile-exts)
-                (index-of (file-basename path) dockerfile-names))
-        # Janet-defined modes activate directly (nested fiber constraint).
-        (if-let [entry (get *major-modes* "dockerfile-mode")]
-          ((get entry :activate))
-          (editor/run-command "dockerfile-mode"))
-        (lsp/start "dockerfile" (option/get "dockerfile-lsp-command")
-                   (option/get "dockerfile-lsp-args"))))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 
 (major-mode/define "dockerfile-mode"

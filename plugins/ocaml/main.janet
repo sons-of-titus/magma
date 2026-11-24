@@ -22,32 +22,6 @@
 (syntax/map-extension "ml" "ocaml")
 (syntax/map-extension "mli" "ocaml")
 
-# ── Activation + LSP ─────────────────────────────────────────────────────────
-# The core extension map predates this plugin, so the plugin routes its
-# own extensions: its major mode wins over the core's pick.  ocamllsp is
-# project-scoped (dune/merlin configuration); it starts with the first
-# OCaml buffer of an opened project.
-
-(def ocaml-exts @["ml" "mli"])
-
-(defn- path-extension
-  "File extension of `path` (after the last dot), or nil."
-  [path]
-  (when-let [i (last (string/find-all "." path))]
-    (string/slice path (+ i 1))))
-
-(event/on "buffer-created"
-  (fn [data]
-    (def path (get data :path ""))
-    (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when (index-of ext ocaml-exts)
-        # Janet-defined modes activate directly (nested fiber constraint).
-        (if-let [entry (get *major-modes* "ocaml-mode")]
-          ((get entry :activate))
-          (editor/run-command "ocaml-mode"))
-        (lsp/start "ocaml" (option/get "ocaml-lsp-command"))))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 
 (major-mode/define "ocaml-mode"

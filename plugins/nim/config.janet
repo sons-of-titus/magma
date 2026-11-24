@@ -3,4 +3,3 @@
 (option/set "nim-comment-prefix" "# ")
 (option/set "nim-lsp-command" "nimlangserver")
 (option/set "nim-max-line-length" "80")
-(option/set "nim-debug-adapter" "nil")

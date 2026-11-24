@@ -31,42 +31,6 @@
 
 (syntax/map-extension "cmake" "cmake")
 
-# ── Activation + LSP ─────────────────────────────────────────────────────────
-# CMake projects center on CMakeLists.txt, an extensionless-looking file,
-# so the plugin matches the basename as well as the .cmake extension.  The
-# cmake language server is project-scoped: it starts when a CMake file of
-# an opened project is first edited.
-
-(def cmake-exts @["cmake"])
-(def cmake-names @["CMakeLists.txt"])
-
-(defn- path-extension
-  "File extension of `path` (after the last dot), or nil."
-  [path]
-  (when-let [i (last (string/find-all "." path))]
-    (string/slice path (+ i 1))))
-
-(defn- file-basename
-  "Last path segment, with backslash separators normalized."
-  [path]
-  (def norm (string/replace-all "\\" "/" path))
-  (if-let [i (last (string/find-all "/" norm))]
-    (string/slice norm (+ i 1))
-    norm))
-
-(event/on "buffer-created"
-  (fn [data]
-    (def path (get data :path ""))
-    (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when (or (index-of ext cmake-exts)
-                (index-of (file-basename path) cmake-names))
-        # Janet-defined modes activate directly (nested fiber constraint).
-        (if-let [entry (get *major-modes* "cmake-mode")]
-          ((get entry :activate))
-          (editor/run-command "cmake-mode"))
-        (lsp/start "cmake" (option/get "cmake-lsp-command"))))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 
 (major-mode/define "cmake-mode"

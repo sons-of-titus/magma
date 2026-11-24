@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["css"]
-   :capabilities [:editor-access]})
+   :extensions {"css" ["css" "scss"]}
+   :lsp {"css" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

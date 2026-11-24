@@ -7,5 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["janet"]
+   :extensions {"janet" ["janet" "jdn"]}
    :grammar-symbols {"janet" "tree_sitter_janet_simple"}
    :capabilities [:editor-access]})

@@ -7,5 +7,7 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["sh"]
+   :extensions {"sh" ["sh" "bash" "zsh"]}
+   :lsp {"sh" {:single-file true}}
    :grammar-symbols {"sh" "tree_sitter_bash"}
-   :capabilities [:editor-access]})
+   :capabilities [:process-execution :editor-access]})

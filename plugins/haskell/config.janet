@@ -3,7 +3,6 @@
 (option/set "haskell-comment-prefix" "-- ")
 (option/set "haskell-lsp-command" "haskell-language-server")
 (option/set "haskell-max-line-length" "80")
-(option/set "haskell-debug-adapter" "nil")
 
 # Format with fourmolu before every save of a haskell buffer
 (option/set "haskell-format-on-save" "false")

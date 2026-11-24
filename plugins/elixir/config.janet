@@ -3,7 +3,6 @@
 (option/set "elixir-comment-prefix" "# ")
 (option/set "elixir-lsp-command" "elixir-ls")
 (option/set "elixir-max-line-length" "98")
-(option/set "elixir-debug-adapter" "nil")
 
 # Format with mix format before every save of a elixir buffer
 (option/set "elixir-format-on-save" "false")

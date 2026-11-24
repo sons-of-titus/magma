@@ -4,4 +4,7 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["dockerfile"]
-   :capabilities [:editor-access]})
+   :extensions {"dockerfile" ["dockerfile"]}
+   :filenames {"dockerfile" ["Dockerfile" "dockerfile"]}
+   :lsp {"dockerfile" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

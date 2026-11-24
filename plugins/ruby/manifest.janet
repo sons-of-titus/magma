@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["ruby"]
+   :extensions {"ruby" ["rb"]}
+   :lsp {"ruby" {:markers ["Gemfile" "*.gemspec"]}}
    :capabilities [:process-execution :editor-access]})

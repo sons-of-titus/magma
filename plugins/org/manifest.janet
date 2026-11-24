@@ -7,4 +7,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["org"]
+   :extensions {"org" ["org"]}
    :capabilities [:editor-access]})

@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["c"]
+   :extensions {"c" ["c" "h"]}
+   :lsp {"c" {:markers ["compile_commands.json" "compile_flags.txt"] :server-key "clangd"}}
    :capabilities [:process-execution :editor-access]})

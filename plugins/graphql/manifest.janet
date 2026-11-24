@@ -4,4 +4,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["graphql"]
-   :capabilities [:editor-access]})
+   :extensions {"graphql" ["graphql" "gql"]}
+   :lsp {"graphql" {:single-file true}}
+   :capabilities [:process-execution :editor-access]})

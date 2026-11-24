@@ -11,16 +11,6 @@
 (semantic/register-provider "rust" "treesitter")
 (semantic/register-provider "rust" "lsp")
 
-# ── LSP ──────────────────────────────────────────────────────────────────────
-
-(event/on "project-opened"
-  (fn [data]
-    (def root (get data :root ""))
-    (def name (get data :name ""))
-    (def cargo-project (try (os/stat (string root "/Cargo.toml")) ([_] nil)))
-    (when (or (= name "rust") cargo-project)
-      (lsp/start "rust" (option/get "rust-lsp-command")))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 # Auto-activated for .rs buffers by the core extension map on buffer-created.
 
@@ -38,29 +28,7 @@
 
 # ── Formatting ───────────────────────────────────────────────────────────────
 
-(defn rust/format
-  "Format source text with rustfmt; returns the input unchanged on failure."
-  [text]
-  (def result (process/run "rustfmt" @["--edition" "2021"] text))
-  (if (= (get result :exit-code) 0)
-    (get result :stdout text)
-    text))
-
-(defn- format-current-buffer []
-  (def buf (buffer/current))
-  (when (and buf (= (buffer/major-mode buf) "rust-mode"))
-    (def formatted (rust/format (buffer/slice buf 0 (buffer/len buf))))
-    (buffer/delete buf 0 (buffer/len buf))
-    (buffer/insert buf 0 formatted)))
-
-(command/define "rust-format-buffer" (fn [&] (format-current-buffer)))
-
-(event/on "buffer-before-save"
-  (fn [_]
-    (when (= (option/get "rust-format-on-save") "true")
-      # Direct call: entering the command registry from a handler would
-      # create a nested fiber, which Janet silently drops.
-      (format-current-buffer))))
+(formatter/register "rust" {:command "rustfmt" :args @["--edition" "2021"]})
 
 # ── Run configurations ───────────────────────────────────────────────────────
 # Seeded by the rust.cargo toolchain declaration in manifest.janet: marker

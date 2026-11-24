@@ -9,6 +9,7 @@
    :entry "main.janet"
    :languages ["rust"]
    :extensions {"rust" ["rs"]}
+   :lsp {"rust" {:markers ["Cargo.toml"]}}
    :toolchain {:id "rust.cargo"
                :language "rust"
                :detect ["Cargo.toml"]

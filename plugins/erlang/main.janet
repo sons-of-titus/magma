@@ -7,15 +7,6 @@
 (semantic/register-provider "erlang" "treesitter")
 (semantic/register-provider "erlang" "lsp")
 
-# ── LSP ──────────────────────────────────────────────────────────────────────
-
-(event/on "project-opened"
-  (fn [data]
-    (def root (get data :root ""))
-    (defn marker [f] (try (os/stat (string root "/" f)) ([_] nil)))
-    (when (or (marker "rebar.config"))
-      (lsp/start "erlang" (option/get "erlang-lsp-command")))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 # Auto-activated for .erl buffers by the core extension map on
 # buffer-created.

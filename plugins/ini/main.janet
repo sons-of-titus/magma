@@ -17,29 +17,6 @@
 (each ext ["ini" "cfg" "conf" "properties" "env"]
   (syntax/map-extension ext "ini"))
 
-# ── Activation ───────────────────────────────────────────────────────────────
-# The core extension map predates this plugin, so the plugin routes its
-# own extensions: its major mode wins over the core's pick.
-
-(def ini-exts @["ini" "cfg" "conf" "properties" "env"])
-
-(defn- path-extension
-  "File extension of `path` (after the last dot), or nil."
-  [path]
-  (when-let [i (last (string/find-all "." path))]
-    (string/slice path (+ i 1))))
-
-(event/on "buffer-created"
-  (fn [data]
-    (def path (get data :path ""))
-    (when (> (length path) 0)
-      (def ext (path-extension path))
-      (when (index-of ext ini-exts)
-        # Janet-defined modes activate directly (nested fiber constraint).
-        (if-let [entry (get *major-modes* "ini-mode")]
-          ((get entry :activate))
-          (editor/run-command "ini-mode"))))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 
 (major-mode/define "ini-mode"

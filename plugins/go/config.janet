@@ -4,7 +4,6 @@
 (option/set "go-indent-style" "tab")
 (option/set "go-comment-prefix" "// ")
 (option/set "go-lsp-command" "gopls")
-(option/set "go-debug-adapter" "delve")
 
 # Format with gofmt before every save of a go buffer
 (option/set "go-format-on-save" "false")

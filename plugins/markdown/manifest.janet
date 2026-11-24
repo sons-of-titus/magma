@@ -7,4 +7,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["markdown"]
+   :extensions {"markdown" ["md" "markdown"]}
    :capabilities [:editor-access]})

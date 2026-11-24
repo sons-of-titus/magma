@@ -3,4 +3,3 @@
 (option/set "java-comment-prefix" "// ")
 (option/set "java-lsp-command" "jdtls")
 (option/set "java-max-line-length" "120")
-(option/set "java-debug-adapter" "java-debug")

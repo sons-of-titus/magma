@@ -7,15 +7,6 @@
 (semantic/register-provider "lua" "treesitter")
 (semantic/register-provider "lua" "lsp")
 
-# ── LSP ──────────────────────────────────────────────────────────────────────
-
-(event/on "project-opened"
-  (fn [data]
-    (def root (get data :root ""))
-    (defn marker [f] (try (os/stat (string root "/" f)) ([_] nil)))
-    (when (or (marker ".luarc.json"))
-      (lsp/start "lua" (option/get "lua-lsp-command")))))
-
 # ── Major mode ───────────────────────────────────────────────────────────────
 # Auto-activated for .lua buffers by the core extension map on
 # buffer-created.

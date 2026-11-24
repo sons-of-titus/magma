@@ -7,6 +7,8 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["terraform"]
+   :extensions {"terraform" ["tf" "tfvars"]}
+   :lsp {"terraform" {:markers ["*.tf" ".terraform"]}}
    # The shipped grammar is the HCL one; its C entry point keeps the
    # upstream name (see grammars.toml).
    :grammar-symbols {"terraform" "tree_sitter_hcl"}

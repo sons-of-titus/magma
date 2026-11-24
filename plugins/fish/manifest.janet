@@ -7,4 +7,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["fish"]
+   :extensions {"fish" ["fish"]}
    :capabilities [:editor-access]})

@@ -7,4 +7,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["scheme"]
+   :extensions {"scheme" ["scm" "ss"]}
    :capabilities [:editor-access]})

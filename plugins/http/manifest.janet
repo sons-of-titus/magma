@@ -7,4 +7,5 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["http"]
+   :extensions {"http" ["http" "rest"]}
    :capabilities [:network :editor-access]})

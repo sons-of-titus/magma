@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["elixir"]
+   :extensions {"elixir" ["ex" "exs"]}
+   :lsp {"elixir" {:markers ["mix.exs"]}}
    :capabilities [:process-execution :editor-access]})

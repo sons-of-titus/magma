@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["typescript"]
+   :extensions {"typescript" ["ts" "tsx" "mts" "cts"]}
+   :lsp {"typescript" {:markers ["tsconfig.json" "jsconfig.json" "package.json"] :server-key "tsserver"}}
    :capabilities [:process-execution :editor-access]})

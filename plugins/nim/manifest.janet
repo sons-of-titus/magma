@@ -7,4 +7,6 @@
    :version "0.1.0"
    :entry "main.janet"
    :languages ["nim"]
-   :capabilities [:editor-access]})
+   :extensions {"nim" ["nim"]}
+   :lsp {"nim" {:markers ["*.nimble" "nim.cfg"]}}
+   :capabilities [:process-execution :editor-access]})

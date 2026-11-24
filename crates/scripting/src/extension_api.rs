@@ -106,7 +106,7 @@ unsafe extern "C-unwind" fn c_extension_declare(argc: i32, argv: *mut Janet) -> 
                     if janet_checktype(elem, JanetType_JANET_KEYWORD) != 0 {
                         let ptr = janet_unwrap_keyword(elem);
                         if !ptr.is_null() {
-                            let s = std::ffi::CStr::from_ptr(ptr as *const i8).to_string_lossy();
+                            let s = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char).to_string_lossy();
                             if let Some(cap) = Capability::from_str(&s) {
                                 capabilities.push(cap);
                             }

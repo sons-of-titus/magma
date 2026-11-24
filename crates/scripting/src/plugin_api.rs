@@ -91,7 +91,7 @@ unsafe fn eval_entry(source: &str) -> Result<(), String> {
         if desc.is_null() {
             Err("Janet error in plugin entry".to_string())
         } else {
-            let cstr = std::ffi::CStr::from_ptr(desc as *const i8);
+            let cstr = std::ffi::CStr::from_ptr(desc as *const std::ffi::c_char);
             Err(cstr.to_string_lossy().into_owned())
         }
     }

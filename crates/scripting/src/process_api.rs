@@ -245,7 +245,7 @@ unsafe fn execute_stored_fn(ed: &mut kernel::state::Editor, task_id: u64, fn_ref
                 if ptr.is_null() {
                     "nil".to_string()
                 } else {
-                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                    std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                         .to_string_lossy()
                         .into_owned()
                 }

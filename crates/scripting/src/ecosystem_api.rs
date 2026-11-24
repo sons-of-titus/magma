@@ -166,7 +166,7 @@ unsafe fn ds_get_str(ds: Janet, key: &str) -> Option<String> {
         {
             let ptr = janet_unwrap_string(v);
             if !ptr.is_null() {
-                let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
+                let cstr = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char);
                 return Some(cstr.to_string_lossy().into_owned());
             }
         }

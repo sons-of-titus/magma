@@ -93,7 +93,7 @@ unsafe extern "C-unwind" fn c_editor_set_font_fallback(argc: i32, argv: *mut Jan
                 {
                     let ptr = janet_unwrap_string(elem);
                     if !ptr.is_null() {
-                        let s = std::ffi::CStr::from_ptr(ptr as *const i8)
+                        let s = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                             .to_string_lossy()
                             .into_owned();
                         aliases.push(s);
@@ -110,7 +110,7 @@ unsafe extern "C-unwind" fn c_editor_set_font_fallback(argc: i32, argv: *mut Jan
                 {
                     let ptr = janet_unwrap_string(elem);
                     if !ptr.is_null() {
-                        let s = std::ffi::CStr::from_ptr(ptr as *const i8)
+                        let s = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                             .to_string_lossy()
                             .into_owned();
                         aliases.push(s);
@@ -146,7 +146,7 @@ unsafe extern "C-unwind" fn c_editor_set_font_context(argc: i32, argv: *mut Jane
                     None
                 } else {
                     Some(
-                        std::ffi::CStr::from_ptr(ptr as *const i8)
+                        std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                             .to_string_lossy()
                             .into_owned(),
                     )
@@ -199,7 +199,7 @@ unsafe extern "C-unwind" fn c_editor_set_glyph_width(argc: i32, argv: *mut Janet
             if ptr.is_null() {
                 '\0'
             } else {
-                std::ffi::CStr::from_ptr(ptr as *const i8)
+                std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                     .to_str()
                     .ok()
                     .and_then(|s| s.chars().next())

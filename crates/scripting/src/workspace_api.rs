@@ -101,7 +101,7 @@ unsafe extern "C-unwind" fn c_project_set_workspace_members(argc: i32, argv: *mu
                 if ptr.is_null() {
                     continue;
                 }
-                std::ffi::CStr::from_ptr(ptr as *const i8)
+                std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                     .to_string_lossy()
                     .into_owned()
             } else {
@@ -112,7 +112,7 @@ unsafe extern "C-unwind" fn c_project_set_workspace_members(argc: i32, argv: *mu
                 if ptr.is_null() {
                     continue;
                 }
-                std::ffi::CStr::from_ptr(ptr as *const i8)
+                std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                     .to_string_lossy()
                     .into_owned()
             } else {

@@ -42,7 +42,7 @@ unsafe fn parse_highlight_val(v: Janet) -> (usize, usize, String) {
                 if ptr.is_null() {
                     "highlight".to_string()
                 } else {
-                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                    std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                         .to_string_lossy()
                         .into_owned()
                 }

@@ -58,7 +58,7 @@ pub(crate) mod conv {
             if ptr.is_null() {
                 return None;
             }
-            let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
+            let cstr = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char);
             Some(cstr.to_string_lossy().into_owned())
         }
     }
@@ -410,7 +410,7 @@ pub(crate) unsafe fn describe_janet(value: evil_janet::Janet) -> String {
     if s.is_null() {
         return "nil".to_string();
     }
-    unsafe { std::ffi::CStr::from_ptr(s as *const i8) }
+    unsafe { std::ffi::CStr::from_ptr(s as *const std::ffi::c_char) }
         .to_string_lossy()
         .into_owned()
 }
@@ -454,7 +454,7 @@ pub fn eval_result(expr: &str) -> Result<String, String> {
             if s.is_null() {
                 Ok("nil".to_string())
             } else {
-                let cstr = std::ffi::CStr::from_ptr(s as *const i8);
+                let cstr = std::ffi::CStr::from_ptr(s as *const std::ffi::c_char);
                 Ok(cstr.to_string_lossy().into_owned())
             }
         }

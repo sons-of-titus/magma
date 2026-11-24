@@ -101,7 +101,7 @@ unsafe extern "C-unwind" fn c_provider_update(argc: i32, argv: *mut Janet) -> Ja
                     || janet_checktype(text_v, JanetType_JANET_KEYWORD) != 0
                 {
                     let ptr = janet_unwrap_string(text_v);
-                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                    std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                         .to_string_lossy()
                         .into_owned()
                 } else {
@@ -111,7 +111,7 @@ unsafe extern "C-unwind" fn c_provider_update(argc: i32, argv: *mut Janet) -> Ja
                     || janet_checktype(face_v, JanetType_JANET_KEYWORD) != 0
                 {
                     let ptr = janet_unwrap_string(face_v);
-                    std::ffi::CStr::from_ptr(ptr as *const i8)
+                    std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                         .to_string_lossy()
                         .into_owned()
                 } else {

@@ -209,7 +209,7 @@ unsafe fn janet_to_string(v: Janet) -> Option<String> {
         if ptr.is_null() {
             return None;
         }
-        let cstr = std::ffi::CStr::from_ptr(ptr as *const i8);
+        let cstr = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char);
         Some(cstr.to_string_lossy().into_owned())
     }
 }

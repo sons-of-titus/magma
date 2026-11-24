@@ -26,7 +26,7 @@ unsafe fn janet_string_array(v: Janet) -> Vec<String> {
             {
                 let ptr = janet_unwrap_string(elem);
                 if !ptr.is_null() {
-                    let s = std::ffi::CStr::from_ptr(ptr as *const i8)
+                    let s = std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
                         .to_string_lossy()
                         .into_owned();
                     out.push(s);

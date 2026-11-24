@@ -25,7 +25,9 @@ use std::rc::Rc;
 use kernel::command::args::ArgValue;
 use kernel::command::execute_command;
 
-use crate::AppState;
+use slint::ComponentHandle;
+
+use crate::{AppState, sync::refresh};
 
 pub(crate) fn install(app: &crate::AppWindow, state: Rc<RefCell<AppState>>) {
     editor::install(&app, Rc::clone(&state));
@@ -37,6 +39,16 @@ pub(crate) fn install(app: &crate::AppWindow, state: Rc<RefCell<AppState>>) {
     navigation::install(&app, Rc::clone(&state));
     find_bar::install(&app, Rc::clone(&state));
     context_menu::install(&app, Rc::clone(&state));
+    {
+        let state = Rc::clone(&state);
+        let weak = app.as_weak();
+        app.on_notify_dismiss(move |id| {
+            let mut s = state.borrow_mut();
+            s.editor.notifications.dismiss(id.max(0) as u64);
+            s.editor.frame_dirty = true;
+            refresh(&weak, &mut s);
+        });
+    }
 }
 
 /// Folder-picker → `open-project`.  Shared by the editor's menu action and

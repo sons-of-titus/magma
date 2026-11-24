@@ -345,6 +345,8 @@ mod net_tcp_api;
 #[cfg(feature = "janet")]
 mod option_api;
 #[cfg(feature = "janet")]
+mod notifications_api;
+#[cfg(feature = "janet")]
 mod overlay_api;
 #[cfg(feature = "janet")]
 mod plugin_api;
@@ -374,6 +376,8 @@ mod semantic_api;
 mod snippet_api;
 #[cfg(feature = "janet")]
 mod special_buffer_api;
+#[cfg(feature = "janet")]
+mod status_api;
 #[cfg(feature = "janet")]
 mod syntax_api;
 #[cfg(feature = "janet")]

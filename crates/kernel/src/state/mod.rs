@@ -14,6 +14,8 @@ pub mod gutter;
 pub mod io;
 pub mod minimap;
 pub mod options;
+pub mod notifications;
+pub mod status_segment;
 pub mod picker;
 pub mod overlay;
 pub mod search;
@@ -283,6 +285,14 @@ pub struct Editor {
     /// Plugin-registered picker sources and the current source's entries.
     pub picker_sources: picker::PickerSourceRegistry,
     pub picker_state: picker::PickerState,
+    /// Live language-server progress reports, token → message.  The
+    /// progress strip shows one pill per in-flight server task.
+    pub lsp_progress: std::collections::HashMap<String, String>,
+    /// Dismissable failure/warning cards the frontend stacks as toasts.
+    pub notifications: notifications::NotificationCenter,
+    /// Plugin-contributed status-bar segments, keyed by id.  The bar's
+    /// fixed pills are chrome; anything a plugin wants visible lives here.
+    pub status_segments: Vec<status_segment::StatusSegment>,
     /// Plugin-contributed project templates (New Project wizard).
     pub templates: crate::templates::TemplateRegistry,
     /// In-flight project generations and their last result.
@@ -411,6 +421,9 @@ impl Editor {
             plugin_contributions: contributions::ContributionJournal::default(),
             picker_sources: picker::PickerSourceRegistry::default(),
             picker_state: picker::PickerState::default(),
+            lsp_progress: std::collections::HashMap::new(),
+            notifications: notifications::NotificationCenter::default(),
+            status_segments: Vec::new(),
             templates: crate::templates::TemplateRegistry::default(),
             template_jobs: crate::templates::TemplateJobs::default(),
             toolchains: crate::toolchains::ToolchainRegistry::default(),

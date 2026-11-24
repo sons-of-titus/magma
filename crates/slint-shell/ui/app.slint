@@ -18,6 +18,8 @@ import { Field } from "components/controls.slint";
 import { DebugFrameRow, DebugVarRow, DebugWatchRow, DebugBpRow, ConsoleRow } from "components/debug-rows.slint";
 import { StatusBar } from "components/status-bar.slint";
 import { ProgressStrip, ProgressTask } from "components/progress-strip.slint";
+import { StatusBar, StatusSegment } from "components/status-bar.slint";
+import { NotificationStack, NotificationCard } from "components/notification-stack.slint";
 import { EditorView } from "components/editor-view.slint";
 import { FindBar } from "components/find-bar.slint";
 import { BottomBar, BottomDock, FindRow, GitHistoryRow, OutputLine, ProblemRow } from "components/bottom-dock.slint";
@@ -178,6 +180,8 @@ export component AppWindow inherits Window {
     in property <bool> output-follow: true;
     in property <[GitHistoryRow]> git-history;
     in property <[ProgressTask]> progress-tasks;
+    in property <[NotificationCard]> notifications;
+    in property <[StatusSegment]> status-segments;
 
     // ── Right dock ───────────────────────────────────────────────────────
     in property <bool> agent-open;
@@ -312,6 +316,7 @@ export component AppWindow inherits Window {
     callback reset-option(string);
     callback add-option(string, string);
     callback plugin-toggled(string, bool);
+    callback notify-dismiss(int);
     callback settings-search-changed();
     callback settings-select-category(int);
     callback key(string, bool, bool, bool, bool);
@@ -848,6 +853,7 @@ export component AppWindow inherits Window {
             tasks: root.progress-tasks;
         }
 
+
         BottomBar {
             active: root.bottom-tool;
             problems-count: root.bottom-problems-count;
@@ -857,6 +863,7 @@ export component AppWindow inherits Window {
 
         // ── Status bar ───────────────────────────────────────────────────
         StatusBar {
+            segments: root.status-segments;
             file: root.status-file;
             modified: root.status-modified;
             message: root.status-message;
@@ -981,6 +988,14 @@ export component AppWindow inherits Window {
         cancel => { root.picker-cancel(); }
         move-selection(d) => { root.picker-move(d); }
         row-clicked(i) => { root.picker-row-clicked(i); }
+    }
+
+    // ── Notification toasts (bottom-right, above the status bar) ────────
+    if root.notifications.length > 0 : NotificationStack {
+        x: parent.width - self.width - 16px;
+        y: parent.height - self.height - 36px;
+        cards: root.notifications;
+        dismiss(i) => { root.notify-dismiss(i); }
     }
 
     // ── Find bar (in-buffer search/replace) ──────────────────────────────

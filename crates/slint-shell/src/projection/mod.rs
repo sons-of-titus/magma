@@ -153,6 +153,12 @@ pub fn progress_tasks(ed: &Editor) -> Vec<ProgressTask> {
             detail: job.name.as_str().into(),
         });
     }
+    for (token, message) in &ed.lsp_progress {
+        tasks.push(ProgressTask {
+            label: format!("LSP: {token}").into(),
+            detail: message.as_str().into(),
+        });
+    }
     tasks
 }
 
@@ -367,3 +373,21 @@ fn short_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
+
+/// The live notification stack as toast cards, newest first.
+pub fn notification_cards(ed: &Editor) -> Vec<crate::NotificationCard> {
+    let mut cards: Vec<crate::NotificationCard> = ed
+        .notifications
+        .list()
+        .iter()
+        .rev()
+        .map(|n| crate::NotificationCard {
+            id: n.id as i32,
+            kind: n.kind.clone().into(),
+            title: n.title.clone().into(),
+            body: n.body.clone().into(),
+        })
+        .collect();
+    cards.reverse();
+    cards
+}

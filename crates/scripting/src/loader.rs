@@ -157,6 +157,8 @@ pub fn init_vm() {
         regs.extend(super::register_api::register());
         regs.extend(super::option_api::register());
         regs.extend(super::picker_api::register());
+        regs.extend(super::notifications_api::register());
+        regs.extend(super::status_api::register());
         regs.extend(super::plugin_state_api::register());
         regs.extend(super::search_api::register());
         regs.extend(super::clipboard_api::register());
@@ -229,6 +231,10 @@ pub fn init_vm() {
     load_builtin(
         "builtins/plugins/lsp_sync.janet",
         include_str!("../../../builtins/plugins/lsp_sync.janet"),
+    );
+    load_builtin(
+        "builtins/plugins/lsp_markers.janet",
+        include_str!("../../../builtins/plugins/lsp_markers.janet"),
     );
     load_builtin(
         "builtins/plugins/lsp_attach.janet",
@@ -375,6 +381,10 @@ pub fn init_vm() {
     load_builtin(
         "builtins/plugin_verbs.janet",
         include_str!("../../../builtins/plugin_verbs.janet"),
+    );
+    load_builtin(
+        "builtins/plugin_install.janet",
+        include_str!("../../../builtins/plugin_install.janet"),
     );
     load_builtin(
         "builtins/plugin_images.janet",

@@ -1,0 +1,90 @@
+import { Theme } from "../theme.slint";
+
+export struct NotificationCard {
+    id: int,
+    kind: string,
+    title: string,
+    body: string,
+}
+
+// Dismissable toast stack, bottom-right above the status bar.  Failures a
+// user must not miss (missing language server, failing formatter) live
+// here until dismissed — the transient status message evaporates by
+// design, this is where the durable report goes.
+export component NotificationStack inherits Rectangle {
+    in property <[NotificationCard]> cards;
+    callback dismiss(int);
+
+    width: 340px;
+    height: cards.length * 64px > 320px ? 320px : cards.length * 64px;
+    clip: true;
+
+    VerticalLayout {
+        padding: 0;
+        spacing: 6px;
+
+        for c in cards : Rectangle {
+            height: 58px;
+            border-radius: Theme.radius;
+            background: Theme.surface-panel;
+            border-width: 1px;
+            border-color: c.kind == "error" ? Theme.danger
+                : c.kind == "warn" ? Theme.warning : Theme.border;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 6px;
+                spacing: 8px;
+
+                Rectangle {
+                    width: 4px;
+                    height: 36px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 2px;
+                    background: c.kind == "error" ? Theme.danger
+                        : c.kind == "warn" ? Theme.warning : Theme.accent;
+                }
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: c.title;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
+                        overflow: elide;
+                    }
+                    if c.body != "" : Text {
+                        text: c.body;
+                        color: Theme.text-muted;
+                        font-size: 10px;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        max-height: 28px;
+                    }
+                }
+
+                button := Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    background: transparent;
+                    Text {
+                        text: "✕";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => { root.dismiss(c.id); }
+                    }
+                }
+            }
+        }
+    }
+}

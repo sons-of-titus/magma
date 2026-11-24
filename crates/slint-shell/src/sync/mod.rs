@@ -203,6 +203,24 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     state.m_progress.set(projection::progress_tasks(ed), |m| {
         app.set_progress_tasks(m)
     });
+        {
+        let cards = projection::notification_cards(ed);
+        let model = std::rc::Rc::new(slint::VecModel::from(cards));
+        app.set_notifications(slint::ModelRc::new(model));
+    }
+    {
+        let segments: Vec<crate::StatusSegment> = ed
+            .status_segments
+            .iter()
+            .map(|s| crate::StatusSegment {
+                id: s.id.clone().into(),
+                text: s.text.clone().into(),
+                kind: s.kind.clone().into(),
+            })
+            .collect();
+        let model = std::rc::Rc::new(slint::VecModel::from(segments));
+        app.set_status_segments(slint::ModelRc::new(model));
+    }
     app.set_pane_message(projection::pane_message(ed).as_str().into());
 
     app.set_bottom_tool(state.bottom);

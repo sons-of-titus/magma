@@ -557,6 +557,20 @@ Append `path` to the plugin search list. Idempotent.
 
 ---
 
+## notify/ — Notification Center
+
+### `(notify/post kind title &opt body)` → id
+
+Posts a dismissable notification card ("info", "warn", or "error") for failures a user must not miss; the frontend stacks them as toasts.
+
+### `(notify/dismiss id)` → `:ok` or nil
+
+Dismisses a notification by id.
+
+### `(notifications)` → array of tables
+
+Lists live notifications as `{:id :kind :title :body}`.
+
 ## option/ — Editor Options
 
 ### `(option/list)` → `{:key "value" …}`
@@ -1187,6 +1201,26 @@ Replace the find-in-files result list. Each entry is a table with `:filename`, `
 Return the current find-in-files result list.
 
 ---
+
+## picker/ — Picker Sources
+
+### `(picker/register-source id title placeholder)` → `:ok`
+
+Declares a search surface for the picker overlay.  The frontend emits `picker-source-query` with `{:source id :query …}` when it opens or the query changes.
+
+### `(picker/push-items items)` → `:ok`
+
+Answers the current query: an array of `{:title :detail :meta :payload}` tables; a payload of `"path<US>line"` opens the file at the line, `"cmd:<command line>"` runs the command line.
+
+### `(picker/sources)` → array of tables
+
+Lists registered sources as `{:id :title :placeholder}`.
+
+## status/ — Status-Bar Segments
+
+### `(status/set-segment id text &opt kind)` → `:ok`
+
+Sets a plugin-contributed status pill ("info", "warn", "error" tint); an empty text removes it.
 
 ## snippet/ — Snippet Registry
 

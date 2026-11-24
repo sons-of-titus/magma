@@ -31,10 +31,10 @@
     (do
       (unless (get *reported* cmd)
         (put *reported* cmd true)
-        (editor/echo
-          (string "Formatter '" cmd "' not found — formatting disabled for "
-                  lang " (install it or set " lang "-formatter-command)")
-          "error"))
+        (notify/post "error"
+                     (string "Formatter not found: " cmd)
+                     (string "Formatting disabled for " lang
+                             " — install it or set " lang "-formatter-command")))
       nil)))
 
 (defn formatter/format
@@ -59,12 +59,12 @@
                 (def raw (or (get result :stderr "") ""))
                 # clamp: slice errors when the end exceeds the length
                 (def detail (string/slice raw 0 (min 120 (length raw))))
-                (editor/echo
-                  (string "Formatter '" (get (get *formatters* lang) :command)
-                          "' failed (" code ")" (if (> (length detail) 0)
-                                                  (string ": " detail))
-                          " — buffer left unchanged")
-                  "error"))
+                (notify/post "error"
+                             (string "Formatter failed: "
+                                     (get (get *formatters* lang) :command))
+                             (string "exit " code
+                                     (if (> (length detail) 0) (string ": " detail))
+                                     " — buffer left unchanged")))
               (editor/log-message
                 (string "[formatter] " lang " exit " code))
               text)))))))

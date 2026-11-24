@@ -176,3 +176,54 @@ fn project_current_run_configs_after_detect() {
         std::fs::remove_dir_all(&tmp).ok();
     });
 }
+
+// ── find-project-root ─────────────────────────────────────────────────────────
+
+// A marker above the opened file must be found, and the walk must end.
+// The old loop stepped the directory even on the found path, turning ""
+// into "." and spinning forever — any repo file opened without an
+// explicit project froze the editor.
+#[test]
+fn find_project_root_terminates_and_finds_the_marker() {
+    janet_test!(_ed, {
+        let root = std::env::temp_dir().join(format!(
+            "magma_fpr_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Cargo.toml"), "[package]\n").unwrap();
+        let file = root.join("src/main.rs");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "fn main() {}\n").unwrap();
+
+        let found = scripting::eval_result(&format!(
+            r#"(find-project-root "{}")"#,
+            file.to_str().unwrap().replace('\\', "/")
+        ))
+        .unwrap_or_default();
+        assert_eq!(
+            found,
+            format!(r#""{}""#, root.to_str().unwrap().replace('\\', "/")),
+            "the walk finds the marker directory"
+        );
+
+        // No marker anywhere up the tree: nil, and the walk still ends.
+        let bare = std::env::temp_dir().join(format!(
+            "magma_fpr_bare_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&bare).unwrap();
+        let found = scripting::eval_result(&format!(
+            r#"(find-project-root "{}")"#,
+            bare.join("f.txt").to_str().unwrap().replace('\\', "/")
+        ))
+        .unwrap_or_default();
+        assert_eq!(found, "nil");
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&bare).ok();
+    });
+}

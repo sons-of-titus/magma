@@ -40,11 +40,12 @@
 # project markers and set the root automatically.
 
 (defn- dirname
-  "Return the parent directory of a file path."
+  "Return the parent directory of a file path; a relative path with no
+   separator has none.  Never returns \".\" — that would loop the walk."
   [path]
   (def parts (string/split "/" path))
   (def n (length parts))
-  (if (= n 1) "." (string/join (slice parts 0 (- n 1)) "/")))
+  (if (= n 1) "" (string/join (slice parts 0 (- n 1)) "/")))
 
 (defn- find-project-root
   "Walk up from `path` looking for a project marker file.
@@ -60,10 +61,11 @@
     (each marker markers
       (when (project/path-exists? (string dir "/" marker))
         (set found true)))
-    (when found
-      (set result dir)
-      (set dir ""))
-    (set dir (dirname dir)))
+    (if found
+      # Stop the walk: only the not-found branch may step the directory,
+      # or a found run would overwrite "" with its parent and never end.
+      (do (set result dir) (set dir ""))
+      (set dir (dirname dir))))
   (when (= result "/") (set result nil))
   result)
 

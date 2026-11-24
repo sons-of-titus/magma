@@ -16,6 +16,7 @@ mod lifecycle;
 mod new_palettes;
 mod new_project;
 mod noctis;
+mod offers;
 mod palettes;
 mod pane;
 mod projection;

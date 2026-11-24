@@ -109,11 +109,12 @@ single-file servers; big ones should be pinned instead.
                         :bin "nova-lsp"}}}
 ```
 
-When the server is installed nowhere, the editor fetches the payload,
-verifies the checksum before executing anything, unpacks (`raw`, `gz`,
-`tar.gz`), and starts the server — announcing the download and the
-outcome as notifications.  The `servers-auto-install` option turns this
-off.  A manifest that declares `:install` must also declare the
+When the server is installed nowhere, the editor asks the user before
+acting; on accept it fetches the payload, verifies the checksum before
+executing anything, unpacks (`raw`, `gz`, `tar.gz`), and starts the
+server — announcing the download and the outcome as notifications.  The
+`servers-offer-install` option turns the asking off entirely (no prompt,
+no download).  A manifest that declares `:install` must also declare the
 `:network` capability.
 
 ## Management verbs

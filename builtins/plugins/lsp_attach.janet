@@ -11,8 +11,9 @@
 # The server binary itself resolves in priority order: the
 # `<lang>-lsp-command` option, a bundled `:command` (plugin-relative,
 # platform-suffixed), a previous `install/fetch` landing, a system
-# install, and finally the manifest's `:install` pin, which downloads
-# (url + sha256 + format) when `servers-auto-install` is on.
+# install, and finally the manifest's `:install` pin, which installs
+# (url + sha256 + format) after the user accepts the offer
+# (servers-offer-install).
 
 (var *lang-lsp-specs* @{})
 

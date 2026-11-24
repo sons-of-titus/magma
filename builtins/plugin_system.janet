@@ -180,12 +180,14 @@
 # ── Startup ──────────────────────────────────────────────────────────────────
 
 (defn plugin/bootstrap
-  "Discover plugins from disk, then enable the bundled language plugins.
-   Honors the user settings: plugins-enabled=false disables loading
-   entirely; plugins-root overrides the user plugin directory (the
-   fallback is ~/.config/magma/plugins); plugins-disabled names
-   (comma-separated) stay off until the next startup.  The bundled
-   directory is <cwd>/plugins."
+  "Discover plugins from disk — nothing loads here.  Manifests evaluate
+   (languages, launch policies, toolchains register) but entries stay
+   unloaded until enabled: explicitly by a verb or the settings page, or
+   on request when an opened project matches a plugin's language
+   (plugin_install.janet offers the enable).  plugins-enabled=false
+   disables discovery entirely; plugins-root overrides the user plugin
+   directory (the fallback is ~/.config/magma/plugins); plugins-disabled
+   names are never offered.  The bundled directory is <cwd>/plugins."
   [cwd home]
   (unless (= (option/get "plugins-enabled") "false")
     (plugin/discover (string cwd "/plugins"))
@@ -196,14 +198,7 @@
         (> (length home) 0) (string home "/.config/magma/plugins")
         nil))
     (when (and user-root (> (length user-root) 0))
-      (plugin/discover user-root))
-    # Installed means enabled: every manifest plugin found is loaded with
-    # its dependencies, in dependency order — except plugins-disabled
-    # names (comma-separated), which stay off until the next startup.
-    (def disabled (string/split "," (or (option/get "plugins-disabled") "")))
-    (plugin/enable-many
-      (filter (fn [n] (not (has-value? disabled n)))
-              (map (fn [p] (get p :name)) (plugin/list))))))
+      (plugin/discover user-root))))
 
 # ── Events ───────────────────────────────────────────────────────────────────
 

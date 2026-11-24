@@ -1632,6 +1632,22 @@ work scheduler; the outcome arrives as `install-completed` or
 Locate a previously installed executable in its download slot; the newest
 version wins, nil when nothing was installed.
 
+### `(offer/post kind id title body)` → `:ok`
+
+Queue a question the user must answer before the editor acts (install a
+pinned server, enable a plugin).  The frontend shows it as a modal; the
+answer arrives as the `offer-resolved` command with `(kind id yes|no)`.
+A repeat while one is still pending is a no-op.
+
+### `(offer/pending kind id)` → bool
+
+True while that offer still awaits the user's answer.
+
+### `(offer/take kind id)` → `:ok` or nil
+
+Pop that offer from the queue — the frontend calls this when it displays
+the modal.
+
 ---
 
 ### Debug Events
@@ -2103,8 +2119,10 @@ it holds a `manifest.janet`.  Returns the number of plugins found.
 ### `(plugin/bootstrap cwd home)` → nil
 
 Startup wiring: discover plugins from `<cwd>/plugins` and the user plugin
-directory, then enable every discovered plugin in dependency order —
-installed means enabled.  Honors the settings:
+directory.  Manifests evaluate (languages, launch policies, toolchains
+register) but entries stay unloaded until enabled — by a verb, the
+settings page, a project config, or the offer raised when an opened
+project matches a plugin's language.  Honors the settings:
 `plugins-enabled=false` disables loading from disk entirely;
 `plugins-root` (a path) replaces the user directory, which falls back to
 `~/.config/magma/plugins` when unset.

@@ -62,9 +62,13 @@
 # the plugin), so a project can shed plugins it does not want without a
 # restart.  A bad config file reports and is skipped.
 
+# The open project's root — the lazy-enable offer's re-fire aims here.
+(var *active-root* "")
+
 (event/on "project-opened"
   (fn [data]
     (def root (get data :root ""))
+    (set *active-root* root)
     (def config (string root "/.magma/plugins.janet"))
     (when (file-exists? config)
       # The file is a Janet file whose last expression is the config table
@@ -86,3 +90,37 @@
             (when (plugin/status name)
               (plugin/unload name)
               (editor/log-message (string "[plugin] disabled by project: " name)))))))))
+
+# ── Lazy enablement ──────────────────────────────────────────────────────────
+# Bootstrap discovers plugins but does not load them.  When the detected
+# project language has no loaded plugin yet, offer the discovered one
+# that declares it — nothing loads until the user accepts.
+
+(defn- plugin-offer-resolve [name accepted?]
+  (when accepted?
+    (when (= :ok (plugin/enable name))
+      (editor/log-message (string "[plugin] enabled by offer: " name))
+      # Re-light the project: detection and LSP attach for markers, and
+      # open buffers refocus so their modes activate.
+      (when (> (length *active-root*) 0)
+        (event/emit "project-opened" {"root" *active-root*}))
+      (each buf-id (buffer/list)
+        (event/emit "buffer-focused" {"buffer-id" (string buf-id)})))))
+
+(install/set-plugin-resolver plugin-offer-resolve)
+
+(defn- supports? [record lang]
+  (has-value? (get record :languages @[]) lang))
+
+(event/on "tasks-detected"
+  (fn [data]
+    (def lang (get data :language ""))
+    (when (> (length lang) 0)
+      (unless (some |(and (get $ :loaded) (supports? $ lang)) (plugin/list))
+        (when-let [candidate
+                   (find |(and (not (get $ :loaded)) (supports? $ lang)) (plugin/list))]
+          (def disabled (string/split "," (or (option/get "plugins-disabled") "")))
+          (unless (has-value? disabled (get candidate :name))
+            (install/offer-enable
+              (get candidate :name) (get candidate :name)
+              (string "Support for " lang " projects — highlighting, language server, build tasks."))))))))

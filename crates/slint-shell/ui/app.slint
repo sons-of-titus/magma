@@ -30,6 +30,7 @@ import { PickerChoice } from "components/agent-composer.slint";
 import { SettingsView, SettingsRow, PluginRow } from "views/settings-view.slint";
 import { PickerView, PickerRow } from "views/picker-view.slint";
 import { QuitView } from "views/quit-view.slint";
+import { OfferView } from "views/offer-view.slint";
 import { NewProjectView, TemplateItem, TemplateVar } from "views/new-project-view.slint";
 import { HoverCard, CompletionPopup, QuickfixMenu, CompletionEntry, HoverLine } from "views/overlays.slint";
 import { WindowControls, WindowResizeEdges } from "components/window-chrome.slint";
@@ -293,6 +294,12 @@ export component AppWindow inherits Window {
     in property <bool> quit-confirm-visible: false;
     in property <string> quit-confirm-message: "";
     in property <string> quit-confirm-files: "";
+
+    // ── Install offers ───────────────────────────────────────────────────
+    in property <bool> offer-visible: false;
+    in property <string> offer-title: "";
+    in property <string> offer-body: "";
+    in property <string> offer-accept-label: "Install";
 
     // ── Settings ─────────────────────────────────────────────────────────
     in-out property <bool> settings-visible: false;
@@ -1022,6 +1029,14 @@ export component AppWindow inherits Window {
     if root.quit-confirm-visible : QuitView {
         message: root.quit-confirm-message;
         files: root.quit-confirm-files;
+        command(cmd) => { root.command(cmd); }
+    }
+
+    // ── Install offer overlay ────────────────────────────────────────────
+    if root.offer-visible : OfferView {
+        title: root.offer-title;
+        body: root.offer-body;
+        accept-label: root.offer-accept-label;
         command(cmd) => { root.command(cmd); }
     }
 

@@ -1,0 +1,105 @@
+import { Theme } from "../theme.slint";
+
+// A question the editor needs answered before it acts — install a
+// pinned language server, enable a project's plugin.  Accept and
+// Not-now route back as `offer:accept` / `offer:decline`.
+export component OfferView inherits Rectangle {
+    in property <string> title: "";
+    in property <string> body: "";
+    in property <string> accept-label: "Install";
+
+    callback command(string);
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #00000066;
+
+    // Backdrop click declines, like the other dialogs.
+    TouchArea {
+        clicked => { root.command("offer:decline"); }
+    }
+
+    Rectangle {
+        width: 400px;
+        height: 170px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.surface-panel;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { }
+        }
+
+        Text {
+            x: 16px;
+            y: 14px;
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: Theme.font-ui;
+            font-weight: 600;
+            wrap: word-wrap;
+            width: parent.width - 32px;
+        }
+
+        Text {
+            x: 16px;
+            y: 46px;
+            width: parent.width - 32px;
+            text: root.body;
+            color: Theme.text-secondary;
+            font-size: Theme.font-ui;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            x: 16px;
+            y: parent.height - 40px;
+            width: parent.width - 32px;
+            spacing: 8px;
+            alignment: end;
+
+            Rectangle {
+                width: 90px;
+                height: 26px;
+                border-radius: Theme.radius;
+                background: decline-touch.has-hover ? Theme.fill-muted : Theme.fill;
+                Text {
+                    text: "Not now";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                decline-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.command("offer:decline"); }
+                }
+            }
+            Rectangle {
+                width: 90px;
+                height: 26px;
+                border-radius: Theme.radius;
+                background: accept-touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
+                Text {
+                    text: root.accept-label;
+                    color: Theme.chrome;
+                    font-size: Theme.font-small;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                accept-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.command("offer:accept"); }
+                }
+            }
+        }
+    }
+}

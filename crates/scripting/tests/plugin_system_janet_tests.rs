@@ -684,7 +684,7 @@ fn every_bundled_plugin_compiles_to_an_image() {
 // ── plugin loading settings ───────────────────────────────────────────────────
 
 #[test]
-fn plugins_root_setting_loads_plugins_from_disk() {
+fn plugins_root_setting_discovers_plugins_from_disk() {
     janet_test!(ed, {
         let root = plugin_root("setting");
         let full = root.join("my-plugin");
@@ -704,8 +704,8 @@ fn plugins_root_setting_loads_plugins_from_disk() {
             scripting::eval_result(r#"(string (get (plugin/status "zz-test-setting") :loaded))"#)
                 .unwrap_or_default();
         assert_eq!(
-            status, r#""true""#,
-            "plugins-root dir should be discovered and enabled"
+            status, r#""false""#,
+            "plugins-root dir should be discovered but stay unloaded"
         );
         std::fs::remove_dir_all(&root).ok();
     });
@@ -740,14 +740,15 @@ fn plugins_enabled_false_disables_disk_loading() {
 }
 
 #[test]
-fn plugins_disabled_option_skips_plugin_at_startup() {
+fn plugins_disabled_option_is_never_offered_for_enablement() {
     janet_test!(ed, {
         let root = plugin_root("disabled-opt");
         let full = root.join("off-plugin");
         std::fs::create_dir_all(&full).unwrap();
         write_file(
             &full.join("manifest.janet"),
-            r#"(plugin/define {:name "zz-test-dis" :entry "main.janet"})"#,
+            r#"(plugin/define {:name "zz-test-dis" :entry "main.janet"
+                 :languages ["zzdis"]})"#,
         );
         write_file(&full.join("main.janet"), "# no-op entry");
 
@@ -766,15 +767,20 @@ fn plugins_disabled_option_skips_plugin_at_startup() {
             "a plugins-disabled name must stay unloaded"
         );
 
-        // Re-enabling through the same setting loads it on the next pass.
-        scripting::eval(r#"(option/set "plugins-disabled" "")"#);
-        scripting::eval(r#"(plugin/bootstrap "" "")"#);
-        let status =
-            scripting::eval_result(r#"(string (get (plugin/status "zz-test-dis") :loaded))"#)
+        // The enablement offer skips names in plugins-disabled: opening a
+        // project of its language must not ask.
+        let ok = scripting::eval_result(
+            r#"(do (event/emit "tasks-detected" {"language" "zzdis"}) true)"#,
+        )
+        .unwrap();
+        assert_eq!(ok, "true");
+        ed.dispatch_events_scoped();
+        let pending =
+            scripting::eval_result(r#"(string (offer/pending "plugin" "zz-test-dis"))"#)
                 .unwrap_or_default();
         assert_eq!(
-            status, r#""true""#,
-            "clearing plugins-disabled should load it"
+            pending, r#""false""#,
+            "a plugins-disabled name must never be offered"
         );
         std::fs::remove_dir_all(&root).ok();
     });

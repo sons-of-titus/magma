@@ -20,8 +20,10 @@
    evaluating each `manifest.janet`.  Manifest evaluation registers
    languages, file types, launch policies, toolchains, and templates;
    a bad manifest warns and is skipped.
-3. Every discovered plugin is enabled (dependencies first, depth-first),
-   except names in `plugins-disabled`.  Installed means enabled.
+3. Discovered plugins stay unloaded until enabled — explicitly (`:plugin-enable`,
+   the Plugins settings page, a project's `.magma/plugins.janet`) or by
+   accepting the offer raised when an opened project's language matches a
+   discovered plugin.  Names in `plugins-disabled` are never offered.
 
 ## Capability model
 

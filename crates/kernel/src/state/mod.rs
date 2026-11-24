@@ -15,6 +15,7 @@ pub mod io;
 pub mod minimap;
 pub mod options;
 pub mod notifications;
+pub mod offers;
 pub mod status_segment;
 pub mod picker;
 pub mod overlay;
@@ -290,6 +291,9 @@ pub struct Editor {
     pub lsp_progress: std::collections::HashMap<String, String>,
     /// Dismissable failure/warning cards the frontend stacks as toasts.
     pub notifications: notifications::NotificationCenter,
+    /// Questions awaiting the user's decision (install a server, enable a
+    /// plugin) — shown as a modal, resolved by an `offer-resolved` command.
+    pub offers: offers::OfferQueue,
     /// Plugin-contributed status-bar segments, keyed by id.  The bar's
     /// fixed pills are chrome; anything a plugin wants visible lives here.
     pub status_segments: Vec<status_segment::StatusSegment>,
@@ -423,6 +427,7 @@ impl Editor {
             picker_state: picker::PickerState::default(),
             lsp_progress: std::collections::HashMap::new(),
             notifications: notifications::NotificationCenter::default(),
+            offers: offers::OfferQueue::default(),
             status_segments: Vec::new(),
             templates: crate::templates::TemplateRegistry::default(),
             template_jobs: crate::templates::TemplateJobs::default(),

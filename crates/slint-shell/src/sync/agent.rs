@@ -84,6 +84,20 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         });
         app.set_quit_confirm_files(dirty.join("\n").into());
     }
+
+    // ── Install offers ─────────────────────────────────────────────────
+    // One pending offer projects as a modal; the answer routes back
+    // through `offer:accept` / `offer:decline`.
+    let offer = ed.offers.front();
+    app.set_offer_visible(offer.is_some());
+    if let Some(offer) = offer {
+        app.set_offer_title(offer.title.as_str().into());
+        app.set_offer_body(offer.body.as_str().into());
+        app.set_offer_accept_label(match offer.kind.as_str() {
+            "plugin" => "Enable",
+            _ => "Install",
+        }.into());
+    }
     // settings state is in-out: read user changes back
     state.settings_visible = app.get_settings_visible();
     state.settings_category = app.get_settings_category();

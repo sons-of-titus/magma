@@ -10,8 +10,9 @@
 # Server binaries resolve in priority order: the `<lang>-lsp-command`
 # option (a broken override never silently falls back), a server the
 # plugin bundles (:command, plugin-relative, platform-suffixed), one a
-# previous install landed, a system install, and finally the pinned
-# download itself when servers-auto-install is on.
+# previous install landed, a system install, and finally the manifest's
+# pinned download — which installs only after the user accepts the offer
+# (servers-offer-install).
 
 (var *in-flight* @{})
 
@@ -29,11 +30,12 @@
   []
   (case (os/which) :macos "macos" :windows "windows" "linux"))
 
-(defn install/auto?
-  "Is automatic download of missing servers and toolchains enabled?
-   The servers-auto-install option defaults on."
+(defn install/offers?
+  "Does the editor ask before installing a missing server or toolchain?
+   The servers-offer-install option defaults on; off means never prompt
+   and never download."
   []
-  (not (= (option/get "servers-auto-install") "false")))
+  (not (= (option/get "servers-offer-install") "false")))
 
 (defn install/in-flight? [key] (truthy? (get *in-flight* key)))
 
@@ -62,12 +64,76 @@
     (status/set-segment "install" (string "⬇ " name))
     (notify/post "info"
                  (string "Downloading " name)
-                 "Needed by this project — installed automatically (servers-auto-install).")
+                 "Needed by this project — the download is checksum-pinned by the manifest.")
     true))
 
 (defn- clear-flight [key]
   (put *in-flight* key nil)
   (status/set-segment "install" ""))
+
+# ── Offers ───────────────────────────────────────────────────────────────────
+# Nothing installs without the user's yes.  A pending offer carries the
+# spec it would fetch; decline is remembered so the same question never
+# re-asks this session.
+
+(var *offered* @{})
+
+(var *plugin-resolver* nil)
+
+(defn install/set-plugin-resolver
+  "plugin_install registers here: called as (f plugin-name accepted?) when
+   a plugin offer is resolved."
+  [f]
+  (set *plugin-resolver* f))
+
+(defn install/offer-fetch
+  "Ask the user to install `name` (a manifest-pinned payload) for
+   kind/id.  `kind` is the download slot (\"servers\"/\"toolchains\");
+   the offer category is its singular.  The download starts only when
+   they accept."
+  [kind id name spec]
+  (def offer-kind (case kind "servers" "server" "toolchains" "toolchain" kind))
+  (def key (string offer-kind "/" id))
+  (unless (= (get *offered* key) :declined)
+    (put *offered* key {:state :pending :spec spec :name name})
+    (offer/post offer-kind id
+                (string "Install " name "?")
+                "This project needs it; the download is pinned by the plugin manifest's checksum.")))
+
+(defn install/offer-enable
+  "Ask the user to enable a discovered plugin."
+  [id name body]
+  (def key (string "plugin/" id))
+  (unless (= (get *offered* key) :declined)
+    (put *offered* key {:state :pending :name name})
+    (offer/post "plugin" id (string "Enable " name "?") body)))
+
+(command/define "offer-resolved"
+  (fn [args]
+    (def parts (string/split " " (string/trim (string args))))
+    (def kind (get parts 0))
+    (def id (get parts 1))
+    (def yes (= (get parts 2) "yes"))
+    # The frontend pops the offer before answering; pop defensively so a
+    # direct command answer works without it too.
+    (offer/take kind id)
+    (def key (string kind "/" id))
+    (def rec (get *offered* key))
+    (cond
+      (= kind "plugin")
+      (do
+        (when *plugin-resolver* (*plugin-resolver* id yes))
+        (put *offered* key (if yes :accepted :declined)))
+      yes
+      (do
+        (put *offered* key {:state :accepted
+                            :spec (get rec :spec)
+                            :name (get rec :name)})
+        (when (and rec (= (get rec :state) :pending))
+          # The offer kind is singular; the download slot is plural.
+          (def slot (case kind "server" "servers" "toolchain" "toolchains" kind))
+          (install/fetch! slot id (get rec :name) (get rec :spec))))
+      (put *offered* key :declined))))
 
 # ── Server resolution ────────────────────────────────────────────────────────
 
@@ -103,15 +169,16 @@
     (toolchain/find-extended bin)))
 
 (defn- download-server
-  "The manifest-pinned download when nothing is installed yet: the server
-   starts when install-completed arrives.  With auto-install off there is
-   nothing to wait for — say so instead of going silent.  Never returns a
-   command; the fetch is the effect."
+  "Ask the user to install the manifest-pinned payload when nothing is
+   installed yet; the server starts when they accept and install-completed
+   arrives.  With offers off there is nothing to wait for — say so
+   instead of going silent.  Never returns a command; the offer is the
+   effect."
   [lang spec]
   (when-let [ispec (get spec :install)]
     (def bin (or (get ispec :bin) lang))
-    (if (install/auto?)
-      (install/fetch! "servers" lang bin ispec)
+    (if (install/offers?)
+      (install/offer-fetch "servers" lang bin ispec)
       (report-missing lang bin))
     nil))
 

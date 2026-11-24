@@ -195,16 +195,20 @@ fn bundled_server_reaches_ready_through_the_full_attach_path() {
 const ZZ_INSTALL_SPEC: &str = r#":install {:url "https://invalid.invalid/zz-server.gz" :sha256 "abcdef00" :format "gz" :bin "zz-server"}"#;
 
 #[test]
-fn auto_install_on_starts_a_fetch_for_a_missing_server() {
+fn a_missing_server_posts_an_offer_and_fetches_nothing() {
     janet_test!(ed, {
         // No :command and no shipped server — only the install pin.
         register_zzbin(&format!(r#"{{:single-file true {ZZ_INSTALL_SPEC}}}"#));
-        scripting::eval(r#"(option/set "servers-auto-install" "true")"#);
+        scripting::eval(r#"(option/set "servers-offer-install" "true")"#);
         attach_buffer_of_language(&mut ed, "y.zbd");
+        let pending =
+            scripting::eval_result(r#"(string (offer/pending "server" "zzbin"))"#)
+                .unwrap_or_default();
+        assert_eq!(pending, r#""true""#, "the question must await the user");
+        // Nothing fetched, nothing tried to spawn.
         let in_flight = scripting::eval_result(r#"(string (install/in-flight? "servers/zzbin"))"#)
             .unwrap_or_default();
-        assert_eq!(in_flight, r#""true""#, "the fetch must be in flight");
-        // No command resolved, so nothing tried to spawn.
+        assert_eq!(in_flight, r#""false""#);
         let state = scripting::eval_result(r#"(describe (get *lsp-servers* "zzbin"))"#)
             .unwrap_or_default();
         assert_eq!(state, r#""nil""#);
@@ -213,14 +217,59 @@ fn auto_install_on_starts_a_fetch_for_a_missing_server() {
 }
 
 #[test]
-fn auto_install_off_reports_missing_and_fetches_nothing() {
+fn accepting_the_offer_starts_the_fetch() {
+    // The fetch needs the background pool — the offer flow itself is
+    // what's under test, so a bare runtime is enough.
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+    let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    ed.background = Some(kernel::runtime::BackgroundHandle::new(runtime, tx));
+
+    register_zzbin(&format!(r#"{{:single-file true {ZZ_INSTALL_SPEC}}}"#));
+    scripting::eval(r#"(option/set "servers-offer-install" "true")"#);
+    attach_buffer_of_language(&mut ed, "y.zbd");
+    assert_eq!(
+        scripting::eval(r#"(editor/run-command "offer-resolved" "server zzbin yes")"#),
+        "ok"
+    );
+    let in_flight = scripting::eval_result(r#"(string (install/in-flight? "servers/zzbin"))"#)
+        .unwrap_or_default();
+    assert_eq!(in_flight, r#""true""#, "acceptance must start the fetch");
+}
+
+#[test]
+fn declining_the_offer_never_re_prompts_this_session() {
     janet_test!(ed, {
         register_zzbin(&format!(r#"{{:single-file true {ZZ_INSTALL_SPEC}}}"#));
-        scripting::eval(r#"(option/set "servers-auto-install" "false")"#);
+        scripting::eval(r#"(option/set "servers-offer-install" "true")"#);
         attach_buffer_of_language(&mut ed, "z.zbd");
-        let in_flight = scripting::eval_result(r#"(string (install/in-flight? "servers/zzbin"))"#)
-            .unwrap_or_default();
-        assert_eq!(in_flight, r#""false""#, "nothing may fetch when opted out");
+        assert_eq!(
+            scripting::eval(r#"(editor/run-command "offer-resolved" "server zzbin no")"#),
+            "ok"
+        );
+        // A second attach of the same language must not re-ask.
+        attach_buffer_of_language(&mut ed, "z2.zbd");
+        let pending =
+            scripting::eval_result(r#"(string (offer/pending "server" "zzbin"))"#)
+                .unwrap_or_default();
+        assert_eq!(pending, r#""false""#, "a declined offer stays declined");
+        let _ = ed;
+    });
+}
+
+#[test]
+fn offers_off_reports_missing_and_posts_nothing() {
+    janet_test!(ed, {
+        register_zzbin(&format!(r#"{{:single-file true {ZZ_INSTALL_SPEC}}}"#));
+        scripting::eval(r#"(option/set "servers-offer-install" "false")"#);
+        attach_buffer_of_language(&mut ed, "z.zbd");
+        let pending =
+            scripting::eval_result(r#"(string (offer/pending "server" "zzbin"))"#)
+                .unwrap_or_default();
+        assert_eq!(pending, r#""false""#, "nothing may be offered when opted out");
         let cards = scripting::eval_result(
             r#"(string/join (map |(get $ :title) (notifications)) "|")"#,
         )
@@ -266,5 +315,104 @@ fn toolchain_install_pin_round_trips_through_registered() {
         )
         .unwrap_or_default();
         assert_eq!(got, r#""tar.gz|zz-tool""#);
+    });
+}
+
+// ── lazy-enable bundled plugins ──────────────────────────────────────────────
+
+/// A fixture plugin (manifest + entry) in `<root>/plugins/zzlazy/`, plus a
+/// marker project root whose detection names the language.
+fn lazy_fixture() -> (String, String) {
+    let dir = std::env::temp_dir().join(format!("magma_lazy_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let plugins = dir.join("repo").join("plugins").join("zzlazy");
+    std::fs::create_dir_all(&plugins).unwrap();
+    std::fs::write(
+        plugins.join("manifest.janet"),
+        r#"(plugin/define {:name "zzlazy" :version "0.1.0" :entry "main.janet"
+             :languages ["zzlazy"]
+             :extensions {"zzlazy" ["zzy"]}
+             :capabilities [:process-execution :editor-access]})"#,
+    )
+    .unwrap();
+    std::fs::write(plugins.join("main.janet"), "(def zzlazy-loaded true)").unwrap();
+    let project = dir.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    (
+        dir.join("repo").to_str().unwrap().replace('\\', "/"),
+        project.to_str().unwrap().replace('\\', "/"),
+    )
+}
+
+#[test]
+fn bootstrap_discovers_plugins_without_loading_them() {
+    janet_test!(_ed, {
+        let (repo, _project) = lazy_fixture();
+        assert_eq!(
+            scripting::eval(&format!(r#"(plugin/bootstrap "{repo}" "")"#)),
+            "ok"
+        );
+        let status = scripting::eval_result(r#"(string (get (plugin/status "zzlazy") :loaded))"#)
+            .unwrap_or_default();
+        assert_eq!(
+            status, r#""false""#,
+            "bootstrap must discover but not load"
+        );
+    });
+}
+
+#[test]
+fn a_project_matching_an_unloaded_plugin_offers_to_enable_it() {
+    janet_test!(ed, {
+        let (repo, project) = lazy_fixture();
+        assert_eq!(
+            scripting::eval(&format!(r#"(plugin/bootstrap "{repo}" "")"#)),
+            "ok"
+        );
+        // Simulate what task/detect-project reports back: the language
+        // has no loaded plugin.
+        let ok = scripting::eval_result(
+            r#"(do (event/emit "tasks-detected" {"language" "zzlazy"}) true)"#,
+        )
+        .unwrap();
+        assert_eq!(ok, "true");
+        ed.dispatch_events_scoped();
+        let pending =
+            scripting::eval_result(r#"(string (offer/pending "plugin" "zzlazy"))"#)
+                .unwrap_or_default();
+        assert_eq!(pending, r#""true""#, "the enable question must be asked");
+        std::fs::remove_dir_all(&project).ok();
+        let _ = ed;
+    });
+}
+
+#[test]
+fn accepting_the_plugin_offer_loads_it_and_relights_the_project() {
+    janet_test!(ed, {
+        let (repo, project) = lazy_fixture();
+        assert_eq!(
+            scripting::eval(&format!(r#"(plugin/bootstrap "{repo}" "")"#)),
+            "ok"
+        );
+        // The offer's re-fire targets the open project root.
+        let ok = scripting::eval_result(&format!(
+            r#"(do (event/emit "project-opened" {{"root" "{project}"}}) true)"#
+        ))
+        .unwrap();
+        assert_eq!(ok, "true");
+        scripting::eval_result(
+            r#"(do (event/emit "tasks-detected" {"language" "zzlazy"}) true)"#,
+        )
+        .unwrap();
+        ed.dispatch_events_scoped();
+        assert_eq!(
+            scripting::eval(r#"(editor/run-command "offer-resolved" "plugin zzlazy yes")"#),
+            "ok"
+        );
+        let status = scripting::eval_result(r#"(string (get (plugin/status "zzlazy") :loaded))"#)
+            .unwrap_or_default();
+        assert_eq!(status, r#""true""#, "acceptance must load the plugin");
+        std::fs::remove_dir_all(&project).ok();
+        let _ = ed;
     });
 }

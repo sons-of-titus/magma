@@ -181,12 +181,12 @@ pub const OPTION_SPECS: &[OptionSpec] = &[
         category: OptionCategory::Behavior,
     },
     OptionSpec {
-        name: "servers-auto-install",
-        label: "Auto-install servers and toolchains",
+        name: "servers-offer-install",
+        label: "Offer to install servers and toolchains",
         kind: OptionKind::Bool,
         choices: &[],
         default: "true",
-        description: "Download a project's pinned language server or toolchain when missing",
+        description: "Ask before downloading a project's pinned language server or toolchain (off: never prompt, never download)",
         category: OptionCategory::Behavior,
     },
 ];

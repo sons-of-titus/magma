@@ -120,6 +120,60 @@ unsafe extern "C-unwind" fn c_install_find(_argc: i32, argv: *mut Janet) -> Jane
     }
 }
 
+/// `(offer/post kind id title body)` → `:ok`
+///
+/// Queue a question for the user (the frontend shows it as a modal).  A
+/// repeat while one is still pending is a no-op; the answer arrives as the
+/// `offer-resolved` command with `(kind id yes|no)`.
+unsafe extern "C-unwind" fn c_offer_post(argc: i32, argv: *mut Janet) -> Janet {
+    let kind = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
+    let id = unsafe { conv::get_str(argc, argv, 1) }.unwrap_or_default();
+    if kind.is_empty() || id.is_empty() {
+        conv::signal_err("offer/post: kind and id are required");
+    }
+    let title = unsafe { conv::get_str(argc, argv, 2) }.unwrap_or_default();
+    let body = unsafe { conv::get_str(argc, argv, 3) }.unwrap_or_default();
+    with_editor(|ed| {
+        ed.offers.post(kernel::state::offers::Offer {
+            kind: kind.clone(),
+            id: id.clone(),
+            title,
+            body,
+        });
+        conv::keyword("ok")
+    })
+}
+
+/// `(offer/pending kind id)` → bool
+///
+/// True while an offer with this `(kind, id)` is still awaiting the user.
+unsafe extern "C-unwind" fn c_offer_pending(argc: i32, argv: *mut Janet) -> Janet {
+    let kind = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
+    let id = unsafe { conv::get_str(argc, argv, 1) }.unwrap_or_default();
+    with_editor(|ed| conv::boolean(ed.offers.is_pending(&kind, &id)))
+}
+
+/// `(offer/take kind id)` → `:ok` or nil
+///
+/// Remove an offer from the queue — the frontend calls this when it shows
+/// the modal, and `offer-resolved` defensively re-checks so answering by
+/// command works without the frontend too.
+unsafe extern "C-unwind" fn c_offer_take(argc: i32, argv: *mut Janet) -> Janet {
+    let kind = unsafe { conv::get_str(argc, argv, 0) }.unwrap_or_default();
+    let id = unsafe { conv::get_str(argc, argv, 1) }.unwrap_or_default();
+    with_editor(|ed| {
+        let matches = ed
+            .offers
+            .front()
+            .is_some_and(|o| o.kind == kind && o.id == id);
+        if matches && ed.offers.take().is_some() {
+            conv::keyword("ok")
+        } else {
+            conv::nil()
+        }
+    })
+}
+
 pub fn register() -> Vec<JanetReg> {
     vec![
         JanetReg {
@@ -131,6 +185,21 @@ pub fn register() -> Vec<JanetReg> {
             name: c"install/find".as_ptr() as *const _,
             cfun: Some(c_install_find as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
             documentation: c"(install/find kind id bin) → path of a previously installed executable, or nil".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"offer/post".as_ptr() as *const _,
+            cfun: Some(c_offer_post as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"Queue a question for the user; answered by the offer-resolved command with (kind id yes|no)".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"offer/pending".as_ptr() as *const _,
+            cfun: Some(c_offer_pending as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"(offer/pending kind id) → true while that offer still awaits the user".as_ptr() as *const _,
+        },
+        JanetReg {
+            name: c"offer/take".as_ptr() as *const _,
+            cfun: Some(c_offer_take as unsafe extern "C-unwind" fn(i32, *mut Janet) -> Janet),
+            documentation: c"(offer/take kind id) → pop that offer from the queue; :ok or nil".as_ptr() as *const _,
         },
     ]
 }

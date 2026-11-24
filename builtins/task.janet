@@ -51,14 +51,14 @@
     (when (> (length root) 0)
       (task/detect-project root))))
 
-# A project whose toolchain is missing gets it fetched: the manifest's
-# :install pin (url + sha256) makes the action set runnable without the
-# user's package manager.  Spawning prepends the download slots to the
-# task's PATH, so the landed binary is found by name.
+# A project whose toolchain is missing gets an offer to fetch it: the
+# manifest's :install pin (url + sha256) makes the action set runnable
+# without the user's package manager.  Spawning prepends the download
+# slots to the task's PATH, so the landed binary is found by name.
 (event/on "tasks-detected"
   (fn [data]
     (def lang (get data :language ""))
-    (when (and (> (length lang) 0) (install/auto?))
+    (when (and (> (length lang) 0) (install/offers?))
       (each tc (toolchain/registered)
         (when (and (= lang (get tc :language)) (get tc :install))
           (def ispec (get tc :install))
@@ -68,4 +68,4 @@
                      (not (toolchain/find-extended bin))
                      (not (install/find "toolchains" id bin))
                      (not (install/in-flight? (string "toolchains/" id))))
-            (install/fetch! "toolchains" id (string id " (" bin ")") ispec)))))))
+            (install/offer-fetch "toolchains" id (string id " (" bin ")") ispec)))))))

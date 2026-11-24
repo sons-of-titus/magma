@@ -67,6 +67,15 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 }
                 return;
             }
+            // An install offer is modal too: Return accepts, Escape declines.
+            if !s.editor.offers.is_empty() {
+                match key.as_str() {
+                    "return" => crate::offers::resolve_command(&weak, &mut s, "offer:accept"),
+                    "esc" => crate::offers::resolve_command(&weak, &mut s, "offer:decline"),
+                    _ => {}
+                }
+                return;
+            }
             kernel::input::dispatch_key(&mut s.editor, &key);
             s.editor.dispatch_events_scoped();
             s.editor.frame_dirty = true;
@@ -216,6 +225,9 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
                 }
                 c if c.starts_with("quit:") => {
                     crate::lifecycle::confirm_command(&weak, &mut s, c);
+                }
+                c if c.starts_with("offer:") => {
+                    crate::offers::resolve_command(&weak, &mut s, c);
                 }
                 c if c.starts_with("settings:") || c.starts_with("dialog:") => {
                     settings::command(&weak, &mut s, &command);

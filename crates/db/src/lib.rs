@@ -112,8 +112,8 @@ impl DriverKind {
 }
 
 /// A configured data source: non-secret connection facts only.  Passwords
-/// live in the OS keychain keyed by the source id, never here and never in
-/// persisted configuration.
+/// live in the secrets file keyed by the source id, never here and never
+/// in the settings file.
 #[derive(Debug, Clone)]
 pub struct DataSource {
     pub id: u64,
@@ -128,7 +128,7 @@ pub struct DataSource {
     pub ssl_mode: SslMode,
     /// Accept a server certificate that does not validate (self-signed).
     pub trust_cert: bool,
-    /// The password is persisted in the keychain, not session-only.
+    /// The password is persisted in the secrets file, not session-only.
     pub save_password: bool,
     /// Full connection URL; when set it drives the connection instead of
     /// the individual fields.
@@ -415,9 +415,9 @@ pub(crate) fn block_on<F: std::future::Future>(fut: F) -> F::Output {
         .block_on(fut)
 }
 
-/// Open a connection for `source`, asking the keychain-aware caller for the
-/// password when the driver needs one.  The one place that maps a data
-/// source kind to its engine.
+/// Open a connection for `source`, asking the caller (which resolves
+/// stored passwords) for the password when the driver needs one.  The one
+/// place that maps a data source kind to its engine.
 pub fn connect(source: &DataSource, password: Option<&str>) -> Result<Connection, String> {
     match source.kind {
         DriverKind::Sqlite => sqlite::SqliteConnection::open(&source.host),

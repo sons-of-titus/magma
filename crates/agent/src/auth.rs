@@ -11,9 +11,9 @@ use serde_json::{Value, json};
 use crate::http;
 use crate::registry::AuthMethodSpec;
 
-/// How a provider knows us.  Stored only in the OS keychain, never in files
-/// or logs.  `Debug` is redacted so credentials can cross channels and
-/// panic messages without leaking.
+/// How a provider knows us.  Persisted only in the secrets file, never in
+/// settings or logs.  `Debug` is redacted so credentials can cross channels
+/// and panic messages without leaking.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Credential {
     ApiKey { key: String },

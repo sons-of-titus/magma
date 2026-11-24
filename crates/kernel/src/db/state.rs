@@ -197,8 +197,8 @@ pub struct DbState {
     next_tab_id: u64,
     /// SQL console buffer per source (slab key of the *sql: …* buffer).
     pub consoles: HashMap<u64, usize>,
-    /// Passwords typed this session that were not saved to the keychain.
-    /// Never persisted, never projected to the UI.
+    /// Passwords typed this session that were not saved to the secrets
+    /// file.  Never persisted, never projected to the UI.
     pub session_passwords: HashMap<u64, String>,
     /// Incremented per dispatched query; late results with stale jobs drop.
     pub query_job: u64,
@@ -289,13 +289,13 @@ impl DbState {
     }
 
     /// The password a connect may use: what the user typed this session
-    /// (unsaved) wins, then the keychain.  The caller resolves keychain
-    /// storage; this only orchestrates.
-    pub fn password_for(&self, id: u64, keychain: impl Fn() -> Option<String>) -> Option<String> {
+    /// (unsaved) wins, then the stored one.  The caller resolves stored
+    /// passwords; this only orchestrates.
+    pub fn password_for(&self, id: u64, stored: impl Fn() -> Option<String>) -> Option<String> {
         if let Some(pw) = self.session_passwords.get(&id) {
             return Some(pw.clone());
         }
-        keychain()
+        stored()
     }
 
     // ── Tree ────────────────────────────────────────────────────────────
@@ -547,16 +547,16 @@ mod tests {
     }
 
     #[test]
-    fn session_password_wins_over_keychain() {
+    fn session_password_wins_over_stored() {
         let mut st = DbState::default();
         let id = st.add_source(source("t"));
         st.session_passwords.insert(id, "typed".into());
         assert_eq!(
-            st.password_for(id, || Some("chain".into())).as_deref(),
+            st.password_for(id, || Some("stored".into())).as_deref(),
             Some("typed")
         );
         st.session_passwords.clear();
-        assert_eq!(st.password_for(id, || Some("chain".into())).as_deref(), Some("chain"));
+        assert_eq!(st.password_for(id, || Some("stored".into())).as_deref(), Some("stored"));
         assert_eq!(st.password_for(id, || None), None);
     }
 

@@ -454,10 +454,10 @@ fn source_from_args(
     })
 }
 
-/// Saved passwords go to the OS keychain; unsaved ones stay session-only
+/// Saved passwords go to the secrets file; unsaved ones stay session-only
 /// so re-connecting within the session still works.  Neither touches
 /// persisted configuration.  A typed password is always kept for the
-/// session as well, because the keychain can refuse a write.  An empty
+/// session as well, because secret storage can be off.  An empty
 /// field on an existing source means "unchanged": the properties dialog
 /// never pre-fills the password.
 fn store_password(editor: &mut Editor, id: u64, password: Option<String>, save: bool) {

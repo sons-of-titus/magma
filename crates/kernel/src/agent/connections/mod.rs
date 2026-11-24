@@ -2,7 +2,7 @@
 //! and selection preferences.
 //!
 //! Durable facts live in the options map — `agent.api-key.<provider>` and
-//! `agent.oauth.<provider>` (keychain-backed), `agent.oauth-account.<provider>`,
+//! `agent.oauth.<provider>` (secret-file backed), `agent.oauth-account.<provider>`,
 //! and the selection options `agent.provider` / `agent.model` /
 //! `agent.reasoning` — so settings persistence needs no new store.  This
 //! file layers runtime state on top: connection status, the in-flight auth

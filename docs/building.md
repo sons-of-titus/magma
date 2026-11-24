@@ -28,12 +28,6 @@ Nothing beyond Xcode's toolchain (libclang included).
 sudo apt install build-essential pkg-config libclang-dev libdbus-1-dev
 ```
 
-- `pkg-config` + `libdbus-1-dev`: the Linux credential backend (secret
-  service) links libdbus at build time; at runtime a running secret service
-  stores API keys — without one, secrets stay session-only.
-- Set `MAGMA_KEYCHAIN=off` to skip the key service entirely (session-only
-  secrets); tests always run this way.
-
 Desktop builds need the usual winit runtime libraries (X11 + Wayland
 client libs), which any desktop distribution already ships. The clipboard
 uses X11; a Wayland session needs XWayland.
@@ -50,9 +44,14 @@ Use the **MSVC toolchain** (the default for `x86_64-pc-windows-msvc`):
 
 ## Environment
 
-| Variable            | Meaning                                              |
-|---------------------|------------------------------------------------------|
-| `MAGMA_DIR`         | State directory override (default: platform data dir)|
-| `MAGMA_CONFIG_DIR`  | Config directory override                            |
-| `MAGMA_KEYCHAIN`    | `off` keeps API keys session-only                    |
-| `MAGMA_SERVER_TOKEN`| Token for `magma connect` against `magma server`     |
+| Variable               | Meaning                                              |
+|------------------------|------------------------------------------------------|
+| `MAGMA_DIR`            | State directory override (default: platform data dir)|
+| `MAGMA_CONFIG_DIR`     | Config directory override                            |
+| `MAGMA_SECRETS`        | `off` keeps secrets session-only                     |
+| `MAGMA_API_KEY_<PROVIDER>` | API key for a provider, e.g. `MAGMA_API_KEY_OPENAI`; overrides the secrets file |
+| `MAGMA_SERVER_TOKEN`   | Token for `magma connect` against `magma server`     |
+
+Secrets (agent API keys, OAuth tokens, saved data-source passwords) live in
+`secrets.json` inside the config directory, written with owner-only
+permissions and never mixed into `settings.json`.

@@ -3,16 +3,16 @@ use crate::kernel::state::Editor;
 use crate::kernel::storage::disk::DiskFileSystem;
 use std::collections::HashMap;
 
-/// Tests must never touch the developer's real login keychain — db-connect
-/// parks on a Keychain authorization dialog and leaves entries behind.
-/// `MAGMA_KEYCHAIN=off` routes secrets through the session-only path.
-pub fn disable_keychain() {
+/// Tests must never touch the developer's real secrets file — a stray
+/// write would silently corrupt live credentials.  `MAGMA_SECRETS=off`
+/// routes secrets through the session-only path.
+pub fn disable_secrets() {
     static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| unsafe { std::env::set_var("MAGMA_KEYCHAIN", "off") });
+    ONCE.call_once(|| unsafe { std::env::set_var("MAGMA_SECRETS", "off") });
 }
 
 pub fn make_editor() -> Editor {
-    disable_keychain();
+    disable_secrets();
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
     builtin::register_builtin_commands(&mut ed);
     let key = ed.create_buffer("test");
@@ -23,7 +23,7 @@ pub fn make_editor() -> Editor {
 }
 
 pub fn make_editor_with_buffer(content: &str) -> Editor {
-    disable_keychain();
+    disable_secrets();
     let mut ed = Editor::new(Box::new(DiskFileSystem::new()));
     builtin::register_builtin_commands(&mut ed);
     let key = ed.create_buffer_from_str("test", content);

@@ -163,7 +163,7 @@ pub fn cancel_auth(ed: &mut Editor) {
     }
 }
 
-/// Drop a provider: credential options, keychain entry, connection state.
+/// Drop a provider: credential options, stored secret, connection state.
 pub fn disconnect(ed: &mut Editor, provider_id: &str) {
     for method in ["api-key", "device"] {
         let option_key = secret_option(method, provider_id);

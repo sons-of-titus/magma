@@ -37,7 +37,7 @@ pub struct WorkspaceState {
     /// Plugin key-value state (`editor.plugin_state`).
     pub plugin_state: HashMap<String, String>,
     /// Configured database data sources (no secrets — passwords live in
-    /// the OS keychain keyed by the source id).
+    /// the secrets file keyed by the source id).
     #[serde(default)]
     pub data_sources: Vec<PersistedDataSource>,
 }

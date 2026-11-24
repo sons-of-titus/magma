@@ -373,6 +373,13 @@ fn handle_lsp_event(ed: &mut Editor, event: crate::semantic::Event) {
             message,
             percentage,
         } => {
+            // The progress strip projects this alongside indexing and
+            // session restore; an empty message is the completion report.
+            if message.is_empty() {
+                ed.lsp_progress.remove(&token);
+            } else {
+                ed.lsp_progress.insert(token.clone(), message.clone());
+            }
             ed.events.emit_typed(
                 keys::events::LSP_PROGRESS,
                 LspProgressPayload {

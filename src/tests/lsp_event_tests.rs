@@ -145,3 +145,41 @@ fn lsp_completion_dispatch_reaches_the_event_bus() {
         Some("alpha\nbeta"),
     );
 }
+
+// Server progress reports surface on the progress strip: a report with a
+// message adds a pill, the completion report (empty message) removes it.
+#[test]
+fn lsp_progress_populates_and_clears_the_strip() {
+    let (mut ed, _bg, mut rx) = crate::tests::helpers::editor_with_background();
+    let mut process = |ed: &mut crate::kernel::state::Editor, ev: BackgroundEvent| {
+        crate::kernel::runtime::process_background_event(ed, ev);
+        while let Ok(e) = rx.try_recv() {
+            let _ = e;
+        }
+    };
+    process(
+        &mut ed,
+        BackgroundEvent::Lsp(LspEvent::Progress {
+            token: "rustAnalyser/workspaceLoading".into(),
+            message: "indexing".into(),
+            percentage: "40".into(),
+        }),
+    );
+    assert_eq!(
+        ed.lsp_progress.get("rustAnalyser/workspaceLoading").map(|s| s.as_str()),
+        Some("indexing"),
+        "an in-flight report is visible to the strip"
+    );
+    process(
+        &mut ed,
+        BackgroundEvent::Lsp(LspEvent::Progress {
+            token: "rustAnalyser/workspaceLoading".into(),
+            message: String::new(),
+            percentage: "100".into(),
+        }),
+    );
+    assert!(
+        !ed.lsp_progress.contains_key("rustAnalyser/workspaceLoading"),
+        "the completion report clears the pill"
+    );
+}

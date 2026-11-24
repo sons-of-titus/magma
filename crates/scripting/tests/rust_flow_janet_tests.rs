@@ -475,6 +475,149 @@ fn lsp_completions_reach_the_popup_with_snippets() {
     assert_eq!(item.detail, "fn fetch(&self)");
 }
 
+// ── LSP inlay hints ──────────────────────────────────────────────────────
+//
+// The request fires on publishDiagnostics, not on didOpen, so a fake
+// server must publish (as real ones do) before any hint can be asked for.
+
+const FAKE_RA_HINTS: &str = r#"#!/usr/bin/env python3
+import sys, json
+
+def read_msg():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            raise EOFError("stdin closed")
+        if line in (b"\r\n", b"\n"):
+            break
+        text = line.decode("utf-8", "replace")
+        key, _, value = text.partition(":")
+        headers[key.strip().lower()] = value.strip()
+    n = int(headers["content-length"])
+    return json.loads(sys.stdin.buffer.read(n))
+
+def write_msg(obj):
+    body = json.dumps(obj).encode()
+    sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n" % len(body))
+    sys.stdout.buffer.write(body)
+    sys.stdout.buffer.flush()
+
+while True:
+    try:
+        msg = read_msg()
+    except Exception:
+        break
+    method = msg.get("method")
+    if method == "initialize":
+        write_msg({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}})
+    elif method == "textDocument/didOpen":
+        td = msg["params"]["textDocument"]
+        write_msg({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
+                   "params": {"uri": td["uri"], "version": td["version"],
+                              "diagnostics": []}})
+    elif method == "textDocument/inlayHint":
+        write_msg({"jsonrpc": "2.0", "id": msg["id"], "result": [
+            {"position": {"line": 1, "character": 13}, "label": ": i32",
+             "paddingRight": True}
+        ]})
+    elif "id" in msg:
+        write_msg({"jsonrpc": "2.0", "id": msg["id"], "result": None})
+"#;
+
+#[cfg(unix)]
+#[test]
+fn lsp_inlay_hints_land_in_the_view_after_diagnostics() {
+    let dir = std::env::temp_dir().join(format!("magma_fake_ra_hints_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("fake-ra");
+    std::fs::write(&script, FAKE_RA_HINTS).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let path = rs_file("hints", "fn main() {\n    let alpha = 1;\n}\n");
+    let _lock = helpers::acquire_janet_lock();
+    let mut ed = helpers::make_editor();
+    scripting::init(&mut ed);
+    let _editor_scope = scripting::EditorScope::new(&mut ed);
+
+    let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new().unwrap());
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    ed.background = Some(kernel::runtime::BackgroundHandle::new(runtime, tx));
+
+    let old_path = std::env::var("PATH").unwrap_or_default();
+    unsafe { std::env::set_var("PATH", format!("{}:{old_path}", dir.to_str().unwrap())) };
+
+    assert_eq!(scripting::eval(&enable_rust_plugin()), "ok");
+    assert_eq!(
+        scripting::eval(r#"(option/set "rust-lsp-command" "fake-ra")"#),
+        "ok"
+    );
+    open_file_cmd(&mut ed, &path);
+    ed.events.drain_and_dispatch();
+
+    // Pump until the server is ready, then until the hint decoration
+    // lands — the diagnostics publish is what triggers the request.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut requests_seen = 0usize;
+    while std::time::Instant::now() < deadline {
+        while let Ok(ev) = rx.try_recv() {
+            if let kernel::runtime::BackgroundEvent::Lsp(
+                kernel::semantic::Event::Started { .. },
+            ) = &ev
+            {
+                kernel::runtime::process_background_event(&mut ed, ev);
+                ed.events.drain_and_dispatch();
+            } else {
+                kernel::runtime::process_background_event(&mut ed, ev);
+            }
+        }
+        let key = helpers::focused_key(&ed);
+        if ed
+            .view_of_buffer(key)
+            .map(|v| v.decor_count_layer("lsp-inlay"))
+            .unwrap_or(0)
+            > 0
+        {
+            break;
+        }
+        if requests_seen == 0
+            && scripting::eval_result(r#"(string (= :ready (get *lsp-servers* "rust")))"#)
+                .unwrap_or_default()
+                == r#""true""#
+        {
+            requests_seen += 1;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    unsafe { std::env::set_var("PATH", old_path) };
+
+    let key = helpers::focused_key(&ed);
+    assert!(
+        scripting::eval_result(r#"(string (= :ready (get *lsp-servers* "rust")))"#)
+            .unwrap_or_default()
+            == r#""true""#,
+        "the fake server must reach :ready"
+    );
+    let count = ed
+        .view_of_buffer(key)
+        .map(|v| v.decor_count_layer("lsp-inlay"))
+        .unwrap_or(0);
+    assert!(count > 0, "an inlay hint must decorate the buffer view");
+    let view = ed.view_of_buffer(key).unwrap();
+    let decors = view.decoration_layers.get("lsp-inlay").unwrap();
+    assert!(
+        decors.iter().any(
+            |d| matches!(d, kernel::text_engine::Decoration::InlineText { line: 1, text, .. }
+                if text == ": i32 ")
+        ),
+        "the hint label with its right padding must be present: {decors:?}"
+    );
+}
+
 // ── Real rust-analyzer, real project ─────────────────────────────────────
 //
 // The fake-server test above proves the plumbing; this one proves the

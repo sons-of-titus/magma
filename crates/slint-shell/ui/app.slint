@@ -231,6 +231,7 @@ export component AppWindow inherits Window {
     in property <bool> hover-visible: false;
     in property <length> hover-x: 0px;
     in property <length> hover-y: 0px;
+    in property <length> hover-height: 100px;
     in property <[HoverLine]> hover-lines;
 
     // ── Completion popup ─────────────────────────────────────────────────
@@ -332,7 +333,6 @@ export component AppWindow inherits Window {
     callback mouse-pressed-middle(length, length);
     callback mouse-moved(length, length);
     callback mouse-hover(length, length);
-    callback hover-card-hovered(bool);
     callback mouse-released();
     callback mouse-scrolled(length, length, length, length, bool, bool, bool, bool);
     callback ime-committed(string);
@@ -1074,10 +1074,9 @@ export component AppWindow inherits Window {
     if root.hover-visible : HoverCard {
         hover-x: editor-pane.absolute-position.x + root.hover-x;
         hover-y: editor-pane.absolute-position.y + root.hover-y;
+        hover-height: root.hover-height;
         hover-lines: root.hover-lines;
         go-to-definition() => { root.command("hover-go-to-definition"); }
-        close() => { root.command("hover-close"); }
-        hover-hovered(hovered) => { root.hover-card-hovered(hovered); }
     }
 
     if root.completion-visible : CompletionPopup {

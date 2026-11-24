@@ -29,6 +29,7 @@ pub mod events {
     pub const GUTTER_CLICKED: &str = "gutter-clicked";
     pub const GUTTER_PROVIDER_UPDATED: &str = "gutter-provider-updated";
     pub const HELP_SHOWN: &str = "help-shown";
+    pub const HOVER_CARD: &str = "hover-card";
     pub const HTTP_ERROR: &str = "http-error";
     pub const HTTP_RESPONSE: &str = "http-response";
     pub const LSP_CODE_ACTIONS: &str = "lsp-code-actions";

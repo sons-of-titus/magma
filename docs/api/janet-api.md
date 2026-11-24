@@ -615,6 +615,18 @@ Return all active overlays.
 
 ---
 
+## hover/ — Hover Card Augmentation
+
+### `(hover/attach word kind text)` → boolean
+
+Append a styled line (`kind`: `text`, `code`, `heading`, or `muted`) to the
+hover card showing `word`; false when no matching card is on screen.
+Subscribe to the `hover-card` event — fired when the card is created with
+`:word`, `:line-text`, `:line`, and `:path` payload keys — to augment it
+with language-specific context.
+
+---
+
 ## plugin-state/ — Plugin Key-Value Store
 
 ### `(plugin-state/get key)` → string or nil

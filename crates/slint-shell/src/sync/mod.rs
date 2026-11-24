@@ -7,6 +7,7 @@
 mod agent;
 mod db;
 mod geometry;
+mod hover;
 mod overlays;
 mod render;
 mod terminal;

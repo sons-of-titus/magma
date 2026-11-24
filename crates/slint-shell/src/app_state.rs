@@ -139,8 +139,10 @@ pub(crate) struct AppState {
     pub(crate) last_px: f32,
     pub(crate) last_py: f32,
     pub(crate) hovering: bool,
-    pub(crate) hover_card_hovered: bool,
     pub(crate) hover_none_since: Option<std::time::Instant>,
+    /// Last card shown (word, buffer, when) — a re-entered word re-shows
+    /// its card instantly instead of re-paying the dwell.
+    pub(crate) hover_seen: Option<(String, usize, std::time::Instant)>,
     /// The active picker surface (Go to File/Symbol, buffers, palette,
     /// prompts).  `None` while hidden.
     pub(crate) picker: picker::PickerKind,

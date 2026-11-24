@@ -144,6 +144,7 @@ pub fn init_vm() {
         regs.extend(super::ui_api::register());
         regs.extend(super::overlay_api::register());
         regs.extend(super::gutter_api::register());
+        regs.extend(super::hover_api::register());
         regs.extend(super::decoration_api::register());
         regs.extend(super::modality_api::register());
         regs.extend(super::eval_api::register());

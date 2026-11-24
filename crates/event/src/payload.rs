@@ -71,6 +71,9 @@ event_payload!(FinderResultsPayload {
 event_payload!(GutterClickedPayload { column, line, buf });
 event_payload!(GutterProviderUpdatedPayload { provider, buffer });
 event_payload!(HelpShownPayload { buffer_id });
+// Emitted when the pointer-dwell hover card is created; language plugins
+// augment the card from this event.
+event_payload!(HoverCardPayload { word, line_text, line, path });
 event_payload!(HttpErrorPayload { id, error });
 event_payload!(HttpResponsePayload { id, status, body });
 event_payload!(LspCodeActionsPayload { path, actions });

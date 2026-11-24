@@ -92,10 +92,6 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn("gui-branches", "Open the branch switcher", vec![], |ed, _| {
         request(ed, "branches")
     });
-    cmds.register_fn("hover-close", "Dismiss the hover card", vec![], |ed, _| {
-        ed.hover = None;
-        Ok(())
-    });
     cmds.register_fn("hover-go-to-definition", "Go to definition of the hovered symbol", vec![], |ed, _| {
         let Some(card) = ed.hover.clone() else { return Ok(()); };
         if let Some(view) = ed.view_of_buffer_mut(card.buf_key) {

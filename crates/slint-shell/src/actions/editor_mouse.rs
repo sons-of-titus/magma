@@ -139,16 +139,6 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     }
     {
         let state = Rc::clone(&state);
-        app.on_hover_card_hovered(move |hovered| {
-            let mut s = state.borrow_mut();
-            s.hover_card_hovered = hovered;
-            if hovered {
-                s.hover_none_since = None;
-            }
-        });
-    }
-    {
-        let state = Rc::clone(&state);
         app.on_mouse_moved(move |x, y| {
             let mut s = state.borrow_mut();
             if !s.editor.mouse_state.pressed {

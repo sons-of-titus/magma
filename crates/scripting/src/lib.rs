@@ -319,6 +319,8 @@ mod fs_api;
 #[cfg(feature = "janet")]
 mod gutter_api;
 #[cfg(feature = "janet")]
+mod hover_api;
+#[cfg(feature = "janet")]
 mod icons_api;
 #[cfg(feature = "janet")]
 mod install_api;

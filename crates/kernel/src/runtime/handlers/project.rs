@@ -33,6 +33,11 @@ fn handle_tasks_detected(
     ed.project_manager.project.language = language.unwrap_or_default();
     ed.project_manager.run_configs = configs;
     ed.project_manager.sync_active_to_registry();
+    // The toolchain-install layer listens for this to fetch a missing
+    // toolchain the manifest pinned; nothing fires without one.
+    let mut data = std::collections::HashMap::new();
+    data.insert("language".to_string(), ed.project_manager.project.language.clone());
+    ed.events.emit("tasks-detected", data);
     if ed.project_manager.project.language.is_empty() {
         ed.show_message(
             crate::state::MessageKind::Info,

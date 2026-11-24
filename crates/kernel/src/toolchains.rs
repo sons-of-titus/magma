@@ -23,6 +23,16 @@ pub struct ToolchainAction {
     pub debuggable: bool,
 }
 
+/// A manifest-pinned payload the editor can fetch when the toolchain's
+/// program is missing: `{:url :sha256 :format :bin}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolchainInstall {
+    pub url: String,
+    pub sha256: String,
+    pub format: String,
+    pub bin: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct ToolchainInfo {
     /// Namespaced id, `<plugin>.<name>` (e.g. `"rust.cargo"`).
@@ -41,6 +51,8 @@ pub struct ToolchainInfo {
     pub debug_adapter: Option<String>,
     /// The plugin that registered this toolchain.
     pub owner: String,
+    /// Where to fetch the toolchain from when its program is missing.
+    pub install: Option<ToolchainInstall>,
 }
 
 impl ToolchainInfo {
@@ -161,6 +173,67 @@ pub fn detect_and_seed(
         merge_run_configs(&mut configs.configs, tc, configs.loaded_from_disk);
     }
     language
+}
+
+/// Directories holding downloaded toolchain binaries, newest version
+/// first.  Task spawns prepend these to the child's PATH so run-config
+/// actions find fetched toolchains without the user's shell PATH.
+pub fn managed_bin_dirs() -> Vec<std::path::PathBuf> {
+    let root = crate::state::persist::state_dir()
+        .join("downloads")
+        .join("toolchains");
+    let Ok(toolchains) = std::fs::read_dir(&root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+    for tc in toolchains.flatten() {
+        let Ok(versions) = std::fs::read_dir(tc.path()) else {
+            continue;
+        };
+        for v in versions.flatten() {
+            let path = v.path();
+            let modified = std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            dirs.push((modified, path));
+        }
+    }
+    dirs.sort_by(|a, b| b.0.cmp(&a.0));
+    dirs.into_iter().map(|(_, p)| p).collect()
+}
+
+#[cfg(test)]
+mod managed_bin_dir_tests {
+    use super::*;
+
+    #[test]
+    fn managed_bin_dirs_lists_download_slots_newest_first() {
+        // MAGMA_DIR redirects the state dir; set it around the call so the
+        // test never touches the real one.  Env is process-global — single
+        // threaded here by the harness, and the value is a throwaway dir.
+        let dir = std::env::temp_dir().join(format!("magma_tc_bins_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // state_dir() is <MAGMA_DIR>/magma.
+        let old = dir.join("magma/downloads/toolchains/zz.tc/aaa");
+        let new = dir.join("magma/downloads/toolchains/zz.tc/zzz");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        // SAFETY: test-only env mutation; the harness runs this single-threaded.
+        unsafe { std::env::set_var("MAGMA_DIR", &dir) };
+        let dirs = managed_bin_dirs();
+        unsafe { std::env::remove_var("MAGMA_DIR") };
+        assert!(
+            dirs.contains(&new) && dirs.contains(&old),
+            "both version slots must be listed: {dirs:?}"
+        );
+        let new_idx = dirs.iter().position(|p| p == &new).unwrap();
+        let old_idx = dirs.iter().position(|p| p == &old).unwrap();
+        assert!(
+            new_idx < old_idx,
+            "newest version must lead the PATH order: {dirs:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Merge a toolchain's actions into a project's run configurations without

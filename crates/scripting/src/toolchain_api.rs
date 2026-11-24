@@ -10,7 +10,7 @@ use super::conv;
 use super::jtable;
 use super::with_editor;
 use evil_janet::*;
-use kernel::toolchains::{ToolchainAction, ToolchainInfo};
+use kernel::toolchains::{ToolchainAction, ToolchainInfo, ToolchainInstall};
 
 /// (toolchain/find name) → path or nil
 /// Resolve an executable against $PATH so scripts can give a clear
@@ -101,12 +101,21 @@ unsafe extern "C-unwind" fn c_toolchain_register(argc: i32, argv: *mut Janet) ->
         }
         let debug_adapter =
             jtable::get_spec(spec, "debug").and_then(|d| jtable::get_str(d, "adapter"));
+        let install = jtable::get_spec(spec, "install").and_then(|i| {
+            Some(ToolchainInstall {
+                url: jtable::get_str(i, "url")?,
+                sha256: jtable::get_str(i, "sha256")?,
+                format: jtable::get_str(i, "format")?,
+                bin: jtable::get_str(i, "bin")?,
+            })
+        });
         let info = ToolchainInfo {
             id,
             language,
             detect_markers: detect,
             actions,
             debug_adapter,
+            install,
             owner: jtable::get_str(spec, "plugin").unwrap_or_default(),
         };
         match ed.toolchains.register(info) {
@@ -179,6 +188,18 @@ unsafe extern "C-unwind" fn c_toolchain_registered(_argc: i32, _argv: *mut Janet
             }
             janet_table_put(t_tbl, conv::keyword("actions"), janet_wrap_array(actions));
             janet_table_put(t_tbl, conv::keyword("plugin"), conv::string(&t.owner));
+            match &t.install {
+                Some(i) => {
+                    let it = janet_wrap_table(janet_table(4));
+                    let i_tbl = janet_unwrap_table(it);
+                    janet_table_put(i_tbl, conv::keyword("url"), conv::string(&i.url));
+                    janet_table_put(i_tbl, conv::keyword("sha256"), conv::string(&i.sha256));
+                    janet_table_put(i_tbl, conv::keyword("format"), conv::string(&i.format));
+                    janet_table_put(i_tbl, conv::keyword("bin"), conv::string(&i.bin));
+                    janet_table_put(t_tbl, conv::keyword("install"), it);
+                }
+                None => janet_table_put(t_tbl, conv::keyword("install"), conv::nil()),
+            }
             janet_array_push(janet_unwrap_array(arr), tbl);
         }
         arr

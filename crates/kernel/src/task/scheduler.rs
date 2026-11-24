@@ -185,6 +185,16 @@ impl TaskScheduler {
             if let Some(cwd) = cwd {
                 cmd.current_dir(cwd);
             }
+            // Downloaded toolchains live outside $PATH — their version dirs
+            // lead the child's PATH (newest first); an explicit task PATH
+            // still wins because it is set after this.
+            let mut path_dirs = crate::toolchains::managed_bin_dirs();
+            path_dirs.extend(std::env::split_paths(
+                &std::env::var_os("PATH").unwrap_or_default(),
+            ));
+            if let Ok(joined) = std::env::join_paths(&path_dirs) {
+                cmd.env("PATH", joined);
+            }
             for (k, v) in &environment {
                 cmd.env(k, v);
             }

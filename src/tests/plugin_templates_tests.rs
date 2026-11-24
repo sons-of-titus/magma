@@ -378,6 +378,7 @@ fn toolchain(id: &str, language: &str, markers: &[&str]) -> ToolchainInfo {
         detect_markers: markers.iter().map(|m| m.to_string()).collect(),
         actions,
         debug_adapter: None,
+        install: None,
         owner: "test".to_string(),
     }
 }

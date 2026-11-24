@@ -36,10 +36,14 @@ pub(super) fn register(editor: &mut Editor) {
     cmds.register_fn(
         "gui-picker",
         "Open a registered picker source by id",
-        vec![crate::command::args::ArgSpec::new(
-            "id",
-            crate::command::args::ArgType::String,
-        )],
+        vec![
+            crate::command::args::ArgSpec::new("id", crate::command::args::ArgType::String),
+            crate::command::args::ArgSpec::optional(
+                "query",
+                crate::command::args::ArgType::String,
+                crate::command::args::ArgValue::String(String::new()),
+            ),
+        ],
         |ed, args| {
             let id = args
                 .get("id")
@@ -49,7 +53,15 @@ pub(super) fn register(editor: &mut Editor) {
             if ed.picker_sources.get(&id).is_none() {
                 return Err(format!("no picker source registered: {id}"));
             }
-            ed.ui_requests.push(format!("picker-source:{id}"));
+            let query = args
+                .get("query")
+                .and_then(|a| a.as_string())
+                .unwrap_or_default();
+            if query.is_empty() {
+                ed.ui_requests.push(format!("picker-source:{id}"));
+            } else {
+                ed.ui_requests.push(format!("picker-source:{id}:{query}"));
+            }
             Ok(())
         },
     );

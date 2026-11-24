@@ -28,13 +28,17 @@
     (when offset (buffer/set-cursor buf offset))))
 
 (defn tags/jump
-  "Jump to the definition of `tag-name`, pushing current position to the stack."
+  "Jump to the definition of `tag-name`, pushing current position to the stack.
+   Several files defining the same name open the tag picker preset to it."
   [tag-name]
   (def tbl (load-tags))
   (unless tbl (break))
   (def entries (get tbl tag-name))
   (unless entries
     (print "Tag not found: " tag-name)
+    (break))
+  (when (> (length entries) 1)
+    (editor/run-command "gui-picker" "tags" tag-name)
     (break))
   (def cur-buf (buffer/current))
   (when cur-buf
@@ -96,7 +100,8 @@
 (command/define "tag-pop"         (fn [&] (tags/pop)))
 (command/define "tag-generate"    (fn [&] (tags/generate)))
 
-(keymap/set "ctrl-]" "tag-jump-cursor" "editor")
+# ctrl-] is goto-definition (editor_keybindings); ctags jump moves aside.
+(keymap/set "ctrl-alt-]" "tag-jump-cursor" "editor")
 (keymap/set "ctrl-t" "tag-pop" "editor")
 
 # ── Colon plugin registration ─────────────────────────────────────────────────

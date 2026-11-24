@@ -52,14 +52,23 @@ unsafe extern "C-unwind" fn c_picker_register_source(argc: i32, argv: *mut Janet
 unsafe extern "C-unwind" fn c_picker_push_items(argc: i32, argv: *mut Janet) -> Janet {
     with_editor(|ed| unsafe {
         ed.picker_state.items.clear();
-        if argc >= 1 && jtable::is_spec(*argv.add(0)) == false {
-            // Non-array argument: treat as an empty answer.
+        if argc < 1 {
             return conv::keyword("ok");
         }
-        let arr = *argv.add(0);
-        let count = janet_length(arr);
+        let v = *argv.add(0);
+        let is_array = janet_checktype(v, JanetType_JANET_ARRAY) != 0;
+        let is_tuple = janet_checktype(v, JanetType_JANET_TUPLE) != 0;
+        if !is_array && !is_tuple {
+            // A non-sequence answer is an empty answer.
+            return conv::keyword("ok");
+        }
+        let count = janet_length(v);
         for i in 0..count {
-            let entry = janet_getindex(arr, i);
+            let entry = if is_array {
+                *(*janet_unwrap_array(v)).data.add(i as usize)
+            } else {
+                *janet_unwrap_tuple(v).add(i as usize)
+            };
             if jtable::is_spec(entry) {
                 let get = |key: &str| -> String {
                     jtable::get_str(entry, key).unwrap_or_default()

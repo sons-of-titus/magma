@@ -300,8 +300,8 @@ unsafe extern "C-unwind" fn c_plugin_unload(argc: i32, argv: *mut Janet) -> Jane
             );
         }
         info!(
-            "plugin unloaded: {name} ({} languages, {} templates, {} toolchains, {} commands, {} handlers, {} keybindings, {} snippets)",
-            langs_removed, templates_removed, toolchains_removed, commands, events, keymaps, snippets_removed_total
+            "plugin unloaded: {name} ({} languages, {} templates, {} toolchains, {} commands, {} handlers, {} keybindings, {} snippets, {} picker sources)",
+            langs_removed, templates_removed, toolchains_removed, commands, events, keymaps, snippets_removed_total, sources
         );
         ed.events.emit(
             kernel::event::keys::events::PLUGIN_UNLOADED,

@@ -358,6 +358,7 @@ pub(crate) fn open_source(
     weak: &slint::Weak<AppWindow>,
     s: &mut AppState,
     id: &str,
+    preset: Option<&str>,
 ) {
     let Some(source) = s.editor.picker_sources.get(id).cloned() else {
         s.message = format!("no picker source registered: {id}");
@@ -366,16 +367,20 @@ pub(crate) fn open_source(
     };
     s.picker = PickerKind::Source(id.to_string());
     s.picker_query.clear();
+    if let Some(preset) = preset {
+        s.picker_query.push_str(preset);
+    }
     s.picker_items.clear();
     s.picker_selected = 0;
     if let Some(a) = weak.upgrade() {
         a.set_picker_title(source.title.clone().into());
         a.set_picker_placeholder(source.placeholder.clone().into());
         a.set_picker_hint("".into());
-        a.set_picker_query("".into());
+        a.set_picker_query(s.picker_query.clone().into());
         a.set_picker_visible(true);
     }
-    emit_source_query(s, id, "");
+    let query = s.picker_query.clone();
+    emit_source_query(s, id, &query);
     refresh_rows(weak, s);
 }
 
@@ -435,7 +440,11 @@ pub(crate) fn handle_request(
         "goto-line" => open(weak, s, PickerKind::GotoLine),
         "rename-symbol" => open(weak, s, PickerKind::RenameSymbol),
         r if r.starts_with("picker-source:") => {
-            open_source(weak, s, &r["picker-source:".len()..])
+            let rest = &r["picker-source:".len()..];
+            match rest.split_once(':') {
+                Some((id, preset)) => open_source(weak, s, id, Some(preset)),
+                None => open_source(weak, s, rest, None),
+            }
         }
         "find" => {
             s.find_visible = true;

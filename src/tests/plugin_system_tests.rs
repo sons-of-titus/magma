@@ -9,6 +9,10 @@ fn record(name: &str, deps: &[&str], langs: &[&str]) -> PluginRecord {
         dependencies: deps.iter().map(|s| s.to_string()).collect(),
         languages: langs.iter().map(|s| s.to_string()).collect(),
         loaded: false,
+        description: None,
+        author: None,
+        homepage: None,
+        tags: Vec::new(),
     }
 }
 

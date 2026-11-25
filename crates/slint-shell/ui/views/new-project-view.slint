@@ -48,6 +48,8 @@ export component NewProjectView inherits Rectangle {
     in property <[TemplateVar]> vars;
     in property <string> note: "";
     in property <string> create-reason: "";
+    in property <bool> name-invalid: false;
+    in property <bool> dest-invalid: false;
     in property <bool> can-create: false;
     in property <bool> generating: false;
 
@@ -62,8 +64,9 @@ export component NewProjectView inherits Rectangle {
     callback name-changed();
     callback dest-changed();
 
-    property <length> card-w: 760px;
-    property <length> card-h: 540px;
+    property <string> create-hint: root.project-name == "" || root.dest-dir == "" ? "" : root.dest-dir + "/" + root.project-name;
+    property <length> card-w: 880px;
+    property <length> card-h: 600px;
 
     // Codepoints mirror the Nerd Font pack in builtins/icons.janet.
     // Matched lowercased so raw ids and display names both resolve.
@@ -132,8 +135,8 @@ export component NewProjectView inherits Rectangle {
             }
         }
 
+
         VerticalLayout {
-            // ── Header: drag handle for the solo window ──────────────────
             header := Rectangle {
                 height: Theme.menu-height;
                 background: Theme.chrome;
@@ -142,7 +145,7 @@ export component NewProjectView inherits Rectangle {
                     enabled: root.solo;
 
                     HorizontalLayout {
-                        padding-left: 10px;
+                        padding-left: 12px;
                         padding-right: 6px;
                         spacing: 8px;
                         alignment: start;
@@ -178,68 +181,137 @@ export component NewProjectView inherits Rectangle {
             }
 
             HorizontalLayout {
-                padding: 14px;
-                spacing: 12px;
+                spacing: 0px;
 
-                // ── Language sections + template browser ─────────────────
-                VerticalLayout {
-                    width: 260px;
-                    spacing: 8px;
+                // ── Browser: search, language chips, template cards ──────
+                Rectangle {
+                    width: 290px;
+                    background: Theme.surface;
 
-                    Field {
-                        placeholder: "Search all templates";
-                        text <=> root.search;
-                        edited => { root.search-changed(); }
-                    }
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 10px;
 
-                    // Language sections: pick the language first, then the
-                    // template inside it.  Search spans every language.
-                    if root.languages.length > 0 : VerticalLayout {
-                        spacing: 4px;
+                        Field {
+                            placeholder: "Search templates…";
+                            text <=> root.search;
+                            edited => { root.search-changed(); }
+                        }
 
-                        SectionLabel { text: "LANGUAGE"; }
+                        if root.languages.length > 0 : VerticalLayout {
+                            spacing: 5px;
+                            SectionLabel { text: root.search != "" ? "LANGUAGE  ·  SEARCHING ALL" : "LANGUAGE"; }
+
+                            Rectangle {
+                                height: 30px;
+                                ScrollView {
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        for lang[idx] in root.languages : Rectangle {
+                                            height: 26px;
+                                            width: chip-row.preferred-width;
+                                            border-radius: 13px;
+                                            border-width: 1px;
+                                            border-color: lang == root.language && root.search == "" ? Theme.accent : Theme.border;
+                                            background: lang == root.language && root.search == ""
+                                                ? Theme.selection
+                                                : (lang-touch.has-hover ? Theme.fill : transparent);
+                                            chip-row := HorizontalLayout {
+                                                padding-left: 10px;
+                                                padding-right: 10px;
+                                                spacing: 5px;
+                                                Text {
+                                                    text: root.lang-glyph(lang);
+                                                    color: lang == root.language ? Theme.accent : Theme.text-faint;
+                                                    font-family: "Symbols Nerd Font";
+                                                    font-size: 12px;
+                                                    vertical-alignment: center;
+                                                }
+                                                Text {
+                                                    text: lang;
+                                                    color: lang == root.language ? Theme.text-primary : Theme.text-secondary;
+                                                    font-size: Theme.font-small;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                            lang-touch := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => { root.language-select(idx); }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SectionLabel { text: "TEMPLATES  ·  " + root.templates.length; }
 
                         Rectangle {
-                            height: Math.min(root.languages.length * 28px + 8px, 148px);
-                            border-radius: Theme.radius;
-                            border-width: 1px;
-                            border-color: Theme.border;
-                            background: Theme.surface;
+                            vertical-stretch: 1;
+
+                            if root.templates.length == 0 : EmptyState {
+                                width: 100%;
+                                height: 100%;
+                                glyph: "\u{f002}";
+                                title: "No templates match";
+                                detail: "Try a different search or language.";
+                            }
 
                             ScrollView {
                                 VerticalLayout {
-                                    padding: 4px;
-                                    for lang[idx] in root.languages : Rectangle {
-                                        height: 28px;
-                                        border-radius: 3px;
-                                        background: lang == root.language
+                                    spacing: 4px;
+                                    for t[idx] in root.templates : Rectangle {
+                                        height: 52px;
+                                        border-radius: 6px;
+                                        border-width: 1px;
+                                        border-color: t.selected ? Theme.accent : transparent;
+                                        background: t.selected
                                             ? Theme.selection
-                                            : (lang-touch.has-hover ? Theme.fill : transparent);
+                                            : (row-touch.has-hover ? Theme.fill : transparent);
+
                                         HorizontalLayout {
                                             padding-left: 8px;
                                             padding-right: 8px;
-                                            spacing: 8px;
-                                            alignment: start;
-                                            Text {
-                                                width: 16px;
-                                                text: root.lang-glyph(lang);
-                                                color: lang == root.language ? Theme.accent : Theme.text-faint;
-                                                font-family: "Symbols Nerd Font";
-                                                font-size: 14px;
-                                                vertical-alignment: center;
-                                                horizontal-alignment: center;
+                                            spacing: 10px;
+
+                                            Rectangle {
+                                                y: (parent.height - self.height) / 2;
+                                                width: 32px;
+                                                height: 32px;
+                                                border-radius: 6px;
+                                                background: t.selected ? Theme.accent.with-alpha(0.18) : Theme.fill;
+                                                Text {
+                                                    text: root.lang-glyph(t.language);
+                                                    color: t.selected ? Theme.accent : Theme.text-muted;
+                                                    font-family: "Symbols Nerd Font";
+                                                    font-size: 16px;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
                                             }
-                                            Text {
-                                                text: lang;
-                                                color: lang == root.language ? Theme.text-primary : Theme.text-secondary;
-                                                font-size: Theme.font-ui;
-                                                vertical-alignment: center;
-                                                overflow: elide;
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                alignment: center;
+                                                spacing: 2px;
+                                                Text {
+                                                    text: t.name;
+                                                    color: Theme.text-primary;
+                                                    font-size: Theme.font-ui;
+                                                    font-weight: t.selected ? 700 : 400;
+                                                    overflow: elide;
+                                                }
+                                                Text {
+                                                    text: t.category;
+                                                    color: Theme.text-faint;
+                                                    font-size: 10px;
+                                                    overflow: elide;
+                                                }
                                             }
                                         }
-                                        lang-touch := TouchArea {
+                                        row-touch := TouchArea {
                                             mouse-cursor: pointer;
-                                            clicked => { root.language-select(idx); }
+                                            clicked => { root.select(idx); }
                                         }
                                     }
                                 }
@@ -247,110 +319,61 @@ export component NewProjectView inherits Rectangle {
                         }
                     }
 
-                    SectionLabel { text: "TEMPLATES"; }
-
                     Rectangle {
-                        vertical-stretch: 1;
-                        border-radius: Theme.radius;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        background: Theme.surface;
-
-                        if root.templates.length == 0 : EmptyState {
-                            width: 100%;
-                            height: 100%;
-                            glyph: "\u{f002}";
-                            title: "No templates match";
-                            detail: "Try a different search or language section.";
-                        }
-
-                        ScrollView {
-                            VerticalLayout {
-                                padding: 4px;
-                                for t[idx] in root.templates : Rectangle {
-                                    height: 44px;
-                                    border-radius: 3px;
-                                    background: t.selected
-                                        ? Theme.selection
-                                        : (row-touch.has-hover ? Theme.fill : transparent);
-
-                                    if t.selected : Rectangle {
-                                        x: 0;
-                                        width: 2px;
-                                        height: 100%;
-                                        background: Theme.accent;
-                                    }
-
-                                    HorizontalLayout {
-                                        padding-left: 10px;
-                                        padding-right: 8px;
-                                        spacing: 8px;
-
-                                        Text {
-                                            width: 16px;
-                                            text: root.lang-glyph(t.language);
-                                            color: t.selected ? Theme.accent : Theme.text-faint;
-                                            font-family: "Symbols Nerd Font";
-                                            font-size: 14px;
-                                            vertical-alignment: center;
-                                            horizontal-alignment: center;
-                                        }
-                                        VerticalLayout {
-                                            vertical-stretch: 1;
-                                            alignment: center;
-                                            spacing: 1px;
-                                            Text {
-                                                text: t.name;
-                                                color: Theme.text-primary;
-                                                font-size: Theme.font-ui;
-                                                overflow: elide;
-                                            }
-                                            Text {
-                                                text: t.category + (t.language == "" ? "" : "  ·  " + t.language);
-                                                color: Theme.text-faint;
-                                                font-size: 10px;
-                                                overflow: elide;
-                                            }
-                                        }
-                                    }
-                                    row-touch := TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => { root.select(idx); }
-                                    }
-                                }
-                            }
-                        }
+                        x: parent.width - 1px;
+                        width: 1px;
+                        background: Theme.border;
                     }
                 }
 
                 // ── Detail + form ────────────────────────────────────────
                 VerticalLayout {
                     horizontal-stretch: 1;
-                    spacing: 8px;
+                    padding: 20px;
+                    spacing: 10px;
 
                     if root.detail.id != "" : ScrollView {
                         vertical-stretch: 1;
 
                         VerticalLayout {
-                            spacing: 10px;
+                            spacing: 14px;
                             alignment: start;
+                            padding-right: 12px;
 
                             HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                Text {
-                                    text: root.lang-glyph(root.detail.language);
-                                    color: Theme.accent;
-                                    font-family: "Symbols Nerd Font";
-                                    font-size: 15px;
-                                    vertical-alignment: center;
+                                spacing: 12px;
+                                Rectangle {
+                                    width: 44px;
+                                    height: 44px;
+                                    border-radius: 10px;
+                                    background: Theme.accent.with-alpha(0.18);
+                                    Text {
+                                        text: root.lang-glyph(root.detail.language);
+                                        color: Theme.accent;
+                                        font-family: "Symbols Nerd Font";
+                                        font-size: 22px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
                                 }
-                                Text {
-                                    text: root.detail.name;
-                                    color: Theme.text-primary;
-                                    font-size: 14px;
-                                    font-weight: 700;
-                                    vertical-alignment: center;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 3px;
+                                    Text {
+                                        text: root.detail.name;
+                                        color: Theme.text-primary;
+                                        font-size: 16px;
+                                        font-weight: 700;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: root.detail.plugin + "  ·  " + root.detail.file-count + " files"
+                                            + (root.detail.toolchain == "" ? "" : "  ·  " + root.detail.toolchain);
+                                        color: Theme.text-faint;
+                                        font-size: Theme.font-small;
+                                        overflow: elide;
+                                    }
                                 }
                             }
                             Text {
@@ -359,111 +382,108 @@ export component NewProjectView inherits Rectangle {
                                 font-size: Theme.font-ui;
                                 wrap: word-wrap;
                             }
-                            Text {
-                                text: root.detail.plugin + "  ·  " + root.detail.file-count + " files";
-                                color: Theme.text-faint;
-                                font-size: Theme.font-small;
-                            }
-                            if root.detail.toolchain-status != "" : HorizontalLayout {
-                                spacing: 6px;
-                                alignment: start;
-                                Text {
-                                    text: "\u{f071}";
-                                    color: Theme.warning;
-                                    font-family: "Symbols Nerd Font";
-                                    font-size: Theme.font-small;
-                                    vertical-alignment: center;
-                                }
-                                Text {
-                                    text: root.detail.toolchain-status;
-                                    color: Theme.warning;
-                                    font-size: Theme.font-small;
-                                    wrap: word-wrap;
-                                    horizontal-stretch: 1;
+                            if root.detail.toolchain-status != "" : Rectangle {
+                                border-radius: Theme.radius;
+                                background: Theme.warning.with-alpha(0.12);
+                                border-width: 1px;
+                                border-color: Theme.warning.with-alpha(0.5);
+                                HorizontalLayout {
+                                    padding: 8px;
+                                    spacing: 8px;
+                                    Text {
+                                        text: "\u{f071}";
+                                        color: Theme.warning;
+                                        font-family: "Symbols Nerd Font";
+                                        font-size: Theme.font-small;
+                                        vertical-alignment: top;
+                                    }
+                                    Text {
+                                        text: root.detail.toolchain-status;
+                                        color: Theme.warning;
+                                        font-size: Theme.font-small;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
+                                    }
                                 }
                             }
 
-                            SectionLabel { text: "LOCATION"; }
-                            HorizontalLayout {
-                                spacing: 8px;
+                            SectionLabel { text: "PROJECT"; }
+                            VerticalLayout {
+                                spacing: 4px;
                                 Text {
-                                    width: 150px;
-                                    text: "Destination";
-                                    color: Theme.text-secondary;
-                                    font-size: Theme.font-ui;
-                                    vertical-alignment: center;
-                                }
-                                Field {
-                                    horizontal-stretch: 1;
-                                    placeholder: "/path/to/parent/folder";
-                                    text <=> root.dest-dir;
-                                    enabled: !root.generating;
-                                    edited => { root.dest-changed(); }
-                                }
-                                Button {
-                                    label: "Browse…";
-                                    enabled: !root.generating;
-                                    clicked => { root.browse(); }
-                                }
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text {
-                                    width: 150px;
                                     text: "Name";
                                     color: Theme.text-secondary;
-                                    font-size: Theme.font-ui;
-                                    vertical-alignment: center;
+                                    font-size: Theme.font-small;
                                 }
                                 Field {
-                                    width: 220px;
                                     placeholder: "my-project";
                                     text <=> root.project-name;
+                                    invalid: root.name-invalid;
                                     enabled: !root.generating;
                                     edited => { root.name-changed(); }
                                 }
                             }
-
-                            if root.vars.length > 0 : SectionLabel { text: "OPTIONS"; }
-                            for v in root.vars : HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-
-                                VerticalLayout {
-                                    width: 150px;
-                                    alignment: v.description == "" ? center : start;
-                                    spacing: 1px;
-                                    Text {
-                                        text: v.label;
-                                        color: Theme.text-secondary;
-                                        font-size: Theme.font-ui;
-                                        overflow: elide;
+                            VerticalLayout {
+                                spacing: 4px;
+                                Text {
+                                    text: "Location";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-small;
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Field {
+                                        horizontal-stretch: 1;
+                                        placeholder: "/path/to/parent/folder";
+                                        text <=> root.dest-dir;
+                                        invalid: root.dest-invalid;
+                                        enabled: !root.generating;
+                                        edited => { root.dest-changed(); }
                                     }
-                                    if v.description != "" : Text {
-                                        text: v.description;
-                                        color: Theme.text-faint;
-                                        font-size: 10px;
-                                        wrap: word-wrap;
+                                    Button {
+                                        label: "Browse…";
+                                        enabled: !root.generating;
+                                        clicked => { root.browse(); }
                                     }
                                 }
+                                if root.create-hint != "" : Text {
+                                    text: "Will be created at " + root.create-hint;
+                                    color: Theme.text-faint;
+                                    font-size: Theme.font-small;
+                                    overflow: elide;
+                                }
+                            }
+
+                            if root.vars.length > 0 : SectionLabel { text: "OPTIONS"; }
+                            for v in root.vars : VerticalLayout {
+                                spacing: 4px;
+                                if v.kind != "boolean" : Text {
+                                    text: v.label + (v.required ? " *" : "");
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-small;
+                                }
                                 if v.kind == "choice" : Picker {
-                                    y: (parent.height - Theme.control-height) / 2;
                                     choices: v.choices;
                                     current-value: v.value;
                                     changed(value) => { root.var-changed(v.key, value); }
                                 }
                                 if v.kind == "boolean" : Check {
-                                    y: (parent.height - Theme.control-height) / 2;
+                                    label: v.label;
+                                    description: v.description;
                                     checked: v.value == "true";
                                     toggled => { root.var-changed(v.key, self.checked ? "true" : "false"); }
                                 }
                                 if v.kind != "choice" && v.kind != "boolean" : Field {
-                                    y: (parent.height - Theme.control-height) / 2;
-                                    width: 200px;
                                     placeholder: v.required ? "required" : "optional";
                                     text: v.value;
                                     enabled: !root.generating;
                                     edited => { root.var-changed(v.key, self.text); }
+                                }
+                                if v.description != "" && v.kind != "boolean" : Text {
+                                    text: v.description;
+                                    color: Theme.text-faint;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
                                 }
                             }
                         }
@@ -480,12 +500,14 @@ export component NewProjectView inherits Rectangle {
 
             // ── Footer ───────────────────────────────────────────────────
             Rectangle {
-                height: 38px;
+                height: 46px;
                 background: Theme.chrome;
 
                 HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 14px;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 7px;
+                    padding-bottom: 7px;
                     spacing: 8px;
                     alignment: start;
 
@@ -493,9 +515,12 @@ export component NewProjectView inherits Rectangle {
                         vertical-alignment: center;
                         text: root.generating
                             ? "Creating project…"
-                            : root.note != "" ? root.note : root.create-reason;
+                            : root.note != "" ? root.note
+                            : root.create-reason != "" ? root.create-reason
+                            : "Ready — press Enter to create";
                         color: root.generating ? Theme.text-muted
-                            : root.note != "" ? Theme.danger : Theme.text-faint;
+                            : root.note != "" ? Theme.danger
+                            : root.create-reason != "" ? Theme.text-faint : Theme.text-muted;
                         font-size: Theme.font-small;
                         overflow: elide;
                         horizontal-stretch: 1;
@@ -506,7 +531,7 @@ export component NewProjectView inherits Rectangle {
                         clicked => { root.close(); }
                     }
                     Button {
-                        label: root.generating ? "Creating…" : "Create";
+                        label: root.generating ? "Creating…" : "Create Project";
                         primary: true;
                         enabled: root.can-create && !root.generating;
                         clicked => { root.create(); }

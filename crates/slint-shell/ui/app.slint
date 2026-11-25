@@ -288,6 +288,8 @@ export component AppWindow inherits Window {
     in-out property <string> new-project-dest: "";
     in property <string> new-project-note: "";
     in property <string> new-project-create-reason: "";
+    in property <bool> new-project-name-invalid: false;
+    in property <bool> new-project-dest-invalid: false;
     in property <bool> new-project-can-create: false;
     in property <bool> new-project-generating: false;
 
@@ -1053,6 +1055,8 @@ export component AppWindow inherits Window {
         dest-dir <=> root.new-project-dest;
         note: root.new-project-note;
         create-reason: root.new-project-create-reason;
+        name-invalid: root.new-project-name-invalid;
+        dest-invalid: root.new-project-dest-invalid;
         can-create: root.new-project-can-create;
         generating: root.new-project-generating;
         close() => { root.command("new-project:close"); }

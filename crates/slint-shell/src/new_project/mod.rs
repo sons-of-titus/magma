@@ -8,8 +8,9 @@ use kernel::command::args::ArgValue;
 use kernel::command::execute_command;
 use kernel::templates::InputKind;
 
+mod lifecycle;
 mod validation;
-use validation::{VarValue, validate};
+use validation::{VarValue, field_errors, validate};
 
 use crate::{AppState, AppWindow, TemplateItem, TemplateVar, sync};
 
@@ -39,8 +40,7 @@ pub fn open(weak: &slint::Weak<AppWindow>, s: &mut AppState) {
     if s.new_project.visible {
         return;
     }
-    s.new_project = NewProjectState::default();
-    s.new_project.visible = true;
+    lifecycle::reset_for_open(&mut s.new_project, &mut s.editor.template_jobs);
     // Destination default: beside the open project, else the home folder.
     let dest = s
         .editor
@@ -114,8 +114,8 @@ fn create(app: &AppWindow, s: &mut AppState) {
     let Some(template_id) = template_id else {
         return;
     };
-    let name = app.get_new_project_name().to_string();
-    let dest_parent = app.get_new_project_dest().to_string();
+    let name = app.get_new_project_name().trim().to_string();
+    let dest_parent = app.get_new_project_dest().trim().to_string();
     let dest = std::path::Path::new(&dest_parent).join(&name);
     let mut vars = HashMap::new();
     for var in &s.new_project.vars {
@@ -151,8 +151,8 @@ pub fn sync(app: &AppWindow, s: &mut AppState) {
     }
     let search = app.get_new_project_search().to_string();
     let needle = search.to_lowercase();
-    let name = app.get_new_project_name().to_string();
-    let dest = app.get_new_project_dest().to_string();
+    let name = app.get_new_project_name().trim().to_string();
+    let dest = app.get_new_project_dest().trim().to_string();
 
     let editor = &mut s.editor;
     let sections = language_sections(editor);
@@ -294,19 +294,16 @@ pub fn sync(app: &AppWindow, s: &mut AppState) {
     let can_create = can_create && !generating;
     s.new_project.can_create = can_create;
     app.set_new_project_can_create(can_create);
+    let (name_invalid, dest_invalid) = field_errors(&name, &dest);
+    app.set_new_project_name_invalid(name_invalid);
+    app.set_new_project_dest_invalid(dest_invalid);
     app.set_new_project_create_reason(reason.into());
     app.set_new_project_note(s.new_project.note.clone().into());
     app.set_new_project_generating(generating);
 
     // A finished generation resolves the wizard: success closes it (the
     // editor window takes over), failure keeps it open with the error.
-    if !generating {
-        match &editor.template_jobs.last_result {
-            Some(Ok(_)) => s.new_project.visible = false,
-            Some(Err(e)) => s.new_project.note = e.clone(),
-            None => {}
-        }
-    }
+    lifecycle::resolve_generation(&mut s.new_project, &mut editor.template_jobs);
 }
 
 /// Raw language ids in section order, "" grouping templates that declare no

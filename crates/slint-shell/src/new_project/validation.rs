@@ -12,6 +12,14 @@ pub struct VarValue {
     pub required: bool,
 }
 
+/// Which inputs to flag red: only fields the user has typed into, so a fresh
+/// form is not shouting at them.
+pub fn field_errors(name: &str, dest: &str) -> (bool, bool) {
+    let name_bad = !name.is_empty() && !kernel::templates::generate::valid_project_name(name);
+    let dest_bad = !dest.trim().is_empty() && !std::path::Path::new(dest).is_absolute();
+    (name_bad, dest_bad)
+}
+
 pub fn validate(name: &str, dest: &str, vars: &[VarValue]) -> (bool, String) {
     if !kernel::templates::generate::valid_project_name(name) {
         return (
@@ -88,5 +96,17 @@ mod tests {
             required: false,
         }];
         assert!(!validate("proj", "/tmp/x", &vars).0);
+    }
+
+    #[test]
+    fn field_errors_ignore_untouched_fields() {
+        assert_eq!(field_errors("", ""), (false, false));
+    }
+
+    #[test]
+    fn field_errors_flag_bad_name_and_relative_destination() {
+        assert_eq!(field_errors("my project", "/tmp/x"), (true, false));
+        assert_eq!(field_errors("proj", "relative"), (false, true));
+        assert_eq!(field_errors("proj", "/tmp/x"), (false, false));
     }
 }

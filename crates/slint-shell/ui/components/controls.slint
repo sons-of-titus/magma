@@ -89,6 +89,7 @@ export component Field inherits Rectangle {
     in property <bool> enabled: true;
     in property <length> font-size: Theme.font-ui;
     in property <bool> password: false;
+    in property <bool> invalid: false;
     in-out property <string> text;
     callback accepted();
     callback edited();
@@ -96,7 +97,7 @@ export component Field inherits Rectangle {
     height: Theme.control-height;
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: input.has-focus ? Theme.accent : Theme.border;
+    border-color: root.invalid ? Theme.danger : input.has-focus ? Theme.accent : Theme.border;
     background: Theme.surface;
     clip: true;
 

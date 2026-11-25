@@ -106,8 +106,14 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn bare_names_resolve_on_unix() {
+        // The absolute location is distribution-specific — /bin/sh on
+        // classic layouts, /usr/bin/sh on usr-merged ones — so assert the
+        // contract: a bare name becomes an executable found on PATH.
         let resolved = resolve_command("sh");
-        assert_eq!(resolved, PathBuf::from("/bin/sh"));
+        assert!(resolved.is_absolute(), "resolved: {resolved:?}");
+        assert_eq!(resolved.file_name(), Some(std::ffi::OsStr::new("sh")));
+        assert!(resolved.exists(), "resolved: {resolved:?}");
+        assert!(is_executable(&resolved), "resolved: {resolved:?}");
     }
 
     #[cfg(windows)]

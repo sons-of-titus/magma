@@ -2,8 +2,6 @@
 # capability context active, so every handler registered here carries
 # those capabilities when it later fires.
 
-(editor/load-file (string (dyn :magma/plugin-dir "") "/config.janet"))
-
 # ── Completion + highlighting ────────────────────────────────────────────────
 # tree-sitter serves offline parsing immediately; rust-analyzer is layered
 # on for the semantic surface once a project opens.

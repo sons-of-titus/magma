@@ -59,7 +59,8 @@
      :grammar    absolute path to a plugin grammar shared library
      :syntax     absolute path to the highlight query (conventionally
                  syntax.scm; drives tree-sitter highlighting for the mode)
-     :config     absolute path to config.janet
+     :config     absolute path to config.janet, evaluated at registration
+                 so its option defaults exist before any mode activates
      :comments   {:line \"//\" :block [\"/*\" \"*/\"]}
      :indentation {:size 4 :style \"spaces\"|\"tabs\"}
      :plugin     owning plugin name (set by plugin/define)
@@ -70,6 +71,14 @@
   (unless id (error "language/define: :id required"))
   (def mode (string id "-mode"))
   (def result (language/register spec))
+  # The config's option defaults must exist before the mode can ever
+  # activate: registration (a manifest) always precedes mode definition
+  # and activation, so a setup never reads a missing option.
+  (when-let [cfg (get spec :config)]
+    (try
+      (editor/load-file cfg)
+      ([err]
+        (editor/warn (string "[language] bad config file " cfg ": " err)))))
   # Grammar/query failures are reported by the registration; the wiring
   # here applies either way.
   (each ext (get spec :extensions @[])

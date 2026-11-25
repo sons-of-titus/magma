@@ -2,7 +2,6 @@
 # capability context active, so every handler registered here carries
 # those capabilities when it later fires.
 
-(editor/load-file (string (dyn :magma/plugin-dir "") "/config.janet"))
 (editor/load-file (string (dyn :magma/plugin-dir "") "/hover.janet"))
 
 (semantic/register-provider "markdown" "treesitter")

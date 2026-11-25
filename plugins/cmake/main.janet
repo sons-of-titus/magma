@@ -2,8 +2,6 @@
 # capability context active, so every handler registered here carries
 # those capabilities when it later fires.
 
-(editor/load-file (string (dyn :magma/plugin-dir "") "/config.janet"))
-
 (semantic/register-provider "cmake" "treesitter")
 (semantic/register-provider "cmake" "lsp")
 

@@ -1999,7 +1999,9 @@ the later one is reported.
 The plugin-facing form of `language/register`: registers the language and
 wires its user-facing behavior — the extension→mode mappings, the
 tree-sitter highlight query, and the `<id>-comment-*` /
-`<id>-indent-*` option defaults (set only when no value exists).  Plugin
+`<id>-indent-*` option defaults (set only when no value exists).  When the
+spec carries `:config`, that file is evaluated immediately, so its option
+defaults exist before the language's mode can ever activate.  Plugin
 manifests reach it through `plugin/define`.
 
 ### `(language/unregister name)` → nil

@@ -327,6 +327,7 @@ fn main() {
 
 // ── LSP completions ──────────────────────────────────────────────────────
 
+#[cfg(unix)]
 const FAKE_RA: &str = r#"#!/usr/bin/env python3
 import sys, json
 
@@ -480,6 +481,7 @@ fn lsp_completions_reach_the_popup_with_snippets() {
 // The request fires on publishDiagnostics, not on didOpen, so a fake
 // server must publish (as real ones do) before any hint can be asked for.
 
+#[cfg(unix)]
 const FAKE_RA_HINTS: &str = r#"#!/usr/bin/env python3
 import sys, json
 

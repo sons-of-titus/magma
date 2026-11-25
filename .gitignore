@@ -1,4 +1,5 @@
 /target/
+.codegraph/
 memory/
 .magma/
 .commandcode/

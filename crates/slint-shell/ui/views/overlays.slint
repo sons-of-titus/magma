@@ -25,6 +25,7 @@ export component HoverCard inherits Rectangle {
     y: root.hover-y;
     width: 420px;
     height: root.hover-height;
+    clip: true;
     background: Theme.surface-panel;
     border-radius: 10px;
     border-width: 1px;
@@ -61,28 +62,22 @@ export component HoverCard inherits Rectangle {
             }
         }
 
-        // ── Footer actions ─────────────────────────────────────────────
+        // ── Footer link ────────────────────────────────────────────────
         Rectangle { height: 1px; background: Theme.border; }
         HorizontalLayout {
-            spacing: 6px;
-
             Rectangle {
                 horizontal-stretch: 1;
             }
             Rectangle {
-                width: 120px;
-                height: 24px;
-                border-radius: Theme.radius-pill;
-                background: gd-touch.has-hover ? Theme.fill : Theme.accent-muted;
+                width: gd-label.preferred-width;
+                height: gd-label.preferred-height;
                 gd-touch := TouchArea {
                     clicked => { root.go-to-definition(); }
                 }
-                Text {
+                gd-label := Text {
                     text: "Go to definition";
-                    color: Theme.text-primary;
+                    color: gd-touch.has-hover ? Theme.accent : Theme.text-secondary;
                     font-size: Theme.font-small;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
                 }
             }
         }

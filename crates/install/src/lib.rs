@@ -238,12 +238,12 @@ mod tests {
         fs::create_dir_all(&new).unwrap();
         fs::write(old.join("tool"), b"old").unwrap();
         fs::write(new.join("tool"), b"new").unwrap();
-        let set_mtime = |p: &Path, t: SystemTime| {
-            let f = fs::File::options().write(true).open(p).unwrap();
-            f.set_modified(t).unwrap();
-        };
-        set_mtime(&old.join("tool"), SystemTime::UNIX_EPOCH + Duration::from_secs(1));
-        set_mtime(&new.join("tool"), SystemTime::now());
+        let set_mtime = |p: &Path, t: SystemTime| filetime::set_file_mtime(p, t.into()).unwrap();
+        // find_in_slot sorts by the version DIRECTORY's mtime; set both
+        // explicitly — coarse filesystem stamp granularity must not tie
+        // them and hand the decision to read_dir order.
+        set_mtime(&old, SystemTime::UNIX_EPOCH + Duration::from_secs(1));
+        set_mtime(&new, SystemTime::now());
         let found = find_in_slot(&slot, "tool").unwrap();
         assert_eq!(found, new.join("tool"), "newest version must win");
         assert!(find_in_slot(&slot, "absent").is_none());

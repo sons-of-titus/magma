@@ -16,7 +16,9 @@ fn scratch_git_repo(tag: &str) -> (std::path::PathBuf, String) {
     std::fs::create_dir_all(&root).unwrap();
     let file = root.join("work.txt");
     std::fs::write(&file, "line1\nline2\nline3\nline4\nline5\nline6\n").unwrap();
-    run_git(&root, &["init", "-q"]);
+    // Pin the initial branch: without a platform `init.defaultBranch` the
+    // default is still `master`, and the tests below walk `main`.
+    run_git(&root, &["init", "-q", "-b", "main"]);
     run_git(
         &root,
         &["-c", "user.email=t@t", "-c", "user.name=t", "add", "."],

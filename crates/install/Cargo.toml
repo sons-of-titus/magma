@@ -9,3 +9,6 @@ ureq = "2"
 sha2 = "0.10"
 flate2 = "1"
 tar = "0.4"
+
+[dev-dependencies]
+filetime = "0.2"

@@ -152,48 +152,50 @@ pub fn apply_editor(ed: &mut Editor, p: &Palette) {
     set("diff-del", p.danger);
     set("diff-hunk", p.accent);
 
-    let face = |fg: Rgb, bold: bool, italic: bool, dim: bool| Style {
-        fg,
-        bg,
-        bold,
-        italic,
-        underline: false,
-        strikethrough: false,
-        dim,
-    };
+    // Every face the Janet defaults define must be overridden here: they ship
+    // with the dark Catppuccin background, which shows up as dark patches
+    // behind text on light themes.
     let s = &p.syntax;
-    ed.faces
-        .insert("keyword-face".into(), face(s.keyword, false, false, false));
-    ed.faces
-        .insert("string-face".into(), face(s.string, false, false, false));
-    ed.faces
-        .insert("comment-face".into(), face(s.comment, false, true, false));
-    ed.faces
-        .insert("type-face".into(), face(s.type_, false, false, false));
-    ed.faces.insert(
-        "function-face".into(),
-        face(s.function, false, false, false),
-    );
-    ed.faces.insert(
-        "variable-face".into(),
-        face(s.variable, false, false, false),
-    );
-    ed.faces.insert(
-        "constant-face".into(),
-        face(s.constant, false, false, false),
-    );
-    ed.faces.insert(
-        "operator-face".into(),
-        face(s.operator, false, false, false),
-    );
-    ed.faces.insert(
-        "punctuation-face".into(),
-        face(s.punctuation, false, false, false),
-    );
-    ed.faces
-        .insert("error-face".into(), face(s.error, true, false, false));
-    ed.faces
-        .insert("warning-face".into(), face(s.warning, false, false, false));
+    let (v, c) = (s.variable, s.comment);
+    // (name, fg, bold, italic, strikethrough)
+    let faces: [(&str, Rgb, bool, bool, bool); 22] = [
+        ("keyword-face", s.keyword, false, false, false),
+        ("string-face", s.string, false, false, false),
+        ("comment-face", c, false, true, false),
+        ("type-face", s.type_, false, false, false),
+        ("function-face", s.function, false, false, false),
+        ("variable-face", v, false, false, false),
+        ("constant-face", s.constant, false, false, false),
+        ("operator-face", s.operator, false, false, false),
+        ("punctuation-face", s.punctuation, false, false, false),
+        ("error-face", s.error, true, false, false),
+        ("warning-face", s.warning, false, false, false),
+        ("macro-face", s.function, false, false, false),
+        ("lifetime-face", s.constant, false, false, false),
+        ("type-parameter-face", s.type_, false, false, false),
+        ("declaration-face", v, true, false, false),
+        ("mutable-face", v, true, false, false),
+        ("parameter-face", v, false, true, false),
+        ("trait-face", s.type_, false, true, false),
+        ("field-face", v, false, false, false),
+        ("unsafe-face", s.error, false, false, false),
+        ("unused-face", c, false, false, false),
+        ("deprecated-face", c, false, false, true),
+    ];
+    for (name, fg, bold, italic, strikethrough) in faces {
+        ed.faces.insert(
+            name.into(),
+            Style {
+                fg,
+                bg,
+                bold,
+                italic,
+                underline: false,
+                strikethrough,
+                dim: false,
+            },
+        );
+    }
 }
 
 pub fn color(rgb: Rgb) -> slint::Color {

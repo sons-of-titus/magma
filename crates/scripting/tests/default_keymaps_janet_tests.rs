@@ -6,14 +6,7 @@
 mod helpers;
 
 use kernel::input::dispatch_key;
-use kernel::state::Editor;
 use scripting::EditorScope;
-
-fn booted_editor() -> Editor {
-    let mut ed = helpers::make_editor();
-    scripting::init(&mut ed);
-    ed
-}
 
 #[test]
 fn editor_layer_is_active_after_boot() {

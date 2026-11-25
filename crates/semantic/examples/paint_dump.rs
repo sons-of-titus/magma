@@ -70,7 +70,7 @@ fn main() {
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut winner: Vec<Option<&str>> = vec![None; text.len()];
     let mut iter = cursor.captures(&query, tree.root_node(), text.as_bytes());
-    let mut dump = std::env::var("DUMP_RAW").is_ok();
+    let dump = std::env::var("DUMP_RAW").is_ok();
     while let Some((m, _)) = iter.next() {
         for cap in m.captures() {
             let n = cap.node;

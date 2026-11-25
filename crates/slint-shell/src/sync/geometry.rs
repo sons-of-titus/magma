@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn card_stays_below_while_it_fits() {
-        let (x, y) = hover_card_position(100.0, 320.0, 420.0, 400.0, 1200.0, 800.0);
+        let (_, y) = hover_card_position(100.0, 320.0, 420.0, 400.0, 1200.0, 800.0);
         // below ends at 740 ≤ 792 — no flip
         assert_eq!(y, 340.0);
         let (x, y) = hover_card_position(100.0, 500.0, 420.0, 400.0, 1200.0, 800.0);

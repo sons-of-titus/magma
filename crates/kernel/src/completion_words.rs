@@ -179,7 +179,6 @@ fn arc2_lock(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::command::builtin;
     use crate::state::Editor;
     use crate::storage::disk::DiskFileSystem;

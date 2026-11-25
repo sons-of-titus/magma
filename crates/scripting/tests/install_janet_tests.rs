@@ -5,10 +5,6 @@
 mod helpers;
 use scripting;
 
-fn root_str(path: &std::path::Path) -> String {
-    path.to_str().unwrap().replace('\\', "/")
-}
-
 const FAKE_SERVER: &str = r#"#!/usr/bin/env python3
 import sys, json
 

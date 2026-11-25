@@ -113,6 +113,8 @@ pub fn finalize_exec(path: &Path) -> Result<(), String> {
         fs::set_permissions(path, perms)
             .map_err(|e| format!("cannot chmod {}: {e}", path.display()))?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 

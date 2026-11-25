@@ -110,9 +110,9 @@ fn main() {
             (i, i, "let x = 5;\n    ".into())
         }),
         // delete one byte after `fn main`
-        Box::new(|t: &str| (4, 5, "".into())),
+        Box::new(|_t: &str| (4, 5, "".into())),
         // replace `fn ` prefix at the top
-        Box::new(|t: &str| (0, 3, "pub ".into())),
+        Box::new(|_t: &str| (0, 3, "pub ".into())),
         // newline inside the println line
         Box::new(|t: &str| {
             let i = t.find("println!").unwrap() + 8;
@@ -125,7 +125,7 @@ fn main() {
             (s, e, "".into())
         }),
         // multibyte code at the top
-        Box::new(|t: &str| (0, 0, "strúct Q;\n".into())),
+        Box::new(|_t: &str| (0, 0, "strúct Q;\n".into())),
         // append at end
         Box::new(|t: &str| (t.len(), t.len(), "\nfn extra() {}\n".into())),
         // replace the struct name (multibyte replacement)

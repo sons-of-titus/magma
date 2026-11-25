@@ -21,11 +21,14 @@ const PARSE_HELPER: &str = r#"
 "#;
 
 fn list_janet_files() -> Vec<std::path::PathBuf> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builtins");
+    list_tree(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builtins"))
+}
+
+fn list_tree(root: std::path::PathBuf) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     let mut stack = vec![root];
     while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).expect("builtins directory exists") {
+        for entry in std::fs::read_dir(&dir).expect("directory exists") {
             let path = entry.unwrap().path();
             if path.is_dir() {
                 stack.push(path);
@@ -40,12 +43,27 @@ fn list_janet_files() -> Vec<std::path::PathBuf> {
 
 #[test]
 fn every_builtin_file_parses() {
+    parse_all(list_janet_files(), "builtin");
+}
+
+// The language plugins under plugins/ load later than builtins (at plugin
+// enable), so a syntax error there would surface only when a user opens a
+// file of that language.
+#[test]
+fn every_language_plugin_file_parses() {
+    parse_all(
+        list_tree(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins")),
+        "plugin",
+    );
+}
+
+fn parse_all(files: Vec<std::path::PathBuf>, kind: &str) {
     janet_test!(ed, {
         let r = scripting::eval(PARSE_HELPER);
         assert_eq!(r, "ok", "parse helper itself must load");
 
         let mut failures = Vec::new();
-        for path in list_janet_files() {
+        for path in files {
             let display = path.display().to_string();
             // eval() collapses every successful result to "ok" — eval_result
             // returns the value's description, which is what we need.
@@ -61,7 +79,7 @@ fn every_builtin_file_parses() {
         }
         assert!(
             failures.is_empty(),
-            "builtin files that fail to parse:\n{}",
+            "{kind} files that fail to parse:\n{}",
             failures.join("\n")
         );
     });

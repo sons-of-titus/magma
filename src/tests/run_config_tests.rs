@@ -373,14 +373,16 @@ fn failing_cargo_build_lands_as_clickable_diagnostics() {
     ed.task_scheduler.launch(id, &bg).unwrap();
 
     let mut done = false;
+    let mut build_output = String::new();
     let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
         while let Ok(ev) = rx.try_recv() {
             if let BackgroundEvent::Task(
-                crate::kernel::task::Event::RunCompleted { id: fid, exit_code, .. }
+                crate::kernel::task::Event::RunCompleted { id: fid, exit_code, stdout, stderr, .. }
             ) = &ev
                 && *fid == id {
                     assert_ne!(*exit_code, 0, "the fixture crate must fail to build");
+                    build_output = format!("{stdout}\n{stderr}");
                     done = true;
                 }
             crate::kernel::runtime::process_background_event(&mut ed, ev);
@@ -390,7 +392,15 @@ fn failing_cargo_build_lands_as_clickable_diagnostics() {
     }
     assert!(done, "cargo build must complete");
 
-    assert!(!ed.quickfix_list.is_empty(), "compiler errors become quickfix entries");
+    let output_tail: String = {
+        let lines: Vec<&str> = build_output.lines().collect();
+        let start = lines.len().saturating_sub(12);
+        lines[start..].join("\n")
+    };
+    assert!(
+        !ed.quickfix_list.is_empty(),
+        "compiler errors become quickfix entries; build output tail:\n{output_tail}"
+    );
     let entry = &ed.quickfix_list[0];
     assert!(entry.filename.ends_with("src/main.rs"), "entry points at the source: {}", entry.filename);
     assert_eq!(entry.line, 1);

@@ -50,6 +50,7 @@ fn fixture_plugin(tag_for_name: &str) -> String {
     let tag = if cfg!(target_os = "macos") { "macos" } else { "linux" };
     let script = servers.join(format!("fake-server.{tag}"));
     std::fs::write(&script, FAKE_SERVER).unwrap();
+    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();

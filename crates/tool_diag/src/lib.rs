@@ -16,6 +16,7 @@
 mod tests;
 
 use semantic::{Diagnostic, DiagnosticSeverity};
+use std::borrow::Cow;
 use std::path::Path;
 
 /// One parsed finding: the (resolved) file plus the typed diagnostic.
@@ -59,6 +60,41 @@ impl Default for QuickfixEntry {
     }
 }
 
+/// Strip terminal escape sequences from `line`.  Forced color
+/// (`CARGO_TERM_COLOR=always`, `--color=always`) wraps compiler output in
+/// SGR codes that would defeat the prefix matching in the parser and in
+/// clickable-link detection.
+pub fn strip_ansi(line: &str) -> Cow<'_, str> {
+    if !line.contains('\u{1b}') {
+        return Cow::Borrowed(line);
+    }
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            // CSI: ESC [ params intermediates final-byte (@ through ~).
+            Some('[') => {
+                chars.next();
+                while let Some(&c) = chars.peek() {
+                    chars.next();
+                    if ('\u{40}'..='\u{7e}').contains(&c) {
+                        break;
+                    }
+                }
+            }
+            // Any other escape: drop its introducer's second byte with it.
+            _ => {
+                chars.next();
+            }
+        }
+    }
+    Cow::Owned(out)
+}
+
 /// Parse combined tool output into findings, resolving relative paths
 /// against `cwd`.  `command` selects nothing today — every pattern runs —
 /// but documents where the output came from and leaves room for
@@ -69,7 +105,8 @@ pub fn parse_tool_output(_command: &str, text: &str, cwd: &Path) -> Vec<ToolDiag
 
     let mut pending: Option<(DiagnosticSeverity, String)> = None;
     for line in &lines {
-        let trimmed = line.trim();
+        let clean = strip_ansi(line);
+        let trimmed = clean.trim();
         // rustc/cargo message header — the span follows on the ` -->` line.
         if let Some(msg) = trimmed.strip_prefix("error") {
             let msg = msg

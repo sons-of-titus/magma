@@ -10,7 +10,8 @@ pub use tool_diag::{ToolDiag, parse_tool_output};
 /// the code.  The full diagnostic parse lives in `tool_diag`; this only
 /// decides which output rows are links.
 pub fn find_location_prefix(line: &str) -> Option<(String, i32)> {
-    let trimmed = line.trim_start().trim_start_matches("-->").trim_start();
+    let clean = tool_diag::strip_ansi(line);
+    let trimmed = clean.trim_start().trim_start_matches("-->").trim_start();
     let mut path_end = None;
     for (i, c) in trimmed.char_indices() {
         if c == ':' && i > 0 {
@@ -58,5 +59,14 @@ mod location_tests {
         assert_eq!(locate("Compilation finished successfully"), None);
         assert_eq!(locate("hello world"), None);
         assert_eq!(locate("error[E0308]: mismatched types"), None);
+    }
+
+    #[test]
+    fn color_wrapped_spans_still_locate() {
+        // Forced terminal color wraps the `-->` marker in SGR codes.
+        assert_eq!(
+            locate("   \u{1b}[1m\u{1b}[94m--> \u{1b}[0msrc/lib.rs:7:9"),
+            Some(("src/lib.rs".into(), 7))
+        );
     }
 }

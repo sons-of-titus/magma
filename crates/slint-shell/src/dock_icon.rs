@@ -1,6 +1,7 @@
 //! Dock icon: a bare executable shows macOS's generic tile unless the
 //! process installs one, so hand the Dock the bundled logo at startup.
 
+#[cfg(target_os = "macos")]
 pub fn render_logo_png(px: u32) -> Option<Vec<u8>> {
     let svg = include_bytes!("../../../assets/logo.svg");
     let tree = resvg::usvg::Tree::from_data(svg, &resvg::usvg::Options::default()).ok()?;

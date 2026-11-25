@@ -81,3 +81,27 @@ fn a_default_quickfix_entry_is_an_empty_error() {
     assert_eq!((qf.line, qf.col), (0, 0));
     assert_eq!(qf.severity, DiagnosticSeverity::Error);
 }
+
+#[test]
+fn color_wrapped_output_still_parses() {
+    // `CARGO_TERM_COLOR=always` (as CI runners export) wraps every piece of
+    // rustc output in SGR codes; the parser must look past them.
+    let text = concat!(
+        "\u{1b}[1m\u{1b}[91merror[E0308]\u{1b}[0m\u{1b}[1m: mismatched types\u{1b}[0m\n",
+        " \u{1b}[1m\u{1b}[94m--> \u{1b}[0msrc/main.rs:1:25\n",
+    );
+    let d = parse_tool_output("cargo build", text, cwd());
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].path, "/repo/src/main.rs");
+    assert_eq!((d[0].diag.line, d[0].diag.column), (0, 24));
+    assert_eq!(d[0].diag.message, "mismatched types");
+}
+
+#[test]
+fn strip_ansi_removes_sequences_and_keeps_plain_text() {
+    assert_eq!(
+        strip_ansi("\u{1b}[1m\u{1b}[91merror\u{1b}[0m boom\u{1b}[0m"),
+        "error boom"
+    );
+    assert_eq!(strip_ansi("plain --> src/main.rs:1:1"), "plain --> src/main.rs:1:1");
+}

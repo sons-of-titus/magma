@@ -227,11 +227,15 @@ pub fn init_vm() {
         "builtins/help.janet",
         include_str!("../../../builtins/help.janet"),
     );
-    // Before lsp_attach.janet and task.janet: both reference its helpers,
-    // and Janet compiles referenced symbols at file-load time.
+    // Before lsp_attach.janet and task.janet: both reference their
+    // helpers, and Janet compiles referenced symbols at file-load time.
     load_builtin(
         "builtins/install.janet",
         include_str!("../../../builtins/install.janet"),
+    );
+    load_builtin(
+        "builtins/install_resolve.janet",
+        include_str!("../../../builtins/install_resolve.janet"),
     );
     load_builtin(
         "builtins/plugins/lsp.janet",

@@ -55,7 +55,10 @@ pub(crate) fn editor_grid(app: &AppWindow, cell_w: u32, cell_h: u32) -> (u32, u3
     }
     (
         (w / cell_w.max(1) as f32).floor().max(1.0) as u32,
-        (h / cell_h.max(1) as f32).floor().max(1.0) as u32,
+        // Rounded, not floored: the pane image is clipped by the view, so a
+        // remainder past half a row becomes a partly visible last row
+        // instead of dead space above the bottom dock.
+        (h / cell_h.max(1) as f32).round().max(1.0) as u32,
     )
 }
 

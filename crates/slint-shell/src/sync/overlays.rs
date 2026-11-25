@@ -10,13 +10,13 @@ use crate::{AppState, AppWindow, pane};
 /// [`pane::logical_cell`]: the blitted image lays rows out at
 /// `round(cell × ppx) / ppx`, so anchoring on the raw integer grid drifts a
 /// fraction of a pixel per row until the caret visibly leaves its line.
-fn cursor_anchor(ed: &kernel::state::Editor, row_w: f32, row_h: f32) -> (f32, f32) {
+fn cursor_anchor(ed: &kernel::state::Editor, row_w: f32, row_h: f32) -> (f32, f32, bool) {
     let Some(pane) = ed
         .view_tree
         .focused_window()
         .and_then(|wid| ed.view_tree.window(wid))
     else {
-        return (0.0, 0.0);
+        return (0.0, 0.0, false);
     };
     let buf_id = pane.buffer_id.unwrap_or(0);
     let visible_rows = (pane.height as usize).max(1);
@@ -36,7 +36,12 @@ fn cursor_anchor(ed: &kernel::state::Editor, row_w: f32, row_h: f32) -> (f32, f3
     let scroll_left = kernel::render::frame::pane_scroll_left(pane, buf_id);
     let x = (gutter + st.cursor_col.saturating_sub(scroll_left)) as f32 * row_w;
     let y = (header_rows as f32 + st.cursor_vis_row as f32) * row_h;
-    (x, y)
+    let visible = visible_rows.saturating_sub(header_rows);
+    (
+        x,
+        y,
+        super::scrollbar::caret_in_view(st.cursor_line, st.scroll_top, visible),
+    )
 }
 
 fn hash_values(values: &[u64]) -> u64 {
@@ -57,7 +62,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         app.set_completion_visible(show);
         if show {
             let (row_w, row_h) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
-            let (cx, cy) = cursor_anchor(ed, row_w, row_h);
+            let (cx, cy, _) = cursor_anchor(ed, row_w, row_h);
             app.set_completion_x(cx);
             app.set_completion_y(cy + row_h);
             // The overlay shows a scrolling window of the item list so
@@ -112,7 +117,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
                 .set(items, |m| app.set_quickfix_items(m));
             app.set_quickfix_selected(menu.idx as i32);
             let (row_w, row_h) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
-            let (qx, qy) = cursor_anchor(ed, row_w, row_h);
+            let (qx, qy, _) = cursor_anchor(ed, row_w, row_h);
             app.set_quickfix_x(qx);
             app.set_quickfix_y(qy + row_h);
         }
@@ -164,7 +169,7 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
     {
         let focused = ed.view_tree.focused_window().is_some();
         let (row_w, row_h) = pane::logical_cell(state.cell_w, state.cell_h, state.atlas_ppx);
-        let (cx, cy) = cursor_anchor(ed, row_w, row_h);
+        let (cx, cy, in_view) = cursor_anchor(ed, row_w, row_h);
         app.set_cursor_x(cx);
         // The cell's top leading is empty: glyphs hang from a baseline at the
         // row's ascent, so the beam starts at the cap line or it reads as
@@ -174,8 +179,9 @@ pub(super) fn sync(app: &AppWindow, state: &mut AppState) {
         let caret_h = row_h * 0.75;
         app.set_cursor_y(cy + (row_h - caret_h) / 2.0);
         app.set_cursor_height(caret_h.max(1.0));
-        app.set_caret_visible(focused && state.caret_blink_on);
+        app.set_caret_visible(focused && in_view && state.caret_blink_on);
         let (cr, cg, cb) = ed.theme_color("cursor");
         app.set_caret_color(slint::Color::from_rgb_u8(cr, cg, cb));
     }
+    super::scrollbar::sync(app, state);
 }

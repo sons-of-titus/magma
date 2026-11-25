@@ -12,6 +12,7 @@ mod debug;
 mod dock;
 mod editor;
 mod editor_mouse;
+mod editor_scrollbar;
 pub(crate) mod find_bar;
 pub(crate) mod fonts;
 mod navigation;

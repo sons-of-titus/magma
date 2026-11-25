@@ -10,6 +10,7 @@ mod geometry;
 mod hover;
 mod overlays;
 mod render;
+pub(crate) mod scrollbar;
 mod terminal;
 mod tool_windows;
 mod tree;

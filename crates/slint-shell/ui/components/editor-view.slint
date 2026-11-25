@@ -16,6 +16,10 @@ export component EditorView inherits Rectangle {
     in property <bool> caret-visible: false;
     in property <color> caret-color: Theme.accent;
     in property <bool> enabled: true;
+    in property <bool> scrollbar-visible: false;
+    in property <float> scrollbar-size: 1;
+    in property <float> scrollbar-pos: 0;
+    callback scrollbar-dragged(float);
 
     out property <length> view-width: self.width;
     out property <length> view-height: self.height;
@@ -132,6 +136,44 @@ export component EditorView inherits Rectangle {
         }
 
         clicked => { ime.focus(); }
+    }
+
+    if root.scrollbar-visible : Rectangle {
+        x: root.width - self.width - (root.minimap-visible ? 90px : 0px);
+        y: 0;
+        width: 12px;
+        height: root.height;
+
+        property <length> thumb-h: max(28px, root.scrollbar-size * self.height);
+        property <length> thumb-y: root.scrollbar-pos * (self.height - self.thumb-h);
+
+        Rectangle {
+            x: parent.width - 8px;
+            y: parent.thumb-y;
+            width: 6px;
+            height: parent.thumb-h;
+            border-radius: 3px;
+            background: bar-touch.pressed ? Theme.accent
+                : bar-touch.has-hover ? Theme.text-faint : Theme.fill-strong;
+            animate background { duration: 120ms; }
+        }
+
+        bar-touch := TouchArea {
+            mouse-cursor: pointer;
+            function drag() {
+                root.scrollbar-dragged(clamp(
+                    (self.mouse-y - parent.thumb-h / 2) / max(1px, parent.height - parent.thumb-h),
+                    0, 1));
+            }
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                    self.drag();
+                }
+            }
+            moved => {
+                if (self.pressed) { self.drag(); }
+            }
+        }
     }
 
     scope := FocusScope {

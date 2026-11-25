@@ -244,5 +244,6 @@ pub(super) fn install(app: &AppWindow, state: Rc<RefCell<AppState>>) {
     }
 
     // ── Editor pane mouse ────────────────────────────────────────────────
+    super::editor_scrollbar::install(app, Rc::clone(&state));
     super::editor_mouse::install(app, state);
 }

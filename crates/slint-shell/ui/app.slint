@@ -55,6 +55,10 @@ export component AppWindow inherits Window {
     in property <image> pane;
     in property <length> pane-width: 0px;
     in property <length> pane-height: 0px;
+    in property <bool> scrollbar-visible: false;
+    in property <float> scrollbar-size: 1;
+    in property <float> scrollbar-pos: 0;
+    callback scrollbar-dragged(float);
     in property <string> pane-message;
     in property <image> minimap;
     in property <bool> minimap-visible: false;
@@ -673,6 +677,10 @@ export component AppWindow inherits Window {
                     cursor-height: root.cursor-height;
                     caret-visible: root.caret-visible;
                     caret-color: root.caret-color;
+                    scrollbar-visible: root.scrollbar-visible;
+                    scrollbar-size: root.scrollbar-size;
+                    scrollbar-pos: root.scrollbar-pos;
+                    scrollbar-dragged(f) => { root.scrollbar-dragged(f); }
                     key(text, ctrl, shift, alt, meta) => {
                         root.key(text, ctrl, shift, alt, meta);
                     }

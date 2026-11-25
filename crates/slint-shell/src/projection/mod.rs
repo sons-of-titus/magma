@@ -346,11 +346,13 @@ pub fn running_session(ed: &Editor) -> Option<u64> {
         .map(|s| s.id)
 }
 
+pub(crate) mod recents;
+
 pub fn recent_projects(ed: &Editor) -> Vec<String> {
     ed.project_manager
         .recent_projects
         .iter()
-        .take(8)
+        .take(30)
         .cloned()
         .collect()
 }

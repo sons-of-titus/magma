@@ -1,8 +1,15 @@
 import { Theme } from "../theme.slint";
 import { Button } from "button.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export struct RecentProject {
+    name: string,
+    display: string,
+    path: string,
+}
 
 export component Welcome inherits Rectangle {
-    in property <[string]> recents;
+    in property <[RecentProject]> recents;
     callback open-folder();
     callback new-project();
     callback open-recent(string);
@@ -65,28 +72,56 @@ export component Welcome inherits Rectangle {
             font-size: Theme.font-small;
         }
 
-        for recent in root.recents : Rectangle {
-            height: 24px;
-            border-radius: Theme.radius;
-            background: recent-touch.has-hover ? Theme.fill-muted : transparent;
+        recents-scroll := ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+                for recent in root.recents : Rectangle {
+                    height: 36px;
+                    border-radius: Theme.radius;
+                    background: recent-touch.has-hover ? Theme.fill-muted : transparent;
 
-            Text {
-                x: 6px;
-                text: recent;
-                color: Theme.text-secondary;
-                font-size: Theme.font-small;
-                vertical-alignment: center;
-                overflow: elide;
-                width: parent.width - 12px;
-            }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 10px;
+                        Text {
+                            width: 16px;
+                            text: "\u{f07b}";
+                            color: recent-touch.has-hover ? Theme.accent : Theme.text-faint;
+                            font-family: "Symbols Nerd Font";
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: recent.name;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-ui;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: recent.display;
+                                color: Theme.text-faint;
+                                font-size: 10px;
+                                overflow: elide;
+                            }
+                        }
+                    }
 
-            recent-touch := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.open-recent(recent); }
+                    recent-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.open-recent(recent.path); }
+                    }
+                }
             }
         }
 
-        Rectangle { vertical-stretch: 1; }
 
         Text {
             text: "ctrl-f  find    ctrl-shift-f  find in project    ctrl-l  go to line    ctrl-shift-p  commands";

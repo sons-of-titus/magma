@@ -195,7 +195,7 @@ pub(crate) struct AppState {
     pub(crate) m_output_lines: sync::ModelGate<OutputLine>,
     pub(crate) m_problems: sync::ModelGate<ProblemRow>,
     pub(crate) m_progress: sync::ModelGate<ProgressTask>,
-    pub(crate) m_recents: sync::ModelGate<slint::SharedString>,
+    pub(crate) m_recents: sync::ModelGate<crate::RecentProject>,
     pub(crate) m_sessions: sync::ModelGate<slint::SharedString>,
     pub(crate) m_git_history: sync::ModelGate<GitHistoryRow>,
     pub(crate) m_menu: sync::ModelGate<MenuItem>,

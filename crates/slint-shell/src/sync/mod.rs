@@ -260,11 +260,19 @@ pub(crate) fn refresh(weak: &slint::Weak<AppWindow>, state: &mut AppState) {
     // Recents feed the launcher window; the editor window has no use for
     // them since the welcome moved there.
     let welcome = state.welcome.upgrade();
+    let home = std::env::var("HOME").ok();
     state.m_recents.set(
         projection::recent_projects(ed)
             .into_iter()
-            .map(Into::into)
-            .collect::<Vec<slint::SharedString>>(),
+            .map(|path| {
+                let (name, display) = projection::recents::split(&path, home.as_deref());
+                crate::RecentProject {
+                    name: name.into(),
+                    display: display.into(),
+                    path: path.into(),
+                }
+            })
+            .collect::<Vec<crate::RecentProject>>(),
         |m| {
             if let Some(w) = &welcome {
                 w.set_recents(m.clone());

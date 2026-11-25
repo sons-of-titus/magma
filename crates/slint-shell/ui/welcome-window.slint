@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { Welcome } from "components/welcome.slint";
+import { Welcome, RecentProject } from "components/welcome.slint";
 import { WindowControls } from "components/window-chrome.slint";
 
 // The launcher is its own small window, JetBrains-style: opening a project
@@ -19,7 +19,7 @@ export component WelcomeWindow inherits Window {
     default-font-family: root.app-font-name;
     default-font-size: root.app-font-size;
 
-    in property <[string]> recents;
+    in property <[RecentProject]> recents;
     in property <string> app-font-name: "";
     in property <length> app-font-size: 12px;
 
